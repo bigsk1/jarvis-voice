@@ -462,6 +462,16 @@ Set `"enabled": false` to disable without deleting:
 }
 ```
 
+To include an MCP search tool in Jarvis's availability hint, mark the exposed
+tool name inside its server entry. This is metadata for a discovered tool; it
+does not enable the server or every tool on that server:
+
+```json
+"tool_metadata": {
+  "brave_web_search": {"web_search": true}
+}
+```
+
 ### Jarvis vs OpenCode MCP Servers
 
 | Feature | Jarvis MCP | OpenCode MCP |

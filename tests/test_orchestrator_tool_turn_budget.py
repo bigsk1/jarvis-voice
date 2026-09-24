@@ -130,6 +130,21 @@ class ToolTurnBudgetTests(unittest.TestCase):
         self.assertEqual(result["tool_trace"][0]["tool"], "serpapi_yelp_search")
         self.assertFalse(result["tool_trace"][0]["ok"])
 
+    def test_search_hint_tools_reach_final_response_for_guard(self):
+        orchestrator = self._build_orchestrator(fail_on_calls=set())
+        orchestrator.router.route = lambda *_args, **_kwargs: {
+            "intent": "qa",
+            "text_response": "Both search tools are enabled.",
+            "available_tools": ["tool_search", "searxng_search"],
+            "web_search_hint_tools": ["searxng_search", "tavily_search"],
+            "usage_info": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+        }
+
+        result = self._run_with_max_turns(orchestrator, 1)
+
+        self.assertEqual(result["available_tools"], ["tool_search", "searxng_search"])
+        self.assertEqual(result["web_search_hint_tools"], ["searxng_search", "tavily_search"])
+
     def test_web_tool_hint_wrapper_is_not_used_for_memory_retrieval(self):
         orchestrator = self._build_orchestrator(fail_on_calls=set())
         memory_queries = []

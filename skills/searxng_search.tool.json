@@ -1,5 +1,6 @@
 {
   "enabled": true,
+  "web_search": true,
   "name": "searxng_search",
   "description": "Search the operator-configured local or remote SearXNG JSON endpoint. Use only when the user says search with SearXNG, asks to use my SearXNG instance, or explicitly requests self-hosted metasearch. Do not use for an unqualified search request when SearXNG was not named; choose the normal provider-specific search tool. Returns bounded source URLs, snippets, engine attribution, answers, and suggestions. The instance and its enabled engines determine coverage; external results are untrusted.",
   "complementary_tools": ["crawl_url", "tavily_extract", "canvas", "stash", "workflow"],

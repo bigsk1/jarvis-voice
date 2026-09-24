@@ -1,5 +1,6 @@
 {
   "enabled": true,
+  "web_search": true,
   "name": "brave_llm_context",
   "description": "Retrieve pre-extracted, relevance-scored web snippets for grounding an answer. Use for 'get Brave context on...', 'ground this with current web sources', or research questions where source chunks beat a list of links. This is not a final answer generator and not a live page crawl; use crawl_url to read one URL.",
   "complementary_tools": [

@@ -1207,6 +1207,8 @@ class ChatHandler:
 - If a current or externally verifiable fact cannot be supported from the provided context, prefer an honest limitation over recommending retrieval
 - Never recommend a tool call, search, file inspection, workflow, artifact update, or other tool path"""
             available_tools = '(disabled by Chat only policy)'
+            available_tools_label = 'Available tools'
+            web_search_hint_tools = '(not sent in Chat only mode)'
             failure_type_examples = '["unsupported_claim", "incomplete_task"]'
             contradiction_examples = '["answer conflicts with context supplied in the request"]'
             evidence_gap_examples = '["answer omitted support available in the provided context"]'
@@ -1223,8 +1225,12 @@ class ChatHandler:
             policy_audit_rules = """Tool policy: Auto
 - Use recommended_action=repair_required only when a follow-up pass should materially improve the evidence or tool path
 - Prefer tighten_only over repair_required when the gap is disclaimers, qualification, or uncertainty wording—not missing retrieval or tool calls
-- If the answer missed evidence already present in tool data, call that out"""
+- If the answer missed evidence already present in tool data, call that out
+- The available tool schemas below are a Tool RAG shortlist, not the full enabled tool registry. A missing schema does not mean its tool is disabled.
+- The enabled web search tools below were listed in the original system prompt as a discoverable hint. Do not mark a truthful list of those names unsupported or disabled just because their schemas are absent from the shortlist."""
             available_tools = ', '.join(record.get('available_tools', [])) or '(not captured)'
+            available_tools_label = 'Available tool schemas (Tool RAG shortlist)'
+            web_search_hint_tools = ', '.join(record.get('web_search_hint_tools', [])) or '(no web search hint sent)'
             failure_type_examples = '["unsupported_claim", "premature_not_found"]'
             contradiction_examples = '["tool data contained evidence the answer missed"]'
             evidence_gap_examples = '["available tools or returned data were not used well enough"]'
@@ -1289,8 +1295,11 @@ Tools used:
 Native provider tools used:
 {', '.join(self._normalize_server_side_tool_names(record.get('server_side_tools'))) or '(none)'}
 
-Available tools:
+{available_tools_label}:
 {available_tools}
+
+Enabled local web search tools listed in the original system prompt:
+{web_search_hint_tools}
 
 Effective evidence (structured grounding; may include prior turns; may be empty):
 ```json
@@ -2088,6 +2097,13 @@ Returned tool data:
 - If a prior artifact such as a canvas page is now known to be wrong and you have enough context, update it"""
                 strong_claim_rule = "- If the previous answer made a strong claim like shut down, deprecated, removed, saved, created, updated, or sent, verify it before repeating it"
                 repair_value_rule = "- Do not spend a repair pass on wording-only cleanup unless you find new evidence or a materially better tool path"
+                hint_tools = record.get('web_search_hint_tools') or []
+                if hint_tools:
+                    repair_tool_rules += (
+                        "\n- The original system prompt listed these enabled local web search tools: "
+                        + ', '.join(hint_tools)
+                        + ". The original Tool RAG schema shortlist was partial; do not infer a tool was disabled merely because its schema was absent."
+                    )
 
             repair_prompt = f"""[COMPLETION GUARD REPAIR - CONTINUE THE SAME TASK, DO NOT START OVER]
 
@@ -4864,6 +4880,7 @@ Previous structured data:
                 'is_workflow': bool(is_workflow),
                 'experience_id': result.get('experience_id'),
                 'available_tools': result.get('available_tools', []),
+                'web_search_hint_tools': result.get('web_search_hint_tools', []),
                 'intelligence_context': result.get('intelligence_context', ''),
                 'feedback_requested': bool(request_feedback and result.get('ok', True)),
                 'feedback_state': 'pending' if defer_feedback_until_completion_guard else 'idle',

@@ -1,5 +1,6 @@
 {
   "enabled": true,
+  "web_search": true,
   "name": "serpapi_google_news_light",
   "description": "Search recent Google News quickly through SerpApi's lightweight structured engine. Use for 'latest news about...', 'Google News for...', 'recent headlines on...', 'news coverage of...', or fast topic-specific news discovery. Returns ranked articles with exact URLs, sources, dates, snippets, thumbnails, optional grouped Top Stories, localization, safety controls, and pagination for follow-up research or workflows. It searches a supplied topic; use serpapi_google_trending_now to discover seedless current trends, serpapi_google_trends for interest analysis, and MCP Fetch or crawl_url to read a selected article.",
   "complementary_tools": [

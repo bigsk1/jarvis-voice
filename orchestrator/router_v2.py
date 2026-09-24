@@ -95,6 +95,35 @@ _CHAT_ONLY_SYSTEM_POLICY = (
 )
 
 
+def _web_search_tool_names(registry: ToolRegistry, excluded_tools: set[str]) -> list[str]:
+    """Return the active search tools discoverable through tool_search."""
+    tools = getattr(registry, "tools", {})
+    if "tool_search" not in tools or "tool_search" in excluded_tools:
+        return []
+    return sorted(
+        name for name, tool in tools.items()
+        if name not in excluded_tools
+        and getattr(tool, "web_search", False)
+        and getattr(tool, "permissions", {}).get("enabled", True)
+    )
+
+
+def _web_search_availability_hint(
+    registry: ToolRegistry, excluded_tools: set[str], *, names: list[str] | None = None
+) -> str:
+    """List callable search tools without changing retrieval order or tool choice."""
+    if names is None:
+        names = _web_search_tool_names(registry, excluded_tools)
+    if not names:
+        return ""
+    return (
+        f"Local web search tools (separate from provider-native search): {', '.join(names)}. "
+        "Use only if relevant. "
+        "For a name outside the current tool schemas, inspect it with tool_search; "
+        "follow its description."
+    )
+
+
 @contextmanager
 def _provider_runtime_tool_scope(
     *,
@@ -1359,6 +1388,15 @@ Rules:
             ]
         
         tool_names = [t.name for t in relevant_tools]
+        web_search_hint_tools = []
+        if provider_system_prompt is not None and "tool_search" in tool_names:
+            web_search_hint_tools = _web_search_tool_names(self.registry, set(excluded_tools))
+            search_hint = _web_search_availability_hint(
+                self.registry, set(excluded_tools), names=web_search_hint_tools
+            )
+            if search_hint:
+                provider_system_prompt = "\n\n".join((provider_system_prompt, search_hint))
+        continuation_meta["web_search_hint_tools"] = web_search_hint_tools
         retrieved = [name for name in tool_names if name not in ghost_list]
         ghosts = [name for name in tool_names if name in ghost_list]
         

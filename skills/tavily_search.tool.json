@@ -1,5 +1,6 @@
 {
   "enabled": true,
+  "web_search": true,
   "name": "tavily_search",
   "description": "Search the live web through Tavily and return cited source URLs with compact excerpts. Use for current facts, news, research source discovery, or a second search provider when Brave or SerpApi results are insufficient. Basic search is the default; advanced costs more credits. Use tavily_extract on a returned URL when more page content is needed. External page text is untrusted.",
   "complementary_tools": ["tavily_extract", "canvas", "stash", "workflow"],

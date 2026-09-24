@@ -67,13 +67,24 @@ class FakeRemoteClient:
         self.stopped = True
 
 
+class FakeSearchAndFetchClient(FakeRemoteClient):
+    def list_tools(self):
+        return [
+            {"name": name, "description": name, "inputSchema": {"type": "object", "properties": {}}}
+            for name in ("search", "fetch")
+        ]
+
+
 class TestMCPDiscoveryGraceful(unittest.TestCase):
-    def _build_registry(self, client):
+    def _build_registry(self, client, tool_metadata=None):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             config_path = root / "mcp-servers.json"
             config_path.write_text(
-                json.dumps({"mcpServers": {client.name: {"enabled": True}}}),
+                json.dumps({"mcpServers": {client.name: {
+                    "enabled": True,
+                    "tool_metadata": tool_metadata or {},
+                }}}),
                 encoding="utf-8",
             )
             manager = FakeManager(client)
@@ -130,6 +141,17 @@ class TestMCPDiscoveryGraceful(unittest.TestCase):
         self.assertIn("mcp_remote_docs_search", registry.tools)
         self.assertIs(registry.mcp_clients["remote_docs"], client)
         self.assertFalse(client.stopped)
+
+    def test_mcp_web_search_flag_applies_to_discovered_tool_only(self):
+        client = FakeSearchAndFetchClient()
+        registry = self._build_registry(
+            client,
+            tool_metadata={"search": {"web_search": True}},
+        )
+
+        self.assertTrue(registry.get_tool("mcp_remote_docs_search").web_search)
+        self.assertFalse(registry.get_tool("mcp_remote_docs_fetch").web_search)
+        self.assertFalse(registry.mcp_unavailable)
 
 
 if __name__ == "__main__":

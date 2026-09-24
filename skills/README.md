@@ -98,6 +98,12 @@ the active profile, mode-specific availability, and credential/config checks.
 It is not a raw list of every `*.tool.json`. Web/request blocks are applied
 after registry construction for that surface.
 
+General public-web search tools can set top-level `"web_search": true` in
+their manifest. The router uses this Boolean only to list currently callable
+search tools in a short availability hint; it does not enable the tool, change
+Tool RAG ranking, or require search. Omit the field for other tools. MCP tools
+use per-tool `tool_metadata` in `config/mcp-servers.json` instead.
+
 ---
 
 ## Tool Definition Format

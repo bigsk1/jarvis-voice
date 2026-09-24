@@ -205,6 +205,45 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
             captured["prompt"],
         )
 
+    def test_auto_eval_distinguishes_search_hint_from_tool_rag_shortlist(self):
+        handler = ChatHandler.__new__(ChatHandler)
+        captured = {}
+
+        class _FakeProvider:
+            def chat(self, prompt, system_prompt=None, max_tokens=None):
+                captured["prompt"] = prompt
+                return '{"recommended_action":"accept","task_status":"complete","risk_level":"low","repair_worthwhile":false,"failure_types":[],"missing_requirements":[],"unsupported_claims":[],"contradictions":[],"evidence_gaps":[],"reason":"supported","suggested_note":""}'
+
+        handler._create_completion_guard_eval_provider = lambda **kwargs: (
+            "openai", "test-model", _FakeProvider()
+        )
+        record = {
+            "mode": "cloud",
+            "tool_policy": "auto",
+            "query": "Which web search tools are enabled?",
+            "raw_llm_response": "searxng_search, tavily_search, mcp_brave_search_brave_web_search",
+            "speech": "Several search tools are enabled.",
+            "tools_used": [],
+            "server_side_tools": {},
+            "available_tools": ["tool_search", "searxng_search", "deep_memory_search"],
+            "web_search_hint_tools": [
+                "mcp_brave_search_brave_web_search", "searxng_search", "tavily_search"
+            ],
+            "data": {},
+            "completion_guard": {},
+        }
+
+        with patch("jarvis_web_test_server.services.completion_guard.load_config"), patch(
+            "jarvis_web_test_server.services.completion_guard.get_config_value", return_value=""
+        ):
+            parsed = handler._evaluate_completion_guard_auto(record)
+
+        self.assertEqual(parsed["recommended_action"], "accept")
+        self.assertIn("Available tool schemas (Tool RAG shortlist):", captured["prompt"])
+        self.assertIn("mcp_brave_search_brave_web_search, searxng_search, tavily_search", captured["prompt"])
+        self.assertIn("A missing schema does not mean its tool is disabled", captured["prompt"])
+        self.assertIn("do not mark a truthful list of those names unsupported", captured["prompt"].lower())
+
     def test_tighten_instead_of_substantive_repair_when_same_tools_and_similar_answer(self):
         delta = {
             "operational_correction": True,

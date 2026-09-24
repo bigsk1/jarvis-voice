@@ -1623,6 +1623,7 @@ Mode: {self.mode}
         
         # Track available tools from first routing (for intelligence reflection)
         available_tools = retry_state.get("available_tools") or []
+        web_search_hint_tools = set(retry_state.get("web_search_hint_tools") or [])
         
         start_turn_num = int(retry_state.get("start_turn_num", 0) or 0)
         start_turn_num = max(0, min(start_turn_num, max_turns))
@@ -1928,6 +1929,7 @@ Mode: {self.mode}
             # Capture available tools from first turn (for intelligence reflection)
             if turn_num == 0 and route.get("available_tools"):
                 available_tools = route["available_tools"]
+            web_search_hint_tools.update(route.get("web_search_hint_tools") or [])
             
             # Handle tool execution
             if route["intent"] == "tool":
@@ -2472,6 +2474,7 @@ Mode: {self.mode}
                                 "total_usage": total_usage,
                                 "first_thinking": first_thinking,
                                 "available_tools": available_tools,
+                                "web_search_hint_tools": sorted(web_search_hint_tools),
                                 "tool_trace": tool_trace,
                                 "xai_previous_response_id": xai_previous_response_id,
                                 "xai_provider_continuation": xai_provider_continuation,
@@ -2588,7 +2591,8 @@ Mode: {self.mode}
                     "tools_used": tools_used,
                     "data": accumulated_data,
                     "tool_trace": tool_trace,
-                    "available_tools": available_tools,  # Tools LLM could choose from
+                    "available_tools": available_tools,  # Schemas exposed on the first route
+                    "web_search_hint_tools": sorted(web_search_hint_tools),
                     "intelligence_context": combined_intelligence_context,
                     "routing_provenance": routing_provenance,
                     "response_style": response_style,
@@ -2688,6 +2692,8 @@ Mode: {self.mode}
             "data": accumulated_data,
             "tool_trace": tool_trace,
             "max_turns_reached": True,
+            "available_tools": available_tools,
+            "web_search_hint_tools": sorted(web_search_hint_tools),
             "usage": total_usage if self._has_usage_data(total_usage) else None,
             "server_side_tools": total_usage.get("server_side_tools", {})
         }

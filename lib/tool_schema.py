@@ -269,6 +269,7 @@ class ToolSchema:
         execution: dict[str, Any] | None = None,
         child_environment: dict[str, Any] | None = None,
         availability: dict[str, Any] | None = None,
+        web_search: bool = False,
     ):
         """
         Initialize a tool schema.
@@ -290,11 +291,13 @@ class ToolSchema:
             proxy_policy: Runtime network policy: inherit, off, prefer, or require.
             prerequisite_tools: Optional upstream tools that should be visible
                 whenever this tool is retrieved so required inputs can be resolved.
+            web_search: Include this callable tool in the router's search availability hint.
         """
         self.name = name
         self.description = description
         self.parameters = parameters
         self.script_path = script_path
+        self.web_search = web_search is True
         self.permissions = permissions or {
             "dangerous": False,
             "bash": False,
@@ -433,6 +436,7 @@ Parameters:
             execution=data.get('execution'),
             child_environment=data.get('child_environment'),
             availability=data.get('availability'),
+            web_search=data.get('web_search') is True,
         )
 
 
@@ -652,6 +656,10 @@ class ToolRegistry:
             
             for server_name, client, previous_auto_restart in enabled_servers_sorted:
                 try:
+                    server_config = config.get("mcpServers", {}).get(server_name, {})
+                    tool_metadata = server_config.get("tool_metadata", {})
+                    if not isinstance(tool_metadata, dict):
+                        tool_metadata = {}
                     # Get tools from started server
                     tools = client.list_tools()
 
@@ -682,6 +690,9 @@ class ToolRegistry:
                         # Use underscores for compatibility with all LLM providers
                         # (Anthropic doesn't allow dots in tool names)
                         tool_name = f"mcp_{server_name}_{tool_info['name']}"
+                        metadata = tool_metadata.get(tool_info['name'], {})
+                        if not isinstance(metadata, dict):
+                            metadata = {}
                         
                         # Convert MCP tool to our ToolSchema format
                         schema = ToolSchema(
@@ -697,6 +708,7 @@ class ToolRegistry:
                                 "auto_approve": True
                             },
                             proxy_policy=getattr(client, "proxy_policy", "inherit"),
+                            web_search=metadata.get("web_search") is True,
                         )
                         
                         self.tools[tool_name] = schema
