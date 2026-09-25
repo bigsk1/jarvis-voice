@@ -3174,101 +3174,14 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         if key == 'flight_search':
             _local_travel_followup.extend_flight_search(payload, extracted, max_candidates)
 
-        # --- crawl_url: nested list of runs, each with results[{url, title, success}] ---
-        # Preserve the list of crawled URLs so follow-up turns don't re-crawl the same pages.
-        # Skip the raw markdown content (too large) — URL + success is enough context.
         if key == 'crawl_url':
-            runs = value.get('results') or []
-            if isinstance(runs, list) and runs:
-                crawled = []
-                seen_urls: set[str] = set()
-                for run in runs:
-                    if not isinstance(run, dict):
-                        continue
-                    inner = run.get('results') or []
-                    if not isinstance(inner, list):
-                        continue
-                    for item in inner:
-                        if not isinstance(item, dict):
-                            continue
-                        url = item.get('url')
-                        if not url or url in seen_urls:
-                            continue
-                        seen_urls.add(url)
-                        record = {'url': url}
-                        if item.get('title'):
-                            record['title'] = item['title']
-                        if 'success' in item:
-                            record['success'] = bool(item['success'])
-                        crawled.append(record)
-                        if len(crawled) >= max_candidates * 2:
-                            break
-                    if len(crawled) >= max_candidates * 2:
-                        break
-                if crawled:
-                    extracted['runs_count'] = len(runs)
-                    extracted['crawled_urls'] = crawled
+            _search_followup.extend_crawl_url(value, extracted, max_candidates)
 
         if key == 'brave_llm_context':
-            grounding = value.get('grounding') if isinstance(value.get('grounding'), dict) else {}
-            sources_meta = value.get('sources') if isinstance(value.get('sources'), dict) else {}
-            sources = []
-            seen_urls: set[str] = set()
-            source_limit = max_candidates
-
-            def add_source(item):
-                if not isinstance(item, dict):
-                    return
-                url = item.get('url')
-                title = item.get('title') or item.get('name')
-                if not (url or title):
-                    return
-                if url and url in seen_urls:
-                    return
-                if url:
-                    seen_urls.add(url)
-                record = {}
-                if title:
-                    record['title'] = title
-                if url:
-                    record['url'] = url
-                if item.get('site_name'):
-                    record['site_name'] = item['site_name']
-                elif url:
-                    meta = sources_meta.get(url)
-                    if isinstance(meta, dict) and meta.get('site_name'):
-                        record['site_name'] = meta['site_name']
-                age = item.get('age')
-                if not age and url:
-                    meta = sources_meta.get(url)
-                    if isinstance(meta, dict):
-                        age = meta.get('age')
-                if isinstance(age, list) and age:
-                    record['age'] = _truncate_followup_text(str(age[0]), 120)
-                elif isinstance(age, str) and age.strip():
-                    record['age'] = _truncate_followup_text(age.strip(), 120)
-                snippets = item.get('snippets')
-                if isinstance(snippets, list) and snippets:
-                    record['snippet'] = _truncate_followup_text(
-                        str(snippets[0]),
-                        500,
-                    )
-                sources.append(record)
-
-            for item in grounding.get('generic') or []:
-                add_source(item)
-                if len(sources) >= source_limit:
-                    break
-            if len(sources) < source_limit:
-                add_source(grounding.get('poi'))
-            if len(sources) < source_limit:
-                for item in grounding.get('map') or []:
-                    add_source(item)
-                    if len(sources) >= source_limit:
-                        break
-            if sources:
-                extracted['sources_count'] = len(sources)
-                extracted['sources'] = sources
+            _search_followup.extend_brave_llm_context(
+                value, extracted, max_candidates,
+                truncate_text=_truncate_followup_text,
+            )
 
         # Generic handle/candidate fallback for tools without explicit branches above.
         # This is intentionally conservative: preserve IDs, refs, URLs, titles,

@@ -8,6 +8,109 @@ Shared truncation and bounding policy remains in the public facade.
 from collections.abc import Callable
 
 
+def extend_crawl_url(value: dict, extracted: dict, max_candidates: int) -> None:
+    """Keep deduplicated crawl URLs, without carrying page markdown forward."""
+    runs = value.get('results') or []
+    if isinstance(runs, list) and runs:
+        crawled = []
+        seen_urls: set[str] = set()
+        for run in runs:
+            if not isinstance(run, dict):
+                continue
+            inner = run.get('results') or []
+            if not isinstance(inner, list):
+                continue
+            for item in inner:
+                if not isinstance(item, dict):
+                    continue
+                url = item.get('url')
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                record = {'url': url}
+                if item.get('title'):
+                    record['title'] = item['title']
+                if 'success' in item:
+                    record['success'] = bool(item['success'])
+                crawled.append(record)
+                if len(crawled) >= max_candidates * 2:
+                    break
+            if len(crawled) >= max_candidates * 2:
+                break
+        if crawled:
+            extracted['runs_count'] = len(runs)
+            extracted['crawled_urls'] = crawled
+
+
+def extend_brave_llm_context(
+    value: dict,
+    extracted: dict,
+    max_candidates: int,
+    *,
+    truncate_text: Callable[[str, int], str],
+) -> None:
+    """Keep bounded Brave grounding sources for later turns."""
+    grounding = value.get('grounding') if isinstance(value.get('grounding'), dict) else {}
+    sources_meta = value.get('sources') if isinstance(value.get('sources'), dict) else {}
+    sources = []
+    seen_urls: set[str] = set()
+    source_limit = max_candidates
+
+    def add_source(item):
+        if not isinstance(item, dict):
+            return
+        url = item.get('url')
+        title = item.get('title') or item.get('name')
+        if not (url or title):
+            return
+        if url and url in seen_urls:
+            return
+        if url:
+            seen_urls.add(url)
+        record = {}
+        if title:
+            record['title'] = title
+        if url:
+            record['url'] = url
+        if item.get('site_name'):
+            record['site_name'] = item['site_name']
+        elif url:
+            meta = sources_meta.get(url)
+            if isinstance(meta, dict) and meta.get('site_name'):
+                record['site_name'] = meta['site_name']
+        age = item.get('age')
+        if not age and url:
+            meta = sources_meta.get(url)
+            if isinstance(meta, dict):
+                age = meta.get('age')
+        if isinstance(age, list) and age:
+            record['age'] = truncate_text(str(age[0]), 120)
+        elif isinstance(age, str) and age.strip():
+            record['age'] = truncate_text(age.strip(), 120)
+        snippets = item.get('snippets')
+        if isinstance(snippets, list) and snippets:
+            record['snippet'] = truncate_text(
+                str(snippets[0]),
+                500,
+            )
+        sources.append(record)
+
+    for item in grounding.get('generic') or []:
+        add_source(item)
+        if len(sources) >= source_limit:
+            break
+    if len(sources) < source_limit:
+        add_source(grounding.get('poi'))
+    if len(sources) < source_limit:
+        for item in grounding.get('map') or []:
+            add_source(item)
+            if len(sources) >= source_limit:
+                break
+    if sources:
+        extracted['sources_count'] = len(sources)
+        extracted['sources'] = sources
+
+
 def extend_searxng_search(
     payload: dict,
     extracted: dict,
