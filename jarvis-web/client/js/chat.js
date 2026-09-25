@@ -4004,30 +4004,13 @@ class ChatUI {
     const cryptoChartResults = Array.isArray(toolResultsData.crypto_chart)
       ? toolResultsData.crypto_chart
       : [toolResultsData.crypto_chart];
-    const chartHtml = cryptoChartResults.map(result => {
+    const cryptoCharts = cryptoChartResults.map(result => {
       const cryptoChartData = result?.data?.series?.prices
         ? result.data
         : (result?.series?.prices ? result : null);
-      if (!cryptoChartData?.series?.prices?.length) return '';
-
-      const chartConfig = {
-        title: `${cryptoChartData.coin || 'Crypto'} ${cryptoChartData.range_label || 'chart'}`,
-        coin: cryptoChartData.coin,
-        coin_id: cryptoChartData.coin_id,
-        vs_currency: cryptoChartData.vs_currency,
-        days: cryptoChartData.days,
-        range_label: cryptoChartData.range_label,
-        current_price: cryptoChartData.current_price,
-        change_percent: cryptoChartData.change_percent,
-        points_returned: cryptoChartData.points_returned,
-        series: cryptoChartData.series
-      };
-      return `
-        <div class="crypto-chart-embed" data-crypto-chart="${encodeURIComponent(JSON.stringify(chartConfig))}">
-          <div class="crypto-chart-loading">Loading chart…</div>
-        </div>
-      `;
-    }).join('');
+      return cryptoChartData?.series?.prices?.length ? cryptoChartData : null;
+    }).filter(Boolean);
+    const chartHtml = window.assistantMessageRenderer.renderCryptoCharts(cryptoCharts);
 
     // Prefer the richer raw response for chat display when it is the same answer with
     // better visual structure. This keeps TTS concise while avoiding paragraph blobs.
@@ -4036,28 +4019,7 @@ class ChatUI {
     }
 
     const youtubeEmbeds = this._collectYouTubeEmbeds(text, rawResponse, toolResultsData);
-    const youtubeEmbedsHtml = youtubeEmbeds.map((embed) => `
-      <div class="message-video youtube-embed">
-        <div class="video-header">
-          <span class="video-icon">▶</span>
-          <span class="video-title">${Utils.escapeHtml(embed.title)}</span>
-        </div>
-        <div class="video-embed-shell">
-          <iframe
-            class="video-embed-frame"
-            src="${embed.embedUrl}"
-            title="${Utils.escapeHtml(embed.title)}"
-            loading="lazy"
-            referrerpolicy="strict-origin-when-cross-origin"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowfullscreen
-          ></iframe>
-        </div>
-        <div class="video-info">
-          <a href="${embed.watchUrl}" target="_blank" rel="noopener noreferrer" class="content-link">Open on YouTube</a>
-        </div>
-      </div>
-    `).join('');
+    const youtubeEmbedsHtml = window.assistantMessageRenderer.renderYouTubeEmbeds(youtubeEmbeds);
 
     const parsedText = Utils.parseMarkdown(text);
     

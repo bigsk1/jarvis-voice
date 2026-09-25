@@ -396,15 +396,18 @@ assert.equal(JSON.stringify(payload), before);
 """)
 
 
-def test_dedicated_media_details_and_message_hooks_keep_their_order():
-    run_message_browser(r"""
+@pytest.mark.parametrize("live", [True, False])
+def test_dedicated_media_details_and_message_hooks_keep_their_order(live):
+    run_message_browser(f"const live = {json.dumps(live)};\n" + r"""
 const ui = chat();
 const html = render(ui, 'A short answer', ['serpapi_youtube_search'], {
   raw_llm_response:'A different, much longer raw response with further context and explanation.',
   serpapi_youtube_search:{results:[{title:'VIDEO <safe>',url:'https://www.youtube.com/watch?v=dQw4w9WgXcQ'}]},
   recording:{stash_ref:'stash://space_test/f_audio', filename:'recording.ogg', mime_type:'audio/ogg'}
-}, true, {allowReaction:false});
+}, live, {allowReaction:false});
 assert.equal((html.match(/class="video-embed-frame"/g)||[]).length,1);
+assert.ok(html.includes('src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"'));
+assert.ok(html.includes('VIDEO &lt;safe&gt;'));
 assert.ok(html.indexOf('youtube-embed') < html.indexOf('class="message-bubble"'));
 assert.ok(html.indexOf('class="message-bubble"') < html.indexOf('class="message-audio"'));
 assert.ok(!html.includes('structured-results-section'));

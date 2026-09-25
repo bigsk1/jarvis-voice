@@ -11,6 +11,53 @@ window.assistantMessageRenderer = {
     return '<div class="tool-cards">' + entries.map(renderCard).join('') + '</div>';
   },
 
+  renderCryptoCharts(charts) {
+    return charts.map(cryptoChartData => {
+      const chartConfig = {
+        title: `${cryptoChartData.coin || 'Crypto'} ${cryptoChartData.range_label || 'chart'}`,
+        coin: cryptoChartData.coin,
+        coin_id: cryptoChartData.coin_id,
+        vs_currency: cryptoChartData.vs_currency,
+        days: cryptoChartData.days,
+        range_label: cryptoChartData.range_label,
+        current_price: cryptoChartData.current_price,
+        change_percent: cryptoChartData.change_percent,
+        points_returned: cryptoChartData.points_returned,
+        series: cryptoChartData.series
+      };
+      return `
+        <div class="crypto-chart-embed" data-crypto-chart="${encodeURIComponent(JSON.stringify(chartConfig))}">
+          <div class="crypto-chart-loading">Loading chart…</div>
+        </div>
+      `;
+    }).join('');
+  },
+
+  renderYouTubeEmbeds(embeds) {
+    return embeds.map((embed) => `
+      <div class="message-video youtube-embed">
+        <div class="video-header">
+          <span class="video-icon">▶</span>
+          <span class="video-title">${Utils.escapeHtml(embed.title)}</span>
+        </div>
+        <div class="video-embed-shell">
+          <iframe
+            class="video-embed-frame"
+            src="${embed.embedUrl}"
+            title="${Utils.escapeHtml(embed.title)}"
+            loading="lazy"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen
+          ></iframe>
+        </div>
+        <div class="video-info">
+          <a href="${embed.watchUrl}" target="_blank" rel="noopener noreferrer" class="content-link">Open on YouTube</a>
+        </div>
+      </div>
+    `).join('');
+  },
+
   renderConvertedFile(convertResult) {
     let convertedFileHtml = '';
     const stashRef = convertResult?.stash_ref;
