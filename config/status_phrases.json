@@ -423,6 +423,11 @@
       "start": ["Creating your image", "Generating artwork", "Firing up the image generator"],
       "progress": ["Image taking shape", "Almost got your masterpiece"]
     },
+
+    "generate_password": {
+      "start": ["Generating a password", "Creating your password"],
+      "progress": ["Password ready"]
+    },
     
     "generate_music": {
       "start": ["Composing your track", "Creating music", "ElevenLabs is jamming"],

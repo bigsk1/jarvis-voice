@@ -350,6 +350,21 @@ LOCAL_TOOL_SAMPLES = {
             "stash_ref": "stash://music/song_7",
         }
     ),
+    "generate_password": _case(
+        {
+            "ok": True,
+            "speech": "Generated a password. Password: GENERATED_PASSWORD_SENTINEL",
+            "data": {
+                "passwords": [{
+                    "password": "GENERATED_PASSWORD_SENTINEL",
+                    "length": 16,
+                    "strength": "very strong",
+                }],
+                "config": {"length": 16},
+            },
+        },
+        {"length": 16},
+    ),
     "generate_video": _case(
         {
             "provider": "xai",
@@ -1862,6 +1877,19 @@ def _enabled_local_tool_names():
 
 def test_every_enabled_local_tool_has_an_audited_payload_sample():
     assert set(LOCAL_TOOL_SAMPLES) == _enabled_local_tool_names()
+
+
+def test_generated_password_is_excluded_from_followup_context():
+    payload, arguments = LOCAL_TOOL_SAMPLES["generate_password"]
+    result = followup.extract_followup_data({
+        "generate_password": payload,
+        "_tool_trace": [{"tool": "generate_password", "ok": True, "arguments": arguments}],
+    })
+
+    assert result == {
+        "generate_password": {"request": {"length": 16}, "count": 1, "length": 16}
+    }
+    assert "GENERATED_PASSWORD_SENTINEL" not in json.dumps(result)
 
 
 def test_facade_package_and_path_imports_keep_public_exports_and_search_results():

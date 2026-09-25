@@ -742,9 +742,6 @@ MIME type: application/pdf
         previous_xai_disable = os.environ.get("XAI_DISABLE_SERVER_SIDE_TOOLS")
         previous_reasoning_effort = os.environ.get("XAI_REASONING_EFFORT")
         previous_request_timeout = os.environ.get("XAI_REQUEST_TIMEOUT_SECONDS")
-        os.environ["XAI_DISABLE_SERVER_SIDE_TOOLS"] = "previous"
-        os.environ["XAI_REASONING_EFFORT"] = "high"
-        os.environ["XAI_REQUEST_TIMEOUT_SECONDS"] = "90"
         try:
             executor = PipelineExecutor(
                 mode="cloud",
@@ -754,6 +751,11 @@ MIME type: application/pdf
                 ),
                 provider=provider,
             )
+            # The constructor loads cloud.env; set sentinels afterward so this
+            # checks workflow restoration regardless of the mode's defaults.
+            os.environ["XAI_DISABLE_SERVER_SIDE_TOOLS"] = "previous"
+            os.environ["XAI_REASONING_EFFORT"] = "high"
+            os.environ["XAI_REQUEST_TIMEOUT_SECONDS"] = "90"
             result = executor.execute(
                 {
                     "id": "native_tool_free_internal_llm",

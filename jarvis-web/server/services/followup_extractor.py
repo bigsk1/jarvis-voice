@@ -53,6 +53,7 @@ _AMAZON_FOLLOWUP_TOOL_NAMES = frozenset({
 })
 _DEDICATED_FOLLOWUP_BRANCHES = (
     'weather',
+    'generate_password',
     'serpapi_amazon_search',
     'serpapi_search',
     'serpapi_home_depot',
@@ -2968,7 +2969,18 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             if field_value not in (None, '', [], {}):
                 extracted[field] = field_value
 
-        if key == 'weather':
+        if key == 'generate_password':
+            # Keep useful metadata without persisting generated credentials in
+            # follow-up context. The generic fallback must not inspect this tool.
+            passwords = payload.get('passwords')
+            if isinstance(passwords, list):
+                extracted['count'] = len(passwords)
+            config = payload.get('config')
+            if isinstance(config, dict):
+                length = config.get('length')
+                if type(length) is int and 8 <= length <= 128:
+                    extracted['length'] = length
+        elif key == 'weather':
             extracted.update(_extract_weather_forecast_followup(payload))
         elif key == 'spotify':
             extracted.update(
