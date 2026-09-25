@@ -1,0 +1,21 @@
+server:
+  database:
+    path: /home/filebrowser/data/filebrowser.sqlite
+  cacheDir: /home/filebrowser/data/tmp
+  sources:
+    - path: /srv
+      name: Jarvis Stash
+      config:
+        defaultEnabled: true
+        defaultPermissions:
+          view: true
+          download: true
+          modify: false
+          create: false
+          delete: false
+auth:
+  methods:
+    password:
+      enabled: true
+      minLength: 12
+      signup: false

@@ -123,6 +123,8 @@ logs/opencode/
 # never by the Jarvis application image. This also excludes signed XPI artifacts.
 jarvis-firefox-extension/
 monitoring/
+# Optional standalone stash browser is never part of the Jarvis image.
+filebrowser/
 
 # ===== Python / Node caches =====
 # Docker needs the **/ forms to exclude the same names below nested packages.

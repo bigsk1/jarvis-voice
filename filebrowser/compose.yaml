@@ -1,0 +1,31 @@
+name: jarvis-stash-browser
+
+services:
+  filebrowser:
+    image: gtstef/filebrowser:2.0-beta
+    restart: unless-stopped
+    ports:
+      - "${FILEBROWSER_BIND_IP:-127.0.0.1}:${FILEBROWSER_PORT:-8111}:80"
+    environment:
+      FILEBROWSER_CONFIG: /home/filebrowser/config.yaml
+      FILEBROWSER_ADMIN_PASSWORD: ${FILEBROWSER_ADMIN_PASSWORD:?Set FILEBROWSER_ADMIN_PASSWORD in filebrowser/.env}
+    volumes:
+      - type: bind
+        source: ${FILEBROWSER_STASH_PATH:-../data/stash}
+        target: /srv
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./config.yaml
+        target: /home/filebrowser/config.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data
+        target: /home/filebrowser/data
+        bind:
+          create_host_path: false
+    security_opt:
+      - no-new-privileges:true
