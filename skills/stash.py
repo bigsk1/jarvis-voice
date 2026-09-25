@@ -208,9 +208,9 @@ def action_open_space(args: dict) -> dict:
     )
     
     if is_new:
-        speech = f"Created new stash space"
+        speech = "Created new stash space"
     else:
-        speech = f"Resumed existing stash space"
+        speech = "Resumed existing stash space"
     
     return {
         "ok": True,
@@ -445,7 +445,7 @@ def action_update(args: dict) -> dict:
     if ttl_days is not None:
         parts.append(f"TTL set to {ttl_days} days")
     if labels is not None:
-        parts.append(f"labels updated")
+        parts.append("labels updated")
     
     speech = "Space " + ", ".join(parts) if parts else "Space updated"
     

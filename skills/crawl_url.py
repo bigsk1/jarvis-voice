@@ -239,7 +239,7 @@ def main():
         # If extraction caused a 500 error, retry without it
         if response.status_code == 500 and extraction_requested:
             import logging
-            logging.warning(f"Extraction strategy failed (500), retrying without extraction...")
+            logging.warning("Extraction strategy failed (500), retrying without extraction...")
             # Remove extraction_strategy and retry
             if "extraction_strategy" in crawler_params:
                 del crawler_params["extraction_strategy"]

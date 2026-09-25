@@ -610,7 +610,7 @@ class AnthropicProvider(LLMProvider):
         self.enable_search = search_requested if enable_search is None else bool(enable_search)
         
         if self.enable_search and os.environ.get('JARVIS_DEBUG'):
-            print(f"DEBUG: Anthropic Web Search enabled", file=sys.stderr)
+            print("DEBUG: Anthropic Web Search enabled", file=sys.stderr)
     
     def chat(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """
@@ -738,7 +738,7 @@ class AnthropicProvider(LLMProvider):
                 # extra_headers["anthropic-beta"] = "web-search-2025-03-05"
                 
                 if os.environ.get('JARVIS_DEBUG'):
-                    print(f"DEBUG: Added Anthropic web search tool", file=sys.stderr)
+                    print("DEBUG: Added Anthropic web search tool", file=sys.stderr)
             
             # Add thinking parameter if enabled and supported
             # Note: max_tokens must be > thinking.budget_tokens (Anthropic requirement)
@@ -1009,7 +1009,7 @@ class XAIProvider(LLMProvider):
                     metadata=self._xai_sdk_metadata(),
                 )
                 if os.environ.get('JARVIS_DEBUG'):
-                    print(f"DEBUG: xAI Agent Tools API enabled (web_search + x_search)", file=sys.stderr)
+                    print("DEBUG: xAI Agent Tools API enabled (web_search + x_search)", file=sys.stderr)
             except ImportError:
                 print("WARNING: xai-sdk not installed, falling back to OpenAI SDK without search", file=sys.stderr)
                 self.enable_search = False

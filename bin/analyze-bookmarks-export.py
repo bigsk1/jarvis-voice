@@ -107,7 +107,7 @@ def main() -> int:
         # Loose count of bookmark-style anchors (same file may use HREF or href)
         n_href = len(re.findall(r"<a\s+[^>]*href\s*=", raw, flags=re.IGNORECASE))
         print(f"Regex count of <a ... href= in file: {n_href}")
-        print(f"  (should match parsed total if every <a> is a bookmark anchor)")
+        print("  (should match parsed total if every <a> is a bookmark anchor)")
         if n_href != total:
             print(f"  Note: mismatch vs parser ({total}) can mean non-bookmark <a> tags in file.")
 

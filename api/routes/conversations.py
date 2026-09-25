@@ -1,15 +1,14 @@
 """Conversations API endpoints - Read-only access to conversation history"""
 
-from fastapi import APIRouter, HTTPException, Query
-import sys
 import json
+import sys
 from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Query
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 
-from api.models.conversation import (
-    Conversation, ConversationResponse, ConversationStats
-)
+from api.models.conversation import Conversation, ConversationResponse, ConversationStats
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -26,14 +25,14 @@ def row_to_conversation(row) -> Conversation:
     if row['tools_used']:
         try:
             tools_used = json.loads(row['tools_used'])
-        except:
+        except (TypeError, ValueError):
             tools_used = [row['tools_used']]
     
     metadata = None
     if row['metadata']:
         try:
             metadata = json.loads(row['metadata'])
-        except:
+        except (TypeError, ValueError):
             pass
     
     return Conversation(
@@ -179,7 +178,7 @@ async def get_conversation_stats():
                 tools = json.loads(row['tools_used'])
                 for tool in tools:
                     tool_counts[tool] = tool_counts.get(tool, 0) + row['count']
-            except:
+            except (TypeError, ValueError):
                 pass
         
         # Sort by count

@@ -202,7 +202,7 @@ def print_file(printer: str, file_path: str, color: bool = True, quality: str = 
             return {
                 "ok": True,
                 "job_id": job_id,
-                "message": f"File sent to printer"
+                "message": "File sent to printer"
             }
         else:
             return {"ok": False, "error": result.stderr or "Print failed"}
@@ -421,7 +421,7 @@ def main():
             if result.get('ok'):
                 print(json.dumps({
                     "ok": True,
-                    "speech": f"Canvas page sent to printer in compact mode",
+                    "speech": "Canvas page sent to printer in compact mode",
                     "data": result
                 }))
             else:

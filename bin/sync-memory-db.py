@@ -126,9 +126,9 @@ def sync_databases(
         return False
     
     if verbose:
-        print(f"╔════════════════════════════════════════════════════════════╗")
+        print("╔════════════════════════════════════════════════════════════╗")
         print(f"║  Memory Database Sync: {source_mode} → {target_mode}")
-        print(f"╚════════════════════════════════════════════════════════════╝")
+        print("╚════════════════════════════════════════════════════════════╝")
         print()
         print(f"Source: {source_db}")
         print(f"Target: {target_db}")
@@ -433,14 +433,14 @@ def sync_databases(
     
     if verbose:
         print()
-        print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("✅ Sync Complete!" if errors == 0 else "⚠️  Sync incomplete; some memories were not updated")
         print(f"   Synced: {synced}")
         print(f"   Skipped: {skipped} (already current)")
         print(f"   User model synced: {user_model_synced}")
         print(f"   User model skipped: {user_model_skipped} (already current)")
         print(f"   Errors: {errors}")
-        print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print()
     
     return errors == 0

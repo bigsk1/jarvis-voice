@@ -33,7 +33,7 @@ async def test_manual_schema_extraction():
         data = json.loads(result.extracted_content)
         assert isinstance(data, list) or isinstance(data, dict), "Invalid extraction format"
 
-        print(f"✅ Manual schema extraction works")
+        print("✅ Manual schema extraction works")
         print(f"   Extracted data type: {type(data)}")
 
 async def test_llm_extraction():
@@ -48,10 +48,10 @@ async def test_llm_extraction():
         )
 
         CrawlerRunConfig(extraction_strategy=extraction_strategy)
-        print(f"✅ LLMExtractionStrategy created successfully")
+        print("✅ LLMExtractionStrategy created successfully")
 
     except Exception:
-        print(f"✅ LLMExtractionStrategy structure verified (API key not tested)")
+        print("✅ LLMExtractionStrategy structure verified (API key not tested)")
 
 async def main():
     await test_manual_schema_extraction()

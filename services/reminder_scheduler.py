@@ -341,7 +341,7 @@ def main():
     
     print(f"   Mode: {mode}")
     print(f"   Database: {db_path}")
-    print(f"   Check interval: 60 seconds")
+    print("   Check interval: 60 seconds")
     print()
     
     check_count = 0
@@ -418,9 +418,9 @@ def main():
                                 print(f"    Calling callback: {callback_url}")
                                 success = call_callback_url(callback_url)
                                 if success:
-                                    print(f"    ✅ Callback succeeded")
+                                    print("    ✅ Callback succeeded")
                                 else:
-                                    print(f"    ⚠️  Callback failed")
+                                    print("    ⚠️  Callback failed")
                                     logger.log_error(f"Callback failed for reminder {reminder_id}", {
                                         "reminder_id": reminder_id,
                                         "callback_url": callback_url
@@ -443,7 +443,7 @@ def main():
                 logger.log_error(f"Database error (attempt {consecutive_errors}): {e}")
                 print(f"\n⚠️  Database error: {e} (attempt {consecutive_errors}/{max_consecutive_errors})", file=sys.stderr)
                 if consecutive_errors >= max_consecutive_errors:
-                    print(f"\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
+                    print("\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
                     logger.log_shutdown({"reason": "too_many_errors", "last_error": str(e)})
                     sys.exit(1)
                 time.sleep(30)  # Wait longer after DB errors
@@ -453,13 +453,13 @@ def main():
                 logger.log_error(f"Unexpected error (attempt {consecutive_errors}): {e}")
                 print(f"\n⚠️  Error: {e} (attempt {consecutive_errors}/{max_consecutive_errors})", file=sys.stderr)
                 if consecutive_errors >= max_consecutive_errors:
-                    print(f"\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
+                    print("\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
                     logger.log_shutdown({"reason": "too_many_errors", "last_error": str(e)})
                     sys.exit(1)
                 time.sleep(60)  # Continue checking after transient errors
     
     except KeyboardInterrupt:
-        print(f"\n✋ Reminder Scheduler stopped by user")
+        print("\n✋ Reminder Scheduler stopped by user")
         print(f"   Total triggered: {triggered_count}")
         logger.log_shutdown({"total_triggered": triggered_count, "checks": check_count})
 

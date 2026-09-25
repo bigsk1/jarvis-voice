@@ -57,7 +57,7 @@ def optimize_dashboard(dashboard_path):
     # Set longer refresh interval (if not already set)
     if dashboard.get("refresh", "") not in ["1m", "5m", "10m"]:
         dashboard["refresh"] = "1m"
-        print(f"  ✅ Set refresh interval to 1 minute")
+        print("  ✅ Set refresh interval to 1 minute")
         changes_made += 1
     
     if changes_made > 0:
@@ -66,7 +66,7 @@ def optimize_dashboard(dashboard_path):
             json.dump(dashboard, f, indent=2)
         print(f"  ✅ Saved {changes_made} optimization(s)")
     else:
-        print(f"  ℹ️  No optimizations needed")
+        print("  ℹ️  No optimizations needed")
     
     return changes_made
 

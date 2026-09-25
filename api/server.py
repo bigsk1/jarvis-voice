@@ -63,7 +63,7 @@ class APIAuthMiddleware(BaseHTTPMiddleware):
                 print("⚠️  JARVIS_API_AUTH=true but JARVIS_API_KEY not set! Auth disabled.")
                 self.auth_enabled = False
             else:
-                print(f"🔐 API authentication enabled (localhost whitelisted)")
+                print("🔐 API authentication enabled (localhost whitelisted)")
         else:
             print("🔓 API authentication disabled (set JARVIS_API_AUTH=true to enable)")
     

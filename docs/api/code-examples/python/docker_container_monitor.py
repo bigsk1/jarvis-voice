@@ -77,7 +77,7 @@ def main():
             if prev_status and not is_running:
                 print(f"❌ {container_name} stopped - Sending alert")
                 result = send_alert(
-                    title=f"Docker Container Stopped",
+                    title="Docker Container Stopped",
                     description=f"Container '{container_name}' is no longer running",
                     severity="high",
                     metadata={

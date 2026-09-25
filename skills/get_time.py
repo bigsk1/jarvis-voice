@@ -248,7 +248,7 @@ def get_time_for_location(location: str = None, timezone: str = None):
             return {
                 "ok": False,
                 "error": f"Unknown timezone or location: {location or timezone}",
-                "speech": f"I don't recognize that location. Try a major city like Tokyo, Paris, or New York."
+                "speech": "I don't recognize that location. Try a major city like Tokyo, Paris, or New York."
             }
     
     # Format the response

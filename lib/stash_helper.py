@@ -855,7 +855,7 @@ class StashFile:
     def read(self, mode: str = 'auto') -> dict:
         """Read file content or get path."""
         if not self.meta:
-            raise ValueError(f"File not found")
+            raise ValueError("File not found")
         
         file_path = self.path
         if not file_path.exists():
@@ -1187,7 +1187,7 @@ def safe_resolve_file(stash_ref: str = None, file_path: str = None,
                 result["source"] = "stash"
                 return result
             else:
-                result["error"] = f"Stash file missing (may have been deleted)"
+                result["error"] = "Stash file missing (may have been deleted)"
                 result["stash_expired"] = True
         except ValueError as e:
             error_str = str(e)

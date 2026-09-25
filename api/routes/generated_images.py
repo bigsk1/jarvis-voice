@@ -18,24 +18,25 @@ Endpoints:
 - POST /api/generated-images/generate     - Generate or edit image
 - GET  /api/generated-images/cdn-catalog  - List all CDN URLs
 """
-import sys
 import base64
 import json
 import subprocess
-from pathlib import Path
+import sys
 from datetime import datetime
+from pathlib import Path
+from typing import Literal, Optional
+
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from typing import Literal, Optional
 
-# Add lib and skills to path
+# Add lib and skills to path before importing local modules below.
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / 'lib'))
 sys.path.insert(0, str(PROJECT_ROOT / 'skills'))
 
-from config_loader import export_config_environment, get_config_value, load_config
-from model_catalog import get_media_model_env_key, resolve_media_model
+from config_loader import export_config_environment, get_config_value, load_config  # noqa: E402
+from model_catalog import get_media_model_env_key, resolve_media_model  # noqa: E402
 
 # Load config
 load_config()

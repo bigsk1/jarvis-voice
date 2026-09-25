@@ -130,7 +130,7 @@ def main():
             elif usage < THRESHOLD_RESOLVE and is_alert:
                 print(f"[{current_time}] ✅ DISK SPACE OK: {partition} at {usage}%")
                 if resolve_alert_by_title(f"Disk Space Low: {partition}"):
-                    print(f"           ✅ Resolved alert in Jarvis")
+                    print("           ✅ Resolved alert in Jarvis")
                     alert_active[partition] = False
             
             # Status unchanged - just log

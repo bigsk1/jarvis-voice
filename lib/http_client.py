@@ -418,7 +418,7 @@ def http_request(
         _emit_proxy_log_line(
             url, proxy_used=False, note="direct=fallback_after_proxy_failed",
         )
-        logger.info(f"[PROXY] ✅ Fallback direct request succeeded")
+        logger.info("[PROXY] ✅ Fallback direct request succeeded")
         print("[PROXY] ✅ Direct fallback succeeded", file=sys.stderr)
 
     return response

@@ -227,7 +227,7 @@ def main():
                         elif triggered_spoken:
                             speech += f", all {len(triggered_spoken)} already spoken"
                         elif triggered_unspoken:
-                            speech += f", none spoken yet"
+                            speech += ", none spoken yet"
                         speech += ". "
                         speech += f"Most urgent: '{triggered[0]['title']}' from {triggered[0]['relative_time']}. "
                     
@@ -271,7 +271,7 @@ def main():
                         elif triggered_spoken:
                             speech += f", all {len(triggered_spoken)} already spoken"
                         elif triggered_unspoken:
-                            speech += f", none spoken yet"
+                            speech += ", none spoken yet"
                         speech += ". "
                         speech += f"Most urgent: '{reminders[0]['title']}' from {reminders[0]['relative_time']}."
                 else:

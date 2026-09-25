@@ -266,7 +266,7 @@ class IntelligenceCleanup:
         
         if bad_feedback_count > 0:
             print(f"   Found {bad_feedback_count} feedback entries with rating ≤ {rating_threshold}")
-            print(f"   (Feedback logs are kept for debugging - not deleted)")
+            print("   (Feedback logs are kept for debugging - not deleted)")
         else:
             print(f"   ✅ No bad feedback found in last {days_back} days")
         

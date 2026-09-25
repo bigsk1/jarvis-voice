@@ -35,7 +35,7 @@ load_config('local')
 
 # Display mode and model info
 print(f"🤖 Jarvis v{_jarvis_version}")
-print(f"📡 Mode: local")
+print("📡 Mode: local")
 print(f"🤖 LLM Provider: {get_config_value('LLM_PROVIDER', 'ollama')}")
 print(f"🧠 Model: {get_config_value('OLLAMA_MODEL', 'qwen3')}")
 print()

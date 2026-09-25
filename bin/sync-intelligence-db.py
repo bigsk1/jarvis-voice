@@ -111,7 +111,7 @@ def reset_db(mode: str):
         # Delete the database
         db_path.unlink()
         print(f"{GREEN}✅ Deleted {db_path}{NC}")
-        print(f"   Database will be recreated on next use.")
+        print("   Database will be recreated on next use.")
     else:
         print(f"{YELLOW}Database doesn't exist: {db_path}{NC}")
 
@@ -303,7 +303,7 @@ def sync_intelligence(
     source_cursor.execute("SELECT COUNT(*) FROM reflection_queue WHERE processed = 0")
     pending_count = source_cursor.fetchone()[0]
 
-    print(f"Source database contains:")
+    print("Source database contains:")
     print(f"  - {exp_count} experiences")
     print(f"  - {insight_count} insights")
     print(f"  - {evidence_count} insight evidence rows")

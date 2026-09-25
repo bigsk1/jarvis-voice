@@ -460,7 +460,7 @@ def main():
     print("⏱️ Scheduled Task Runner Starting...")
     print(f"   Mode: {mode}")
     print(f"   Database: {manager.db.db_path}")
-    print(f"   Check interval: 60 seconds")
+    print("   Check interval: 60 seconds")
     print(f"   Missed occurrence grace: {missed_grace_seconds} seconds")
     if recovered_locks:
         print(f"   Recovered abandoned task locks: {', '.join(map(str, recovered_locks))}")

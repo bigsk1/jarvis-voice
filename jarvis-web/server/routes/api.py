@@ -2106,10 +2106,10 @@ def export_conversation(conv_id):
         # Generate Markdown
         lines = [
             f"# {conversation.get('title', 'Untitled Conversation')}",
-            f"",
+            "",
             f"**Created:** {conversation.get('created_at', 'Unknown')}",
             f"**Updated:** {conversation.get('updated_at', 'Unknown')}",
-            f"",
+            "",
             "---",
             ""
         ]
@@ -2407,7 +2407,7 @@ def speech_to_text():
     Accepts: multipart/form-data with 'audio' file
     Returns: { ok: true, text: "transcribed text" }
     """
-    print(f"[STT] /api/stt endpoint hit", flush=True)
+    print("[STT] /api/stt endpoint hit", flush=True)
     
     if 'audio' not in request.files:
         return jsonify({'ok': False, 'error': 'No audio file provided'}), 400
@@ -2433,7 +2433,7 @@ def speech_to_text():
 
         provider = normalize_stt_provider(provider)
         stt_model = get_jarvis_setting('STT_MODEL', '') or default_model_for_provider(provider)
-        print(f"[STT] ========================================", flush=True)
+        print("[STT] ========================================", flush=True)
         print(f"[STT] Mode: {mode}, Provider: {provider}, Model: {stt_model}", flush=True)
         
         # Save uploaded audio to temp file
@@ -2450,7 +2450,7 @@ def speech_to_text():
                 return jsonify({'ok': False, 'error': 'No speech detected'}), 400
             
             print(f"[STT] Transcription complete ({len(transcript)} characters)", flush=True)
-            print(f"[STT] ========================================", flush=True)
+            print("[STT] ========================================", flush=True)
             return jsonify({'ok': True, 'text': transcript})
             
         finally:
@@ -4210,7 +4210,7 @@ enhanced prompt:
 
 Your job is to take a rough, casual user input and transform it into an optimal, detailed prompt that will get the best results from Jarvis.
 
-{f'''IMPORTANT: An attached image was present, but vision was unavailable. Enhance only the user's text. Preserve references such as "the person" or "the background" exactly and do not invent any visual details.''' if vision_warning else ''}
+{'''IMPORTANT: An attached image was present, but vision was unavailable. Enhance only the user's text. Preserve references such as "the person" or "the background" exactly and do not invent any visual details.''' if vision_warning else ''}
 
 ## Jarvis Capabilities
 - **Native Web Search**: Jarvis has built-in web search that provides comprehensive, real-time information. This is BETTER than external search tools.

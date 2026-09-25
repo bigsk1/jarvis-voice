@@ -197,7 +197,7 @@ def upload_to_cloudflare(file_path: str, custom_id: str = None, uploader: str = 
                     "filename": result.get('filename'),
                     "variants": variants,
                     "uploader": uploader,
-                    "speech": f"Image uploaded to Cloudflare CDN"
+                    "speech": "Image uploaded to Cloudflare CDN"
                 }
             else:
                 errors = resp_data.get('errors', [])

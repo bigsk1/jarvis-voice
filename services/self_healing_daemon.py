@@ -530,13 +530,13 @@ def main():
     
     print(f"   Mode: {mode}")
     print(f"   Database: {db_path}")
-    print(f"   Check interval: 60 seconds")
+    print("   Check interval: 60 seconds")
     print(f"   Max checks per loop: {MAX_CHECKS_PER_LOOP}")
     print(f"   Request timeout: {REQUEST_TIMEOUT}s")
     
     # Discover which systemd services to monitor
     services_to_monitor = {}
-    print(f"   Systemd service monitoring:")
+    print("   Systemd service monitoring:")
     for service_name, config in MONITORED_SYSTEMD_SERVICES.items():
         exists = check_service_exists(service_name)
         if exists:
@@ -549,7 +549,7 @@ def main():
     
     # Setup sibling daemon monitoring
     daemons_to_monitor = {}
-    print(f"   Sibling daemon monitoring:")
+    print("   Sibling daemon monitoring:")
     for daemon_name, config in MONITORED_DAEMONS.items():
         pid_file = project_root / config["pid_file"]
         notify_only = config.get("notify_only", False)
@@ -664,14 +664,14 @@ def main():
                                 
                                 # Attempt self-healing restart
                                 if config.get("restart", True):
-                                    print(f"           🔄 Attempting restart...")
+                                    print("           🔄 Attempting restart...")
                                     if restart_service(service_name):
-                                        print(f"           ✅ Restart command sent")
+                                        print("           ✅ Restart command sent")
                                         logger.log_action("service_restart", {
                                             "service": service_name
                                         }, success=True)
                                     else:
-                                        print(f"           ⚠️  Restart failed")
+                                        print("           ⚠️  Restart failed")
                                         logger.log_action("service_restart", {
                                             "service": service_name
                                         }, success=False)
@@ -745,26 +745,26 @@ def main():
                                 
                                 # Attempt self-healing restart (unless notify_only)
                                 if will_restart:
-                                    print(f"           🔄 Attempting restart...")
+                                    print("           🔄 Attempting restart...")
                                     if restart_daemon(
                                         daemon_name,
                                         config["script_path"],
                                         pid_file,
                                         project_root
                                     ):
-                                        print(f"           ✅ Restart command sent (new PID written)")
+                                        print("           ✅ Restart command sent (new PID written)")
                                         logger.log_action("daemon_restart", {
                                             "daemon": daemon_name
                                         }, success=True)
                                         # Clear down tracking so we recheck
                                         del daemon_down_since[daemon_name]
                                     else:
-                                        print(f"           ⚠️  Restart failed")
+                                        print("           ⚠️  Restart failed")
                                         logger.log_action("daemon_restart", {
                                             "daemon": daemon_name
                                         }, success=False)
                                 else:
-                                    print(f"           ℹ️  Notify only - manual restart required")
+                                    print("           ℹ️  Notify only - manual restart required")
                     
                     daemon_last_status[daemon_name] = is_running
                 
@@ -808,7 +808,7 @@ def main():
                             }, success=is_resolved)
                             
                             if is_resolved:
-                                print(f"    ✅ RESOLVED - Auto-canceling alert")
+                                print("    ✅ RESOLVED - Auto-canceling alert")
                                 auto_resolve_alert(db_path, alert_id, title, source, mode, project_root)
                                 
                                 # Log auto-resolve
@@ -821,7 +821,7 @@ def main():
                                 
                                 resolved_count += 1
                             else:
-                                print(f"    ⏳ Still down")
+                                print("    ⏳ Still down")
                         
                         except Exception as e:
                             logger.log_error(f"Check failed for alert {alert_id}", {
@@ -839,7 +839,7 @@ def main():
                 logger.log_error(f"Database error (attempt {consecutive_errors}): {e}")
                 print(f"\n⚠️  Database error: {e} (attempt {consecutive_errors}/{max_consecutive_errors})", file=sys.stderr)
                 if consecutive_errors >= max_consecutive_errors:
-                    print(f"\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
+                    print("\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
                     logger.log_shutdown({"reason": "too_many_errors", "last_error": str(e)})
                     sys.exit(1)
                 time.sleep(30)  # Wait longer after DB errors
@@ -849,13 +849,13 @@ def main():
                 logger.log_error(f"Unexpected error (attempt {consecutive_errors}): {e}")
                 print(f"\n⚠️  Error: {e} (attempt {consecutive_errors}/{max_consecutive_errors})", file=sys.stderr)
                 if consecutive_errors >= max_consecutive_errors:
-                    print(f"\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
+                    print("\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
                     logger.log_shutdown({"reason": "too_many_errors", "last_error": str(e)})
                     sys.exit(1)
                 time.sleep(60)  # Continue checking after transient errors
     
     except KeyboardInterrupt:
-        print(f"\n✋ Self-Healing Daemon stopped by user")
+        print("\n✋ Self-Healing Daemon stopped by user")
         print(f"   Total resolved: {resolved_count}")
         logger.log_shutdown({"total_resolved": resolved_count, "checks": check_count})
 

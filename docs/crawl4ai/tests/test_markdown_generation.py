@@ -54,7 +54,7 @@ async def test_pruning_filter():
         result = await crawler.arun("https://example.com", config=config)
 
         assert result.success, f"Crawl failed: {result.error_message}"
-        print(f"✅ Pruning filter works")
+        print("✅ Pruning filter works")
 
 async def test_markdown_options():
     """Test markdown generator options"""
@@ -74,7 +74,7 @@ async def test_markdown_options():
         result = await crawler.arun("https://example.com", config=config)
 
         assert result.success, f"Crawl failed: {result.error_message}"
-        print(f"✅ Markdown options work")
+        print("✅ Markdown options work")
 
 async def main():
     await test_basic_markdown()

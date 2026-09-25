@@ -82,7 +82,7 @@ def auto_sync_on_startup(current_mode: str, verbose: bool = False):
         
         if result.returncode == 0:
             if verbose:
-                print(f"✅ Memory synced successfully")
+                print("✅ Memory synced successfully")
             return True
         else:
             if verbose:

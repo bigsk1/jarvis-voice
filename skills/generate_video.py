@@ -357,7 +357,7 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
             elif video_url.startswith(('http://', 'https://')):
                 kwargs["video_url"] = video_url
             elif video_url.startswith('stash://'):
-                raise ValueError(f"The video URL for editing has expired or is unavailable. Provider URLs are only valid for ~4 hours. To make changes, regenerate the video from the source image using image_url instead.")
+                raise ValueError("The video URL for editing has expired or is unavailable. Provider URLs are only valid for ~4 hours. To make changes, regenerate the video from the source image using image_url instead.")
             else:
                 raise ValueError(f"Video editing requires a public http(s) URL. Got: {video_url[:80]}. Stash refs are not directly usable — provide the original provider URL or regenerate from the source image.")
         

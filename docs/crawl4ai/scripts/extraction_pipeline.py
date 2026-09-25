@@ -102,7 +102,7 @@ async def generate_schema(url: str, instruction: str, output_file: str = "genera
                     json.dump(schema, f, indent=2)
 
                 print(f"✅ Schema generated and saved to: {output_file}")
-                print(f"📋 Schema structure:")
+                print("📋 Schema structure:")
                 print(json.dumps(schema, indent=2))
 
                 return schema
@@ -218,7 +218,7 @@ async def extract_with_manual_schema(url: str, schema: dict = None):
 
             return data
         else:
-            print(f"❌ Extraction failed")
+            print("❌ Extraction failed")
             return None
 
 # =============================================================================
@@ -281,7 +281,7 @@ async def extract_with_llm(url: str, instruction: str):
                 print(result.extracted_content[:500])
                 return None
         else:
-            print(f"❌ LLM extraction failed")
+            print("❌ LLM extraction failed")
             return None
 
 # =============================================================================

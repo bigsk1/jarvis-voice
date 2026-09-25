@@ -101,10 +101,10 @@ async def crawl_batch(urls: List[str], max_concurrent: int = 5):
                 f.write(f"URL: {result.url}\n\n")
                 f.write(result.markdown)
 
-    print(f"\n📊 Batch Crawl Complete:")
+    print("\n📊 Batch Crawl Complete:")
     print(f"   ✅ Success: {len(results)}")
     print(f"   ❌ Failed: {len(failed)}")
-    print(f"   💾 Results saved to: batch_results.json")
+    print("   💾 Results saved to: batch_results.json")
     print(f"   📁 Markdown files saved to: {markdown_dir}/")
 
     return output
@@ -164,7 +164,7 @@ async def crawl_with_extraction(urls: List[str], schema_file: str = None):
     with open("batch_extracted.json", "w") as f:
         json.dump(extracted_data, f, indent=2)
 
-    print(f"\n💾 Extracted data saved to: batch_extracted.json")
+    print("\n💾 Extracted data saved to: batch_extracted.json")
     return extracted_data
 
 def load_urls(source: str) -> List[str]:

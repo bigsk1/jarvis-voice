@@ -1995,7 +1995,7 @@ Mode: {self.mode}
                         reason = f"{tool_name} already has fresh result for same target"
                     if sys.stdout.isatty():
                         print(f"⚠️  Duplicate/capped tool call detected: {tool_name} ({reason})")
-                        print(f"   Blocking exact call and giving the model a recovery turn")
+                        print("   Blocking exact call and giving the model a recovery turn")
 
                     blocked_duplicate_calls[current_call] = {
                         "tool": tool_name,
@@ -4400,7 +4400,7 @@ def main():
                 prompt_context = prompt_path.read_text()
             else:
                 print(f"❌ Prompt not found: {prompt_path}", file=sys.stderr)
-                print(f"   Available prompts:", file=sys.stderr)
+                print("   Available prompts:", file=sys.stderr)
                 prompts_dir = Path(__file__).parent.parent / "jarvis-web" / "data" / "prompts"
                 for p in sorted(prompts_dir.glob("*.md")):
                     print(f"     - {p.stem}", file=sys.stderr)
@@ -4621,7 +4621,7 @@ Mode: {mode}
         # Show usage info with cache metrics (cloud mode only)
         if result.get("usage") and mode == "cloud":
             usage = result["usage"]
-            print(f"\n💰 Token Usage:")
+            print("\n💰 Token Usage:")
             print(f"   Input: {usage.get('input_tokens', 0):,} tokens")
             print(f"   Output: {usage.get('output_tokens', 0):,} tokens")
             

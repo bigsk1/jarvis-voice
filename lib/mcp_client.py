@@ -525,7 +525,7 @@ class MCPClient:
                 response_line = self.process.stdout.readline()
                 
                 if not response_line:
-                    raise Exception(f"MCP server closed connection")
+                    raise Exception("MCP server closed connection")
                 
                 # Debug: print raw response
                 if os.environ.get("MCP_DEBUG", "").lower() == "true":

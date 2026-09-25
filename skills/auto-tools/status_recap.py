@@ -430,7 +430,7 @@ def main():
         
         # Build canvas content
         canvas_lines = [
-            f"# Status Recap",
+            "# Status Recap",
             f"**{now.strftime('%A, %B %d, %Y at %I:%M %p')}**",
             "",
             f"> {report_data['greeting']}! {executive_summary}",

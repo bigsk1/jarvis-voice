@@ -137,7 +137,7 @@ def main():
             elif prev == False and is_active:
                 print(f"[{current_time}] ✅ SERVICE ACTIVE: {service}")
                 if resolve_alert_by_title(f"Service Stopped: {service}"):
-                    print(f"           ✅ Resolved alert in Jarvis")
+                    print("           ✅ Resolved alert in Jarvis")
             
             last_status[f"service:{service}"] = is_active
         
@@ -161,7 +161,7 @@ def main():
             elif prev == False and is_running:
                 print(f"[{current_time}] ✅ PROCESS RUNNING: {process}")
                 if resolve_alert_by_title(f"Process Stopped: {process}"):
-                    print(f"           ✅ Resolved alert in Jarvis")
+                    print("           ✅ Resolved alert in Jarvis")
             
             last_status[f"process:{process}"] = is_running
         

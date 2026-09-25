@@ -45,7 +45,7 @@ elif provider == 'openai':
 else:
     model = 'unknown'
 print(f"🤖 Jarvis v{_jarvis_version}")
-print(f"📡 Mode: cloud")
+print("📡 Mode: cloud")
 print(f"🤖 LLM Provider: {provider}")
 print(f"🧠 Model: {model}")
 print()

@@ -64,7 +64,6 @@ AMAZON_SORT_MAP = {
     "latest": "date-desc-rank",
     "best_sellers": "exact-aware-popularity-rank",
     "bestseller": "exact-aware-popularity-rank",
-    "bestseller": "exact-aware-popularity-rank",
     "popularity": "exact-aware-popularity-rank",
 }
 

@@ -833,7 +833,7 @@ def main():
         progress_callback=progress,
     )
     
-    print(f"\nSession Complete:")
+    print("\nSession Complete:")
     print(f"  Total queries: {summary.total_queries}")
     print(f"  Avg rating: {summary.avg_rating}")
     print(f"  Low ratings: {summary.low_ratings}")

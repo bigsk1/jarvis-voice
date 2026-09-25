@@ -136,7 +136,7 @@ def test_server_status_advertises_the_companion_contract_without_auth(monkeypatc
     }
 
 
-def test_auth_expiry_keeps_a_real_admitted_run_recoverable(monkeypatch, journey):
+def test_auth_expiry_keeps_a_real_admitted_run_recoverable(monkeypatch, journey):  # noqa: F811
     import flask_socketio
     import test_web_attachment_bundle_chat as helpers
     from jarvis_bundle_chat_test.services import tool_discovery
@@ -186,7 +186,7 @@ def test_auth_expiry_keeps_a_real_admitted_run_recoverable(monkeypatch, journey)
 from test_web_attachment_bundle_chat import journey  # noqa: E402, F401
 
 
-def test_live_web_socket_approval_survives_reconnect_and_new_turn(journey, monkeypatch):
+def test_live_web_socket_approval_survives_reconnect_and_new_turn(journey, monkeypatch):  # noqa: F811
     """Exercise real authenticated socket events and worker threads without a provider."""
     import flask_socketio
     import orchestrator_v2

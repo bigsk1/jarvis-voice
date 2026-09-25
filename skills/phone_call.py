@@ -1063,7 +1063,7 @@ def action_call(args: dict) -> dict:
             saved = save_call_to_canvas(call_id, recipient, task, result)
             
             # Build smart response with context for follow-up suggestions
-            speech = f"Call completed."
+            speech = "Call completed."
             if summary:
                 speech += f" {summary}"
             

@@ -103,7 +103,7 @@ def test_env_substitution():
     print("\n🔒 Security verification:")
     print(f"   • Empty env = {len(env2)} variables (should be 0)")
     print(f"   • ANTHROPIC_API_KEY leaked? {'❌ YES (BAD!)' if 'ANTHROPIC_API_KEY' in env2 else '✅ NO (GOOD!)'}")
-    print(f"   • Only explicit vars passed? ✅ YES")
+    print("   • Only explicit vars passed? ✅ YES")
 
 
 def test_stdio_env_and_args_follow_request_config_scope(monkeypatch):

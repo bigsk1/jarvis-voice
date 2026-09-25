@@ -24,7 +24,7 @@ async def test_session_management():
 
         assert result2.success, f"Second crawl failed: {result2.error_message}"
 
-        print(f"✅ Session management works")
+        print("✅ Session management works")
 
 async def test_proxy_config():
     """Test proxy configuration in BrowserConfig"""
@@ -40,7 +40,7 @@ async def test_proxy_config():
         }
     )
 
-    print(f"✅ Proxy config structure correct (in BrowserConfig)")
+    print("✅ Proxy config structure correct (in BrowserConfig)")
 
 async def test_batch_crawling():
     """Test arun_many for batch crawling"""

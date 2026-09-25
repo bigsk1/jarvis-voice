@@ -212,7 +212,7 @@ def main():
                     print(f"[{current_time}] ✅ CONTAINER RUNNING: {container_name}")
                     # Resolve any pending alerts for this container
                     if resolve_alerts_by_source(f"Container Stopped: {container_name}"):
-                        print(f"           ✅ Resolved alert in Jarvis")
+                        print("           ✅ Resolved alert in Jarvis")
                 
                 last_status[f"container:{container_name}"] = is_running
         

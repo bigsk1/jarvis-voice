@@ -171,8 +171,8 @@ def validate_path(path: str, intel_dir: Path) -> Path:
     # jarvis-intel/ should be FLAT for simple ingestion
     if '/' in path or '\\' in path:
         raise ValueError(
-            f"Subdirectories not allowed in jarvis-intel/. "
-            f"Use flat filenames only (e.g., 'bitcoin-price-2025-11-19.md' not 'bitcoin/price-note.md')"
+            "Subdirectories not allowed in jarvis-intel/. "
+            "Use flat filenames only (e.g., 'bitcoin-price-2025-11-19.md' not 'bitcoin/price-note.md')"
         )
     
     # Resolve full path
@@ -180,11 +180,11 @@ def validate_path(path: str, intel_dir: Path) -> Path:
     
     # Ensure it's within jarvis-intel/
     if not str(full_path).startswith(str(intel_dir.resolve())):
-        raise ValueError(f"Path must be within jarvis-intel/ directory")
+        raise ValueError("Path must be within jarvis-intel/ directory")
     
     # Only allow .md and .txt files
     if full_path.suffix not in ['.md', '.txt', '']:
-        raise ValueError(f"Only .md and .txt files allowed")
+        raise ValueError("Only .md and .txt files allowed")
     
     # Don't allow modifying README.md
     if full_path.name == 'README.md':

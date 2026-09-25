@@ -17,7 +17,7 @@ from jarvis_bundle_chat_test.routes import api
 
 
 @pytest.fixture
-def clients(journey, monkeypatch):
+def clients(journey, monkeypatch):  # noqa: F811 - imported pytest fixture
     monkeypatch.setenv('WEBUI_PASSWORD', 'disposable-test-password')
     monkeypatch.setenv('WEBUI_SECRET', 'disposable-test-secret')
     monkeypatch.setattr(webui_auth, '_log_auth_event', lambda *a, **k: None)
@@ -124,7 +124,7 @@ def test_auth_disabled_installation_still_syncs(clients, monkeypatch):
     assert [e['name'] for e in desktop.get_received()] == ['conversations:changed']
 
 
-def test_nested_writes_notify_once_after_commit_and_outside_locks(journey):
+def test_nested_writes_notify_once_after_commit_and_outside_locks(journey):  # noqa: F811
     store = journey.store
     notifications = []
 
@@ -146,7 +146,7 @@ def test_nested_writes_notify_once_after_commit_and_outside_locks(journey):
     assert notifications[0]['conversations'][0]['title'] == 'Saved title'
 
 
-def test_failed_index_write_does_not_announce_and_listener_failure_cannot_fail_save(journey, monkeypatch):
+def test_failed_index_write_does_not_announce_and_listener_failure_cannot_fail_save(journey, monkeypatch):  # noqa: F811
     store = journey.store
     notifications = []
     store.add_index_listener(lambda: notifications.append(True))
@@ -172,7 +172,7 @@ def test_failed_index_write_does_not_announce_and_listener_failure_cannot_fail_s
     assert notifications == [True]
 
 
-def test_progress_and_unchanged_list_reads_do_not_flood_subscribers(journey):
+def test_progress_and_unchanged_list_reads_do_not_flood_subscribers(journey):  # noqa: F811
     journey.send(message='Keep working')
     store = journey.store
     cid = journey.handler.sessions['client']['conversation_id']

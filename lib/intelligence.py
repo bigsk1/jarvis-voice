@@ -1458,7 +1458,7 @@ CRITICAL EVALUATION - CHAT ONLY:
         if chat_only_mode:
             reflection_prompt += chat_only_evaluation
         else:
-            reflection_prompt += f"""
+            reflection_prompt += """
 CRITICAL EVALUATION:
 1. Did the tool(s) return relevant data for the query? (tool_results vs query)
 2. Did the LLM response accurately reflect the tool data? (llm_response vs tool_results)
@@ -1559,7 +1559,7 @@ TOOL FAILURE RECOVERY (important for generation tools):
 - If multiple turns were used on the SAME generation tool → first_tool_optimal may be true but the RECOVERY STRATEGY was wrong
 
 TOOL ARGUMENT RECOVERY (important for smaller/local models):
-- If a failed attempt used schema-shaped values like {{"type": "string"}} instead of concrete user values, create a negative global insight.
+- If a failed attempt used schema-shaped values like {"type": "string"} instead of concrete user values, create a negative global insight.
 - If a later attempt succeeded with corrected arguments, learn the argument convention that made it work.
 - Do not store user-specific values as the rule; store the reusable procedure.
 
@@ -1579,10 +1579,10 @@ IMPORTANT CLASSIFICATION:
 Your task: Extract a PROCEDURAL insight about TOOL SELECTION, not facts.
 """
 
-        reflection_prompt += f"""
+        reflection_prompt += """
 Provide your analysis as JSON:
 ```json
-{{
+{
     "is_procedural": true/false,  // Is this insight about tool selection strategy?
     "knowledge_type": "procedural" or "factual",  // If factual, we'll skip storing
 
@@ -1615,12 +1615,12 @@ Provide your analysis as JSON:
 
     "confidence": 0.0-1.0,
     "insight_summary": "One actionable sentence, max 25 words"
-}}
+}
 ```
 
 Example for POSITIVE constraint (what TO do):
 ```json
-{{
+{
     "is_procedural": true,
     "knowledge_type": "procedural",
     "insight_type": "routing_correction",
@@ -1640,12 +1640,12 @@ Example for POSITIVE constraint (what TO do):
     "generalizability": "high",
     "confidence": 0.9,
     "insight_summary": "For server status queries, use mcp_fetch for real-time data."
-}}
+}
 ```
 
 Example for NEGATIVE constraint (what NOT to do):
 ```json
-{{
+{
     "is_procedural": true,
     "knowledge_type": "procedural",
     "insight_type": "routing_correction",
@@ -1665,16 +1665,16 @@ Example for NEGATIVE constraint (what NOT to do):
     "generalizability": "high",
     "confidence": 0.85,
     "insight_summary": "DO NOT use search_memory for real-time queries - data is stale."
-}}
+}
 ```
 
 Example for FACTUAL (should NOT be stored here):
 ```json
-{{
+{
     "is_procedural": false,
     "knowledge_type": "factual",
     "insight_summary": "The Ollama server is at <host-ip> - this is a fact, not a procedure"
-}}
+}
 ```
 """
 
@@ -2118,7 +2118,7 @@ Example for FACTUAL (should NOT be stored here):
             return 0
 
         if reflection.get('knowledge_type') == 'factual':
-            logger.info(f"Skipping factual knowledge (belongs in memory_db)")
+            logger.info("Skipping factual knowledge (belongs in memory_db)")
             intel_log.log_insight_skipped("factual_knowledge_type", reflection.get('insight_summary', ''))
             return 0
 

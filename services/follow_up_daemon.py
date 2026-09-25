@@ -245,7 +245,7 @@ def main():
     
     print(f"   Mode: {mode}")
     print(f"   Database: {db_path}")
-    print(f"   Check interval: 60 seconds")
+    print("   Check interval: 60 seconds")
     print(f"   Max follow-ups: {MAX_FOLLOW_UPS}")
     print()
     
@@ -318,7 +318,7 @@ def main():
                 logger.log_error(f"Database error (attempt {consecutive_errors}): {e}")
                 print(f"\n⚠️  Database error: {e} (attempt {consecutive_errors}/{max_consecutive_errors})", file=sys.stderr)
                 if consecutive_errors >= max_consecutive_errors:
-                    print(f"\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
+                    print("\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
                     logger.log_shutdown({"reason": "too_many_errors", "last_error": str(e)})
                     sys.exit(1)
                 time.sleep(30)  # Wait longer after DB errors
@@ -328,7 +328,7 @@ def main():
                 logger.log_error(f"Unexpected error (attempt {consecutive_errors}): {e}")
                 print(f"\n⚠️  Error: {e} (attempt {consecutive_errors}/{max_consecutive_errors})", file=sys.stderr)
                 if consecutive_errors >= max_consecutive_errors:
-                    print(f"\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
+                    print("\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
                     logger.log_shutdown({"reason": "too_many_errors", "last_error": str(e)})
                     sys.exit(1)
                 time.sleep(60)  # Continue checking after transient errors

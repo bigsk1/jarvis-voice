@@ -124,7 +124,7 @@ def run_expected_queries(
             if expected_score:
                 print(f'   Score: {expected_score:.3f} (rank #{expected_rank})')
             else:
-                print(f'   Not in top 20 results!')
+                print('   Not in top 20 results!')
             top3 = [f"{t['name']}:{t['similarity']:.2f}" for t in results[:3]]
             print(f'   Top 3: {top3}')
     
@@ -153,14 +153,14 @@ def run_expected_queries(
     # Statistics
     if all_expected_scores:
         scores_only = [score for _, score, _, _, is_ghost in all_expected_scores if not is_ghost]
-        print(f'\n📊 Statistics:')
+        print('\n📊 Statistics:')
         print(f'   Lowest:  {min(scores_only):.3f}')
         print(f'   Highest: {max(scores_only):.3f}')
         print(f'   Average: {sum(scores_only)/len(scores_only):.3f}')
         print(f'   Current threshold: {current_threshold}')
         
         # Threshold impact analysis
-        print(f'\n🎯 Threshold Impact (expected tools missed):')
+        print('\n🎯 Threshold Impact (expected tools missed):')
         for thresh in [0.20, 0.25, 0.28, 0.30, 0.32, 0.35, 0.38, 0.40, 0.45]:
             missed = sum(1 for s in scores_only if s < thresh)
             missed += len(missed_tools)  # Add completely missed tools
@@ -172,7 +172,7 @@ def run_expected_queries(
         
         # Recommendation
         safe_threshold = min(scores_only) - 0.02 if scores_only else 0.25
-        print(f'\n💡 Recommendation:')
+        print('\n💡 Recommendation:')
         print(f'   Safe threshold (catches all): {max(0.20, safe_threshold):.2f}')
         
     return all_expected_scores
