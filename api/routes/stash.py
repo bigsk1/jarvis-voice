@@ -1,20 +1,20 @@
 """Stash API endpoints - Access to stash artifacts with upload support"""
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
-from fastapi.responses import FileResponse
 import json
 import re
 import sys
 from pathlib import Path
 from typing import Optional
 
-from api.models.stash import (
-    StashFile, StashSpace, StashResponse, StashStats
-)
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
+
+from api.models.stash import StashFile, StashResponse, StashSpace, StashStats
 
 # Add lib to path for stash_helper
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "lib"))
-from stash_helper import get_stash_dir, open_space, StashFile as StashFileHelper
+from stash_helper import StashFile as StashFileHelper
+from stash_helper import get_stash_dir, open_space
 
 router = APIRouter(prefix="/api/stash", tags=["stash"])
 
@@ -47,7 +47,7 @@ def get_space_meta(space_id: str) -> dict | None:
     try:
         with open(meta_path) as f:
             return json.load(f)
-    except:
+    except (OSError, ValueError):
         return None
 
 
@@ -457,7 +457,7 @@ async def upload_file(
         # Parse labels
         label_list = ['uploaded']
         if labels:
-            label_list.extend([l.strip() for l in labels.split(',') if l.strip()])
+            label_list.extend([label.strip() for label in labels.split(',') if label.strip()])
         
         # Open or create space
         if space_id:

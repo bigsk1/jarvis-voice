@@ -2,11 +2,11 @@
 Memory Service - Database operations for memory management
 Handles both cloud and local databases
 """
-import sqlite3
 import json
 import os
+import sqlite3
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
 from config_loader import config_scope
 from embedding_metadata import (
@@ -200,7 +200,7 @@ class MemoryService:
                 if memory.get('metadata'):
                     try:
                         memory['metadata'] = json.loads(memory['metadata'])
-                    except:
+                    except (TypeError, ValueError):
                         pass
                 memories.append(memory)
             
@@ -227,7 +227,7 @@ class MemoryService:
                 if memory.get('metadata'):
                     try:
                         memory['metadata'] = json.loads(memory['metadata'])
-                    except:
+                    except (TypeError, ValueError):
                         pass
                 return memory
             return None
@@ -267,7 +267,7 @@ class MemoryService:
                     if memory.get('metadata'):
                         try:
                             memory['metadata'] = json.loads(memory['metadata'])
-                        except:
+                        except (TypeError, ValueError):
                             pass
                     memories.append(memory)
                 
@@ -528,12 +528,12 @@ class MemoryService:
                 if conv.get('tools_used'):
                     try:
                         conv['tools_used'] = json.loads(conv['tools_used'])
-                    except:
+                    except (TypeError, ValueError):
                         pass
                 if conv.get('metadata'):
                     try:
                         conv['metadata'] = json.loads(conv['metadata'])
-                    except:
+                    except (TypeError, ValueError):
                         pass
                 conversations.append(conv)
             
@@ -562,12 +562,12 @@ class MemoryService:
                 if conv.get('tools_used'):
                     try:
                         conv['tools_used'] = json.loads(conv['tools_used'])
-                    except:
+                    except (TypeError, ValueError):
                         pass
                 if conv.get('metadata'):
                     try:
                         conv['metadata'] = json.loads(conv['metadata'])
-                    except:
+                    except (TypeError, ValueError):
                         pass
                 conversations.append(conv)
             
@@ -601,7 +601,7 @@ class MemoryService:
                     if isinstance(tools, list):
                         for tool in tools:
                             tool_usage[tool] = tool_usage.get(tool, 0) + 1
-                except:
+                except (TypeError, ValueError):
                     pass
             
             top_tools = sorted(tool_usage.items(), key=lambda x: x[1], reverse=True)[:10]

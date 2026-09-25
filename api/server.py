@@ -6,6 +6,8 @@ FastAPI server for webhooks, alerts, reminders, and proactive notifications
 
 from fastapi import FastAPI, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 import sys
 import time
@@ -175,7 +177,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 body_bytes = await request.body()
                 if body_bytes:
                     body = body_bytes.decode("utf-8")[:2000]  # Limit to 2KB
-            except:
+            except Exception:
                 pass
         
         # Process request
@@ -330,8 +332,6 @@ app = FastAPI(
 )
 
 # Custom Swagger UI with dark mode
-from fastapi.openapi.docs import get_swagger_ui_html
-
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui():
     return get_swagger_ui_html(
@@ -342,8 +342,6 @@ async def custom_swagger_ui():
     )
 
 # Inject dark mode CSS
-from fastapi.responses import HTMLResponse
-
 @app.get("/docs/dark", include_in_schema=False)
 async def swagger_ui_dark():
     """Swagger UI with dark mode"""

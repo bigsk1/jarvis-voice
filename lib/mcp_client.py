@@ -6,17 +6,17 @@ Communicates with MCP servers via JSON-RPC over multiple transports:
 - sse: Server-Sent Events over HTTP
 - http: Streamable HTTP (JSON-RPC over HTTP POST)
 """
-import sys
-import os
 import json
-import subprocess
-import time
-import re
+import os
 import queue
-import requests
-from typing import Any, Union
+import re
+import subprocess
+import sys
+import time
 from threading import Event, Lock, RLock, Thread
+from typing import Any, Union
 
+import requests
 from config_loader import get_config_value
 from http_client import (
     STANDARD_PROXY_ENV_KEYS,
@@ -416,7 +416,7 @@ class MCPClient:
             try:
                 self.process.terminate()
                 self.process.wait(timeout=5)
-            except:
+            except Exception:
                 self.process.kill()
             finally:
                 self.process = None
@@ -429,7 +429,7 @@ class MCPClient:
                     ["docker", "rm", "-f", container_name],
                     capture_output=True, timeout=10
                 )
-            except:
+            except Exception:
                 pass  # Ignore errors - container may already be gone
     
     def _initialize(self):
