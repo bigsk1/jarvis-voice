@@ -31,7 +31,6 @@ from stash_helper import open_space, StashFile, parse_stash_ref, get_space
 
 # Format categories
 IMAGE_FORMATS = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'tiff', 'tif', 'bmp', 'ico'}
-VECTOR_FORMATS = {'svg', 'pdf', 'eps'}
 VIDEO_FORMATS = {'mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'm4v'}
 AUDIO_FORMATS = {'mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a', 'wma', 'opus'}
 
@@ -356,7 +355,6 @@ def main():
         source_is_audio = source_format in AUDIO_FORMATS
         
         target_is_image = target_format in IMAGE_FORMATS
-        target_is_vector = target_format in VECTOR_FORMATS
         target_is_video = target_format in VIDEO_FORMATS
         target_is_audio = target_format in AUDIO_FORMATS
         
@@ -404,7 +402,7 @@ def main():
                 raise RuntimeError("Conversion produced empty output")
             
             # Save to stash
-            space, is_new = open_space(
+            space, _ = open_space(
                 labels=['converted_files', f'from_{source_format}', f'to_{target_format}'],
                 scope='project'  # Longer retention
             )

@@ -137,7 +137,7 @@ def test_worker_lease_requires_live_lock_and_never_follows_status_symlink(stores
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX directory-descriptor protection")
 def test_worker_refuses_symlinked_inbox_without_following_it(stores):
-    local = SourceLibrary("local")
+    SourceLibrary("local")
     outside = stores.parent / "outside"
     outside.mkdir()
     stores.mkdir()

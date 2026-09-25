@@ -10,7 +10,6 @@ import sys
 import types
 import unittest
 from pathlib import Path
-from unittest import mock
 from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()

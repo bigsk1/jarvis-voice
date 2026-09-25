@@ -141,7 +141,7 @@ def _resolve_video_source(video_source: str) -> str | None:
                         # Enforce expiration cutoff
                         created = f.get('source_url_created', '')
                         if created:
-                            from datetime import datetime, timedelta
+                            from datetime import datetime
                             try:
                                 created_dt = datetime.fromisoformat(created)
                                 age = datetime.now() - created_dt

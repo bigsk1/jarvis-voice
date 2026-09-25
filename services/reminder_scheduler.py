@@ -405,7 +405,6 @@ def main():
                                 })
                             
                             # Log trigger action
-                            recurrence_info = f" (recurring: {reminder.get('recurrence_rule')})" if reminder.get('recurrence_rule') else ""
                             logger.log_action("trigger_reminder", {
                                 "reminder_id": reminder_id,
                                 "title": title,

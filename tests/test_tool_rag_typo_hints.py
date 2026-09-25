@@ -57,7 +57,7 @@ class TestExpandToolRagQuery(unittest.TestCase):
         self.assertTrue(q.startswith("check my bookmakrs"))
 
     def test_exact_tool_name_no_duplicate_hint(self):
-        q, hints = expand_tool_rag_query_for_typo_hints(
+        _, hints = expand_tool_rag_query_for_typo_hints(
             "run bookmark_search now",
             self.tools,
             enabled=True,
@@ -188,7 +188,7 @@ class TestExpandToolRagQuery(unittest.TestCase):
         self.assertEqual(q, f"{query} mcp_brave_search_web")
 
     def test_short_token_skipped(self):
-        q, hints = expand_tool_rag_query_for_typo_hints(
+        _, hints = expand_tool_rag_query_for_typo_hints(
             "ab cr xzqq",
             self.tools,
             enabled=True,
@@ -200,7 +200,7 @@ class TestExpandToolRagQuery(unittest.TestCase):
     def test_tie_multiple_tools_same_min_distance_skips(self):
         """Two tools equally close → no hint (safety)."""
         tools = ["alpha_x", "alpha_y"]
-        q, hints = expand_tool_rag_query_for_typo_hints(
+        _, hints = expand_tool_rag_query_for_typo_hints(
             "check alpha_z please",
             tools,
             enabled=True,
@@ -230,7 +230,7 @@ class TestExpandToolRagQuery(unittest.TestCase):
         self.assertEqual(hints, [])
 
     def test_weather_typo(self):
-        q, hints = expand_tool_rag_query_for_typo_hints(
+        _, hints = expand_tool_rag_query_for_typo_hints(
             "what is weathr in NYC",
             self.tools,
             enabled=True,
@@ -252,7 +252,7 @@ class TestExpandToolRagQuery(unittest.TestCase):
         self.assertEqual(q, "check https://weathr.com now")
 
     def test_plain_text_weathr_still_hints(self):
-        q, hints = expand_tool_rag_query_for_typo_hints(
+        _, hints = expand_tool_rag_query_for_typo_hints(
             "check weathr in Portland",
             ["weather"],
             enabled=True,

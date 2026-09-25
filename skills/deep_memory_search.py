@@ -616,7 +616,7 @@ def main():
         
         # Flatten and deduplicate
         flat_results = []
-        for source, items in all_results.items():
+        for items in all_results.values():
             flat_results.extend(items)
         
         flat_results = deduplicate_results(flat_results)

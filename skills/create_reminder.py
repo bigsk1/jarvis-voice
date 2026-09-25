@@ -372,7 +372,6 @@ def parse_time_expression(when: str, default_hour: int = 10):
     
     # Normalize word numbers to digits (e.g., "one hour" -> "1 hour")
     when = normalize_time_words(when)
-    tz = get_app_timezone()
     now = now_local()
     
     # Check for bounded daily patterns FIRST (creates multiple reminders)

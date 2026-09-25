@@ -151,7 +151,7 @@ def run_command(
         command = f"sudo {'-S' if sudo_password else '-n'} bash -c {shlex.quote(command)}"
     
     deadline = time.monotonic() + timeout
-    stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
+    stdin, stdout, _ = client.exec_command(command, timeout=timeout)
     channel = stdout.channel
     stdout_chunks: list[bytes] = []
     stderr_chunks: list[bytes] = []
@@ -450,7 +450,7 @@ def multi_command(host_alias: str, commands: list[str], sudo: bool = False, stop
         results = []
         all_success = True
         
-        for i, cmd in enumerate(commands):
+        for cmd in commands:
             result = run_command(
                 client,
                 cmd,

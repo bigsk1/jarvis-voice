@@ -45,9 +45,8 @@ def try_import(module_path: Path, module_name: str) -> tuple[bool, str]:
     try:
         spec = importlib.util.spec_from_file_location(module_name, module_path)
         if spec and spec.loader:
-            module = importlib.util.module_from_spec(spec)
-            # Don't actually execute - just verify it can be loaded
-            # spec.loader.exec_module(module)  # This would run the module
+            importlib.util.module_from_spec(spec)
+            # Don't execute the module; verify only that it can be created.
         return True, ""
     except Exception as e:
         return False, str(e)

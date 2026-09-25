@@ -605,7 +605,7 @@ class SettingsRouteValidationTests(unittest.TestCase):
             patch.object(self.api, "get_settings_manager", return_value=settings),
             patch.object(self.api, "reload_web_config"),
         ):
-            response, status = self.api.update_web_settings()
+            _, status = self.api.update_web_settings()
 
         self.assertEqual(status, 400)
         # Validation ran against the requested mode...

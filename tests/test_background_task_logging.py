@@ -1,7 +1,6 @@
 """Daily background-task diagnostics, isolated from live logs and providers."""
 
 import json
-import os
 import sqlite3
 import subprocess
 import sys

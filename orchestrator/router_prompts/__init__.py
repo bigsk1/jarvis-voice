@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 
 from router_prompt_catalog import (
-    DEFAULT_ROUTER_PROMPT_VERSION,
+    DEFAULT_ROUTER_PROMPT_VERSION as DEFAULT_ROUTER_PROMPT_VERSION,
     available_router_prompt_versions,
     normalize_router_prompt_version,
 )

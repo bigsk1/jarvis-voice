@@ -148,7 +148,7 @@ def test_prelaunch_schema_failure_is_known_and_unbound_adapter_cannot_bypass_pol
     TaskWorker(p.store, {REMOTE_ADAPTER: p.runner}).run_once()
     assert p.store.get(job['id'])['state'] == 'failed'
     assert p.store.counts()['reserved'] == 0 and not p.output.exists()
-    schema, policy = p.runner.policy(NAME)
+    _, policy = p.runner.policy(NAME)
     assert not p.runner._matches_policy(ADAPTER, policy, policy)
     p.runner.bindings[NAME] = ADAPTER
     with pytest.raises(AdmissionDenied):

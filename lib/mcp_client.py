@@ -514,7 +514,7 @@ class MCPClient:
             max_attempts = 10  # Avoid infinite loop
             timeout_seconds = 8  # Timeout per read attempt - was 5 increased to 8 for more time allowed for MCP servers to respond
             
-            for attempt in range(max_attempts):
+            for _ in range(max_attempts):
                 # Use select to timeout on readline
                 import select
                 ready, _, _ = select.select([self.process.stdout], [], [], timeout_seconds)

@@ -449,7 +449,6 @@ def main():
         "missed_grace_seconds": missed_grace_seconds,
     })
 
-    project_root = Path(__file__).parent.parent
     owner = f"{mode}:{os.getpid()}:{uuid4().hex[:12]}"
     recovered_locks = _recover_abandoned_locks(manager, mode, owner)
     if recovered_locks:

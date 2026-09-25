@@ -149,7 +149,7 @@ def test_receiver_disabled_and_storage_failure_never_acknowledge_success(tmp_pat
 @pytest.mark.parametrize('scheme', ['bearer', 'hmac-sha256'])
 @pytest.mark.parametrize('pause', ['receiver', 'source', 'events'])
 def test_committed_duplicate_ack_survives_pause_but_keeps_authentication(tmp_path, monkeypatch, scheme, pause):
-    service, source, credential, now = configured(tmp_path, scheme=scheme)
+    service, source, credential, _ = configured(tmp_path, scheme=scheme)
     claim, submission = bound(service, source)
     app = callback_app(service, tmp_path, monkeypatch)
     path = f"/api/task-callbacks/{source['id']}/events"

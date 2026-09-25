@@ -270,8 +270,6 @@ async def list_generated_videos(
         search_lower = search.lower()
         videos = [vid for vid in videos if search_lower in vid.name.lower()]
     
-    total = len(videos)
-    
     # Apply pagination
     videos = videos[offset:offset + limit]
     

@@ -285,7 +285,7 @@ class ComprehensiveTest:
         
         # Test FTS5 search performance (should be fast)
         start_time = time.time()
-        result = self.run_query("Search memories for test")
+        self.run_query("Search memories for test")
         duration = time.time() - start_time
         
         self.add_result(TestResult(
@@ -424,9 +424,6 @@ class ComprehensiveTest:
     def test_database_mode_isolation(self):
         """Verify correct database is being used for this mode."""
         self.log("Testing Database Mode Isolation", "HEADER")
-        
-        # Get current reminder count
-        initial_count = self.check_db("SELECT COUNT(*) as count FROM reminders")[0]['count']
         
         # Create a mode-specific reminder
         test_title = f"mode_isolation_test_{self.mode}_{int(time.time())}"

@@ -20,7 +20,7 @@ from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config
 from helper_task_prompts import STASH_SUMMARY_SYSTEM_PROMPT
 from paths import assert_not_restricted_read_path
 from stash_helper import (

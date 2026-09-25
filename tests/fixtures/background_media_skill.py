@@ -52,7 +52,7 @@ skill.__file__ = str(output / 'skills' / (name + '.py'))
 
 def write_guard(event, args):
     if event == 'open':
-        path, mode, flags = args
+        path, _mode, flags = args
         if isinstance(path, (str, bytes)) and (flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT)):
             resolved = Path(os.fsdecode(path)).resolve()
             if resolved.is_relative_to(root / 'data') or resolved.is_relative_to(root / 'logs'):

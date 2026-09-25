@@ -314,7 +314,7 @@ class OpenAIResponsesAdapterTests(unittest.TestCase):
             ],
         )
         resp = SimpleNamespace(id="resp_123", output=[out_msg], usage=None)
-        text, tool, usage, srv = ora.parse_responses_result(
+        text, tool, _, srv = ora.parse_responses_result(
             resp, model="gpt-4o-mini", parallel_tool_calls_allowed=False
         )
         self.assertEqual(text, "Hello from responses.")
@@ -341,7 +341,7 @@ class OpenAIResponsesAdapterTests(unittest.TestCase):
             input_tokens_details=SimpleNamespace(cached_tokens=2),
         )
         resp = SimpleNamespace(id="resp_abc", output=[fc1, fc2], usage=usage)
-        text, tool, usage_info, srv = ora.parse_responses_result(
+        text, tool, usage_info, _ = ora.parse_responses_result(
             resp,
             model="gpt-4o-mini",
             parallel_tool_calls_allowed=False,

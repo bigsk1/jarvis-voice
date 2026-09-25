@@ -42,7 +42,7 @@ def test_operator_routes_reject_cookie_query_foreign_origin_and_unconfigured_aut
 
 
 def test_credentials_show_once_and_mutations_are_revision_checked(controls):
-    client, service, source = controls
+    client, _, source = controls
     base = '/api/task-integrations/' + source['id']
     response = client.post(base + '/credentials', json={'scheme': 'hmac-sha256'}, headers=AUTH)
     assert response.status_code == 201 and response.headers['Cache-Control'] == 'no-store'

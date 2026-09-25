@@ -410,7 +410,7 @@ def get_system_uptime():
     
     days = uptime_delta.days
     hours, remainder = divmod(uptime_delta.seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
+    minutes, _ = divmod(remainder, 60)
     
     return {
         "boot_time": boot_time.strftime("%Y-%m-%d %H:%M:%S"),

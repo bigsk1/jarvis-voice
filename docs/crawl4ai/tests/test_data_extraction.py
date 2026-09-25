@@ -47,10 +47,10 @@ async def test_llm_extraction():
             instruction="Extract key financial metrics"
         )
 
-        config = CrawlerRunConfig(extraction_strategy=extraction_strategy)
+        CrawlerRunConfig(extraction_strategy=extraction_strategy)
         print(f"✅ LLMExtractionStrategy created successfully")
 
-    except Exception as e:
+    except Exception:
         print(f"✅ LLMExtractionStrategy structure verified (API key not tested)")
 
 async def main():

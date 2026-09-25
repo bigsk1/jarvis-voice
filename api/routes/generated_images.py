@@ -258,8 +258,6 @@ async def list_generated_images(
         search_lower = search.lower()
         images = [img for img in images if search_lower in img.name.lower()]
     
-    total = len(images)
-    
     # Apply pagination
     images = images[offset:offset + limit]
     

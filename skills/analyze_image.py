@@ -513,7 +513,7 @@ def _stash_image(image_data: dict, analysis: str, mode: str) -> dict | None:
         import hashlib
         
         # Create stash space
-        space, is_new = open_space(
+        space, _ = open_space(
             labels=['analyzed_image', 'downloaded'],
             scope='session',
             ttl_days=7

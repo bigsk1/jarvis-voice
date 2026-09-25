@@ -62,7 +62,7 @@ class OllamaUtilsTests(unittest.TestCase):
         from config_loader import config_scope
 
         # Use temp configs so config_scope("local") can load a mode file.
-        import tempfile, os
+        import tempfile
         from pathlib import Path
         import config_loader
 

@@ -591,7 +591,7 @@ class StashSpace:
         
         # Calculate size before deletion
         total_size = 0
-        for root, dirs, files in os.walk(self.space_path):
+        for root, _, files in os.walk(self.space_path):
             for f in files:
                 total_size += os.path.getsize(os.path.join(root, f))
         

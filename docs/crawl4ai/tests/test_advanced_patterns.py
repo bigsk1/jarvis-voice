@@ -31,7 +31,7 @@ async def test_proxy_config():
     print("\nTesting proxy configuration structure...")
 
     # Test that proxy config is in BrowserConfig (not CrawlerRunConfig)
-    browser_config = BrowserConfig(
+    BrowserConfig(
         headless=True,
         proxy_config={
             "server": "http://proxy.example.com:8080",

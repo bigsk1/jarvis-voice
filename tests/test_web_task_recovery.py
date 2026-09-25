@@ -78,7 +78,7 @@ def test_missed_completion_is_restored_without_reexecuting(journey):
 
 def test_admission_rejects_overlapping_turn_but_other_conversation_runs(journey):
     journey.send()
-    cid, run = current(journey)
+    cid, _ = current(journey)
     journey.send(message='Second request', conversation_id=cid)
     assert journey.socket.events[-1][0] == 'chat:rejected'
     assert len(journey.pending) == 1
@@ -304,7 +304,7 @@ def test_cancel_is_scoped_and_stopping_does_not_release_admission(journey):
 
 def test_restart_reports_interruption_and_never_replays(journey):
     journey.send()
-    cid, old = current(journey)
+    cid, _ = current(journey)
     abandon(journey, cid)
     restarted = ChatRuns(lambda: journey.store, journey.socket.emit)
     snapshot = restarted.snapshot(cid)
@@ -430,7 +430,7 @@ def test_failed_atomic_replace_leaves_previous_document_readable(journey, monkey
 
 def test_storage_outage_is_visible_and_recovery_does_not_leave_a_busy_lock(journey, monkeypatch):
     journey.send()
-    cid, run = current(journey)
+    cid, _ = current(journey)
     update = journey.store.update_run
     def fail(*args, **kwargs): raise OSError('simulated full disk')
     monkeypatch.setattr(journey.store, 'update_run', fail)
@@ -503,7 +503,7 @@ def test_first_send_retry_recovers_a_document_after_index_write_failure(journey,
 
 def test_listing_reconciles_abandoned_runs_without_opening_them(journey):
     journey.send()
-    cid, run = current(journey)
+    cid, _ = current(journey)
     other_store = conversation_store.ConversationStore(journey.store.conversations_dir)
     assert other_store.list_conversations()[0]['run_status'] == 'running'
     abandon(journey, cid)
@@ -735,7 +735,7 @@ def test_imported_active_metadata_becomes_interrupted(journey):
 
 def test_retention_preserves_live_work_and_projects_crashed_work_without_writes(journey):
     journey.send()
-    cid, run = current(journey)
+    cid, _ = current(journey)
     old = (datetime.now() - timedelta(days=100)).isoformat()
     saved = journey.store.get_conversation(cid)
     saved['updated_at'] = old

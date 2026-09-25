@@ -590,7 +590,7 @@ def action_play(args: dict) -> dict:
     # so playback succeeds on the wrong device while the TV never starts.
     device_name_hint = (args.get('device') or '').strip() or None
     if not device_id and device_name_hint:
-        device_id, resolved_name = resolve_device_id_by_name(sp, device_name_hint)
+        device_id, _ = resolve_device_id_by_name(sp, device_name_hint)
         if not device_id:
             return {
                 "ok": False,
@@ -603,7 +603,7 @@ def action_play(args: dict) -> dict:
     
     # Auto-detect device if not specified
     if not device_id:
-        device_id, device_name = get_active_device(sp)
+        device_id, _ = get_active_device(sp)
         if not device_id:
             return {
                 "ok": False,

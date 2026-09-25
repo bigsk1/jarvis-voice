@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sys
 from typing import Any
 from urllib.parse import parse_qs, urlparse, urlsplit, urlunsplit
