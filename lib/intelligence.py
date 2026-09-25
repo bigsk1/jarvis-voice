@@ -3284,9 +3284,11 @@ Example for FACTUAL (should NOT be stored here):
                 })
 
             if anomaly_reasons:
+                query_preview = exp['query'][:100]
                 anomaly = {
                     'experience_id': exp['id'],
-                    'query': exp['query'][:100],
+                    'query': query_preview,
+                    'query_truncated': len(exp['query']) > len(query_preview),
                     'reasons': anomaly_reasons
                 }
                 anomalies.append(anomaly)
@@ -3294,7 +3296,7 @@ Example for FACTUAL (should NOT be stored here):
                 intel_log.log_anomaly_detected(
                     exp['id'],
                     anomaly_reasons[0]['type'],
-                    {'query': exp['query'][:100], 'reasons': anomaly_reasons}
+                    {'query': query_preview, 'reasons': anomaly_reasons}
                 )
 
         stats['anomalies_found'] = len(anomalies)

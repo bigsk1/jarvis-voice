@@ -1899,12 +1899,15 @@ function showAnomalyResults(result) {
         <div class="empty-state-desc">All recent experiences are within normal parameters.</div>
       </div>`;
   } else {
-    html += `<div class="anomaly-list" style="display: flex; flex-direction: column; gap: var(--space-md);">`;
+    html += `
+      <p class="anomaly-explanation">Recent turn counts are compared with the 7-day average. Standard deviations show how far a count is from that average; an unusual count does not necessarily mean a failure. Failures after more than three turns are also flagged.</p>
+      <div class="anomaly-list" style="display: flex; flex-direction: column; gap: var(--space-md);">`;
     
     for (const anomaly of result.anomalies) {
       const reasonBadges = anomaly.reasons.map(r => {
         if (r.type === 'high_turns') {
-          return `<span style="display: inline-block; padding: 2px 8px; background: var(--warning); color: var(--bg-primary); border-radius: var(--radius-sm); font-size: var(--text-xs); margin-right: 4px;">⚡ High Turns: ${r.turns} (z=${r.z_score})</span>`;
+          const direction = r.z_score >= 0 ? 'above' : 'below';
+          return `<span style="display: inline-block; padding: 2px 8px; background: var(--warning); color: var(--bg-primary); border-radius: var(--radius-sm); font-size: var(--text-xs); margin-right: 4px;">⚡ ${r.turns} turns · ${Math.abs(r.z_score).toFixed(1)} standard deviations ${direction} the 7-day average</span>`;
         } else if (r.type === 'failed_multi_turn') {
           return `<span style="display: inline-block; padding: 2px 8px; background: var(--error); color: white; border-radius: var(--radius-sm); font-size: var(--text-xs); margin-right: 4px;">❌ Failed after ${r.turns} turns</span>`;
         }
@@ -1914,8 +1917,9 @@ function showAnomalyResults(result) {
       html += `
         <div style="padding: var(--space-md); background: var(--bg-secondary); border-radius: var(--radius-md); border-left: 3px solid var(--warning);">
           <div style="font-size: var(--text-sm); color: var(--text-secondary); margin-bottom: var(--space-xs);">Experience #${anomaly.experience_id}</div>
-          <div style="font-size: var(--text-base); color: var(--text-primary); margin-bottom: var(--space-sm);">${escapeHtml(anomaly.query)}</div>
+          <div class="anomaly-query-preview">${escapeHtml(anomaly.query)}${anomaly.query_truncated ? '…' : ''}</div>
           <div>${reasonBadges}</div>
+          <button type="button" class="btn btn-small btn-secondary anomaly-view-experience" data-experience-id="${anomaly.experience_id}">View full experience</button>
         </div>`;
     }
     
@@ -1923,6 +1927,12 @@ function showAnomalyResults(result) {
   }
   
   body.innerHTML = html;
+  body.querySelectorAll('.anomaly-view-experience').forEach(button => {
+    button.addEventListener('click', () => {
+      closeAllModals();
+      viewExperience(Number(button.dataset.experienceId));
+    });
+  });
 }
 
 // ============================================================================

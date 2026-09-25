@@ -1018,6 +1018,25 @@ body {
   max-height: calc(80vh - 140px);
 }
 
+.anomaly-explanation {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  margin-bottom: var(--space-md);
+}
+
+.anomaly-query-preview {
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  margin-bottom: var(--space-sm);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.anomaly-view-experience {
+  margin-top: var(--space-sm);
+}
+
 /* Experience detail view */
 .experience-detail-scroll {
   max-height: calc(70vh - 200px);

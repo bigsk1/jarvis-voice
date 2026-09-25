@@ -34,6 +34,7 @@ def parse_feedback_file(filepath: Path) -> list:
     return entries
 
 
+@feedback_bp.route('', methods=['GET'])
 @feedback_bp.route('/', methods=['GET'])
 def list_feedback():
     """
