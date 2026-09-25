@@ -941,7 +941,7 @@ class IntelligenceService:
                 if item.get('tools_used'):
                     try:
                         item['tools_used'] = json.loads(item['tools_used'])
-                    except:
+                    except (TypeError, ValueError):
                         pass
                 queue.append(item)
             
@@ -1050,7 +1050,7 @@ class IntelligenceService:
                     if isinstance(tools, list):
                         for tool in tools:
                             tool_usage[tool] = tool_usage.get(tool, 0) + 1
-                except:
+                except (TypeError, ValueError):
                     pass
             top_tools = sorted(tool_usage.items(), key=lambda x: x[1], reverse=True)[:10]
 

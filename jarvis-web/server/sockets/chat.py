@@ -5084,7 +5084,7 @@ Previous structured data:
                     tool = orchestrator.registry.get_tool(tool_name)
                     if tool:
                         tool_descriptions[tool_name] = tool.description
-                except:
+                except Exception:
                     pass
             
             # Build config context

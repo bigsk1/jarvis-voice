@@ -1267,7 +1267,7 @@ class Orchestrator:
                     tool = self.registry.get_tool(tool_name)
                     if tool:
                         tool_descriptions[tool_name] = tool.description
-                except:
+                except Exception:
                     pass
             
             # Build config context
@@ -4513,7 +4513,7 @@ def main():
                 tool = orch.registry.get_tool(tool_name)
                 if tool:
                     tool_descriptions[tool_name] = tool.description
-            except:
+            except Exception:
                 pass
         
         # Get intelligence insights that were used (if available)
