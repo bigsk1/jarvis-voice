@@ -83,6 +83,7 @@ class SettingsAvailabilityTests(unittest.TestCase):
         )
         # TTS: local engines available without keys
         self.assertEqual(availability["tts"]["qwen3-tts"]["status"], "available")
+        self.assertEqual(availability["tts"]["kokoro"]["status"], "available")
         self.assertEqual(availability["tts"]["elevenlabs"]["status"], "unavailable")
         self.assertEqual(
             availability["tts"]["elevenlabs"]["reason"],
@@ -423,6 +424,22 @@ class SettingsAvailabilityTests(unittest.TestCase):
         ):
             success = manager.save_web_overrides({"llm_provider": "anthropic"})
         self.assertTrue(success)
+
+    def test_cloud_kokoro_can_be_selected_and_saved(self):
+        manager, patches = self._manager(
+            "cloud", {"TTS_PROVIDER": "elevenlabs", "KOKORO_TTS_URL": "http://kokoro.test/v1/audio/speech"}
+        )
+        web_config = {"cloud": {}, "audio": {}, "ui": {}, "conversation": {}, "tools": {}}
+        with (
+            patches[0], patches[1],
+            patch.object(self.settings_module, "load_web_config", return_value=web_config),
+            patch.object(self.settings_module, "save_web_config", return_value=True),
+            patch.object(manager, "_get_provider_models", return_value={}),
+        ):
+            self.assertIn("kokoro", manager.get_settings_for_ui()["tts"]["provider"]["options"])
+            self.assertTrue(manager.save_web_overrides({"tts_provider": "kokoro"}))
+            self.assertEqual(web_config["cloud"]["tts_provider"], "kokoro")
+            self.assertEqual(manager.get_settings_for_ui()["tts"]["provider"]["value"], "kokoro")
 
     def test_save_rejects_unavailable_media_and_tts_providers(self):
         from server.services.settings_manager import SettingsValidationError

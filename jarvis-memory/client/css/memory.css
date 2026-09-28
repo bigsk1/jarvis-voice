@@ -1419,11 +1419,16 @@ textarea.form-input {
 
 /* Responsive - Mobile breakpoint at 730px */
 @media (max-width: 730px) {
-  /* Show hamburger button */
+  /* Reserve the menu's space so the logo stays put across tabs */
   .hamburger-btn {
     display: flex;
     align-items: center;
     justify-content: center;
+    visibility: hidden;
+  }
+
+  #app.has-desktop-sidebar .hamburger-btn {
+    visibility: visible;
   }
   
   /* Hide desktop nav tabs */

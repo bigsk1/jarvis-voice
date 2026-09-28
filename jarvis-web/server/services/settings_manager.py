@@ -344,7 +344,7 @@ TTS_PROVIDERS = {
     'qwen3-tts': {'name': 'Qwen3-TTS', 'description': 'Local network Qwen3-TTS server (free, 28 cloned voices)'},
 }
 
-CLOUD_TTS_PROVIDER_OPTIONS = ['openai', 'elevenlabs', 'xai', 'qwen3-tts']
+CLOUD_TTS_PROVIDER_OPTIONS = ['openai', 'elevenlabs', 'xai', 'qwen3-tts', 'kokoro']
 LOCAL_TTS_PROVIDER_OPTIONS = ['kokoro', 'qwen3-tts']
 
 RESPONSE_STYLE_OPTIONS = {
