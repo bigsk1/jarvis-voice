@@ -1,0 +1,13 @@
+# Jarvis Web imports its own `server` package from this directory.
+preset = "basic"
+python-version = "3.12"
+project-includes = ["server"]
+search-path = [".", "..", "../lib", "../orchestrator", "../skills", "../bin", "../api"]
+
+[errors]
+bad-return = "warn"
+bad-argument-count = "error"
+missing-argument = "error"
+not-callable = "error"
+unbound-name = "error"
+missing-import = false

@@ -1,0 +1,38 @@
+# Start from high-confidence checks, then add a few useful type checks.
+# The default preset currently produces thousands of legacy-code diagnostics here.
+preset = "basic"
+python-version = "3.12"
+
+# Check maintained application code and tests in aggregate project-mode CLI runs.
+# Each service with a `server` package has a nearby config for accurate IDE imports.
+project-includes = [
+    "api",
+    "bin",
+    "jarvis-canvas/server",
+    "jarvis-docs/server",
+    "jarvis-intelligence/server",
+    "jarvis-memory/server",
+    "jarvis-web/server",
+    "lib",
+    "orchestrator",
+    "services",
+    "skills",
+    "tests",
+]
+
+# Match the local import roots already used by the Pyright configuration.
+search-path = [".", "lib", "orchestrator", "skills", "bin", "api"]
+enable-fallback-search-path = true
+
+[errors]
+# These add return/call/flow checks above the basic preset without the volume
+# of assignment and attribute diagnostics from the default preset.
+bad-return = "warn"
+bad-argument-count = "error"
+missing-argument = "error"
+not-callable = "error"
+unbound-name = "error"
+
+# The aggregate CLI check spans overlapping `server` packages, and tests import
+# modules dynamically. Service-local configs resolve those imports in the IDE.
+missing-import = false
