@@ -487,6 +487,67 @@ if (!emptySuccess.includes('✅ Complete')) process.exit(7);
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
 
 
+def test_legacy_workflow_cards_distinguish_skipped_actions_from_successful_actions():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(CHAT_JS))}, 'utf8');
+const start = source.indexOf('  _createToolCardHtml(');
+const end = source.indexOf('  _getToolTraceFailureResult(', start);
+const classSource = `class WorkflowCardHarness {{\n${{source.slice(start, end)}}\n}}; WorkflowCardHarness;`;
+const sandbox = {{
+  window: {{ commandSystem: {{ workflows: {{ radar: {{ steps: [
+    {{ step: 2, tool: 'stash', action: 'open_space' }},
+    {{ step: 3, tool: 'stash', action: 'list' }},
+    {{ step: 5, tool: 'canvas', action: 'read' }},
+    {{ step: 8, tool: 'canvas', action: 'create' }},
+    {{ step: 9, tool: 'canvas', action: 'update' }},
+    {{ step: 10, tool: 'send_email' }},
+    {{ step: 11, tool: 'stash', action: 'save' }}
+  ] }} }} }} }},
+  Utils: {{
+    escapeHtml: value => String(value),
+    escapeHtmlAndLinkify: value => String(value),
+    formatJson: value => JSON.stringify(value),
+    formatDuration: value => `${{value}}ms`
+  }}
+}};
+vm.createContext(sandbox);
+const Harness = vm.runInContext(classSource, sandbox);
+const harness = new Harness();
+const run = {{ workflow_id: 'radar', results: [
+  {{ step: 2, tool: 'stash', ok: true }},
+  {{ step: 3, tool: 'stash', ok: true }},
+  {{ step: 5, tool: 'canvas', ok: true }},
+  {{ step: 8, tool: 'canvas', skipped: true, reason: 'Condition evaluated to false' }},
+  {{ step: 9, tool: 'canvas', ok: true }},
+  {{ step: 10, tool: 'send_email', skipped: true, reason: 'Condition evaluated to false' }},
+  {{ step: 11, tool: 'stash', skipped: true, reason: 'Condition evaluated to false' }}
+] }};
+const trace = harness._getWorkflowStepTraceEntries(run);
+const labels = trace.map(entry => harness._getWorkflowStepLabel(entry));
+const expected = [
+  'Step 2 · stash.open_space', 'Step 3 · stash.list', 'Step 5 · canvas.read',
+  'Step 8 · canvas.create', 'Step 9 · canvas.update',
+  'Step 10 · send_email', 'Step 11 · stash.save'
+];
+if (labels.join('|') !== expected.join('|')) process.exit(2);
+if (!trace[3].skipped || trace[4].skipped || !trace[6].skipped) process.exit(3);
+const card = harness._createToolCardHtml('canvas', 'skipped', trace[3].reason, null, labels[3]);
+if (!card.includes('Step 8 · canvas.create') || !card.includes('⏭ Skipped')) process.exit(4);
+const pending = harness._getPendingToolCardEntries(run, [
+  ['canvas_step8', {{ toolName: 'canvas', status: 'skipped', result: trace[3].reason }}]
+], trace);
+if (pending[0].label !== 'Step 8 · canvas.create') process.exit(6);
+const savedActionTrace = harness._getWorkflowStepTraceEntries({{
+  workflow_id: 'radar', results: [{{ step: 9, tool: 'canvas', action: 'append', ok: true }}]
+}});
+if (harness._getWorkflowStepLabel(savedActionTrace[0]) !== 'Step 9 · canvas.append') process.exit(5);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
 def test_canvas_preview_keeps_assistant_reply_bubble():
     chat_js = CHAT_JS.read_text()
 

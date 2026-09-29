@@ -711,6 +711,11 @@ class PipelineExecutor:
             step_num = step.get("step", len(results) + 1)
             tool_name = step["tool"]
             action = step.get("action")
+            params = step.get("params")
+            step_action = action or (params.get("action") if isinstance(params, dict) else None)
+            step_identity = {"step": step_num, "tool": tool_name}
+            if step_action:
+                step_identity["action"] = step_action
             description = step.get("description", f"{tool_name}")
             step_start_time = time.time()
             
@@ -722,8 +727,7 @@ class PipelineExecutor:
             if not should_execute:
                 self._apply_variable_assignments(step.get("set_variables_on_skip"), variables)
                 results.append({
-                    "step": step_num,
-                    "tool": tool_name,
+                    **step_identity,
                     "skipped": True,
                     "reason": skip_reason or "Condition evaluated to false"
                 })
@@ -738,8 +742,7 @@ class PipelineExecutor:
                     "registry or blocked for this execution surface"
                 )
                 results.append({
-                    "step": step_num,
-                    "tool": tool_name,
+                    **step_identity,
                     "skipped": True,
                     "skip_kind": "optional_tool_unavailable",
                     "reason": reason,
@@ -758,8 +761,7 @@ class PipelineExecutor:
 
                 if step_result.get("cancelled"):
                     results.append({
-                        "step": step_num,
-                        "tool": tool_name,
+                        **step_identity,
                         "cancelled": True,
                         "items_processed": step_result.get("items_processed", 0),
                         "items_succeeded": step_result.get("items_succeeded", 0),
@@ -792,8 +794,7 @@ class PipelineExecutor:
                             step_error += f": {str(detail).strip()[:500]}"
                             break
                     results.append({
-                        "step": step_num,
-                        "tool": tool_name,
+                        **step_identity,
                         "ok": False,
                         "items_processed": processed,
                         "items_succeeded": succeeded,
@@ -816,8 +817,7 @@ class PipelineExecutor:
                 self._store_validated_outputs(step, tool_name, step_result, variables)
                 
                 results.append({
-                    "step": step_num,
-                    "tool": tool_name,
+                    **step_identity,
                     "items_processed": step_result.get("items_processed", 0),
                     "items_succeeded": step_result.get("items_succeeded", 0),
                     "outputs": step_result.get("outputs", []),
@@ -834,8 +834,7 @@ class PipelineExecutor:
 
                 if step_result.get("cancelled"):
                     results.append({
-                        "step": step_num,
-                        "tool": tool_name,
+                        **step_identity,
                         "cancelled": True,
                         "speech": step_result.get("speech"),
                         "duration_ms": step_duration_ms,
@@ -855,8 +854,7 @@ class PipelineExecutor:
                     if step.get("on_fail") != "continue":
                         # Include the failed step in results before aborting
                         results.append({
-                            "step": step_num,
-                            "tool": tool_name,
+                            **step_identity,
                             "ok": False,
                             "data": step_result.get("data"),
                             "error": step_result.get("error") or step_result.get("speech"),
@@ -882,8 +880,7 @@ class PipelineExecutor:
                     self._apply_variable_assignments(step.get("set_variables_on_success"), variables)
                 
                 results.append({
-                    "step": step_num,
-                    "tool": tool_name,
+                    **step_identity,
                     "ok": step_result.get("ok", False),
                     "data": step_result.get("data"),
                     **({"_workflow_source_arguments": step_result["_workflow_source_arguments"]}

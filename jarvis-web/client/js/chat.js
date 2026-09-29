@@ -3609,7 +3609,7 @@ class ChatUI {
     if (!options.late && !options.fromHistory) this._reconcilePendingToolsWithFinalList(toolsUsed, toolTraceEntries);
     const pendingToolEntries = options.late || options.fromHistory ? [] : Object.entries(this.pendingTools);
     if (pendingToolEntries.length > 0) {
-      toolCardEntries = this._getPendingToolCardEntries(toolResultsData, pendingToolEntries);
+      toolCardEntries = this._getPendingToolCardEntries(toolResultsData, pendingToolEntries, toolTraceEntries);
     } else if (toolTraceEntries.length > 0) {
       const toolOccurrenceCounts = {};
       const successfulToolOccurrenceCounts = {};
@@ -3641,6 +3641,7 @@ class ChatUI {
           : fallback;
         toolCardEntries.push({
           displayName: tool,
+          label: this._getWorkflowStepLabel(entry),
           status,
           result: toolResult,
           duration: entry.duration_ms ?? null
@@ -3658,7 +3659,7 @@ class ChatUI {
     }
     const toolCardsHtml = window.assistantMessageRenderer.renderToolCards(
       toolCardEntries,
-      entry => this._createToolCardHtml(entry.displayName, entry.status, entry.result, entry.duration)
+      entry => this._createToolCardHtml(entry.displayName, entry.status, entry.result, entry.duration, entry.label)
     );
 
     // Check for generated images
@@ -6241,7 +6242,7 @@ class ChatUI {
   /**
    * Create tool card HTML
    */
-  _createToolCardHtml(toolName, status, data, duration = null) {
+  _createToolCardHtml(toolName, status, data, duration = null, label = null) {
     const videoAnalysisHtml = toolName === 'analyze_video' ? this._renderVideoAnalysisResult(data) : null;
     const statusText = status === 'pending'
       ? '⏳ Running...'
@@ -6280,7 +6281,7 @@ class ChatUI {
     return `
       <div class="tool-card ${status}${videoAnalysisHtml ? ' expanded' : ''}">
         <div class="tool-card-header">
-          <span class="tool-card-title">${Utils.escapeHtml(toolName === 'analyze_video' ? 'Video analysis' : toolName)}</span>
+          <span class="tool-card-title">${Utils.escapeHtml(label || (toolName === 'analyze_video' ? 'Video analysis' : toolName))}</span>
           <span class="tool-card-status">${statusText}</span>
         </div>
         ${detailsLinkHtml}
@@ -6313,9 +6314,18 @@ class ChatUI {
     return fallback ?? {};
   }
 
-  _getPendingToolCardEntries(toolResultsData = {}, pendingToolEntries = Object.entries(this.pendingTools)) {
+  _getWorkflowStepLabel(entry = {}) {
+    if (entry.workflow_step == null) return null;
+    const stepNumber = String(entry.workflow_step).replace('_', '.');
+    return `Step ${stepNumber} · ${entry.tool}${entry.action ? `.${entry.action}` : ''}`;
+  }
+
+  _getPendingToolCardEntries(toolResultsData = {}, pendingToolEntries = Object.entries(this.pendingTools), traceEntries = []) {
     const toolOccurrenceCounts = {};
     const successfulToolOccurrenceCounts = {};
+    const workflowLabels = new Map(traceEntries
+      .filter(entry => entry.workflow_step != null)
+      .map(entry => [`${entry.tool}_step${entry.workflow_step}`, this._getWorkflowStepLabel(entry)]));
     return pendingToolEntries.map(([cardId, toolData]) => {
       const displayName = toolData.toolName || cardId.replace(/_step\d+$/, '');
       const occurrenceIndex = toolOccurrenceCounts[displayName] || 0;
@@ -6335,6 +6345,7 @@ class ChatUI {
         );
       return {
         displayName,
+        label: workflowLabels.get(cardId) || null,
         status,
         result,
         duration: toolData.duration
@@ -6417,11 +6428,20 @@ class ChatUI {
     }
     if (!workflowData) return [];
 
+    // Older saved runs do not include actions. The workflow registry can label
+    // those cards when the step number and tool still match the current recipe.
+    const workflowSteps = typeof window !== 'undefined'
+      ? (window.commandSystem?.workflows?.[workflowData.workflow_id]?.steps || [])
+      : [];
     const entries = [];
     for (const step of workflowData.results) {
       if (!step || typeof step !== 'object' || !step.tool) continue;
       // Optional unavailable tools intentionally have no execution card.
       if (step.skip_kind === 'optional_tool_unavailable') continue;
+      const workflowStep = workflowSteps.find(candidate => (
+        String(candidate.step) === String(step.step) && candidate.tool === step.tool
+      ));
+      const action = step.action || workflowStep?.action || null;
 
       const outputs = Array.isArray(step.outputs) ? step.outputs : [];
       if (outputs.length > 0) {
@@ -6429,6 +6449,7 @@ class ChatUI {
           const outputData = output && typeof output === 'object' ? output : {};
           entries.push({
             tool: step.tool,
+            action,
             ok: outputData.ok !== false,
             skipped: outputData.skipped === true,
             duration_ms: outputData.duration_ms ?? step.duration_ms ?? null,
@@ -6443,6 +6464,7 @@ class ChatUI {
 
       entries.push({
         tool: step.tool,
+        action,
         ok: step.ok !== false,
         skipped: step.skipped === true,
         duration_ms: step.duration_ms ?? null,

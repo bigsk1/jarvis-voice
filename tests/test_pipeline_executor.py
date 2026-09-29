@@ -953,6 +953,43 @@ MIME type: application/pdf
         self.assertEqual(executed, [])
         self.assertTrue(result["data"]["results"][0]["skipped"])
 
+    def test_workflow_results_keep_step_actions_for_tool_cards(self):
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(
+                execute=lambda *_args, **_kwargs: {"ok": True, "data": {}}
+            ),
+            provider=DummyProvider(),
+        )
+        result = executor.execute(
+            {
+                "id": "existing_page",
+                "variables": {"page_id": "saved-page"},
+                "steps": [
+                    {"step": 1, "tool": "stash", "action": "list", "params": {}},
+                    {
+                        "step": 2,
+                        "tool": "canvas",
+                        "action": "create",
+                        "condition": {"op": "not_exists", "left": "${page_id}"},
+                    },
+                    {
+                        "step": 3,
+                        "tool": "canvas",
+                        "action": "update",
+                        "condition": {"op": "exists", "left": "${page_id}"},
+                    },
+                ],
+            },
+            "/existing_page",
+        )
+
+        steps = result["data"]["results"]
+        self.assertEqual([step["action"] for step in steps], ["list", "create", "update"])
+        self.assertTrue(steps[0]["ok"])
+        self.assertTrue(steps[1]["skipped"])
+        self.assertTrue(steps[2]["ok"])
+
     def test_workflow_success_speech_error_uses_static_fallback(self):
         executor = PipelineExecutor(
             mode="cloud",
