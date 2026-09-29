@@ -3,7 +3,6 @@
   "name": "Amazon Value Search",
   "description": "Compare Amazon listings for overall value using price, review confidence, Prime eligibility, delivery, and availability signals.",
   "enabled": true,
-  "allow_workflow_tool": false,
   "version": "1.0",
   "disable_server_side_tools": true,
 
