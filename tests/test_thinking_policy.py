@@ -112,6 +112,22 @@ def test_generic_effort_is_not_guessed_for_unprofiled_model(monkeypatch, caplog)
     assert "unprofiled" in caplog.text
 
 
+def test_forced_off_unprofiled_model_does_not_warn_about_generic_effort(monkeypatch, caplog):
+    monkeypatch.setenv("JARVIS_THINKING_EFFORT", "low")
+    resolved = resolve_thinking_request(
+        provider="ollama",
+        model="bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v3",
+        profile=None,
+        show_trace=True,
+        force_disabled=True,
+        unprofiled_value=True,
+    )
+    assert resolved.value is False
+    assert resolved.show_trace is False
+    assert resolved.source == "unprofiled"
+    assert "Ignoring JARVIS_THINKING_EFFORT" not in caplog.text
+
+
 def test_xai_profile_uses_catalog_default_and_safe_minimum_for_required_reasoning():
     profile = get_catalog_thinking_profile("xai", "grok-4.7")
 

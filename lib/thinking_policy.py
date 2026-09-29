@@ -145,7 +145,7 @@ def resolve_thinking_request(
     requested_source = "JARVIS_THINKING_EFFORT" if generic_level else "provider setting"
 
     if profile is None:
-        if generic_level:
+        if generic_level and not force_disabled:
             logger.warning(
                 "Ignoring JARVIS_THINKING_EFFORT=%r for unprofiled model %s/%s",
                 generic_level,
