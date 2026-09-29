@@ -259,6 +259,18 @@ def test_search_uses_documented_filters_and_mode_default_location():
     assert "Lowest returned price: $149.00" in result["speech"]
 
 
+def test_exact_product_query_exposes_one_detail_handoff():
+    exit_code, result, _request = run_main(
+        {"query": "Acme Quiet 5 Wireless Headphones"}, shopping_payload()
+    )
+
+    assert exit_code == 0
+    assert result["data"]["exact_detail_match_count"] == 1
+    assert result["data"]["exact_detail_candidate"]["immersive_product_page_token"] == (
+        "opaque-product-token+/="
+    )
+
+
 def test_postal_fallback_and_provider_default_are_explicit():
     exit_code, result, request = run_main(
         {"query": "cordless drill"},

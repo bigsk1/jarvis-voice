@@ -14,7 +14,7 @@
     "properties": {
       "product_id": {
         "type": "string",
-        "description": "eBay item id (digits from https://www.ebay.com/itm/{product_id})."
+        "description": "Numeric eBay item ID or full /itm/ listing URL. A URL supplies its eBay country domain unless ebay_domain is explicit."
       },
       "ebay_domain": {
         "type": "string",

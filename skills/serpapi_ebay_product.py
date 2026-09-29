@@ -8,8 +8,10 @@ Returns a compact summary by default; set include_raw for the full SerpApi JSON.
 """
 import json
 import os
+import re
 import sys
 from typing import Any
+from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from config_loader import load_config
@@ -33,6 +35,20 @@ RESERVED_KEYS = {
 }
 
 RELATED_LIMIT = 12
+
+
+def normalize_ebay_product_reference(value: str) -> tuple[str, str | None]:
+    """Accept a bare item ID or an eBay item URL."""
+    if not value.startswith(("http://", "https://")):
+        return value, None
+    parsed = urlparse(value)
+    domain = (parsed.hostname or "").lower().removeprefix("www.")
+    if not re.fullmatch(r"ebay\.[a-z]{2,3}(?:\.[a-z]{2})?", domain):
+        raise ValueError("Provide an eBay item URL or a numeric item ID.")
+    match = re.search(r"/itm/(?:[^/]+/)?(\d{6,20})(?:/|$)", parsed.path, re.I)
+    if not match:
+        raise ValueError("eBay URL must contain an /itm/ item ID.")
+    return match.group(1), domain
 
 
 def return_success(speech: str, data: dict[str, Any] | None = None) -> None:
@@ -206,12 +222,14 @@ def main() -> int:
             return_error("Invalid JSON input")
             return 1
 
-        product_id = str(input_data.get("product_id", "")).strip()
+        product_id, inferred_domain = normalize_ebay_product_reference(
+            str(input_data.get("product_id", "")).strip()
+        )
         if not product_id:
             return_error("Parameter 'product_id' is required (eBay item id from /itm/{id}).")
             return 1
 
-        ebay_domain = str(input_data.get("ebay_domain") or "ebay.com").strip() or "ebay.com"
+        ebay_domain = str(input_data.get("ebay_domain") or inferred_domain or "ebay.com").strip()
         locale = str(input_data.get("locale", "")).strip()
         lang = str(input_data.get("lang", "")).strip()
         shipping_country = str(input_data.get("shipping_country", "")).strip()

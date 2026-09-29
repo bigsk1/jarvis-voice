@@ -101,6 +101,12 @@ class RecordingToolExecutor:
                     "text": text,
                     "page_count": 1,
                     "char_count": len(text),
+                    "content_char_count": sum(
+                        not character.isspace()
+                        for character in text.removeprefix("--- Page 1 ---\n")
+                    ),
+                    "needs_ocr": False,
+                    "extraction_method": "pdf_text",
                     "stash_ref": "stash://space_pdf_extract_test/f_text",
                     "space_id": "space_pdf_extract_test",
                 },
@@ -143,18 +149,69 @@ def load_workflow():
     return json.loads(WORKFLOW_PATH.read_text(encoding="utf-8"))
 
 
-def run_workflow(query):
-    tool_executor = RecordingToolExecutor()
+def run_workflow(query, tool_executor=None, available_tools=None):
+    tool_executor = tool_executor or RecordingToolExecutor()
+    executor = SimpleNamespace(
+        execute=tool_executor.execute,
+        cancel_check=None,
+    )
+    if available_tools is not None:
+        executor.registry = SimpleNamespace(list_tools=lambda: available_tools)
     pipeline = PipelineExecutor(
         mode="cloud",
-        executor=SimpleNamespace(
-            execute=tool_executor.execute,
-            cancel_check=None,
-        ),
+        executor=executor,
         provider=WorkflowProvider(),
     )
     result = pipeline.execute(load_workflow(), query)
     return result, tool_executor.calls
+
+
+class ScannedPdfToolExecutor(RecordingToolExecutor):
+    def __init__(self, *, ocr_succeeds=True, ocr_text=None):
+        super().__init__()
+        self.ocr_succeeds = ocr_succeeds
+        self.ocr_text = ocr_text or (
+            "# Page 1\nThis scanned manual includes operating instructions, "
+            "model specifications, and safety limits."
+        )
+
+    def execute(self, tool_name, params):
+        if tool_name == "pdf_read":
+            self.calls.append((tool_name, params))
+            return {
+                "ok": True,
+                "data": {
+                    "text": "--- Page 1 ---\n\n--- Page 2 ---\n\n--- Page 3 ---\n",
+                    "page_count": 3,
+                    "char_count": 49,
+                    "content_char_count": 0,
+                    "needs_ocr": True,
+                    "extraction_method": "pdf_text",
+                    "stash_ref": "stash://space_pdf_extract_test/markers_only",
+                    "space_id": "space_pdf_extract_test",
+                },
+            }
+        if tool_name == "document_ocr":
+            self.calls.append((tool_name, params))
+            if not self.ocr_succeeds:
+                return {"ok": False, "error": "OCR service unavailable"}
+            return {
+                "ok": True,
+                "data": {
+                    "action": "ocr",
+                    "markdown_stash_ref": "stash://space_ocr_test/f_markdown",
+                    "json_stash_ref": "stash://space_ocr_test/f_json",
+                    "markdown_file_id": "f_markdown",
+                    "markdown_char_count": len(self.ocr_text),
+                    "space_id": "space_ocr_test",
+                },
+            }
+        if tool_name == "stash" and params.get("action") == "read":
+            self.calls.append((tool_name, params))
+            if params.get("file_id") != "f_markdown":
+                return {"ok": False, "error": "OCR text is unavailable"}
+            return {"ok": True, "data": {"content": self.ocr_text}}
+        return super().execute(tool_name, params)
 
 
 def test_attached_pdf_skips_remote_download_and_uses_attachment_stash_ref():
@@ -197,3 +254,98 @@ def test_remote_pdf_is_stashed_then_read_from_normalized_reference():
     assert result["data"]["variables"]["pdf_stash_ref"] == (
         "stash://space_remote_test/f_pdf"
     )
+
+
+def test_scanned_pdf_uses_ocr_artifact_for_summary_and_provenance():
+    result, calls = run_workflow(
+        "/pdf_ingest stash://space_web_pdf_test/f_pdf",
+        ScannedPdfToolExecutor(),
+    )
+
+    assert result["ok"] is True
+    assert [tool for tool, _ in calls[:3]] == ["pdf_read", "document_ocr", "stash"]
+    assert calls[1][1]["stash_ref"] == "stash://space_web_pdf_test/f_pdf"
+    assert calls[2][1]["space_id"] == "space_ocr_test"
+    assert calls[2][1]["file_id"] == "f_markdown"
+    summaries = [params for tool, params in calls if tool == "text_summarizer"]
+    assert summaries
+    assert all(params["stash_ref"] == "stash://space_ocr_test/f_markdown" for params in summaries)
+    variables = result["data"]["variables"]
+    assert variables["extraction_method"] == "ocr"
+    assert variables["ocr_json_stash_ref"] == "stash://space_ocr_test/f_json"
+
+
+def test_scanned_pdf_does_not_summarize_page_markers_when_ocr_fails():
+    result, calls = run_workflow(
+        "/pdf_ingest stash://space_web_pdf_test/f_pdf",
+        ScannedPdfToolExecutor(ocr_succeeds=False),
+    )
+
+    assert result["ok"] is False
+    assert "text_summarizer" not in [tool for tool, _ in calls]
+    assert "manage_intel" not in [tool for tool, _ in calls]
+
+
+def test_scanned_pdf_does_not_ingest_empty_ocr_text():
+    result, calls = run_workflow(
+        "/pdf_ingest stash://space_web_pdf_test/f_pdf",
+        ScannedPdfToolExecutor(ocr_text="Page 1"),
+    )
+
+    assert result["ok"] is False
+    assert "text_summarizer" not in [tool for tool, _ in calls]
+
+
+def test_optional_ocr_availability_does_not_block_searchable_pdfs():
+    tool_names = [
+        "stash", "pdf_read", "text_summarizer", "manage_intel", "ingest_intel", "canvas"
+    ]
+    query = "/pdf_ingest stash://space_web_pdf_test/f_pdf"
+
+    digital, digital_calls = run_workflow(query, available_tools=tool_names)
+    scanned, scanned_calls = run_workflow(
+        query, ScannedPdfToolExecutor(), available_tools=tool_names
+    )
+
+    assert digital["ok"] is True
+    assert digital["data"]["degraded"] is False
+    assert "document_ocr" not in [tool for tool, _ in digital_calls]
+    assert scanned["ok"] is False
+    assert "document_ocr" not in [tool for tool, _ in scanned_calls]
+    assert "text_summarizer" not in [tool for tool, _ in scanned_calls]
+
+
+def test_pdf_read_ocr_signal_excludes_page_markers(tmp_path):
+    import fitz
+    from skills import pdf_read
+
+    pdf_path = tmp_path / "scanned.pdf"
+    document = fitz.open()
+    for _ in range(3):
+        document.new_page()
+    document.save(pdf_path)
+    document.close()
+
+    result = pdf_read.action_extract_text({"file_path": str(pdf_path)})
+
+    assert result["ok"] is True
+    assert result["data"]["char_count"] >= 40
+    assert result["data"]["content_char_count"] == 0
+    assert result["data"]["needs_ocr"] is True
+
+
+def test_pdf_read_keeps_searchable_pdf_on_text_path(tmp_path):
+    import fitz
+    from skills import pdf_read
+
+    pdf_path = tmp_path / "text.pdf"
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text((72, 72), "This searchable PDF has enough real content for an ordinary summary and keyword extraction.")
+    document.save(pdf_path)
+    document.close()
+
+    result = pdf_read.action_extract_text({"file_path": str(pdf_path)})
+
+    assert result["data"]["content_char_count"] >= 40
+    assert result["data"]["needs_ocr"] is False

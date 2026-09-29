@@ -172,6 +172,8 @@ def test_ocr_preflights_uploads_and_returns_stash_refs(input_pdf):
     assert result["ok"] is True
     assert result["data"]["pages_processed"] == 2
     assert result["data"]["markdown_stash_ref"] == "stash://space_ocr/markdown"
+    assert result["data"]["markdown_file_id"] == "markdown"
+    assert result["data"]["markdown_char_count"] == len(payload["markdown"])
     assert result["data"]["json_stash_ref"] == "stash://space_ocr/json"
     assert result["data"]["stash_ref"] == "stash://space_ocr/markdown"
     assert len(result["data"]["markdown_excerpt"]) <= document_ocr.INLINE_EXCERPT_CHARS

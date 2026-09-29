@@ -9,8 +9,10 @@ Input examples:
 """
 import json
 import os
+import re
 import sys
 from typing import Any
+from urllib.parse import urlparse
 
 # Add lib to path for shared SerpApi helpers
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
@@ -96,6 +98,21 @@ def merge_product_detail(search_row: dict[str, Any], detail_row: dict[str, Any])
     return merged
 
 
+def normalize_amazon_product_reference(value: str) -> tuple[str, str | None]:
+    """Accept a bare ASIN or a product URL without passing a URL as the ASIN."""
+    if not value.startswith(("http://", "https://")):
+        return value, None
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower()
+    domain = host.removeprefix("www.")
+    if not re.fullmatch(r"amazon\.[a-z]{2,3}(?:\.[a-z]{2})?", domain):
+        raise ValueError("Provide an Amazon product URL or a bare ASIN.")
+    match = re.search(r"/(?:dp|gp/product|gp/aw/d)/([a-z0-9]{10})(?:/|$)", parsed.path, re.I)
+    if not match:
+        raise ValueError("Amazon URL must contain a /dp/ or /gp/product/ ASIN.")
+    return match.group(1).upper(), domain
+
+
 def main() -> int:
     try:
         load_config()
@@ -108,8 +125,10 @@ def main() -> int:
 
         engine = str(input_data.get("engine", "")).strip()
         query = str(input_data.get("query", "")).strip()
-        asin = str(input_data.get("asin", "")).strip()
-        amazon_domain = str(input_data.get("amazon_domain", "amazon.com")).strip()
+        asin, inferred_domain = normalize_amazon_product_reference(
+            str(input_data.get("asin", "")).strip()
+        )
+        amazon_domain = str(input_data.get("amazon_domain") or inferred_domain or "amazon.com").strip()
         language = str(input_data.get("language", "en_US")).strip()
         device = str(input_data.get("device", "desktop")).strip()
         page = int(input_data.get("page", 1))

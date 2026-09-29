@@ -1,7 +1,7 @@
 {
   "id": "pdf_ingest",
   "name": "PDF Knowledge Ingest Workflow",
-  "description": "Turn an attached or remote PDF into durable Jarvis knowledge: securely normalize the source in Stash, extract clean text, create a detailed summary and keywords, write and ingest a structured Intel file, and publish a source-attributed Canvas briefing.",
+  "description": "Turn an attached or remote PDF into durable Jarvis knowledge: securely normalize the source in Stash, extract text or use OCR for scanned pages, create a detailed summary and keywords, write and ingest a structured Intel file, and publish a source-attributed Canvas briefing.",
   "enabled": true,
   "version": "1.0",
   "allow_workflow_tool": true,
@@ -32,7 +32,8 @@
       "from": "query",
       "extract": "attachment_filename",
       "default": "source.pdf"
-    }
+    },
+    "ocr_json_stash_ref": ""
   },
   "steps": [
     {
@@ -76,9 +77,55 @@
       },
       "extract": {
         "pdf_page_count": "page_count",
-        "pdf_character_count": "char_count",
+        "pdf_character_count": "content_char_count",
+        "pdf_needs_ocr": "needs_ocr",
+        "pdf_content_char_count": "content_char_count",
+        "extraction_method": "extraction_method",
         "extracted_text_stash_ref": "stash_ref",
         "extracted_text_space_id": "space_id"
+      },
+      "required": true,
+      "description": "Extract searchable PDF text and measure content separately from page markers"
+    },
+    {
+      "step": 3,
+      "tool": "document_ocr",
+      "condition": {
+        "op": "eq",
+        "left": "${pdf_needs_ocr}",
+        "right": true
+      },
+      "params": {
+        "action": "ocr",
+        "stash_ref": "${pdf_stash_ref}",
+        "save_to_stash": true,
+        "output_name": "pdf-ingest-${filename_timestamp}"
+      },
+      "extract": {
+        "extracted_text_stash_ref": "markdown_stash_ref",
+        "extracted_text_space_id": "space_id",
+        "ocr_markdown_file_id": "markdown_file_id",
+        "ocr_json_stash_ref": "json_stash_ref",
+        "pdf_character_count": "markdown_char_count",
+        "extraction_method": "action"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Use OCR only when PDF text extraction found too little real content"
+    },
+    {
+      "step": 4,
+      "tool": "stash",
+      "action": "read",
+      "condition": {
+        "op": "eq",
+        "left": "${pdf_needs_ocr}",
+        "right": true
+      },
+      "params": {
+        "space_id": "${extracted_text_space_id}",
+        "file_id": "${ocr_markdown_file_id}",
+        "mode": "text"
       },
       "validation": {
         "type": "heuristic",
@@ -87,10 +134,10 @@
         }
       },
       "required": true,
-      "description": "Extract readable text from every PDF page and archive the cleaned text in Stash"
+      "description": "Require substantial saved OCR text before creating knowledge artifacts"
     },
     {
-      "step": 3,
+      "step": 5,
       "tool": "text_summarizer",
       "params": {
         "stash_ref": "${extracted_text_stash_ref}",
@@ -112,7 +159,7 @@
       "description": "Create a compact, detailed summary with factual coverage across the PDF"
     },
     {
-      "step": 4,
+      "step": 6,
       "tool": "text_summarizer",
       "params": {
         "stash_ref": "${extracted_text_stash_ref}",
@@ -127,7 +174,7 @@
       "description": "Extract retrieval keywords from the full PDF text"
     },
     {
-      "step": 5,
+      "step": 7,
       "tool": "manage_intel",
       "action": "create",
       "params": {
@@ -136,7 +183,7 @@
         "filename_prefix": "pdf-ingest",
         "on_conflict": "version"
       },
-      "llm_prompt": "Create a retrieval-friendly Intel Markdown document from this PDF analysis.\n\nOriginal attachment filename: ${attachment_filename}\nOriginal URL (blank for an attached PDF): ${url}\nOriginal PDF stash reference: ${pdf_stash_ref}\nExtracted text stash reference: ${extracted_text_stash_ref}\nPages extracted: ${pdf_page_count}\nCharacters extracted: ${pdf_character_count}\nSummary method: ${summary_method}\nSummary coverage was chunk-limited: ${summary_chunk_limited}\n\nDetailed summary:\n${pdf_summary}\n\nKeywords:\n${pdf_keywords}\n\nReturn raw Markdown only, with this structure:\n\n# [Specific, stable document title inferred from the summary]\nSource: [Use the original URL when present; otherwise use the original PDF stash reference]\nOriginal Filename: ${attachment_filename}\nExtracted Text: ${extracted_text_stash_ref}\nPages: ${pdf_page_count}\nIngested: ${timestamp}\n\n## Overview\nA concise explanation of the document's purpose and scope.\n\n## Important Facts\nUse comprehensive bullets. Prefer `Key: Value` phrasing so facts ingest cleanly. Preserve numbers, units, names, dates, limits, warnings, procedures, and uncertainty exactly as represented in the summary.\n\n## Concepts and Definitions\nDefine the important terms and relationships.\n\n## Procedures or Recommendations\nInclude only procedures or recommendations actually present. If none are present, say so briefly.\n\n## Caveats and Verification Notes\nCapture qualifications, uncertainty, source limitations, whether summary coverage was chunk-limited, and anything that should be checked against the original PDF.\n\n## Keywords\nList the supplied retrieval keywords.\n\n## Source References\nInclude the complete original URL when present, the original PDF stash reference, the extracted-text stash reference, page count, and original filename.\n\nRules:\n1. Do not invent facts or fill gaps from outside knowledge.\n2. Keep important details while removing repetition and boilerplate.\n3. The level-one title must identify the actual subject and stay useful if this Intel file is updated later; do not put an ingestion date or generic label such as `PDF Ingest` in it.\n4. Never output placeholders or a Markdown code fence.\n5. Preserve complete URLs and stash references without shortening them.\n6. Preserve command syntax, filenames, extensions, and placeholders exactly; never convert values such as `file.tar`, `IMAGE:TAG`, or `HOST:PORT` into URLs.",
+      "llm_prompt": "Create a retrieval-friendly Intel Markdown document from this PDF analysis.\n\nOriginal attachment filename: ${attachment_filename}\nOriginal URL (blank for an attached PDF): ${url}\nOriginal PDF stash reference: ${pdf_stash_ref}\nExtracted text stash reference: ${extracted_text_stash_ref}\nOCR JSON stash reference (blank when OCR was not needed): ${ocr_json_stash_ref}\nExtraction method: ${extraction_method}\nPages extracted: ${pdf_page_count}\nCharacters extracted: ${pdf_character_count}\nSummary method: ${summary_method}\nSummary coverage was chunk-limited: ${summary_chunk_limited}\n\nDetailed summary:\n${pdf_summary}\n\nKeywords:\n${pdf_keywords}\n\nReturn raw Markdown only, with this structure:\n\n# [Specific, stable document title inferred from the summary]\nSource: [Use the original URL when present; otherwise use the original PDF stash reference]\nOriginal Filename: ${attachment_filename}\nExtracted Text: ${extracted_text_stash_ref}\nPages: ${pdf_page_count}\nIngested: ${timestamp}\n\n## Overview\nA concise explanation of the document's purpose and scope.\n\n## Important Facts\nUse comprehensive bullets. Prefer `Key: Value` phrasing so facts ingest cleanly. Preserve numbers, units, names, dates, limits, warnings, procedures, and uncertainty exactly as represented in the summary.\n\n## Concepts and Definitions\nDefine the important terms and relationships.\n\n## Procedures or Recommendations\nInclude only procedures or recommendations actually present. If none are present, say so briefly.\n\n## Caveats and Verification Notes\nCapture qualifications, uncertainty, source limitations, the extraction method, whether summary coverage was chunk-limited, and anything that should be checked against the original PDF.\n\n## Keywords\nList the supplied retrieval keywords.\n\n## Source References\nInclude the complete original URL when present, the original PDF stash reference, the extracted-text stash reference, the OCR JSON stash reference when present, page count, and original filename.\n\nRules:\n1. Do not invent facts or fill gaps from outside knowledge.\n2. Keep important details while removing repetition and boilerplate.\n3. The level-one title must identify the actual subject and stay useful if this Intel file is updated later; do not put an ingestion date or generic label such as `PDF Ingest` in it.\n4. Never output placeholders or a Markdown code fence.\n5. Preserve complete URLs and stash references without shortening them.\n6. Preserve command syntax, filenames, extensions, and placeholders exactly; never convert values such as `file.tar`, `IMAGE:TAG`, or `HOST:PORT` into URLs.",
       "llm_variable_max_chars": 12000,
       "llm_output_validation": {
         "param": "content",
@@ -164,7 +211,7 @@
       "description": "Create a structured Intel file from the factual PDF summary"
     },
     {
-      "step": 6,
+      "step": 8,
       "tool": "ingest_intel",
       "params": {
         "async": false
@@ -178,7 +225,7 @@
       "description": "Ingest the Intel file now so the processed fact count is known"
     },
     {
-      "step": 7,
+      "step": 9,
       "tool": "canvas",
       "action": "create",
       "params": {
@@ -191,7 +238,7 @@
           "workflow"
         ]
       },
-      "llm_prompt": "Create one concise, source-attributed PDF study and fact sheet in raw Markdown.\n\nOriginal filename: ${attachment_filename}\nOriginal URL (blank for an attached PDF): ${url}\nOriginal PDF stash reference: ${pdf_stash_ref}\nExtracted text stash reference: ${extracted_text_stash_ref}\nIntel file: ${intel_file}\nPages: ${pdf_page_count}\nCharacters: ${pdf_character_count}\nFacts processed by ingest: ${ingest_fact_count}\nSummary coverage was chunk-limited: ${summary_chunk_limited}\n\nDetailed summary:\n${pdf_summary}\n\nKeywords:\n${pdf_keywords}\n\nRequired sections:\n# [Specific document title]\n## At a Glance\n## Important Facts\n## Key Terms\n## Procedures or Practical Takeaways\n## Caveats and What to Verify\n## Sources and Artifacts\n\nIn Sources and Artifacts, include every non-blank complete source URL or stash reference plus the Intel filename. State in Caveats when summary coverage was chunk-limited. Do not invent facts. Do not use placeholders, shortened URLs, or Markdown code fences. Preserve command syntax, filenames, extensions, and placeholders exactly in backticks; never convert values such as `file.tar`, `IMAGE:TAG`, or `HOST:PORT` into URLs. Keep the page highly scannable.",
+      "llm_prompt": "Create one concise, source-attributed PDF study and fact sheet in raw Markdown.\n\nOriginal filename: ${attachment_filename}\nOriginal URL (blank for an attached PDF): ${url}\nOriginal PDF stash reference: ${pdf_stash_ref}\nExtracted text stash reference: ${extracted_text_stash_ref}\nOCR JSON stash reference (blank when OCR was not needed): ${ocr_json_stash_ref}\nExtraction method: ${extraction_method}\nIntel file: ${intel_file}\nPages: ${pdf_page_count}\nCharacters: ${pdf_character_count}\nFacts processed by ingest: ${ingest_fact_count}\nSummary coverage was chunk-limited: ${summary_chunk_limited}\n\nDetailed summary:\n${pdf_summary}\n\nKeywords:\n${pdf_keywords}\n\nRequired sections:\n# [Specific document title]\n## At a Glance\n## Important Facts\n## Key Terms\n## Procedures or Practical Takeaways\n## Caveats and What to Verify\n## Sources and Artifacts\n\nIn Sources and Artifacts, include every non-blank complete source URL or stash reference plus the Intel filename. State in Caveats when OCR was used and when summary coverage was chunk-limited. Do not invent facts. Do not use placeholders, shortened URLs, or Markdown code fences. Preserve command syntax, filenames, extensions, and placeholders exactly in backticks; never convert values such as `file.tar`, `IMAGE:TAG`, or `HOST:PORT` into URLs. Keep the page highly scannable.",
       "llm_variable_max_chars": 12000,
       "llm_output_validation": {
         "param": "content",

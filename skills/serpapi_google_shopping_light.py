@@ -435,6 +435,22 @@ def _lowest_returned_price(results: list[dict[str, Any]]) -> dict[str, Any] | No
     }
 
 
+def exact_detail_candidate(query: str, results: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, int]:
+    """Select one token whose title contains every query word, or leave ambiguity."""
+    query_words = set(re.findall(r"[a-z0-9]+", query.casefold()))
+    if not query_words:
+        return None, 0
+
+    matches: dict[str, dict[str, Any]] = {}
+    for row in results:
+        token = row.get("immersive_product_page_token")
+        title_words = set(re.findall(r"[a-z0-9]+", str(row.get("title") or "").casefold()))
+        if not token or not query_words.issubset(title_words):
+            continue
+        matches.setdefault(str(token), row)
+    return (next(iter(matches.values())) if len(matches) == 1 else None), len(matches)
+
+
 def build_speech(query: str, results: list[dict[str, Any]]) -> str:
     if not results:
         return f"Google Shopping Light returned no products for '{query}'."
@@ -540,6 +556,7 @@ def main() -> int:
         search_parameters = search_parameters if isinstance(search_parameters, dict) else {}
         merchants = sorted({str(row["source"]) for row in results if row.get("source")})
         lowest = _lowest_returned_price(results)
+        detail_candidate, detail_match_count = exact_detail_candidate(query, results)
 
         data: dict[str, Any] = {
             "engine": "google_shopping_light",
@@ -571,6 +588,8 @@ def main() -> int:
             "top_results": results[:5],
             "top_url": results[0].get("url") if results else None,
             "lowest_returned_price": lowest,
+            "exact_detail_candidate": detail_candidate,
+            "exact_detail_match_count": detail_match_count,
             "comparison_note": COMPARISON_NOTE,
             "pagination": pagination,
             "has_more": pagination.get("has_more", False),

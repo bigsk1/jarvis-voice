@@ -41,7 +41,7 @@
       },
       "save_to_stash": {
         "type": "boolean",
-        "description": "Save extracted text to stash (for extract_text)",
+        "description": "Save extracted text to stash (for extract_text). The result also reports content_char_count excluding page markers and needs_ocr when average searchable text is under 40 non-whitespace characters per page; use document_ocr before relying on that text for knowledge ingestion.",
         "default": false
       },
       "output_name": {

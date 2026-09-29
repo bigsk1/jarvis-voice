@@ -635,7 +635,7 @@ def action_ocr(args: dict[str, Any]) -> dict[str, Any]:
         handle.close()
 
     markdown = str(payload.get("markdown") or "")
-    data = {"action": "ocr", **_common_metadata(payload)}
+    data = {"action": "ocr", "markdown_char_count": len(markdown), **_common_metadata(payload)}
     data["markdown_excerpt"] = _excerpt(
         markdown,
         full_result_saved=save_to_stash,
@@ -671,6 +671,7 @@ def action_ocr(args: dict[str, Any]) -> dict[str, Any]:
             ["document_ocr", "ocr", "json"],
         )
         data["stash_ref"] = data["markdown_stash_ref"]
+        data["markdown_file_id"] = data["markdown_stash_ref"].rsplit("/", 1)[-1]
         data["space_id"] = space.space_id
 
     pages_processed = data.get("pages_processed", len(data.get("pages", [])))

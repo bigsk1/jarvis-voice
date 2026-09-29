@@ -122,10 +122,12 @@ def action_extract_text(args: dict) -> dict:
     
     # Extract text
     text_parts = []
+    content_char_count = 0
     for page_num in page_nums:
         if 0 <= page_num < doc.page_count:
             page = doc[page_num]
             text = page.get_text()
+            content_char_count += sum(not character.isspace() for character in text)
             text_parts.append(f"--- Page {page_num + 1} ---\n{text}")
     
     full_text = "\n\n".join(text_parts)
@@ -134,7 +136,10 @@ def action_extract_text(args: dict) -> dict:
     result = {
         "text": full_text,
         "page_count": len(text_parts),
-        "char_count": len(full_text)
+        "char_count": len(full_text),
+        "content_char_count": content_char_count,
+        "needs_ocr": content_char_count < 40 * max(1, len(text_parts)),
+        "extraction_method": "pdf_text",
     }
     
     # Optionally save to stash
@@ -162,7 +167,7 @@ def action_extract_text(args: dict) -> dict:
     
     return {
         "ok": True,
-        "speech": f"Extracted {len(full_text)} characters from {len(text_parts)} pages",
+        "speech": f"Extracted {content_char_count} text characters from {len(text_parts)} pages",
         "data": result
     }
 

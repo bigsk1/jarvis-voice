@@ -22,7 +22,7 @@
       },
       "asin": {
         "type": "string",
-        "description": "Amazon ASIN for a specific product detail lookup. Best with engine=amazon_product when you want one exact listing."
+        "description": "Amazon ASIN or full Amazon /dp/ or /gp/product/ URL for one exact product. A URL supplies its Amazon country domain unless amazon_domain is explicit. Best with engine=amazon_product."
       },
       "amazon_domain": {
         "type": "string",

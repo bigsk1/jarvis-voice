@@ -377,7 +377,7 @@ the same orchestration turn; it is not a durable background run.
 | `night_out.json` | `/night_out <occasion or preference>` | Build a date-aware evening plan from an explicit destination or the active mode default location/postal code and bounded local sources; weather runs only when no outing date is given or the parsed date fits the 10-day horizon |
 | `upcoming_movie_radar.json` | `/upcoming_movie_radar <genre criteria>` | Explicit/scheduled TMDB-first release radar with required included-genre inference, provider-side genre exclusion, a separate rolling Canvas page per resolved primary genre, optional Brave enrichment, public-poster email fields, and one shared sent-ID ledger for cross-genre deduplication after confirmed email delivery |
 | `upcoming_tv_radar.json` | `/upcoming_tv_radar <genre criteria>` | Explicit/scheduled TMDB-first series-premiere radar with required included-genre inference, provider-side genre exclusion, a separate rolling Canvas page per resolved primary genre, optional Brave enrichment, public-poster email fields, and one shared sent-ID ledger for cross-genre deduplication after confirmed email delivery |
-| `pdf_ingest.json` | `/pdf_ingest <attached PDF, stash ref, or URL>` | Extract a PDF, create a semantic Intel file, ingest it synchronously, and publish a source-attributed Canvas briefing |
+| `pdf_ingest.json` | `/pdf_ingest <attached PDF, stash ref, or URL>` | Extract searchable PDF text, use OCR for scanned documents when needed, create a semantic Intel file, ingest it synchronously, and publish a source-attributed Canvas briefing |
 | `quick_note.json` | `/note <text>` | Quick note to memory and canvas |
 | `serpapi_amazon_search.json` | `/serpapi_amazon <query>` | Search Amazon, save a normalized Stash export, and create a Canvas comparison report |
 | `server_health_check.json` | `/health <host>` | SSH health check on remote server |
@@ -386,6 +386,9 @@ the same orchestration turn; it is not a durable background run.
 | `tv_night.json` | `/tv_night <mood, constraints, or favorite shows>` | Use required public Trakt TV metadata plus optional read-only account recommendations and deterministic watched filtering, TMDB artwork/series commitment facts, YouTube trailers, and Brave streaming context; episode runtime remains distinct from total commitment |
 | `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |
 | `vacation_reconnaissance.json` | `/vacation_reconnaissance <location>` | Create a crawl-free weather, attractions, dining, local pulse, image, Stash, and Canvas destination report for a required location |
+| `verify_amazon.json` | `/verify_amazon <ASIN or Amazon product URL>` | Fetch one exact Amazon product page and save a dated listing evidence brief |
+| `verify_ebay.json` | `/verify_ebay <item ID or eBay item URL>` | Fetch one exact eBay listing with seller details and save a dated evidence brief |
+| `verify_shopping.json` | `/verify_shopping <precise product name and variant>` | Require one unambiguous Google Shopping product match, fetch its detailed store offers, and save a dated evidence brief |
 | `weather_watch.json` | `/weather_watch` | Default-location weather watch with canvas report and condition-specific alerts |
 | `web_archive.json` | `/archive <url>` | Fetch URL, save to stash, create canvas summary |
 | `youtube_ingest.json` | `/youtube_ingest <url>` | Download video + transcript, extract important facts/keywords, create canvas briefing |
