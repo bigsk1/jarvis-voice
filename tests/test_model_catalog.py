@@ -235,7 +235,7 @@ class ModelCatalogTests(unittest.TestCase):
     def test_provider_options_distinguish_catalog_defaults(self):
         for provider, model_id in (
             ("xai", "grok-4.7"),
-            ("anthropic", "claude-sonnet-5"),
+            ("anthropic", "claude-sonnet-5-5"),
             ("openai", "gpt-5.6-luna"),
         ):
             options = {
@@ -403,7 +403,7 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertTrue(xai["grok-build-0.1"]["vision"])
         self.assertIn("vision", xai["grok-build-0.1"]["capabilities"])
         self.assertIn("tools", xai["grok-build-0.1"]["capabilities"])
-        self.assertTrue(anthropic["claude-sonnet-5"]["vision"])
+        self.assertTrue(anthropic["claude-sonnet-5-5"]["vision"])
         self.assertTrue(openai["gpt-5.6-luna"]["vision"])
         self.assertIn("vision", openai["gpt-5.6-luna"]["capabilities"])
         self.assertIn("tools", openai["gpt-5.6-luna"]["capabilities"])
@@ -461,6 +461,20 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(pricing["cached"], 0.075)
         self.assertEqual(pricing["output"], 4.50)
 
+    def test_anthropic_sonnet_5_5_resolves_with_pricing_and_context(self):
+        self.assertEqual(get_model_context_window("anthropic", "claude-sonnet-5-5"), 1_000_000)
+        self.assertEqual(get_model_context_label("anthropic", "claude-sonnet-5-5"), "1M")
+        metadata = get_model_metadata("anthropic", "sonnet-5.5")
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["id"], "claude-sonnet-5-5")
+        self.assertEqual(metadata["max_output_tokens"], 128_000)
+        self.assertTrue(metadata["default"])
+        self.assertTrue(metadata["capabilities"]["image_input"]["supported"])
+        pricing = get_model_pricing("anthropic", "claude-sonnet-5-5")
+        self.assertEqual(pricing["input"], 2.00)
+        self.assertEqual(pricing["output"], 10.00)
+        self.assertEqual(pricing["cached"], 0.20)
+
     def test_anthropic_sonnet_5_resolves_with_pricing_and_context(self):
         self.assertEqual(get_model_context_window("anthropic", "claude-sonnet-5"), 1_000_000)
         self.assertEqual(get_model_context_label("anthropic", "claude-sonnet-5"), "1M")
@@ -468,6 +482,7 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertIsNotNone(metadata)
         self.assertEqual(metadata["id"], "claude-sonnet-5")
         self.assertEqual(metadata["max_output_tokens"], 128_000)
+        self.assertFalse(metadata.get("default", False))
         self.assertTrue(metadata["capabilities"]["image_input"]["supported"])
         pricing = get_model_pricing("anthropic", "claude-sonnet-5")
         self.assertEqual(pricing["input"], 2.00)
@@ -485,9 +500,10 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(pricing["output"], 15.00)
         self.assertEqual(pricing["cached"], 0.30)
 
-    def test_anthropic_options_include_sonnet_5_first(self):
+    def test_anthropic_options_include_sonnet_5_5_first(self):
         models = [entry["id"] for entry in get_provider_model_options("anthropic")]
-        self.assertEqual(models[0], "claude-sonnet-5")
+        self.assertEqual(models[0], "claude-sonnet-5-5")
+        self.assertLess(models.index("claude-sonnet-5-5"), models.index("claude-sonnet-5"))
         self.assertIn("claude-fable-5", models)
         self.assertIn("claude-sonnet-4-6", models)
         self.assertLess(models.index("claude-sonnet-4-6"), models.index("claude-opus-4-8"))
@@ -569,7 +585,7 @@ class ModelCatalogTests(unittest.TestCase):
     def test_catalog_defaults_are_explicit(self):
         self.assertEqual(get_default_model_id("openai"), "gpt-5.6-luna")
         self.assertEqual(get_default_model_id("xai"), "grok-4.7")
-        self.assertEqual(get_default_model_id("anthropic"), "claude-sonnet-5")
+        self.assertEqual(get_default_model_id("anthropic"), "claude-sonnet-5-5")
 
     def test_legacy_claude_4_5_alias_resolves_to_sonnet(self):
         metadata = get_model_metadata("anthropic", "claude-4-5")

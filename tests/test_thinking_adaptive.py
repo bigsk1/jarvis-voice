@@ -53,6 +53,13 @@ class AdaptiveThinkingTests(unittest.TestCase):
         self.assertEqual(config["output_config"]["effort"], "xhigh")
         self.assertEqual(config["max_tokens"], 16384)
 
+    def test_sonnet_5_5_uses_adaptive_thinking(self):
+        self.assertTrue(uses_adaptive_thinking("anthropic", "claude-sonnet-5-5"))
+        self.assertTrue(is_thinking_supported("anthropic", "sonnet-5.5"))
+        config = get_thinking_config("anthropic", "claude-sonnet-5-5")
+        self.assertEqual(config["thinking"]["type"], "adaptive")
+        self.assertEqual(config["output_config"]["effort"], "xhigh")
+
     def test_fable_5_uses_catalog_adaptive_thinking(self):
         self.assertTrue(is_thinking_supported("anthropic", "claude-fable-5"))
         self.assertTrue(uses_adaptive_thinking("anthropic", "fable-5"))
