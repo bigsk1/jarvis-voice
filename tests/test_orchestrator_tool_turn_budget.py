@@ -268,8 +268,35 @@ class ToolTurnBudgetTests(unittest.TestCase):
         self.assertIn("One final step failed", result["speech"])
         self.assertIn("Serpapi yelp search failed", result["speech"])
         self.assertEqual(result["tools_used"], ["serpapi_yelp_search", "serpapi_yelp_search"])
+        self.assertEqual(result["data"]["serpapi_yelp_search"], [{"call": 1}, {"call": 2}])
         self.assertEqual(result["usage"]["model_calls"], 3)
         self.assertEqual(result["usage"]["total_tokens"], 6)
+
+    def test_late_incident_keeps_success_data_and_ordered_failure_diagnosis(self):
+        orchestrator = self._build_orchestrator(fail_on_calls={2}, tool_name="serpapi_yelp_search")
+        original_execute = orchestrator.executor.execute
+
+        def execute(tool_name, arguments):
+            result = original_execute(tool_name, arguments)
+            if not result["ok"]:
+                result["data"] = {
+                    "provider": "SerpApi",
+                    "failure_reason": "active_provider_incident",
+                    "status_page_url": "https://status.serpapi.com/",
+                    "serpapi_incident": {"engine": "yelp", "status": "investigating"},
+                    "api_key": "do-not-show",
+                }
+            return result
+
+        orchestrator.executor.execute = execute
+        result = self._run_with_max_turns_and_retries(orchestrator, 3, 0)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["data"]["serpapi_yelp_search"], {"call": 1})
+        self.assertEqual([entry["ok"] for entry in result["tool_trace"]], [True, False])
+        diagnosis = result["tool_trace"][1]["result_data"]
+        self.assertEqual(diagnosis["serpapi_incident"]["engine"], "yelp")
+        self.assertEqual(diagnosis["api_key"], "[redacted]")
 
     def test_single_call_terminal_failure_preserves_usage(self):
         orchestrator = self._build_orchestrator(
@@ -284,6 +311,24 @@ class ToolTurnBudgetTests(unittest.TestCase):
         self.assertEqual(result["tool_name"], "generate_image")
         self.assertEqual(result["usage"]["model_calls"], 1)
         self.assertEqual(result["usage"]["total_tokens"], 2)
+
+    def test_single_call_failure_preserves_earlier_tool_data(self):
+        orchestrator = self._build_orchestrator(fail_on_calls={2}, tool_name="safe_read")
+        original_route = orchestrator.router.route
+
+        def route(*args, **kwargs):
+            result = original_route(*args, **kwargs)
+            if orchestrator.router.calls == 2:
+                result["tool_name"] = "generate_image"
+            return result
+
+        orchestrator.router.route = route
+
+        result = self._run_with_max_turns_and_retries(orchestrator, 5, 1)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["tools_used"], ["safe_read", "generate_image"])
+        self.assertEqual(result["data"]["safe_read"], {"call": 1})
 
     def test_reasoning_diagnostic_alone_is_not_counted_as_usage(self):
         orchestrator = self._build_orchestrator(fail_on_calls=set())

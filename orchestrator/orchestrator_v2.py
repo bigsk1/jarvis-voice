@@ -2206,6 +2206,9 @@ Mode: {self.mode}
                     "duration_ms": tool_duration_ms,
                     "error": str(result.get("error", ""))[:500] if isinstance(result, dict) and result.get("error") else None,
                     "speech": str(result.get("speech", ""))[:500] if isinstance(result, dict) else "",
+                    "result_data": self._sanitize_tool_trace_value(result["data"])
+                    if isinstance(result, dict) and not result.get("ok") and result.get("data")
+                    else None,
                     "workflow_run_started": bool(
                         tool_name == "workflow"
                         and isinstance(result, dict)
@@ -2413,6 +2416,7 @@ Mode: {self.mode}
                             "tool_name": tool_name,
                             "tool_args": arguments,
                             "tools_used": attempted_tools,
+                            "data": accumulated_data,
                             "tool_trace": tool_trace,
                             "retries": retry_count,
                             "terminal_failure": True,
@@ -2522,6 +2526,7 @@ Mode: {self.mode}
                         "tool_name": tool_name,
                         "tool_args": arguments,
                         "tools_used": tools_used or [tool_name],
+                        "data": accumulated_data,
                         "tool_trace": tool_trace,
                         "retries": retry_count,
                         "usage": total_usage if self._has_usage_data(total_usage) else None,

@@ -220,7 +220,8 @@ harness._reconcilePendingToolsWithFinalList(
   ['tool_search', 'serpapi_maps_search'],
   [
     {{ tool: 'tool_search', ok: true, duration_ms: 10 }},
-    {{ tool: 'serpapi_yelp_search', ok: false, error: 'No results', duration_ms: 20 }},
+    {{ tool: 'serpapi_yelp_search', ok: false, error: 'No results', duration_ms: 20,
+       result_data: {{ failure_reason: 'active_provider_incident', serpapi_incident: {{ engine: 'yelp' }} }} }},
     {{ tool: 'serpapi_maps_search', ok: true, duration_ms: 30 }}
   ]
 );
@@ -229,6 +230,7 @@ const entries = Object.values(harness.pendingTools);
 if (entries.map(entry => entry.toolName).join(',') !== 'tool_search,serpapi_yelp_search,serpapi_maps_search') process.exit(2);
 if (entries[1].status !== 'error') process.exit(3);
 if (entries[1].result.error !== 'No results') process.exit(4);
+if (entries[1].result.data.serpapi_incident.engine !== 'yelp') process.exit(5);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)

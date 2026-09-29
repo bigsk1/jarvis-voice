@@ -4533,7 +4533,8 @@ class JarvisApp {
           { ...(msg.data || {}),
             _background_mode: msg.data?._background_mode || backgroundModes.get(msg.data?.parent_job_id),
             completion_guard: conversation.completion_guards?.[msg.data?._web_message_id] },
-          { allowReaction: identity === conversation.reaction_message_id, late: msg.data?._kind === 'continuation' }
+          { allowReaction: identity === conversation.reaction_message_id,
+            late: msg.data?._kind === 'continuation', fromHistory: true }
         );
         if (exists && msg.data?._completion_guard?.status
             && !['none', 'pending', 'repair_response'].includes(msg.data._completion_guard.status)) {

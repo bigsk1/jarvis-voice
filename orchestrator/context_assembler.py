@@ -163,6 +163,36 @@ class ContextAssembler:
         Handles arrays (repeated tool calls) and extracts titles, descriptions, key info.
         """
         extracted_parts = []
+        row_priority = (
+            "title", "name", "price", "extracted_price", "url", "link",
+            "asin", "status", "severity", "rating", "source", "id",
+        )
+        sensitive_row_keys = (
+            "password", "secret", "token", "credential", "cookie",
+            "authorization", "api_key", "private_key",
+        )
+
+        def _row_preview(row: dict) -> str:
+            """Keep related scalar fields together without exposing bulky or secret fields."""
+            preview = {}
+            keys = dict.fromkeys((*row_priority, *row.keys()))
+            for key in keys:
+                if len(preview) >= 8:
+                    break
+                lowered = str(key).lower()
+                if any(marker in lowered for marker in sensitive_row_keys):
+                    continue
+                if lowered in {"raw", "content", "body", "html", "full_text"}:
+                    continue
+                value = row.get(key)
+                if value in (None, "") or not isinstance(value, (str, int, float, bool)):
+                    continue
+                if key == "extracted_price" and row.get("price") not in (None, ""):
+                    continue
+                if key == "link" and row.get("url") not in (None, ""):
+                    continue
+                preview[key] = str(value)[:300 if lowered in {"url", "link"} else 180]
+            return json.dumps(preview, ensure_ascii=False, separators=(",", ":"))
 
         def _extract_dict_fields(record: dict, depth: int = 0) -> list[str]:
             if not isinstance(record, dict) or depth > 2:
@@ -170,29 +200,40 @@ class ContextAssembler:
 
             info = []
             useful_fields = [
-                "title", "description", "url", "name", "price",
-                "coin", "price_usd", "speech", "summary", "result", "content",
-                "count", "status", "status_filter", "source", "severity",
-                "created_at", "id",
+                "query", "results_count", "title", "url", "name", "price",
+                "coin", "price_usd", "count", "status", "status_filter",
+                "source", "severity", "created_at", "id", "serpapi_error",
             ]
             for field in useful_fields:
                 if field in record and record[field] not in (None, "", [], {}):
-                    info.append(f"{field}: {str(record[field])[:500]}")
+                    info.append(f"{field}: {str(record[field])[:300]}")
 
-            for list_key in ["alerts", "reminders", "items", "results", "tasks", "events"]:
+            preferred_lists = (
+                "results", "top_results", "candidates", "items", "offers",
+                "products", "organic_results", "shopping_results", "sources",
+            )
+            list_keys = dict.fromkeys((*preferred_lists, *record.keys()))
+            lists_shown = 0
+            for list_key in list_keys:
+                if lists_shown >= 4:
+                    break
+                if list_key == "top_results" and record.get("results"):
+                    continue
+                if any(marker in str(list_key).lower() for marker in sensitive_row_keys):
+                    continue
                 nested_list = record.get(list_key)
                 if isinstance(nested_list, list) and nested_list:
+                    lists_shown += 1
                     info.append(f"{list_key}_count: {len(nested_list)}")
-                    for nested in nested_list[:3]:
+                    for nested in nested_list[:5]:
                         if isinstance(nested, dict):
-                            title = nested.get("title") or nested.get("name") or nested.get("description")
-                            if title:
-                                info.append(f"{list_key}_item: {str(title)[:200]}")
-                            for nested_field in ["status", "severity", "source", "created_at", "id"]:
-                                if nested_field in nested and nested[nested_field] not in (None, ""):
-                                    info.append(f"{list_key}_{nested_field}: {str(nested[nested_field])[:200]}")
+                            info.append(f"{list_key}_item: {_row_preview(nested)}")
                         else:
                             info.append(f"{list_key}_item: {str(nested)[:200]}")
+
+            for field in ("description", "speech", "summary", "result", "content"):
+                if field in record and record[field] not in (None, "", [], {}):
+                    info.append(f"{field}: {str(record[field])[:500]}")
 
             for nested_key in ["data", "report", "payload"]:
                 nested_dict = record.get(nested_key)
@@ -203,6 +244,9 @@ class ContextAssembler:
 
         for tool_name, data in accumulated_data.items():
             items = data if isinstance(data, list) else [data]
+            tool_budget = 9500 // max(1, len(accumulated_data))
+            item_cap = 8000 if tool_name in DEEPWIKI_TOOL_NAMES | {"stash", "text_summarizer"} else 4000
+            item_budget = max(120, min(item_cap, tool_budget // max(1, len(items))))
 
             tool_info = []
             for item in items:
@@ -214,6 +258,7 @@ class ContextAssembler:
                             separators=(",", ":"),
                         ))
                         continue
+                    item_info = []
                     if tool_name == "text_summarizer" and isinstance(item.get("summary"), str):
                         source = item.get("source") if isinstance(item.get("source"), dict) else {}
                         source_label = (
@@ -223,41 +268,42 @@ class ContextAssembler:
                             or source.get("url")
                             or "provided text"
                         )
-                        tool_info.append(f"source: {source_label}")
-                        tool_info.append(f"summary: {item.get('summary')}")
+                        item_info.append(f"source: {source_label}")
+                        item_info.append(f"summary: {item.get('summary')}")
                         summary_meta = item.get("summary_meta")
                         if isinstance(summary_meta, dict):
                             method = summary_meta.get("summary_method")
                             llm_used = summary_meta.get("llm_used")
                             if method:
-                                tool_info.append(f"summary_method: {method}, llm_used: {llm_used}")
+                                item_info.append(f"summary_method: {method}, llm_used: {llm_used}")
 
                     if tool_name == "stash" and isinstance(item.get("content"), str):
                         name = item.get("name") or item.get("file_id") or "stash artifact"
                         ref = self._stash_ref_from_result(item, {})
                         content = item.get("content") or ""
-                        tool_info.append(f"name: {name}")
+                        item_info.append(f"name: {name}")
                         if ref:
-                            tool_info.append(f"ref: {ref}")
+                            item_info.append(f"ref: {ref}")
                         if ref and has_text_summarizer_summary_for_ref(accumulated_data, ref):
-                            tool_info.append("content_summary_available: see text_summarizer summary for this stash ref")
+                            item_info.append("content_summary_available: see text_summarizer summary for this stash ref")
                         else:
-                            tool_info.append(
+                            item_info.append(
                                 "content_excerpt: " + self.excerpt_for_synthesis(content, max_chars=8000)
                             )
 
                     if "raw" in item or "full_text" in item:
                         text = item.get("full_text", "")
                         if text:
-                            tool_info.append(text[:2000])
+                            item_info.append(text[:2000])
 
-                    tool_info.extend(_extract_dict_fields(item))
+                    item_info.extend(_extract_dict_fields(item))
+                    tool_info.append("\n".join(item_info)[:item_budget])
                 else:
-                    tool_info.append(str(item)[:1000])
+                    tool_info.append(str(item)[:item_budget])
 
             if tool_info:
                 extracted_parts.append(f"\n=== {tool_name} ===")
-                extracted_parts.extend(tool_info[:5])
+                extracted_parts.extend(tool_info)
 
         result = "\n".join(extracted_parts)
         return result[:10000]
@@ -363,9 +409,9 @@ class ContextAssembler:
                 content = content[: max(0, cap - len(suffix))].rstrip() + suffix
 
             prefix = "User" if role == "user" else "Jarvis"
-            if role == "assistant" and tools_used:
+            if role == "assistant" and (tools_used or tool_results):
                 unique_tools = list(dict.fromkeys(tools_used))
-                tools_str = ", ".join(unique_tools)
+                tools_str = ", ".join(unique_tools) if unique_tools else "failed calls"
                 if tool_results:
                     context_lines.append(f"{prefix} [tools: {tools_str}]")
                     context_lines.append("  Structured follow-up data (source of truth):")

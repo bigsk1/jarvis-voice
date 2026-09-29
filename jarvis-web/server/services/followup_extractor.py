@@ -3314,6 +3314,36 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 error_info['tool_args'] = compact_args
         followup['error'] = error_info
 
+    # Failed calls are absent from the successful tool payloads above. Keep
+    # status-page diagnoses in trace order for later "what failed?" questions.
+    trace = data.get('_tool_trace')
+    if isinstance(trace, list):
+        incidents = []
+        for call_index, entry in enumerate(trace):
+            if not isinstance(entry, dict) or entry.get('ok') is not False:
+                continue
+            diagnosis = entry.get('result_data')
+            if not isinstance(diagnosis, dict) or diagnosis.get('failure_reason') != 'active_provider_incident':
+                continue
+            incident = diagnosis.get('serpapi_incident')
+            if not isinstance(incident, dict):
+                continue
+            incidents.append({
+                'call_index': call_index,
+                'tool': entry.get('tool'),
+                'provider': diagnosis.get('provider'),
+                'failure_reason': diagnosis.get('failure_reason'),
+                'retry_recommended': diagnosis.get('retry_recommended'),
+                'status_page_url': diagnosis.get('status_page_url'),
+                'incident': {
+                    field: incident[field]
+                    for field in ('engine', 'name', 'status', 'impact', 'latest_update', 'incident_url')
+                    if incident.get(field) not in (None, '')
+                },
+            })
+        if incidents:
+            followup['provider_incidents'] = {'calls': incidents}
+
     if not followup:
         return None
     _annotate_candidate_truncation(followup)

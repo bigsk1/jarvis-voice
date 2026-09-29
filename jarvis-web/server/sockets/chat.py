@@ -3879,6 +3879,9 @@ Previous structured data:
             supporting = self._extract_followup_data(
                 clean, max_candidates=_FOLLOWUP_EVIDENCE_MAX_CANDIDATES
             ) or {}
+            # A provider outage explains a failed call; it is not evidence
+            # supporting factual claims from successful search results.
+            supporting.pop('provider_incidents', None)
             if native_tools:
                 supporting['native_tools'] = {
                     'server_side_tools': dict(server_side_tools or {}),
@@ -4757,6 +4760,9 @@ Previous structured data:
                         'retries': result.get('retries', 0),
                         'tool_failed': (
                             result.get('tool_name')
+                            or next((entry['tool'] for entry in reversed(result.get('tool_trace') or [])
+                                     if isinstance(entry, dict) and entry.get('ok') is False
+                                     and entry.get('tool')), None)
                             or (tools_used[-1] if tools_used else 'unknown')
                         ),
                     }

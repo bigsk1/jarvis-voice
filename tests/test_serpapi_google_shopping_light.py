@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 import serpapi_client
 from serpapi_google_shopping_light import (
+    GOOGLE_SHOPPING_LIGHT_NO_RESULTS,
     GOOGLE_SHOPPING_LIGHT_TIMEOUT,
     _google_shopping_light_request,
     extract_shopping_results,
@@ -345,6 +346,17 @@ def test_raw_payload_is_opt_in_and_empty_results_are_successful():
     assert "no products" in result["speech"]
 
 
+def test_provider_no_results_error_is_inspectable_empty_success():
+    provider_error = GOOGLE_SHOPPING_LIGHT_NO_RESULTS + "."
+    exit_code, result, _request = run_main(
+        {"query": "unlikely product"}, {"error": provider_error}
+    )
+    assert exit_code == 0
+    assert result["ok"] is True
+    assert result["data"]["results_count"] == 0
+    assert result["data"]["serpapi_error"] == provider_error
+
+
 def test_timeout_returns_provider_specific_error():
     exit_code, result, _request = run_main(
         {"query": "headphones"}, TimeoutError("timed out")
@@ -362,6 +374,7 @@ def test_shared_request_is_proxy_capable_but_manifest_defaults_off():
         "timeout": GOOGLE_SHOPPING_LIGHT_TIMEOUT,
         "use_proxy": True,
         "fallback_on_proxy_fail": True,
+        "allowed_error_substrings": (GOOGLE_SHOPPING_LIGHT_NO_RESULTS,),
     }
     manifest = json.loads(
         (ROOT / "skills" / "serpapi_google_shopping_light.tool.json").read_text()

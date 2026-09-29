@@ -452,6 +452,47 @@ assert.ok(app._completedResponseIds.has('answer'));
 """)
 
 
+def test_conversation_replay_keeps_tool_cards_in_their_saved_turns():
+    run_message_browser(r"""
+const ui = chat();
+Object.assign(ui, {
+  setConversationLoading(){}, restoreRunState(){}, reconcileLiveActions(){},
+  clearChat(){this.messagesContainer.children=[];this._renderedMessageIds=new Set();this._resetPendingToolState();}
+});
+const app = Object.create(JarvisApp.prototype);
+Object.assign(app, {chat:ui,socket,_completedResponseIds:new Set(),
+  _updateActiveConversation(){},_updateConvIdBadge(){},_loadConversationHistory(){}});
+const conversation = {id:'thread',messages:[
+  {role:'assistant',content:'Memory response',tools_used:['semantic_recall'],data:{
+    _web_message_id:'earlier-1',semantic_recall:{count:7},
+    _tool_trace:[{tool:'semantic_recall',ok:true,duration_ms:503}]}},
+  {role:'assistant',content:'Memory search response',tools_used:['search_memory'],data:{
+    _web_message_id:'earlier-2',search_memory:{count:2},
+    _tool_trace:[{tool:'search_memory',ok:true,duration_ms:254}]}},
+  {role:'assistant',content:'Amazon response',tools_used:['serpapi_amazon_search','serpapi_amazon_search'],data:{
+    _web_message_id:'last',
+    _tool_trace:[
+      {tool:'serpapi_amazon_search',ok:true,duration_ms:60076},
+      {tool:'serpapi_google_shopping_light',ok:false,duration_ms:6262,error:'No results'},
+      {tool:'serpapi_amazon_search',ok:true,duration_ms:28786},
+      {tool:'serpapi_google_shopping_light',ok:false,duration_ms:10018,error:'No results'}
+    ]}}
+]};
+await app._displayLoadedConversation(conversation);
+assert.equal(ui.messagesContainer.children.length,3);
+const cards = ui.messagesContainer.children.map(item =>
+  [...item.innerHTML.matchAll(/<span class="tool-card-title">([^<]*)<\/span>/g)].map(match => match[1]));
+assert.deepEqual(cards,[
+  ['semantic_recall'], ['search_memory'],
+  ['serpapi_amazon_search','serpapi_google_shopping_light',
+   'serpapi_amazon_search','serpapi_google_shopping_light']
+]);
+const last = ui.messagesContainer.children[2].innerHTML;
+assert.ok(last.includes('1.0m') && last.includes('28.8s'));
+assert.ok(!last.includes('254ms') && !last.includes('503ms'));
+""")
+
+
 def test_saving_reflections_off_clears_visible_thumbs():
     run_message_browser(r"""
 const removed = [];

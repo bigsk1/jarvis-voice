@@ -24,6 +24,7 @@ from serpapi_client import (
 
 
 GOOGLE_SHOPPING_LIGHT_TIMEOUT = 90
+GOOGLE_SHOPPING_LIGHT_NO_RESULTS = "Google hasn't returned any results for this query"
 DEFAULT_MAX_RESULTS = 10
 LOCALE_RE = re.compile(r"^[a-z]{2}$")
 DOMAIN_RE = re.compile(r"^[a-z0-9.-]+$")
@@ -413,6 +414,7 @@ def _google_shopping_light_request(params: dict[str, Any]) -> dict[str, Any]:
         timeout=GOOGLE_SHOPPING_LIGHT_TIMEOUT,
         use_proxy=True,
         fallback_on_proxy_fail=True,
+        allowed_error_substrings=(GOOGLE_SHOPPING_LIGHT_NO_RESULTS,),
     )
 
 
@@ -561,6 +563,7 @@ def main() -> int:
             "start": start,
             "max_results": max_results,
             "results_count": len(results),
+            "serpapi_error": payload.get("error"),
             **provider_counts,
             "merchants_count": len(merchants),
             "merchants": merchants,

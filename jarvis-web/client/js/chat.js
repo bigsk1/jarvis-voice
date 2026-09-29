@@ -3604,8 +3604,10 @@ class ChatUI {
     toolResultsData = this._flattenWorkflowToolResults(toolResultsData);
     let toolCardEntries = [];
     const toolTraceEntries = this._getToolTraceEntries(toolResultsData).filter(entry => entry.result_kind !== 'background_admission');
-    if (!options.late) this._reconcilePendingToolsWithFinalList(toolsUsed, toolTraceEntries);
-    const pendingToolEntries = options.late ? [] : Object.entries(this.pendingTools);
+    // Saved messages own their persisted trace. Pending tools belong only to
+    // the live turn and may contain cards from an earlier restored message.
+    if (!options.late && !options.fromHistory) this._reconcilePendingToolsWithFinalList(toolsUsed, toolTraceEntries);
+    const pendingToolEntries = options.late || options.fromHistory ? [] : Object.entries(this.pendingTools);
     if (pendingToolEntries.length > 0) {
       toolCardEntries = this._getPendingToolCardEntries(toolResultsData, pendingToolEntries);
     } else if (toolTraceEntries.length > 0) {
@@ -4108,7 +4110,7 @@ class ChatUI {
     
     // Clear only this response's pending tool state. Late events from another
     // message remain isolated instead of contaminating the next response.
-    if (!options.late) this._clearPendingToolsForMessage(liveMessageId);
+    if (!options.late && !options.fromHistory) this._clearPendingToolsForMessage(liveMessageId);
   }
 
   _activatePendingToolsForMessage(messageId, reset = false) {
@@ -4189,6 +4191,7 @@ class ChatUI {
       toolData.status = entry.status || toolData.status || 'success';
       if (
         entry.status === 'skipped'
+        || entry.status === 'error'
         || toolData.result === null
         || toolData.result === undefined
       ) {
@@ -6453,10 +6456,12 @@ class ChatUI {
   }
 
   _getToolTraceFailureResult(entry = {}) {
-    return {
+    const failure = {
       error: entry.error || entry.speech || 'Tool failed',
       arguments: entry.arguments || {}
     };
+    if (entry.result_data) failure.data = entry.result_data;
+    return failure;
   }
 
   _getToolTraceSkippedResult(entry = {}) {

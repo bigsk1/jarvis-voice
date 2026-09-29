@@ -39,6 +39,52 @@ def _handler():
     return ChatHandler.__new__(ChatHandler)
 
 
+def test_followup_keeps_serpapi_incident_after_successful_search_in_trace():
+    followup = _handler()._extract_followup_data({
+        'serpapi_amazon_search': {
+            'engine': 'amazon', 'query': 'lithium UPS',
+            'results': [{'title': '800W UPS', 'price': '$209.99',
+                         'url': 'https://www.amazon.com/dp/example'}],
+        },
+        '_tool_trace': [
+            {'tool': 'serpapi_amazon_search', 'ok': True},
+            {'tool': 'serpapi_google_shopping_light', 'ok': False,
+             'result_data': {
+                 'provider': 'SerpApi',
+                 'failure_reason': 'active_provider_incident',
+                 'retry_recommended': True,
+                 'status_page_url': 'https://status.serpapi.com/',
+                 'serpapi_incident': {
+                     'engine': 'google_shopping_light',
+                     'status': 'investigating',
+                     'name': 'Shopping outage',
+                 },
+             }},
+        ],
+    })
+
+    assert followup['serpapi_amazon_search']['candidates'][0]['title'] == '800W UPS'
+    incident = followup['provider_incidents']['calls'][0]
+    assert incident['call_index'] == 1
+    assert incident['tool'] == 'serpapi_google_shopping_light'
+    assert incident['incident']['status'] == 'investigating'
+
+
+def test_incident_diagnosis_is_not_completion_guard_evidence():
+    handler = _handler()
+    handler._extract_followup_data = lambda *_args, **_kwargs: {
+        'serpapi_amazon_search': {'candidates': [{'title': '800W UPS'}]},
+        'provider_incidents': {'calls': [{'tool': 'serpapi_google_shopping_light'}]},
+    }
+
+    evidence = handler._compute_effective_evidence(
+        'conversation', {}, ['serpapi_amazon_search'], {}, 'message', 'find a UPS',
+    )
+
+    assert 'serpapi_amazon_search' in evidence['supporting_tool_results']
+    assert 'provider_incidents' not in evidence['supporting_tool_results']
+
+
 def test_extract_followup_data_includes_focused_serpapi_product_fields():
     handler = _handler()
     data = {
