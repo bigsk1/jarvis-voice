@@ -33,8 +33,8 @@ def call_tool(tool_name: str, args: dict) -> dict:
             return {"ok": False, "error": result.stderr or "No output"}
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "Tool timed out"}
-    except json.JSONDecodeError:
-        return {"ok": False, "error": "Invalid JSON from tool", "raw": result.stdout}
+    except json.JSONDecodeError as e:
+        return {"ok": False, "error": "Invalid JSON from tool", "raw": e.doc}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

@@ -64,7 +64,7 @@ dependencies = [
     "tqdm==4.67.1",
     "typing_extensions==4.15.0",
     "urllib3==2.5.0",
-    "fpdf2>=2.8.0",
+    "fpdf2>=2.8.5",
     "Pillow>=11.3.0",
     "brotli>=1.1.0",
     "markdown-it-py[linkify]>=4.0.0",

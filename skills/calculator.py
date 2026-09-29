@@ -20,6 +20,20 @@ from typing import Any
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 
+# Statistics functions all take one list of numbers. Keep this narrower map
+# for the statistics path instead of calling arbitrary expression functions.
+STATISTICS_FUNCS = {
+    'mean': statistics.mean,
+    'median': statistics.median,
+    'mode': statistics.mode,
+    'stdev': statistics.stdev,
+    'variance': statistics.variance,
+    'pstdev': statistics.pstdev,
+    'pvariance': statistics.pvariance,
+    'harmonic_mean': statistics.harmonic_mean,
+    'geometric_mean': statistics.geometric_mean,
+}
+
 # Safe math functions available in expressions
 SAFE_MATH_FUNCS = {
     # Basic
@@ -76,15 +90,7 @@ SAFE_MATH_FUNCS = {
     'inf': math.inf,
     
     # Statistics
-    'mean': statistics.mean,
-    'median': statistics.median,
-    'mode': statistics.mode,
-    'stdev': statistics.stdev,
-    'variance': statistics.variance,
-    'pstdev': statistics.pstdev,
-    'pvariance': statistics.pvariance,
-    'harmonic_mean': statistics.harmonic_mean,
-    'geometric_mean': statistics.geometric_mean,
+    **STATISTICS_FUNCS,
 }
 
 # Unit conversion factors (to base unit)
@@ -930,7 +936,7 @@ def calculate(expression: str, calc_type: str = 'auto') -> dict[str, Any]:
         stat_result = parse_statistics(expr)
         if stat_result:
             func_name, numbers = stat_result
-            func = SAFE_MATH_FUNCS[func_name]
+            func = STATISTICS_FUNCS[func_name]
             value = func(numbers)
             
             result_data['result'] = value

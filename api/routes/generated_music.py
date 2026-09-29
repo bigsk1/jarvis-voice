@@ -15,7 +15,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, NoReturn, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -349,7 +349,7 @@ async def generate_music(request: GenerateRequest):
     )
 
 
-def _raise_audio_share_http_error(exc: XaiAudioShareError) -> None:
+def _raise_audio_share_http_error(exc: XaiAudioShareError) -> NoReturn:
     if isinstance(exc, XaiAudioShareDisabled):
         status_code = 503
     elif isinstance(exc, XaiAudioShareConflict):

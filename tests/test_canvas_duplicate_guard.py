@@ -349,6 +349,24 @@ class CanvasDuplicateGuardTests(unittest.TestCase):
         self.assertIn("Opus 4.7", result)
         self.assertIn("content_excerpt", provider.context)
 
+    def test_duplicate_synthesis_uses_fallback_when_context_is_malformed(self):
+        orchestrator = Orchestrator.__new__(Orchestrator)
+
+        result = orchestrator._synthesize_duplicate_prevented_response(
+            user_query="Summarize the transcript",
+            tools_used=["youtube_transcript"],
+            accumulated_data={
+                "youtube_transcript": {
+                    "video_title": "Example video",
+                    "srt_saved": True,
+                }
+            },
+            conversation_context=[object()],
+        )
+
+        self.assertIn("Example video", result)
+        self.assertIn("saved a SRT copy", result)
+
     def test_guardrail_failure_is_truthful_and_does_not_claim_generation(self):
         error = (
             "Error code: 400 - Input blocked: You cannot generate a response "

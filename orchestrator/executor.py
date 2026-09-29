@@ -518,6 +518,7 @@ class ToolExecutor:
             if self.web_conversation_id:
                 tool_env['JARVIS_WEB_CONVERSATION_ID'] = str(self.web_conversation_id)
             
+            local_limits = None
             if supervision:
                 supervision.checkpoint()
                 # A background job owns its time budget. Queue/preflight time
@@ -569,7 +570,7 @@ class ToolExecutor:
                     process_started=(lambda pid: supervision.record_process_start(
                         pid, local_settings.get('progress_label', 'Running local skill'))) if supervision else None,
                     process_stopped=supervision.record_process_stop if supervision else None,
-                    max_output_bytes=local_limits['output_bytes'] if supervision else None,
+                    max_output_bytes=local_limits['output_bytes'] if local_limits is not None else None,
                 )
 
             if cancelled:
@@ -737,6 +738,7 @@ class ToolExecutor:
             Tool result
         """
         start_time = time.time()
+        mcp_client = None
         
         try:
             # Extract server and tool names
@@ -812,7 +814,7 @@ class ToolExecutor:
                 mode=self.mode,
                 proxy=(
                     mcp_client.get_proxy_log_metadata()
-                    if "mcp_client" in locals()
+                    if mcp_client is not None
                     and hasattr(mcp_client, "get_proxy_log_metadata")
                     else None
                 ),

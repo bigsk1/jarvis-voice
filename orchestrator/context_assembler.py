@@ -3526,11 +3526,12 @@ class ContextAssembler:
             # JSON escaping (especially non-ASCII OCR text) also consumes the
             # budget. Shorten the report while retaining its typed metadata;
             # the generic fallback would cut analysis back to 240 characters.
-            analysis = data_preview.get("analysis", "")
+            image_preview = preview_payload["llm_context_preview"]["data_preview"]
+            analysis = image_preview.get("analysis", "")
             while len(analysis) > 120:
                 analysis = self.truncate_preview_text(analysis, len(analysis) * 3 // 4)
-                data_preview["analysis"] = analysis
-                data_preview["analysis_truncated"] = True
+                image_preview["analysis"] = analysis
+                image_preview["analysis_truncated"] = True
                 preview_compact = json.dumps(preview_payload, separators=(",", ":"), default=str)
                 if len(preview_compact) <= max_chars:
                     return preview_compact, result_chars_total, len(preview_compact), True

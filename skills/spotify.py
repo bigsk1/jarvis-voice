@@ -1304,6 +1304,9 @@ def action_queue(args: dict) -> dict:
     
     if not query and not uri:
         return {"ok": False, "speech": "What should I add to the queue?", "error": "No query"}
+
+    name = "that track"
+    artist = ""
     
     if query and not uri:
         # Search for track
@@ -1322,11 +1325,6 @@ def action_queue(args: dict) -> dict:
             }
     
     sp.add_to_queue(uri)
-    
-    # Fix: name/artist may not be defined if uri was passed directly
-    if 'name' not in locals():
-        name = "that track"
-        artist = ""
     
     speech = f"Added {name} by {artist} to queue".strip()
     if speech.endswith(" by  to queue"):

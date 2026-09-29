@@ -228,6 +228,7 @@ try:
     PROMETHEUS_AVAILABLE = True
 except ImportError:
     PROMETHEUS_AVAILABLE = False
+    Instrumentator = None
     print("⚠️  prometheus-fastapi-instrumentator not installed. Metrics disabled.")
     print("   To enable: pip install prometheus-fastapi-instrumentator")
 
@@ -381,7 +382,7 @@ app.add_middleware(RequestLoggingMiddleware, log_loopback=False)
 print("✅ Request logging enabled → logs/api/ (external only, errors always logged)")
 
 # Initialize Prometheus metrics FIRST (before routes)
-if PROMETHEUS_AVAILABLE:
+if PROMETHEUS_AVAILABLE and Instrumentator is not None:
     # Create instrumentator
     instrumentator = Instrumentator(
         should_group_status_codes=False,

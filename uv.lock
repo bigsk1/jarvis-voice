@@ -1262,7 +1262,7 @@ requires-dist = [
     { name = "flask-cors", specifier = ">=4.0.0" },
     { name = "flask-socketio", specifier = ">=5.3.0" },
     { name = "flatbuffers", specifier = "==25.2.10" },
-    { name = "fpdf2", specifier = ">=2.8.0" },
+    { name = "fpdf2", specifier = ">=2.8.5" },
     { name = "fsspec", specifier = "==2025.9.0" },
     { name = "google-genai", specifier = ">=2.10.0" },
     { name = "hf-xet", specifier = "==1.1.10" },

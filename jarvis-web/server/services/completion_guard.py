@@ -80,7 +80,7 @@ class CompletionGuardPolicy:
         return {
             "enabled": enabled
             if enabled is not None
-            else self.parse_bool_fn(get_config_value("JARVIS_COMPLETION_GUARD_ENABLED", "false")),
+            else self.parse_bool_fn(get_config_value("JARVIS_COMPLETION_GUARD_ENABLED", "false"), False),
             "mode": mode_setting or get_config_value("JARVIS_COMPLETION_GUARD_MODE", "manual"),
             "ticket_on_fail": ticket_on_fail
             if ticket_on_fail is not None

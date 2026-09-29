@@ -16,6 +16,7 @@ import os
 import sys
 import json
 import ast
+import py_compile
 import subprocess
 import re
 from datetime import datetime
@@ -1498,7 +1499,6 @@ class ToolBuilder:
 
         # 2. Bytecode compile check
         try:
-            import py_compile
             py_compile.compile(str(py_path), doraise=True)
         except py_compile.PyCompileError as e:
             return False, f"Compile error: {e}"

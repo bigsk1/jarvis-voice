@@ -19,7 +19,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from typing import Literal, Optional
+from typing import Literal, NoReturn, Optional
 
 # Add lib and skills to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -425,7 +425,7 @@ async def generate_video(request: GenerateRequest):
         return GenerateResponse(ok=False, error=str(e))
 
 
-def _raise_video_share_http_error(exc: XaiVideoShareError) -> None:
+def _raise_video_share_http_error(exc: XaiVideoShareError) -> NoReturn:
     if isinstance(exc, XaiVideoShareDisabled):
         status_code = 503
     elif isinstance(exc, XaiVideoShareConflict):

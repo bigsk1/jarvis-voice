@@ -11,3 +11,11 @@ missing-argument = "error"
 not-callable = "error"
 unbound-name = "error"
 missing-import = false
+
+# fpdf2 >=2.8.5 accepts `variations=` in FPDF.add_font, but Pyrefly's
+# resolved signature currently omits it. Keep the exception to this file.
+[[sub-config]]
+matches = "server/services/pdf_export.py"
+
+[sub-config.errors]
+unexpected-keyword = false

@@ -20,7 +20,7 @@ except ImportError:
 # Define Prometheus Metrics
 # ============================================
 
-if PROMETHEUS_AVAILABLE:
+else:
     # Counters (always increasing)
     INTELLIGENCE_EXPERIENCES_TOTAL = Gauge(
         'jarvis_intelligence_experiences_total',
@@ -162,4 +162,3 @@ def increment_insights_applied(mode: str = 'cloud'):
     """Increment the insights applied counter."""
     if PROMETHEUS_AVAILABLE:
         INTELLIGENCE_INSIGHTS_APPLIED.labels(mode=mode).inc()
-

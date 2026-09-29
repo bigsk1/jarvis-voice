@@ -1699,23 +1699,21 @@ Mode: {self.mode}
                         "be fetched until Chat only is turned off.\n\n"
                         f"{turn_input}"
                     )
-                elif (
-                    vision_pre_analyzed_active
-                    and self._provider_server_side_tools_available()
-                    and not client_search_hint_active
-                    and not (
-                        native_search_remaining is not None
-                        and native_search_remaining <= 0
-                    )
-                ):
-                    reason = (
-                        "Web upload vision analysis is already attached to this request."
-                    )
-                elif client_search_hint_active:
-                    reason = "A client-side search tool was selected in the UI."
                 else:
-                    reason = "The provider-native search budget is exhausted."
-                if not chat_only_mode:
+                    if (
+                        vision_pre_analyzed_active
+                        and self._provider_server_side_tools_available()
+                        and not client_search_hint_active
+                        and not (
+                            native_search_remaining is not None
+                            and native_search_remaining <= 0
+                        )
+                    ):
+                        reason = "Web upload vision analysis is already attached to this request."
+                    elif client_search_hint_active:
+                        reason = "A client-side search tool was selected in the UI."
+                    else:
+                        reason = "The provider-native search budget is exhausted."
                     turn_input = (
                         "[NATIVE SEARCH DISABLED]\n"
                         f"{reason} Use results already gathered, choose a client-side search tool, "
@@ -2728,17 +2726,57 @@ Mode: {self.mode}
         Returns:
             Synthesized speech response that actually answers the user's question
         """
-        try:
-            def _query_wants_artifact_update(text: str) -> bool:
-                lowered = (text or "").lower()
-                artifact_terms = [
-                    "save to canvas", "save it to canvas", "update canvas", "update the canvas",
-                    "put it on canvas", "add to canvas", "save to the page", "update the page",
-                    "update the doc", "save the doc", "create a canvas page", "make a canvas page",
-                    "save this", "write this up", "document this", "create slides", "update slides"
-                ]
-                return any(term in lowered for term in artifact_terms)
+        def _query_wants_artifact_update(text: str) -> bool:
+            lowered = (text or "").lower()
+            artifact_terms = [
+                "save to canvas", "save it to canvas", "update canvas", "update the canvas",
+                "put it on canvas", "add to canvas", "save to the page", "update the page",
+                "update the doc", "save the doc", "create a canvas page", "make a canvas page",
+                "save this", "write this up", "document this", "create slides", "update slides"
+            ]
+            return any(term in lowered for term in artifact_terms)
 
+        # Keep the fallback available even if synthesis raises before its first step.
+        def _build_duplicate_safeguard_fallback() -> str:
+            """Provide a deterministic fallback when LLM synthesis is weak or unavailable."""
+            youtube_data = accumulated_data.get("youtube_transcript")
+            if isinstance(youtube_data, list) and youtube_data:
+                youtube_data = youtube_data[-1]
+            if isinstance(youtube_data, dict):
+                title = youtube_data.get("video_title") or "the YouTube video"
+                saved_formats = []
+                if youtube_data.get("srt_saved"):
+                    saved_formats.append("SRT")
+                if youtube_data.get("md_saved"):
+                    saved_formats.append("markdown")
+                formats_text = ""
+                if saved_formats:
+                    if len(saved_formats) == 1:
+                        formats_text = f" and saved a {saved_formats[0]} copy to stash"
+                    else:
+                        formats_text = f" and saved {saved_formats[0]} and {saved_formats[1]} copies to stash"
+                return (
+                    f"Duplicate tool detection triggered. I got the transcript for {title}{formats_text}. "
+                    "I have not answered your full question yet because the model tried to reread the same file instead of summarizing it. "
+                    "Reply again and I will continue from the transcript."
+                )
+
+            stash_data = accumulated_data.get("stash")
+            if isinstance(stash_data, list) and stash_data:
+                stash_data = stash_data[-1]
+            if isinstance(stash_data, dict):
+                name = stash_data.get("name") or "the file"
+                return (
+                    f"Duplicate tool detection triggered. I already read {name}, but the model tried to read it again instead of summarizing it. "
+                    "Reply again and I will continue from what I already have."
+                )
+
+            if "canvas" in [t.lower() for t in tools_used] and _query_wants_artifact_update(user_query):
+                return "Duplicate tool detection triggered after saving the work to Canvas. Reply again if you want me to continue from the saved results."
+
+            return "Duplicate tool detection triggered. I stopped the repeated tool call. Reply again and I will continue from the results gathered so far."
+
+        try:
             def _is_generic_artifact_confirmation(tool_name: str, text: str) -> bool:
                 if not text or not isinstance(text, str):
                     return False
@@ -2811,45 +2849,6 @@ Mode: {self.mode}
                 if re.match(r"^(Saved|Created|Updated|Listed|Found)\b.+\b(stash|file|files|items|results)\b", s, flags=re.IGNORECASE):
                     return True
                 return False
-
-            def _build_duplicate_safeguard_fallback() -> str:
-                """Provide a deterministic fallback when LLM synthesis is weak or unavailable."""
-                youtube_data = accumulated_data.get("youtube_transcript")
-                if isinstance(youtube_data, list) and youtube_data:
-                    youtube_data = youtube_data[-1]
-                if isinstance(youtube_data, dict):
-                    title = youtube_data.get("video_title") or "the YouTube video"
-                    saved_formats = []
-                    if youtube_data.get("srt_saved"):
-                        saved_formats.append("SRT")
-                    if youtube_data.get("md_saved"):
-                        saved_formats.append("markdown")
-                    formats_text = ""
-                    if saved_formats:
-                        if len(saved_formats) == 1:
-                            formats_text = f" and saved a {saved_formats[0]} copy to stash"
-                        else:
-                            formats_text = f" and saved {saved_formats[0]} and {saved_formats[1]} copies to stash"
-                    return (
-                        f"Duplicate tool detection triggered. I got the transcript for {title}{formats_text}. "
-                        "I have not answered your full question yet because the model tried to reread the same file instead of summarizing it. "
-                        "Reply again and I will continue from the transcript."
-                    )
-
-                stash_data = accumulated_data.get("stash")
-                if isinstance(stash_data, list) and stash_data:
-                    stash_data = stash_data[-1]
-                if isinstance(stash_data, dict):
-                    name = stash_data.get("name") or "the file"
-                    return (
-                        f"Duplicate tool detection triggered. I already read {name}, but the model tried to read it again instead of summarizing it. "
-                        "Reply again and I will continue from what I already have."
-                    )
-
-                if "canvas" in [t.lower() for t in tools_used] and _query_wants_artifact_update(user_query):
-                    return "Duplicate tool detection triggered after saving the work to Canvas. Reply again if you want me to continue from the saved results."
-
-                return "Duplicate tool detection triggered. I stopped the repeated tool call. Reply again and I will continue from the results gathered so far."
 
             # If OpenCode already returned a useful build summary, prefer that
             # over later status/verification tools like check_opencode_sessions.
