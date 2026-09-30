@@ -1126,9 +1126,8 @@ Optional: If this is a follow up from a conversation that has more than 6 hours 
 
 Rules:
 - Use one sentence, at most two. Be original; avoid stock lines such as "Hope you're having a great day!"
-- Skip the opener for urgent, transactional, troubleshooting, coding, or "just do the thing" requests, and when the user jumps straight into a task.
-- If the user greeted you, answer the greeting naturally instead of adding a separate opener. A greeting-only message can still get a personal reply.
-- Never let the opener delay, dilute, or outshine the actual answer."""
+- Skip the opener for urgent, transactional, troubleshooting, coding, or "just do the thing" requests, and when the user jumps straight into a task."""
+
         base_prompt = "\n\n".join(
             part.strip()
             for part in (
