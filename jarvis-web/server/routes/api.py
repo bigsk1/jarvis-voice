@@ -2437,7 +2437,9 @@ def speech_to_text():
         print(f"[STT] Mode: {mode}, Provider: {provider}, Model: {stt_model}", flush=True)
         
         # Save uploaded audio to temp file
-        with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as tmp:
+        suffix = {'audio/wav': '.wav', 'audio/x-wav': '.wav', 'audio/ogg': '.ogg',
+                  'audio/mp4': '.mp4', 'audio/webm': '.webm'}.get(audio_file.mimetype, '.webm')
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             audio_file.save(tmp.name)
             tmp_path = tmp.name
         
@@ -2447,7 +2449,7 @@ def speech_to_text():
             transcript = _transcribe_configured(tmp_path, mode, provider, stt_model)
             
             if not transcript:
-                return jsonify({'ok': False, 'error': 'No speech detected'}), 400
+                return jsonify({'ok': False, 'error': 'No speech detected', 'code': 'no_speech'}), 400
             
             print(f"[STT] Transcription complete ({len(transcript)} characters)", flush=True)
             print("[STT] ========================================", flush=True)
@@ -2509,29 +2511,34 @@ def _transcribe_faster_whisper(audio_path: str, mode: str, model: str) -> str:
     import os
     import subprocess
     from stt_client import STTProviderError
+    from speech_child_environment import speech_child_environment
+    from config_loader import export_config_environment
     
-    # Convert webm to wav for faster-whisper
+    # Convert browser audio when needed for faster-whisper.
     wav_path = _convert_to_wav(audio_path)
     
     try:
         stt_script = JARVIS_ROOT / 'bin' / 'stt.py'
         
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(stt_script),
-                '--mode',
-                mode,
-                '--provider',
-                'faster-whisper',
-                '--model',
-                model,
-                wav_path,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=_stt_timeout(),
-        )
+        source_environment = export_config_environment(mode)
+        with speech_child_environment(source_environment, transcription=True) as child_environment:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(stt_script),
+                    '--mode',
+                    mode,
+                    '--provider',
+                    'faster-whisper',
+                    '--model',
+                    model,
+                    wav_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=_stt_timeout(),
+                env=child_environment,
+            )
         
         if result.returncode != 0:
             detail = result.stderr.strip().replace('\n', ' ')[:300]
@@ -2600,6 +2607,8 @@ def _transcribe_configured(
 def _convert_to_wav(input_path: str) -> str:
     """Convert audio file to WAV format using ffmpeg"""
     import subprocess
+    import os
+    from speech_child_environment import speech_child_environment
     
     # If already wav, return as-is
     if input_path.lower().endswith('.wav'):
@@ -2610,13 +2619,14 @@ def _convert_to_wav(input_path: str) -> str:
     conversion_succeeded = False
     
     try:
-        subprocess.run([
-            'ffmpeg', '-y', '-i', input_path,
-            '-ar', '16000',  # 16kHz sample rate
-            '-ac', '1',      # Mono
-            '-f', 'wav',
-            wav_path
-        ], capture_output=True, check=True, timeout=30)
+        with speech_child_environment(dict(os.environ)) as child_environment:
+            subprocess.run([
+                'ffmpeg', '-y', '-i', input_path,
+                '-ar', '16000',  # 16kHz sample rate
+                '-ac', '1',      # Mono
+                '-f', 'wav',
+                wav_path
+            ], capture_output=True, check=True, timeout=30, env=child_environment)
 
         conversion_succeeded = True
         return wav_path

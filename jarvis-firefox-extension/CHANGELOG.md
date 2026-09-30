@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0
+
+- Add optional **Speak to interrupt** in Talk. Speak naturally during a reply to stop playback and send the next utterance through the existing conversation and tool routing, without a trigger phrase.
+- Keep a local onset buffer and reject brief noise and playback echo alongside browser echo cancellation. The preference defaults off and persists without starting microphone capture after reload.
+- Return to Listening after an interruption contains no transcribable speech. Actual speech-service failures still pause Talk; interruption cannot undo completed tool actions.
+- Release interruption capture on Pause, End, connection or mode changes, and microphone-helper closure. No additional extension permissions are requested.
+
 ## 0.5.2
 
 - Preserve line breaks in SSH commands shown for approval, so the displayed shell command matches its prepared form when no redaction or truncation is needed.

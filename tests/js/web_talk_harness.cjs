@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const root = process.cwd();
 const scenario = process.argv[2];
-const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+const flush = async () => { for (let i = 0; i < 32; i++) await Promise.resolve(); };
 function deferred() { let resolve, reject; const promise = new Promise((yes,no) => {resolve=yes;reject=no;}); return {promise,resolve,reject}; }
 class Element {
   constructor() { this.hidden = false; this.disabled = false; this.value = ''; this.dataset = {}; this.events = {}; this.attributes = {}; this.classList = {toggle(){}, contains(){return false;}}; }
@@ -11,7 +11,7 @@ class Element {
   setAttribute(name, value) { this.attributes[name] = value; }
   focus() {}
 }
-const elements = Object.fromEntries(['talkBtn','talkPanel','talkStatus','talkTranscript','talkPause','talkInterrupt','talkEnd','talkApproval','talkApprovalDetails','talkApprovalAllow','talkApprovalDeny','convertBtn'].map(name => [name, new Element()]));
+const elements = Object.fromEntries(['talkBtn','talkPanel','talkStatus','talkTranscript','talkPause','talkInterrupt','talkEnd','talkSpeakToInterrupt','talkApproval','talkApprovalDetails','talkApprovalAllow','talkApprovalDeny','convertBtn'].map(name => [name, new Element()]));
 const docEvents = {}, windowEvents = {}, socketEvents = {};
 const requests = [], permissions = [], recorders = [], contexts = [], tracks = [], notices = [], sent = [], cancelled = [], warmups = [];
 const intervals = new Map(), timers = new Map();
@@ -24,7 +24,7 @@ const socket = {
   cancel(cid,id){cancelled.push([cid,id]);return true;}
 };
 function emit(event, data) { for (const fn of socketEvents[event] || []) fn(data); }
-function stream() { const track = {enabled:true, stops:0, stop(){this.stops++;}}; tracks.push(track); return {getTracks:()=>[track],getAudioTracks:()=>[track]}; }
+function stream() { const track = {enabled:true, stops:0, getSettings(){return {echoCancellation: scenario!=='barge_unavailable'};}, stop(){this.stops++;}}; tracks.push(track); return {getTracks:()=>[track],getAudioTracks:()=>[track]}; }
 class Recorder {
   static isTypeSupported(type) {return type==='audio/webm;codecs=opus';}
   constructor(stream,options) {this.state='inactive';this.mimeType=options?.mimeType||'audio/webm'; recorders.push(this);}
@@ -46,7 +46,19 @@ const chat = {
   sendTalkMessage(text){sent.push(text);chat.isProcessing=true;return `r${sent.length}`;}
 };
 const app = {_cancelStatusTTS(){},stopAudioPlayback(){},_warmTTS(mode){warmups.push(mode);}};
+const captures = [];
+const lateCapture = deferred();
 const sandbox = {
+  localStorage: {getItem(){return scenario==='barge_persisted'?'true':null;},setItem(){}},
+  JarvisTalkCapture: {async create(context,input,url,callbacks) {
+    const capture = {callbacks,closed:false,armed:false,
+      arm(source){this.source=source;this.armed=true;},
+      releaseReference(){this.source=null;},
+      disarm(){this.armed=false;},close(){this.closed=true;this.disarm();}};
+    captures.push(capture);
+    if (scenario==='barge_late_setup') await lateCapture.promise;
+    return capture;
+  }},
   console, Blob, FormData, AbortController, DOMException, URL, Float32Array, MediaRecorder:Recorder,
   navigator:{mediaDevices:{getUserMedia(){const p=deferred();permissions.push(p);return p.promise;}}},
   document, performance:{now:()=>clock},
@@ -67,7 +79,76 @@ function settle(status='completed', id='r1'){chat.isProcessing=false;emit('runSt
 async function answer(data={}){emit('response',{message_id:'r1',conversation_id:'a',ok:true,speech:'It is noon.',...data});await flush();}
 async function audio(){requests.at(-1).resolve({ok:true,arrayBuffer:async()=>new Uint8Array([1,2]).buffer});await flush();}
 (async()=>{
-  if(scenario==='warmup') {
+  if (scenario.startsWith('barge_')) {
+    if (scenario !== 'barge_persisted') talk.setSpeakToInterrupt(true);
+    if (scenario === 'barge_late_setup') {
+      const pending=talk.start();await flush();permissions.at(-1).resolve(stream());await flush();
+      talk.pause();lateCapture.resolve();await pending;assert(captures[0].closed);
+    } else {
+      await start();
+      if (scenario==='barge_unavailable') {
+        assert.equal(captures.length,0);assert(notices.some(n=>n[0].includes('echo cancellation')));
+      } else {
+        const capture=captures[0];assert(capture);assert.equal(capture.armed,false);
+        await utterance();await transcribe();assert.equal(tracks[0].enabled,false);
+        if (['barge_empty','barge_stt_failure','barge_settled','barge_persisted','barge_pause','barge_off','barge_late_ended','barge_saved_audio','barge_disconnect','barge_hidden','barge_switch','barge_error'].includes(scenario)) settle();
+        await answer(scenario==='barge_saved_audio'?{audio_url:'/audio/tts/answer.mp3'}:{});await audio();
+        assert.equal(capture.armed,true);assert.equal(tracks[0].enabled,true);
+        const playback=contexts[0].sources[0];
+        if (scenario==='barge_no_speech') {
+          playback.onended();await flush();assert.equal(capture.armed,false);assert.equal(tracks[0].enabled,false);
+          settle();finishTimers();assert.equal(talk.session.phase,'listening');
+        } else if (scenario==='barge_toggle') {
+          talk.setSpeakToInterrupt(false);assert(capture.closed);assert.equal(tracks[0].enabled,false);
+          talk.setSpeakToInterrupt(true);await flush();assert.equal(captures[1].armed,true);
+        } else {
+          capture.callbacks.start();assert.equal(playback.stopped,true);assert.equal(talk.session.phase,'interrupting');
+          const clip=new Blob([new Uint8Array(4000)],{type:'audio/wav'});
+          if (scenario==='barge_pause' || scenario==='barge_off') {
+            if(scenario==='barge_pause')talk.pause();else talk.setSpeakToInterrupt(false);
+            capture.callbacks.end(clip);assert.equal(talk.session.phase,'paused');assert(capture.closed);assert.equal(requests.length,2);
+          } else if (['barge_disconnect','barge_hidden','barge_switch'].includes(scenario)) {
+            if(scenario==='barge_disconnect'){socket.connected=false;emit('connectionChange',{connected:false});}
+            if(scenario==='barge_switch'){socket.mode='cloud';emit('modeChanged',{mode:'cloud'});}
+            if(scenario==='barge_hidden'){document.hidden=true;if(docEvents.visibilitychange)docEvents.visibilitychange();else talk.end('',{cancel:false});}
+            capture.callbacks.end(clip);assert.equal(talk.active,false);assert(capture.closed);assert.equal(requests.length,2);
+          } else if (scenario==='barge_error') {
+            capture.callbacks.error(Error('detector failed'));assert.equal(talk.session.phase,'paused');assert(capture.closed);
+          } else {
+            capture.callbacks.end(clip);await flush();
+            if (['barge_wait','barge_timeout'].includes(scenario)) {
+              assert.equal(requests.length,2);assert.equal(cancelled.length,1);
+              if(scenario==='barge_timeout'){
+                [...timers.values()].find(t=>t.ms===90000).fn();assert.equal(talk.session.phase,'paused');assert.equal(requests.length,2);
+              } else {settle('cancelled');await flush();}
+            }
+            if(scenario!=='barge_timeout'){
+              assert.equal(requests.at(-1).url,'/api/stt');assert.equal(tracks[0].enabled,false);
+              if (scenario==='barge_empty' || scenario==='barge_stt_failure') {
+                const empty={ok:false,error:'No speech detected',code:'no_speech'};
+                requests.at(-1).resolve({ok:false,status:scenario==='barge_empty'?400:500,
+                  json:async()=>scenario==='barge_empty'?empty:{error:'STT unavailable'}});
+                await flush();
+                if(scenario==='barge_empty') {
+                  assert.equal(talk.session.phase,'listening');assert.equal(tracks[0].enabled,true);
+                  assert.equal(sent.length,1);assert.equal(requests.length,3);assert.equal(playback.stopped,true);
+                  await utterance();await transcribe('And tomorrow?');
+                  assert.deepEqual(sent,['What time is it?','And tomorrow?']);
+                } else {assert.equal(talk.session.phase,'paused');assert.equal(sent.length,1);}
+              } else {
+                await transcribe('And tomorrow?');assert.deepEqual(sent,['What time is it?','And tomorrow?']);
+              }
+              if(scenario==='barge_late_ended') {
+                settle('completed',talk.session.turn.id);await answer({message_id:talk.session.turn.id});await audio();
+                const newSource=contexts[0].sources.at(-1);assert(newSource!==playback);assert.equal(tracks[0].enabled,true);
+                playback.onended();assert.equal(tracks[0].enabled,true);assert.equal(talk.session.playback,newSource);
+              }
+            }
+          }
+        }
+      }
+    }
+  } else if(scenario==='warmup') {
     await start();assert.deepEqual(warmups,['local']);talk.pause();
     const pending=talk.resume();await flush();assert.deepEqual(warmups,['local','local']);
     permissions.at(-1).resolve(stream());await pending;assert.equal(talk.session.phase,'listening');

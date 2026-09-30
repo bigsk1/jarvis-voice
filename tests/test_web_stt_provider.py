@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import io
+import os
+import shutil
 import subprocess
 import sys
+import wave
 from pathlib import Path
 
 import pytest
@@ -28,6 +31,130 @@ def _client():
     app = Flask(__name__)
     app.register_blueprint(api.api_bp)
     return app.test_client()
+
+
+@pytest.mark.parametrize('mode', ['cloud', 'local'])
+def test_empty_transcription_has_distinct_code_and_removes_upload(mode, monkeypatch):
+    monkeypatch.setattr(web_config, 'load_jarvis_config', lambda _mode: None)
+    monkeypatch.setattr(web_config, 'get_jarvis_setting', lambda _key, default=None: default)
+    paths = []
+
+    def transcribe(path, *_args):
+        paths.append(path)
+        return ''
+
+    monkeypatch.setattr(api, '_transcribe_configured', transcribe)
+    response = _client().post('/api/stt', data={
+        'mode': mode, 'audio': (io.BytesIO(b'non-speech'), 'talk.wav', 'audio/wav'),
+    }, content_type='multipart/form-data')
+    assert response.status_code == 400
+    assert response.get_json() == {'ok': False, 'error': 'No speech detected', 'code': 'no_speech'}
+    assert len(paths) == 1
+    assert not Path(paths[0]).exists()
+
+
+@pytest.mark.parametrize("mode", ["cloud", "local"])
+def test_interruption_wav_upload_retains_format_and_is_removed(mode, monkeypatch):
+    monkeypatch.setattr(web_config, "load_jarvis_config", lambda _mode: None)
+    monkeypatch.setattr(web_config, "get_jarvis_setting", lambda _key, default=None: default)
+    observed = []
+
+    def transcribe(path, selected_mode, _provider, _model):
+        assert selected_mode == mode
+        assert Path(path).suffix == ".wav"
+        assert Path(path).read_bytes() == b"RIFFtest-wave"
+        observed.append(path)
+        return "And tomorrow?"
+
+    monkeypatch.setattr(api, "_transcribe_configured", transcribe)
+    response = _client().post("/api/stt", data={
+        "mode": mode, "audio": (io.BytesIO(b"RIFFtest-wave"), "talk.wav", "audio/wav"),
+    }, content_type="multipart/form-data")
+    assert response.get_json() == {"ok": True, "text": "And tomorrow?"}
+    assert len(observed) == 1
+    assert not Path(observed[0]).exists()
+
+
+@pytest.mark.parametrize("mode", ["cloud", "local"])
+def test_speech_children_exclude_credentials_and_keep_selected_device(mode, tmp_path, monkeypatch):
+    import config_loader
+    source = tmp_path / "recording.webm"
+    source.write_bytes(b"audio")
+    monkeypatch.setenv("UNRELATED_SECRET", "canary-secret")
+    monkeypatch.setenv("OPENAI_API_KEY", "canary-key")
+    monkeypatch.setenv("HF_TOKEN", "canary-token")
+    monkeypatch.setenv("STT_DEVICE", "wrong-mode-device")
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "model-cache"))
+    monkeypatch.setattr(config_loader, "_load_mode_config", lambda selected_mode: {
+        "STT_DEVICE": "cpu", "STT_COMPUTE_TYPE": "int8",
+        "HF_HOME": str(tmp_path / f"{selected_mode}-cache"),
+    })
+    environments = []
+
+    def run(command, **kwargs):
+        env = kwargs["env"]
+        assert "canary-secret" not in env.values()
+        assert "OPENAI_API_KEY" not in env and "HF_TOKEN" not in env
+        assert env["JARVIS_RESTRICTED_TOOL_ENV"] == "1"
+        assert Path(env["HOME"]).is_dir()
+        assert not list(Path(env["HOME"]).iterdir())
+        environments.append(env)
+        if command[0] == "ffmpeg":
+            assert "STT_DEVICE" not in env
+            Path(command[-1]).write_bytes(b"wav")
+        else:
+            assert env["JARVIS_MODE"] == mode
+            assert env["STT_DEVICE"] == "cpu"
+            assert env["HF_HOME"] == str(tmp_path / f"{mode}-cache")
+        return subprocess.CompletedProcess(command, 0, stdout="And tomorrow?", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert api._transcribe_faster_whisper(str(source), mode, "small.en") == "And tomorrow?"
+    assert len(environments) == 2
+    assert all(not Path(env["HOME"]).exists() for env in environments)
+
+
+def test_real_ffmpeg_speech_conversion_with_restricted_environment(tmp_path):
+    if not shutil.which("ffmpeg"):
+        pytest.skip("FFmpeg is not installed")
+    from speech_child_environment import speech_child_environment
+
+    source = tmp_path / "source.wav"
+    with wave.open(str(source), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(16000)
+        output.writeframes(bytes(3200))
+    encoded = tmp_path / "source.ogg"
+    with speech_child_environment(dict(os.environ)) as child_environment:
+        subprocess.run(["ffmpeg", "-y", "-i", str(source), str(encoded)],
+                       env=child_environment, check=True, capture_output=True, timeout=10)
+    converted = api._convert_to_wav(str(encoded))
+    assert converted != str(encoded)
+    with wave.open(converted, "rb") as result:
+        assert result.getframerate() == 16000
+        assert result.getnchannels() == 1
+        assert result.getnframes() > 0
+
+
+@pytest.mark.parametrize("mode", ["cloud", "local"])
+def test_restricted_stt_child_does_not_reload_mode_credentials(mode, tmp_path):
+    from speech_child_environment import speech_child_environment
+
+    script = (
+        "import sys; sys.path.insert(0, sys.argv[1]); "
+        "from config_loader import load_config, get_config_value; "
+        "load_config(sys.argv[2]); "
+        "assert get_config_value('STT_DEVICE') == 'cpu'; "
+        "assert get_config_value('OPENAI_API_KEY') is None; "
+        "assert get_config_value('STT_API_KEY') is None"
+    )
+    source = {"PATH": os.environ.get("PATH", ""), "HOME": str(tmp_path),
+              "STT_DEVICE": "cpu", "OPENAI_API_KEY": "excluded-canary"}
+    with speech_child_environment(source, transcription=True) as child_environment:
+        assert child_environment["HF_HOME"] == str(tmp_path / ".cache" / "huggingface")
+        subprocess.run([sys.executable, "-c", script, str(ROOT / "lib"), mode],
+                       env=child_environment, check=True, capture_output=True, timeout=10)
 
 
 @pytest.mark.parametrize("mode", ["cloud", "local"])

@@ -1,3 +1,5 @@
+import './talk-capture.js';
+
 /** Hands-free turns through Jarvis's ordinary STT, chat and TTS paths. */
 export class TalkActivityDetector {
   constructor(startedAt, { silenceMs = 1200, maxMs = 45000, idleMs = 30000 } = {}) {
@@ -28,6 +30,7 @@ export class TalkController {
   constructor({getState, rpc, notify, render, hasDraft, getMicrophone = constraints => navigator.mediaDevices.getUserMedia(constraints)}) {
     Object.assign(this, {getState, rpc, notify, render, hasDraft, getMicrophone});
     this.session = null;
+    this.speakToInterrupt = false;
   }
 
   get active() { return this.session !== null; }
@@ -127,11 +130,11 @@ export class TalkController {
       if (!s.context) s.context = new window.AudioContext();
       void s.context.resume().catch(() => {});
       if (!this._current(s, generation)) return;
-      s.mediaAbort = new AbortController();
+      const mediaAbort = s.mediaAbort = new AbortController();
       const capture = this.getMicrophone({audio: {
         echoCancellation: true, noiseSuppression: true, autoGainControl: true
       }}, {signal: s.mediaAbort.signal, onClosed: () => {
-        if (this._current(s, generation)) this.pause('Microphone setup was closed. Reopen it from Settings, then Resume.');
+        if (this._current(s) && s.mediaAbort === mediaAbort) this.pause('Microphone setup was closed. Reopen it from Settings, then Resume.');
       }});
       const stream = await this._waitForMedia(s, capture, 30000,
         'Firefox did not open the microphone. Open Microphone setup, choose Allow, then Resume.',
@@ -149,6 +152,8 @@ export class TalkController {
       s.analyser = s.context.createAnalyser();
       s.analyser.fftSize = 2048;
       s.input.connect(s.analyser);
+      await this._prepareBarge(s);
+      if (!this._current(s, generation) || s.paused) return;
       if (s.turn && !s.turn.settled) {
         this._mute(s); s.phase = 'waiting'; this._render();
       } else {
@@ -165,6 +170,75 @@ export class TalkController {
   }
 
   _mute(s) { s.stream?.getAudioTracks().forEach(track => { track.enabled = false; }); }
+
+  setSpeakToInterrupt(enabled) {
+    this.speakToInterrupt = Boolean(enabled);
+    const s = this.session;
+    if (!s || s.paused) return;
+    if (!enabled) {
+      if (s.bargePending) { this.pause('Interruption recording stopped. Resume Talk when ready.'); return; }
+      s.capture?.close(); s.capture = null;
+      if (s.phase !== 'listening') this._mute(s);
+      this._render();
+    } else {
+      void this._prepareBarge(s).then(() => {
+        if (this._current(s) && s.playback && s.capture) this._armBarge(s, s.playback);
+      });
+    }
+  }
+
+  async _prepareBarge(s) {
+    if (!this.speakToInterrupt || s.capture || !s.input || !this._current(s)) return;
+    if (s.capturePreparing) return s.capturePreparing;
+    const generation = s.generation;
+    const prepare = async () => {
+      try {
+        if (!s.stream.getAudioTracks().every(track => track.getSettings?.().echoCancellation === true)) {
+          throw new Error('This microphone does not report active echo cancellation. Use the Interrupt button.');
+        }
+        const capture = await globalThis.JarvisTalkCapture.create(s.context, s.input, new URL('./talk-capture-worklet.js', import.meta.url).href, {
+          start: () => this._bargeStart(s), end: blob => this._bargeEnd(s, blob),
+          error: error => { if (this._current(s)) this.pause(error.message); },
+        });
+        if (!this._current(s, generation) || s.paused || !this.speakToInterrupt) { capture.close(); return; }
+        s.capture = capture;
+      } catch (error) {
+        if (this._current(s, generation)) this.notify(`Speak to interrupt is unavailable: ${error.message}`);
+      }
+    };
+    s.capturePreparing = prepare();
+    try { await s.capturePreparing; } finally { s.capturePreparing = null; }
+  }
+
+  _armBarge(s, source) {
+    if (!s.capture || s.paused || s.bargePending) return;
+    s.capture.arm(source);
+    s.stream.getAudioTracks().forEach(track => { track.enabled = true; });
+    this._render();
+  }
+
+  _bargeStart(s) {
+    if (!this._current(s) || s.paused || !s.playback || s.bargePending) return;
+    s.bargePending = {blob: null};
+    s.generation += 1; s.interrupting = true; s.turn.answerFinished = true;
+    s.phase = 'interrupting'; s.request?.abort();
+    s.capture?.releaseReference(s.playback);
+    s.playback.stop(); s.playback = null;
+    if (!s.turn.settled) void this.rpc(s.id, 'cancel').catch(error => { if (this._current(s)) this.pause(error.message); });
+    this._render();
+  }
+
+  _bargeEnd(s, blob) {
+    if (!this._current(s) || s.paused || !s.bargePending) return;
+    this._mute(s);
+    s.bargePending.blob = blob;
+    s.phase = 'stopping';
+    this._render('Finishing your interruption and waiting for the previous task to stop…');
+    if (!s.turn.settled) s.bargeTimer = setTimeout(() => {
+      if (this._current(s) && s.bargePending) this.pause('The previous task did not stop. Check chat, then Resume. Your interruption was not sent.');
+    }, 90000);
+    this._advance(s);
+  }
 
   _listen(s) {
     if (!this._current(s) || s.paused || s.turn || ['running', 'sending', 'stopping', 'recovering'].includes(this.getState().run?.status)) return;
@@ -222,12 +296,20 @@ export class TalkController {
     } finally { if (s.request === controller) s.request = null; }
   }
 
-  async _transcribe(s, blob, generation) {
+  async _transcribe(s, blob, generation, interruption = false) {
     try {
       const bytes = await blob.arrayBuffer();
       if (!this._current(s, generation)) return;
       const result = await this._request(s, 'stt', {bytes, mimeType: blob.type}, generation);
       if (!this._current(s, generation) || s.paused) return;
+      if (interruption && result.code === 'no_speech') {
+        if (['running', 'sending', 'stopping', 'recovering'].includes(this.getState().run?.status)) {
+          this.pause('Another task is running. Resume Talk when it finishes.'); return;
+        }
+        this._listen(s);
+        if (s.phase === 'listening') this._render('No speech in that interruption — listening again');
+        return;
+      }
       const text = typeof result.text === 'string' ? result.text.trim() : '';
       if (!result.ok || !text) throw new Error(result.error || 'No speech detected.');
       s.transcript = text;
@@ -312,12 +394,19 @@ export class TalkController {
       const source = s.playback = s.context.createBufferSource();
       source.buffer = buffer;
       source.connect(s.context.destination);
+      const capture = s.capture;
       source.onended = () => {
+        capture?.releaseReference(source);
+        if (s.playback === source) {
+          if (s.capture !== capture) s.capture?.releaseReference(source);
+          if (!s.bargePending) { s.capture?.disarm(); this._mute(s); }
+        }
         source.disconnect();
-        if (s.playback === source) s.playback = null;
+        if (s.playback === source) { s.playback = null; this._render(); }
         resolve();
       };
-      try { source.start(); } catch (error) { source.disconnect(); s.playback = null; reject(error); }
+      try { this._armBarge(s, source); source.start(); }
+      catch (error) { s.capture?.disarm(); this._mute(s); source.disconnect(); s.playback = null; reject(error); }
     });
   }
 
@@ -326,6 +415,14 @@ export class TalkController {
     // Resume may still be awaiting microphone permission when the task ends.
     // _openMedia will advance after acquiring its stream; never arm early.
     if (!s.stream || !s.context || s.phase === 'preparing') return;
+    if (s.bargePending) {
+      if (!s.bargePending.blob) return;
+      const blob = s.bargePending.blob;
+      clearTimeout(s.bargeTimer); s.bargeTimer = null; s.bargePending = null;
+      s.turn = null; s.interrupting = false; s.phase = 'transcribing'; this._render();
+      void this._transcribe(s, blob, s.generation, true);
+      return;
+    }
     s.turn = null; s.interrupting = false;
     // Allow speaker echo to decay before capturing the next turn.
     s.phase = 'settling'; this._render();
@@ -337,6 +434,8 @@ export class TalkController {
     s.cancelMediaWait?.(); s.cancelMediaWait = null;
     s.mediaAbort?.abort(); s.mediaAbort = null;
     clearInterval(s.poll); clearTimeout(s.next);
+    clearTimeout(s.bargeTimer); s.bargeTimer = null; s.bargePending = null;
+    s.capture?.close(); s.capture = null;
     s.poll = null; s.next = null;
     s.request?.abort(); s.request = null;
     if (s.recorder) {
@@ -376,6 +475,8 @@ export class TalkController {
   interrupt() {
     const s = this.session;
     if (!s || s.paused) return;
+    if (s.bargePending) { this.pause('Interruption recording stopped. Resume Talk when ready.'); return; }
+    s.capture?.disarm(); this._mute(s);
     if (s.turn && !s.turn.settled) {
       s.generation += 1;
       s.interrupting = true;

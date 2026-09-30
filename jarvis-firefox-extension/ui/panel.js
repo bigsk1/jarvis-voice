@@ -41,7 +41,9 @@ function renderTalk() {
   const s = talk.session;
   const labels = {preparing: 'Preparing microphone…', listening: 'Listening — speak, then pause',
     transcribing: 'Transcribing — microphone off', waiting: 'Jarvis is working — microphone off',
-    speaking: 'Jarvis is speaking — microphone off', stopping: 'Stopping this task…',
+    speaking: s?.playback ? (s.capture ? 'Jarvis is speaking — speak to interrupt' : 'Jarvis is speaking — microphone off')
+      : 'Preparing reply audio — microphone off',
+    interrupting: 'Listening to your interruption — speak, then pause', stopping: 'Stopping this task…',
     settling: 'Finishing this turn…', paused: 'Talk paused — microphone off'};
   $('talk-panel').hidden = !s;
   $('talk-panel').dataset.state = s?.phase || 'ended';
@@ -536,6 +538,17 @@ $('talk-button').addEventListener('click', () => {
 $('talk-pause').addEventListener('click', () => talk.session?.paused ? talk.resume() : talk.pause());
 $('talk-interrupt').addEventListener('click', () => talk.interrupt());
 $('talk-end').addEventListener('click', () => talk.end());
+const speakToInterrupt = $('talk-speak-to-interrupt');
+speakToInterrupt.disabled = true;
+browser.storage.local.get('talkSpeakToInterrupt').then(saved => {
+  speakToInterrupt.checked = saved.talkSpeakToInterrupt === true;
+  talk.setSpeakToInterrupt(speakToInterrupt.checked);
+}).catch(() => {}).finally(() => { speakToInterrupt.disabled = false; });
+speakToInterrupt.addEventListener('change', () => {
+  talk.setSpeakToInterrupt(speakToInterrupt.checked);
+  void browser.storage.local.set({talkSpeakToInterrupt: speakToInterrupt.checked})
+    .catch(() => { localError = 'Could not save Speak to interrupt. It applies to this window only.'; renderNotice(); });
+});
 async function openMicrophoneSetup() {
   const viewWindow = await browser.windows.getCurrent();
   await command('microphonePermission', {windowId: viewWindow.id});

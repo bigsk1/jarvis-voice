@@ -123,6 +123,16 @@ test('speech errors and non-audio responses are actionable',async()=>{
   await assert.rejects(transport.synthesize('Hi','local',ID),/Speech unavailable/);
 });
 
+test('empty STT crosses the bridge as a distinct result; real failures still reject',async()=>{
+  const h=harness(async()=>new Response(JSON.stringify({ok:false,error:'No speech detected',code:'no_speech'}),{status:400}));
+  const p=h.port();await h.rpc(p,'claim');
+  const result=await h.rpc(p,'stt',{bytes:new Uint8Array([1]).buffer,mimeType:'audio/wav'});
+  assert.equal(result.code,'no_speech');assert.equal(result.ok,false);assert.equal(h.emitted.length,0);
+  h.bridge.detach(p);
+  const transport=new JarvisTransport({serverUrl:ORIGIN,fetchImpl:async()=>new Response(JSON.stringify({error:'Service unavailable'}),{status:500})});
+  await assert.rejects(transport.transcribe(new Uint8Array([1]).buffer,'audio/wav','local'),/Service unavailable/);
+});
+
 test('the view bridge ignores late replies and aborts only its own pending request',async()=>{
   const messages=[],port={postMessage:message=>messages.push(message)},rpc=new TalkPort(()=>port),controller=new AbortController();
   const promise=rpc.request('one','stt',{},controller.signal);const id=messages[0].id;

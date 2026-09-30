@@ -14,11 +14,24 @@ ROOT = Path(__file__).resolve().parents[1]
     'pause_pending', 'saved_audio', 'duplicate', 'draft', 'device_loss', 'new_conversation',
     'other_task', 'approval', 'approval_timeout', 'approval_stop', 'composer_restore',
     'resume_permission_pending', 'resume_work_pending',
+    'barge_settled', 'barge_wait', 'barge_timeout', 'barge_pause', 'barge_off',
+    'barge_unavailable', 'barge_late_setup', 'barge_toggle', 'barge_no_speech',
+    'barge_late_ended', 'barge_persisted', 'barge_saved_audio', 'barge_disconnect',
+    'barge_hidden', 'barge_switch', 'barge_error', 'barge_empty', 'barge_stt_failure',
 ])
 def test_talk_lifecycle(scenario):
     result = subprocess.run(
         ['node', str(ROOT / 'tests/js/web_talk_harness.cjs'), scenario],
         cwd=ROOT, capture_output=True, text=True, timeout=15,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'passed' in result.stdout
+
+
+def test_interruption_audio_capture():
+    result = subprocess.run(
+        ['node', str(ROOT / 'tests/js/talk_capture_harness.cjs')],
+        cwd=ROOT, capture_output=True, text=True, timeout=20,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'passed' in result.stdout

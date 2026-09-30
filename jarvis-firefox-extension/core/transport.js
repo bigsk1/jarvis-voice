@@ -52,6 +52,7 @@ export class JarvisTransport {
     if (response.status === 401) this.onUnauthorized();
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
+      if (url.pathname === '/api/stt' && response.status === 400 && data.code === 'no_speech') return data;
       throw new Error(data.error || `Speech service returned HTTP ${response.status}`);
     }
     if (!audio) return response.json();

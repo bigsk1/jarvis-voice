@@ -60,6 +60,7 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
   let pushState;
   let disconnect;
   const pings = [];
+  const savedPreferences = {};
   const runtime = {
     connect: () => ({ postMessage: message => pings.push(message), onMessage: { addListener: listener => { pushState = listener; } }, onDisconnect: { addListener: listener => { disconnect = listener; } }, disconnect: () => disconnect() }),
     async sendMessage(message) {
@@ -97,7 +98,9 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
   };
   globalThis.document = doc;
   globalThis.window = win;
-  globalThis.browser = { runtime, windows: {getCurrent: async () => ({id: 4, type: 'normal'})}, permissions: { request: async permission => {
+  globalThis.browser = { runtime,
+    storage: {local: {async get(){return {...savedPreferences};}, async set(values){Object.assign(savedPreferences,values);}}},
+    windows: {getCurrent: async () => ({id: 4, type: 'normal'})}, permissions: { request: async permission => {
     permissions.push(permission);
     if (permission.permissions?.includes('tabs')) return tabPermissionGate || false;
     return permission.permissions ? notificationPermission : granted;
@@ -107,6 +110,12 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
     await new Promise(resolve => setImmediate(resolve));
     assert.equal($('settings-panel').hidden, false);
     assert.equal($('send-button').disabled, true);
+    assert.equal($('talk-speak-to-interrupt').checked, false);
+    assert.equal($('talk-speak-to-interrupt').disabled, false);
+    $('talk-speak-to-interrupt').checked = true;
+    await $('talk-speak-to-interrupt').fire('change');
+    assert.equal(savedPreferences.talkSpeakToInterrupt, true);
+    assert.equal(pings.some(message => message.type === 'talk:request'), false, 'Saving the preference must not open the microphone');
     assert.deepEqual(pings, [{type: 'ping'}, {type: 'viewStatus', visible: true, conversationId: null}], 'Open view reports visibility once alongside lightweight background activity');
     assert.equal($('show-badge').checked, true);
     assert.equal($('desktop-notifications').checked, false);
