@@ -125,6 +125,12 @@ _OPENAI_TEXT_IMAGE_MODALITIES = {
 # Audited against the per-model Reasoning.effort declarations in the official
 # OpenAI model catalog. Keep these profiles exact: the Web UI and provider
 # adapter use them as an allowlist, not as approximate family-wide guidance.
+_OPENAI_REASONING_6_1 = {
+    "reasoning": True,
+    "reasoning_effort": True,
+    "reasoning_effort_values": ["low", "medium", "high", "xhigh", "max"],
+    "reasoning_effort_default": "medium",
+}
 _OPENAI_REASONING_6 = {
     "reasoning": True,
     "reasoning_effort": True,
@@ -476,6 +482,27 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
         },
     ],
     "openai": [
+        {
+            # https://developers.openai.com/api/docs/models/gpt-6.1-sol
+            # Tool calling requires Jarvis's Responses API configuration.
+            "id": "gpt-6.1-sol",
+            "name": "GPT-6.1 Sol",
+            "context_tokens": 1_050_000,
+            "max_output_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_6_1,
+            "pricing": {
+                "input": 2.00,
+                "output": 10.00,
+                "cached": 0.10,
+                "long_context": {
+                    "threshold": 272_000,
+                    "input": 4.00,
+                    "output": 15.00,
+                    "cached": 0.20,
+                },
+            },
+        },
         {
             "id": "gpt-6-sol",
             "name": "GPT-6 Sol",

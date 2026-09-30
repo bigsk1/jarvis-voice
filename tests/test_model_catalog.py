@@ -186,8 +186,9 @@ class ModelCatalogTests(unittest.TestCase):
     def test_openai_options_are_newest_first(self):
         models = [entry["id"] for entry in get_provider_model_options("openai")]
         self.assertEqual(
-            models[:9],
+            models[:10],
             [
+                "gpt-6.1-sol",
                 "gpt-6-sol",
                 "gpt-6-luna",
                 "gpt-5.6-sol",
@@ -199,6 +200,34 @@ class ModelCatalogTests(unittest.TestCase):
                 "gpt-5.4-nano",
             ],
         )
+
+    def test_gpt_6_1_sol_resolves_with_official_metadata(self):
+        model = "gpt-6.1-sol"
+        self.assertEqual(get_model_context_window("openai", model), 1_050_000)
+        self.assertEqual(get_model_context_label("openai", model), "1.05M")
+        metadata = get_model_metadata("openai", model)
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["max_output_tokens"], 128_000)
+        self.assertEqual(metadata["input_modalities"], ["text", "image"])
+        self.assertEqual(metadata["output_modalities"], ["text"])
+        self.assertEqual(metadata["reasoning_effort_values"], ["low", "medium", "high", "xhigh", "max"])
+        self.assertEqual(metadata["reasoning_effort_default"], "medium")
+        self.assertFalse(metadata.get("default", False))
+
+        pricing = get_model_pricing("openai", model)
+        self.assertEqual(pricing["input"], 2.00)
+        self.assertEqual(pricing["cached"], 0.10)
+        self.assertEqual(pricing["output"], 10.00)
+        self.assertEqual(pricing["long_context"]["threshold"], 272_000)
+        self.assertEqual(pricing["long_context"]["input"], 4.00)
+        self.assertEqual(pricing["long_context"]["cached"], 0.20)
+        self.assertEqual(pricing["long_context"]["output"], 15.00)
+
+        option = get_provider_model_options("openai")[0]
+        self.assertEqual(option["id"], model)
+        self.assertEqual(option["context"], "1.05M")
+        self.assertEqual(option["capabilities"], ["vision", "tools", "thinking"])
+        self.assertTrue(option["vision"])
 
     def test_gpt_6_models_resolve_with_pricing_and_context(self):
         for model in ("gpt-6-sol", "gpt-6-luna"):
