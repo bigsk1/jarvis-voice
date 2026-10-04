@@ -34,6 +34,34 @@ const Utils = {
     return s.replace(/[ \t]{2,}/g, ' ');
   },
 
+  // Keep these reviewed cues in sync with lib/tts_normalizer.py.
+  _speechInlineTags: Object.freeze(["breath", "chuckle", "clears throat", "cry", "crying", "curious", "excited", "exhale", "exhales", "giggle", "hum-tune", "inhale", "laugh", "laughing", "laughs", "lip-smack", "long-pause", "mischievously", "pause", "sarcastic", "shouting", "shouts", "sigh", "sighs", "tongue-click", "tsk", "whispering", "whispers"]),
+  _speechWrappingTags: Object.freeze(["build-intensity", "decrease-intensity", "emphasis", "fast", "higher-pitch", "laugh-speak", "loud", "lower-pitch", "sing-song", "singing", "slow", "soft", "whisper"]),
+
+  /** Remove cues; an original tagged source can repair older stripped history. */
+  stripSpeechTagsForDisplay(text, taggedSource = '') {
+    const inline = this._speechInlineTags.join('|');
+    const wrapping = this._speechWrappingTags.join('|');
+    const repairBrackets = value => String(value ?? '').replace(
+      new RegExp(`(?<!\\[)\\[(${inline})\\]{2,}(?!\\]|\\s*\\()`, 'gi'), '[$1]');
+    const strip = input => {
+      let value = this.stripLlmCitationArtifacts(input);
+      value = value.replace(new RegExp(`\\[\\s*(/?)\\s*(${wrapping})\\s*>`, 'gi'),
+        (_, slash, tag) => `<${slash}${tag.toLowerCase()}>`);
+      value = value.replace(new RegExp(`\\[(?:${inline})\\](?!\\s*\\()`, 'gi'), '');
+      value = value.replace(new RegExp(`<\\s*/?\\s*(?:${wrapping})\\s*>`, 'gi'), '');
+      return value.replace(/[ \t]+([,.;:!?])/g, '$1')
+        .replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n')
+        .replace(/^[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+    };
+    // Reconstruct old display text only when it exactly matches source cleanup.
+    // This leaves unrelated brackets and deliberately abbreviated answers alone.
+    if (taggedSource && strip(text) === strip(taggedSource)) {
+      return strip(repairBrackets(taggedSource));
+    }
+    return strip(repairBrackets(text));
+  },
+
   /** Show a returned Markdown file as a document when Cloud fenced the whole file. */
   unwrapBrowserResearchMarkdown(value) {
     const text = String(value ?? '');

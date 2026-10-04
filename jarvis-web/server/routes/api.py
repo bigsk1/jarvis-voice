@@ -259,7 +259,7 @@ def _status_tts_cache_settings(provider, get_setting):
             'stability': get_setting('ELEVENLABS_TTS_STABILITY', '0.5'),
             'similarity_boost': get_setting('ELEVENLABS_TTS_SIMILARITY_BOOST', '0.75'),
         }
-        if model != 'eleven_v3':
+        if model not in {'eleven_v3', 'eleven_v4', 'eleven_v4_turbo'}:
             settings.update({
                 'style': get_setting('ELEVENLABS_TTS_STYLE', '0.5'),
                 'use_speaker_boost': get_setting(
@@ -2718,7 +2718,10 @@ def text_to_speech():
                 status_tts_model if purpose == 'status' else final_tts_model
             )
 
-        text = sanitize_for_speech(text, preserve_xai_tags=provider == 'xai')
+        from tts_normalizer import speech_tag_options
+        text = sanitize_for_speech(
+            text, **speech_tag_options(provider, effective_tts_model or '')
+        )
         if not text:
             text = "Done. I shared the details in chat."
 
@@ -2916,7 +2919,7 @@ def _generate_elevenlabs_tts(
     if not api_key:
         raise ValueError('ELEVENLABS_API_KEY not configured')
     
-    # Current ElevenLabs per-request limits: v3 5k, Flash 2.5 40k, v2 10k.
+    # Current ElevenLabs per-request limits: v3 5k, Flash 2.5 40k, v4/v2 10k.
     char_limit = (
         5000 if model_id == 'eleven_v3'
         else 40000 if model_id == 'eleven_flash_v2_5'
@@ -2939,10 +2942,11 @@ def _generate_elevenlabs_tts(
     stability = float(get_jarvis_setting('ELEVENLABS_TTS_STABILITY', '0.5'))
     similarity = float(get_jarvis_setting('ELEVENLABS_TTS_SIMILARITY_BOOST', '0.75'))
     
-    # v3 has different voice_settings requirements (stability must be 0.0, 0.5, or 1.0)
-    if model_id == 'eleven_v3':
+    # v3/v4 use only Stability and Similarity; v3 also requires discrete stability.
+    if model_id in {'eleven_v3', 'eleven_v4', 'eleven_v4_turbo'}:
         # Snap stability to valid v3 values
-        stability = min([0.0, 0.5, 1.0], key=lambda x: abs(x - stability))
+        if model_id == 'eleven_v3':
+            stability = min([0.0, 0.5, 1.0], key=lambda x: abs(x - stability))
         voice_settings = {
             "stability": stability,
             "similarity_boost": similarity

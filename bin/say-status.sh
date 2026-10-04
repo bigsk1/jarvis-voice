@@ -45,6 +45,15 @@ STATUS_ELEVENLABS_TTS_MODEL="${ELEVENLABS_STATUS_TTS_MODEL:-${ELEVENLABS_TTS_MOD
 STATUS_TTS_CONNECT_TIMEOUT="${STATUS_TTS_CONNECT_TIMEOUT:-15}"
 STATUS_TTS_TIMEOUT="${STATUS_TTS_TIMEOUT:-25}"
 
+# Match Web status normalization using the effective status provider/model.
+# Scoped environment overrides leave the final speech model unchanged.
+TEXT=$(TTS_PROVIDER_OVERRIDE="$TTS_PROVIDER" ELEVENLABS_TTS_MODEL="$STATUS_ELEVENLABS_TTS_MODEL" \
+    python3 "$SCRIPT_DIR/tts-normalize.py" "$TEXT")
+if [ -z "$TEXT" ]; then
+    echo "Status message was empty after TTS normalization" >&2
+    exit 1
+fi
+
 # Create cache dir if caching enabled
 if [ "$STATUS_CACHE_ENABLED" = "true" ]; then
     mkdir -p "$CACHE_DIR"
@@ -57,7 +66,7 @@ generate_cache_key() {
     if [ "$TTS_PROVIDER" = "elevenlabs" ]; then
         # Hash only voice settings that are actually sent for the effective model.
         local eleven_key="${text}|elevenlabs|${ELEVENLABS_TTS_VOICE:-}|${STATUS_ELEVENLABS_TTS_MODEL}|${ELEVENLABS_TTS_STABILITY:-0.5}|${ELEVENLABS_TTS_SIMILARITY_BOOST:-0.75}"
-        if [ "$STATUS_ELEVENLABS_TTS_MODEL" != "eleven_v3" ]; then
+        if [ "$STATUS_ELEVENLABS_TTS_MODEL" != "eleven_v3" ] && [ "$STATUS_ELEVENLABS_TTS_MODEL" != "eleven_v4" ] && [ "$STATUS_ELEVENLABS_TTS_MODEL" != "eleven_v4_turbo" ]; then
             eleven_key="${eleven_key}|${ELEVENLABS_TTS_STYLE:-0.5}|${ELEVENLABS_TTS_USE_SPEAKER_BOOST:-true}"
         fi
         echo -n "${eleven_key}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
@@ -144,8 +153,8 @@ else
         ELEVENLABS_TTS_USE_SPEAKER_BOOST="${ELEVENLABS_TTS_USE_SPEAKER_BOOST:-true}"
         
         # Build ElevenLabs TTS JSON
-        # v3 has different voice_settings requirements (stability must be 0.0, 0.5, or 1.0)
-        if [ "$ELEVENLABS_TTS_MODEL" = "eleven_v3" ]; then
+        # v3/v4 accept Stability and Similarity only (v3 stability: 0.0, 0.5, or 1.0)
+        if [ "$ELEVENLABS_TTS_MODEL" = "eleven_v3" ] || [ "$ELEVENLABS_TTS_MODEL" = "eleven_v4" ] || [ "$ELEVENLABS_TTS_MODEL" = "eleven_v4_turbo" ]; then
             TTS_JSON=$(jq -n \
               --arg text "$TEXT" \
               --arg model_id "$ELEVENLABS_TTS_MODEL" \

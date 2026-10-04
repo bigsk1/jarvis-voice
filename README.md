@@ -287,7 +287,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 | **Kokoro** | Local | Good | Free | Lightweight, fast, Nicole+Sarah voices |
 | **OpenAI TTS** | Cloud | Good | Paid | alloy, echo, fable, onyx, nova, shimmer |
 
-Configure via `TTS_PROVIDER` in `cloud.env` or `local.env`. xAI TTS uses its native `/v1/tts` API and supports optional final-speech tags via `XAI_TTS_STYLE_TAGS_ENABLED`; Qwen3-TTS uses an OpenAI-compatible API.
+Configure via `TTS_PROVIDER` in `cloud.env` or `local.env`. ElevenLabs v4 is available with `TTS_PROVIDER=elevenlabs` and `ELEVENLABS_TTS_MODEL=eleven_v4` (or `eleven_v4_turbo`); `ELEVENLABS_TTS_STYLE_TAGS_ENABLED=true` allows reviewed audio cues in final speech, while displayed chat removes them. V2 and v3 remain selectable; explicit supported audio cues are preserved for v3. xAI TTS uses its native `/v1/tts` API and supports optional final-speech tags via `XAI_TTS_STYLE_TAGS_ENABLED`; Qwen3-TTS uses an OpenAI-compatible API.
 See: [`docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md`](docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md)
 
 **Voice API** (`/api/voice/speak`): Supports per-request TTS provider/voice overrides for multi-agent voice identity

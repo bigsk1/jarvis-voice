@@ -197,7 +197,8 @@ STATUS_TTS_CONNECT_TIMEOUT=15
 STATUS_TTS_TIMEOUT=25
 
 # Optional ElevenLabs split: expressive final answers, fast/cheaper statuses
-ELEVENLABS_TTS_MODEL=eleven_v3
+ELEVENLABS_TTS_MODEL=eleven_v4
+ELEVENLABS_TTS_STYLE_TAGS_ENABLED=true
 ELEVENLABS_STATUS_TTS_MODEL=eleven_flash_v2_5
 
 STATUS_LLM_ENABLED=true
@@ -211,6 +212,8 @@ STATUS_HUMOR_ENABLED=true
 STATUS_ENCOURAGEMENT_ENABLED=true
 STATUS_SASS_LEVEL=1
 ```
+
+The ElevenLabs audio-tag toggle applies to final answers only. Status LLM phrases remain plain text, and `ELEVENLABS_STATUS_TTS_MODEL` selects their model independently.
 
 Timing guidance:
 

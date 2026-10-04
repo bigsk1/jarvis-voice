@@ -152,6 +152,27 @@ async function audio(){requests.at(-1).resolve({ok:true,arrayBuffer:async()=>new
     await start();assert.deepEqual(warmups,['local']);talk.pause();
     const pending=talk.resume();await flush();assert.deepEqual(warmups,['local','local']);
     permissions.at(-1).resolve(stream());await pending;assert.equal(talk.session.phase,'listening');
+  } else if(scenario==='tag_chunks' || scenario==='tag_chunks_no_space') {
+    await start();await utterance();await transcribe();
+    const prefix = scenario==='tag_chunks' ? 'A'.repeat(936) + ' ' : 'A'.repeat(947);
+    const speech = prefix + '[clears throat] ' + 'tail '.repeat(40);
+    await answer({speech});
+    const chunks = [];
+    for (let index=0; index<2; index++) {
+      const request=requests.at(-1);
+      assert.equal(request.url,'/api/tts');
+      const payload=JSON.parse(request.options.body);
+      assert.equal(payload.message_id,'r1');
+      assert.equal(payload.purpose,'final');
+      assert(payload.text.length<=950);
+      chunks.push(payload.text);
+      await audio();contexts[0].sources.at(-1).onended();await flush();
+    }
+    assert(!chunks[0].includes('[clears'));
+    assert(chunks[1].startsWith('[clears throat]'));
+    assert.equal(chunks.join('').trim(),speech.trim());
+    assert.equal(requests.filter(r=>r.url==='/api/tts').length,2);
+    settle();finishTimers();assert.equal(talk.session.phase,'listening');
   } else if(scenario==='loop') {
     await start();await utterance();assert.equal(tracks[0].enabled,false);await transcribe();
     assert.equal(sent.length,1);await answer();assert.equal(requests.at(-1).url,'/api/tts');await audio();

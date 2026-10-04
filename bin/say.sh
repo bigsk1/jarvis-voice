@@ -122,8 +122,8 @@ elif [ "$TTS_PROVIDER" = "elevenlabs" ]; then
     ELEVENLABS_TTS_USE_SPEAKER_BOOST="${ELEVENLABS_TTS_USE_SPEAKER_BOOST:-true}"
     
     # Build ElevenLabs TTS JSON
-    # v3 has different voice_settings requirements (stability must be 0.0, 0.5, or 1.0)
-    if [ "$ELEVENLABS_TTS_MODEL" = "eleven_v3" ]; then
+    # v3/v4 accept Stability and Similarity only (v3 stability: 0.0, 0.5, or 1.0)
+    if [ "$ELEVENLABS_TTS_MODEL" = "eleven_v3" ] || [ "$ELEVENLABS_TTS_MODEL" = "eleven_v4" ] || [ "$ELEVENLABS_TTS_MODEL" = "eleven_v4_turbo" ]; then
         TTS_JSON=$(jq -n \
           --arg text "$TEXT" \
           --arg model_id "$ELEVENLABS_TTS_MODEL" \

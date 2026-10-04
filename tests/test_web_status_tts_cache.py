@@ -5,6 +5,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = (ROOT / "jarvis-web/client/js/app.js").read_text()
@@ -340,3 +342,84 @@ def test_elevenlabs_flash_request_preserves_custom_voice_id():
 
     assert post.call_args.args[0].endswith("/my-custom-cloned-voice")
     assert post.call_args.kwargs["json"]["model_id"] == "eleven_flash_v2_5"
+
+
+@pytest.mark.parametrize("model", ["eleven_v3", "eleven_v4", "eleven_v4_turbo"])
+def test_elevenlabs_audio_tag_payload_and_display_speech_separation(tmp_path, model):
+    _purge_server_modules()
+    sys.path.insert(0, str(ROOT / "jarvis-web"))
+    from server import config as server_config
+    from server.routes import api
+    from server.sockets.chat import ChatHandler
+
+    values = {
+        "TTS_PROVIDER": "elevenlabs", "ELEVENLABS_API_KEY": "fake-key",
+        "ELEVENLABS_TTS_VOICE": "custom-voice", "ELEVENLABS_TTS_MODEL": model,
+        "ELEVENLABS_TTS_STABILITY": "0.37", "ELEVENLABS_TTS_SIMILARITY_BOOST": "0.8",
+        # These must never enter the v4 request or status cache identity.
+        "ELEVENLABS_TTS_STYLE": "invalid-for-v4", "ELEVENLABS_TTS_USE_SPEAKER_BOOST": "true",
+    }
+    def get_setting(key, default=""):
+        return values.get(key, default)
+
+    handler = ChatHandler.__new__(ChatHandler)
+    response = type("Response", (), {"status_code": 200, "content": b"fake-audio"})()
+    with (
+        patch.object(server_config, "get_jarvis_setting", side_effect=get_setting),
+        patch("requests.post", return_value=response) as post,
+    ):
+        display, speech = handler._prepare_web_response_text(
+            {"speech": "[curious] How did that happen? [clears throat]"}, "Done."
+        )
+        assert display == "How did that happen?"
+        assert speech == "[curious] How did that happen? [clears throat]"
+        for generate in (api._generate_elevenlabs_tts, handler._elevenlabs_tts):
+            generate(speech + "x" * 10001, tmp_path, "v4")
+            payload = post.call_args.kwargs["json"]
+            assert payload["model_id"] == model
+            assert len(payload["text"]) == (5000 if model == "eleven_v3" else 10000)
+            assert payload["text"].startswith("[curious]")
+            assert payload["voice_settings"] == {
+                "stability": 0.5 if model == "eleven_v3" else 0.37, "similarity_boost": 0.8
+            }
+
+    cache = api._status_tts_cache_settings("elevenlabs", get_setting)
+    assert "style" not in cache
+    assert "use_speaker_boost" not in cache
+    values["ELEVENLABS_TTS_STYLE"] = "different"
+    assert cache == api._status_tts_cache_settings("elevenlabs", get_setting)
+
+
+def test_web_tts_normalizes_with_the_effective_final_or_status_model(tmp_path):
+    _purge_server_modules()
+    sys.path.insert(0, str(ROOT / "jarvis-web"))
+    from server import config as server_config
+    from server.app import app
+    from server.routes import api
+
+    values = {
+        "TTS_PROVIDER": "elevenlabs", "ELEVENLABS_TTS_MODEL": "eleven_v4",
+        "ELEVENLABS_STATUS_TTS_MODEL": "eleven_flash_v2_5", "STATUS_CACHE_ENABLED": "false",
+    }
+    captured = []
+    def generate(text, output_dir, timestamp, model_override=None):
+        captured.append((text, model_override))
+        path = output_dir / f"tts_{timestamp}.mp3"
+        path.write_bytes(b"audio")
+        return path
+    with (
+        patch.object(api.Path, "home", return_value=tmp_path),
+        patch.object(api, "JARVIS_ROOT", tmp_path),
+        patch.object(api, "_apply_tts_provider_override", return_value=None),
+        patch.object(server_config, "load_jarvis_config"),
+        patch.object(server_config, "get_jarvis_setting", side_effect=lambda k, d="": values.get(k, d)),
+        patch.object(api, "_generate_elevenlabs_tts", side_effect=generate),
+        patch("server.app.is_auth_enabled", return_value=False),
+    ):
+        with app.test_client() as client:
+            for purpose in ("final", "status"):
+                result = client.post("/api/tts", json={
+                    "text": "[whispers] Hello", "mode": "cloud", "purpose": purpose,
+                })
+                assert result.status_code == 200
+    assert captured == [("[whispers] Hello", "eleven_v4"), ("Hello", "eleven_flash_v2_5")]

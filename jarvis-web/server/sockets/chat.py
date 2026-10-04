@@ -757,21 +757,24 @@ class ChatHandler:
         - speech_text: what should be safe to send to TTS
         """
         from security_utils import sanitize_for_speech
-        from tts_normalizer import strip_speech_tags_for_display
+        from tts_normalizer import speech_tag_options, strip_speech_tags_for_display
 
         raw_response = result.get('raw_llm_response', '') or ''
         primary_speech = result.get('speech')
         display_text = primary_speech if primary_speech not in (None, '') else raw_response
 
         speech_source = primary_speech if primary_speech not in (None, '') else raw_response
-        preserve_xai_tags = False
+        tag_options = speech_tag_options('')
         try:
             from ..config import get_jarvis_setting
-            preserve_xai_tags = (get_jarvis_setting('TTS_PROVIDER', '') or '').strip().lower() == 'xai'
+            tag_options = speech_tag_options(
+                get_jarvis_setting('TTS_PROVIDER', ''),
+                get_jarvis_setting('ELEVENLABS_TTS_MODEL', ''),
+            )
         except Exception:
-            preserve_xai_tags = False
+            pass
 
-        speech_text = sanitize_for_speech(speech_source, preserve_xai_tags=preserve_xai_tags) if speech_source else ''
+        speech_text = sanitize_for_speech(speech_source, **tag_options) if speech_source else ''
         if speech_source and not speech_text:
             speech_text = tts_fallback
 
@@ -5347,7 +5350,7 @@ Mode: {mode}
             print("[CHAT] ELEVENLABS_API_KEY not configured")
             return None
         
-        # v3 has 5k char limit, v2 has 10k - truncate if needed
+        # v3 has a 5k char limit, v4/v2 have 10k - truncate if needed
         char_limit = 5000 if model_id == 'eleven_v3' else 10000
         if len(text) > char_limit:
             print(f"[CHAT TTS] Text truncated from {len(text)} to {char_limit} chars for {model_id}")
@@ -5366,10 +5369,11 @@ Mode: {mode}
         stability = float(get_jarvis_setting('ELEVENLABS_TTS_STABILITY', '0.5'))
         similarity = float(get_jarvis_setting('ELEVENLABS_TTS_SIMILARITY_BOOST', '0.75'))
         
-        # v3 has different voice_settings requirements (stability must be 0.0, 0.5, or 1.0)
-        if model_id == 'eleven_v3':
+        # v3/v4 use only Stability and Similarity; v3 also requires discrete stability.
+        if model_id in {'eleven_v3', 'eleven_v4', 'eleven_v4_turbo'}:
             # Snap stability to valid v3 values
-            stability = min([0.0, 0.5, 1.0], key=lambda x: abs(x - stability))
+            if model_id == 'eleven_v3':
+                stability = min([0.0, 0.5, 1.0], key=lambda x: abs(x - stability))
             voice_settings = {
                 "stability": stability,
                 "similarity_boost": similarity

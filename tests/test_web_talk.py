@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.parametrize('scenario', [
-    'warmup', 'loop', 'silence', 'noise', 'max_recording', 'late_permission', 'late_stt',
+    'tag_chunks', 'tag_chunks_no_space', 'warmup', 'loop', 'silence', 'noise', 'max_recording', 'late_permission', 'late_stt',
     'switch', 'disconnect', 'hidden', 'denied', 'no_speech', 'voice_end',
     'tts_failure', 'stt_timeout', 'interrupt_work', 'interrupt_tts',
     'pause_pending', 'saved_audio', 'duplicate', 'draft', 'device_loss', 'new_conversation',

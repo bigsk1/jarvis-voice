@@ -546,3 +546,77 @@ reflectionsOn = true;
 await app._saveSettings();
 assert.deepEqual(cleared, ['cleared']);
 """)
+
+
+@pytest.mark.parametrize("live", [True, False])
+@pytest.mark.parametrize("structured", [True, False])
+def test_speech_tags_stay_hidden_in_raw_fallback_and_details(live, structured):
+    run_message_browser(f"const live = {json.dumps(live)}, structured = {json.dumps(structured)};\n" + r"""
+const raw = structured
+  ? '[CURIOUS] Full answer\n\n- [clears throat] Item one\n- <whisper>Item two</whisper>'
+  : '[curious] A longer raw explanation that belongs in the details pane. [clears throat] It has several useful sentences.';
+const speech = '[whispers] Brief answer.';
+const payload = {speech, raw_llm_response:raw};
+const html = render(chat(), 'Brief answer.', [], payload, live);
+assert.ok(!/\[(?:curious|clears throat|whispers)\]/i.test(html));
+assert.ok(!html.includes('&lt;whisper&gt;'));
+if (structured) {
+  assert.ok(html.includes('Item one'));
+  assert.ok(html.includes('Item two'));
+} else {
+  assert.ok(html.includes('details-toggle'));
+  assert.ok(html.includes('several useful sentences'));
+}
+assert.equal(payload.speech, speech); // Playback keeps the original cues.
+assert.equal(payload.raw_llm_response, raw);
+assert.equal(Utils.stripSpeechTagsForDisplay('[curious](https://example.test) [1, 2]'),
+  '[curious](https://example.test) [1, 2]');
+assert.equal(Utils.stripSpeechTagsForDisplay('[slow>Hi</slow> [laugh]'), 'Hi');
+""")
+
+
+def test_client_speech_tag_cleanup_matches_reviewed_python_vocabulary():
+    import sys
+    sys.path.insert(0, str(ROOT / "lib"))
+    from tts_normalizer import (
+        ELEVENLABS_INLINE_SPEECH_TAGS,
+        XAI_INLINE_SPEECH_TAGS,
+        XAI_WRAPPING_SPEECH_TAGS,
+    )
+    inline = sorted(ELEVENLABS_INLINE_SPEECH_TAGS | XAI_INLINE_SPEECH_TAGS)
+    wrapping = sorted(XAI_WRAPPING_SPEECH_TAGS)
+    run_message_browser(
+        f"assert.deepEqual(Array.from(Utils._speechInlineTags), {json.dumps(inline)});\n"
+        f"assert.deepEqual(Array.from(Utils._speechWrappingTags), {json.dumps(wrapping)});\n"
+        + r"""
+for (const tag of Utils._speechInlineTags) {
+  assert.equal(Utils.stripSpeechTagsForDisplay(`[${tag}] Hello`), 'Hello');
+}
+for (const tag of Utils._speechWrappingTags) {
+  assert.equal(Utils.stripSpeechTagsForDisplay(`<${tag}>Hello</${tag}>`), 'Hello');
+}
+"""
+    )
+
+
+
+@pytest.mark.parametrize("live", [True, False])
+def test_duplicate_cue_brackets_are_hidden_in_live_and_existing_history(live):
+    run_message_browser(f"const live = {json.dumps(live)};\n" + r"""
+const raw = '[curious]] Did that just happen?\n[excited] It worked.\n[clears throat]]] Anyway.';
+const payload = {speech:raw, raw_llm_response:raw};
+// Older servers already stripped the tags, leaving the duplicate closers behind.
+const oldDisplay = '] Did that just happen?\n It worked.\n]] Anyway.';
+for (const display of [raw, oldDisplay]) {
+  const html = render(chat(), display, [], payload, live);
+  assert.ok(html.includes('Did that just happen?'));
+  assert.ok(html.includes('Anyway.'));
+  assert.ok(!html.includes(']'));
+}
+assert.equal(payload.speech, raw);
+assert.equal(payload.raw_llm_response, raw);
+assert.equal(Utils.stripSpeechTagsForDisplay('[laugh]] Funny.'), 'Funny.');
+const ordinary = '] A bracket, [1, 2], [unknown]] and [curious](https://example.test).';
+assert.equal(Utils.stripSpeechTagsForDisplay(ordinary), ordinary);
+assert.equal(Utils.stripSpeechTagsForDisplay('] Separate answer.', raw), '] Separate answer.');
+""")

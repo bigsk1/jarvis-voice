@@ -34,6 +34,7 @@ from model_catalog import get_provider_fallback_model
 from llm_provider import has_usage_accounting_data
 from status_updater import StatusUpdater
 from security_utils import sanitize_for_speech
+from tts_normalizer import speech_tag_options
 
 from router_v2 import LLMRouter, ProviderRouteInput, extract_current_user_request
 from context_assembler import ContextAssembler
@@ -4432,7 +4433,6 @@ def main():
     # Random feedback during normal operation (if enabled)
     if not collect_feedback:
         import random
-        from config_loader import get_config_value, get_float
         random_enabled = get_config_value('FEEDBACK_RANDOM_ENABLED', 'false').lower() == 'true'
         random_chance = get_float('FEEDBACK_RANDOM_CHANCE', 0.0)  # 0.1 = 10%
         if random_enabled and random.random() < random_chance:
@@ -4441,7 +4441,6 @@ def main():
                 print("🎲 Random feedback collection triggered")
     
     if not json_only:
-        from config_loader import get_config_value
         
         print(f"🎯 Processing: '{transcript}'")
         print(f"📡 Mode: {mode}")
@@ -4480,7 +4479,6 @@ def main():
     # Collect feedback if requested
     if collect_feedback:
         from feedback import FeedbackCollector
-        from config_loader import get_config_value
         
         if not json_only:
             print("\n" + "=" * 60)
@@ -4661,7 +4659,13 @@ Mode: {mode}
             print(f"\n🔊 Speaking result via {say_script.name}...")
         
         try:
-            safe_speech = sanitize_for_speech(result["speech"])
+            safe_speech = sanitize_for_speech(
+                result["speech"],
+                **speech_tag_options(
+                    get_config_value("TTS_PROVIDER", ""),
+                    get_config_value("ELEVENLABS_TTS_MODEL", ""),
+                ),
+            )
             if safe_speech:
                 subprocess.run([str(say_script), safe_speech], check=False)
         except Exception as e:

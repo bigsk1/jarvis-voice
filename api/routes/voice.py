@@ -9,7 +9,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 from config_loader import export_config_environment
-from tts_normalizer import normalize_tts_text, validate_tts_profile
+from tts_normalizer import normalize_tts_text, speech_tag_options, validate_tts_profile
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
 
@@ -52,11 +52,10 @@ async def speak(request: SpeakRequest):
 
         env = export_config_environment(request.mode)
         provider_used = request.tts_provider or env.get('TTS_PROVIDER', 'elevenlabs')
-        preserve_xai_tags = provider_used == 'xai'
         spoken_message = normalize_tts_text(
             request.message,
             profile=validated_profile,
-            preserve_xai_tags=preserve_xai_tags,
+            **speech_tag_options(provider_used, env.get('ELEVENLABS_TTS_MODEL', '')),
         )
         if not spoken_message:
             raise HTTPException(status_code=400, detail="Message was empty after TTS normalization")

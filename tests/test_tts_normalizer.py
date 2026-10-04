@@ -302,6 +302,18 @@ class TtsNormalizerTests(unittest.TestCase):
         self.assertEqual(display, "That's hilarious did you see that?")
         self.assertNotIn("[slow>", display)
 
+    def test_duplicate_inline_tag_brackets_are_repaired_before_cleanup(self):
+        sample = "[CURIOUS]] Did that just happen? [clears throat]]] Anyway."
+        speech = normalize_tts_text(sample, preserve_elevenlabs_tags=True)
+        self.assertEqual(speech, "[curious] Did that just happen? [clears throat] Anyway.")
+        self.assertEqual(normalize_tts_text(speech, preserve_elevenlabs_tags=True), speech)
+        self.assertEqual(strip_speech_tags_for_display(sample), "Did that just happen? Anyway.")
+        self.assertEqual(normalize_tts_text(sample), "Did that just happen? Anyway.")
+        self.assertEqual(normalize_tts_text("[laugh]] Funny.", preserve_xai_tags=True),
+                         "[laugh] Funny.")
+        ordinary = "] A bracket, [1, 2], [unknown]] and [curious](https://example.test)."
+        self.assertEqual(strip_speech_tags_for_display(ordinary), ordinary)
+
     def test_validate_tts_profile_allows_known_profiles(self):
         self.assertEqual(validate_tts_profile("weather_watch"), "weather_watch")
         self.assertEqual(validate_tts_profile("camera_alert"), "camera_alert")

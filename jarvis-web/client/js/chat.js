@@ -3988,9 +3988,10 @@ class ChatUI {
     const innerData = data.data || data || {};
     let rawResponse = innerData.raw_llm_response || innerData.vision_analysis || data.raw_llm_response || data.vision_analysis || '';
     if (typeof rawResponse !== 'string') rawResponse = '';
-    rawResponse = Utils.stripLlmCitationArtifacts(rawResponse);
-    const storedSpeech = Utils.stripLlmCitationArtifacts(String(innerData.speech || data.speech || ''));
-    text = Utils.stripLlmCitationArtifacts(text);
+    const taggedSpeech = String(innerData.speech || data.speech || '');
+    text = Utils.stripSpeechTagsForDisplay(text, rawResponse || taggedSpeech);
+    rawResponse = Utils.stripSpeechTagsForDisplay(rawResponse);
+    const storedSpeech = Utils.stripSpeechTagsForDisplay(taggedSpeech);
 
     const shoppingHtml = window.structuredResultsRenderer
       ? ''

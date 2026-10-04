@@ -46,6 +46,30 @@ XAI_WRAPPING_SPEECH_TAGS = {
     "emphasis",
 }
 
+ELEVENLABS_V4_MODELS = frozenset({"eleven_v4", "eleven_v4_turbo"})
+ELEVENLABS_AUDIO_TAG_MODELS = ELEVENLABS_V4_MODELS | {"eleven_v3"}
+
+# Reviewed final-answer vocabulary for ElevenLabs audio-tag models. Keep prompts, speech
+# preservation, and display cleanup on this same list; do not treat arbitrary
+# bracketed data or Markdown link labels as delivery cues.
+ELEVENLABS_INLINE_SPEECH_TAGS = {
+    "curious", "excited", "sarcastic", "crying", "mischievously",
+    "whispers", "whispering", "shouts", "shouting",
+    "laughs", "laughing", "clears throat", "sighs", "exhales",
+}
+
+
+def speech_tag_options(provider: str, elevenlabs_model: str = "") -> dict[str, bool]:
+    """Select markup for the actual speech provider, including request overrides."""
+    provider = (provider or "").strip().lower()
+    return {
+        "preserve_xai_tags": provider == "xai",
+        "preserve_elevenlabs_tags": (
+            provider == "elevenlabs" and (elevenlabs_model or "").strip() in ELEVENLABS_AUDIO_TAG_MODELS
+        ),
+    }
+
+
 # BMP private-use area — some providers emit invisible citation markers here
 # (e.g. wrapped tokens like turn0search0) that must not appear in UI or TTS.
 _LLM_BMP_PUA_CITATION_RE = re.compile(r"[\uE000-\uF8FF]")
@@ -114,15 +138,42 @@ def _protect_xai_speech_tags(text: str) -> tuple[str, dict[str, str]]:
     return text, protected
 
 
+def _protect_elevenlabs_speech_tags(text: str) -> tuple[str, dict[str, str]]:
+    """Preserve only reviewed ElevenLabs tags through ordinary text cleanup."""
+    protected: dict[str, str] = {}
+
+    def replace(match: re.Match[str]) -> str:
+        tag = match.group(1).lower()
+        if tag not in ELEVENLABS_INLINE_SPEECH_TAGS:
+            return match.group(0)
+        key = f"@@JTTTAG{len(protected)}TOKEN@@"
+        protected[key] = f"[{tag}]"
+        return key
+
+    text = re.sub(r'\[([A-Za-z][A-Za-z ]*)\](?!\s*\()', replace, text)
+    return text, protected
+
+
 def _strip_speech_tag_markup(text: str) -> str:
     """Remove TTS/speech tag markers that are unsupported by the active provider."""
-    known_inline = "|".join(re.escape(tag) for tag in sorted(XAI_INLINE_SPEECH_TAGS, key=len, reverse=True))
+    known_inline = "|".join(re.escape(tag) for tag in sorted(XAI_INLINE_SPEECH_TAGS | ELEVENLABS_INLINE_SPEECH_TAGS, key=len, reverse=True))
     known_wrapping = "|".join(re.escape(tag) for tag in sorted(XAI_WRAPPING_SPEECH_TAGS, key=len, reverse=True))
-    text = re.sub(rf'\[(?:{known_inline})\]', '', text, flags=re.IGNORECASE)
+    text = re.sub(rf'\[(?:{known_inline})\](?!\s*\()', '', text, flags=re.IGNORECASE)
     text = re.sub(rf'<\s*/?\s*(?:{known_wrapping})\s*>', '', text, flags=re.IGNORECASE)
     # Strip unknown XML/HTML-like tags while preserving their inner text.
     text = re.sub(r'</?[A-Za-z][A-Za-z0-9_-]*(?:\s+[^<>]*)?>', '', text)
     return text
+
+
+def _repair_duplicate_speech_tag_brackets(text: str) -> str:
+    """Collapse extra closing brackets only on reviewed inline delivery cues."""
+    known_inline = "|".join(re.escape(tag) for tag in sorted(
+        XAI_INLINE_SPEECH_TAGS | ELEVENLABS_INLINE_SPEECH_TAGS, key=len, reverse=True,
+    ))
+    return re.sub(
+        rf'(?<!\[)\[({known_inline})\]{{2,}}(?!\]|\s*\()',
+        r'[\1]', text, flags=re.IGNORECASE,
+    )
 
 
 def _repair_malformed_xai_speech_tags(text: str) -> str:
@@ -152,6 +203,7 @@ def strip_speech_tags_for_display(text: str) -> str:
 
     text = strip_llm_citation_artifacts(text)
     text = _repair_malformed_xai_speech_tags(text)
+    text = _repair_duplicate_speech_tag_brackets(text)
     text = _strip_speech_tag_markup(text)
     text = re.sub(r'[ \t]+([,.;:!?])', r'\1', text)
     text = re.sub(r'[ \t]{2,}', ' ', text)
@@ -518,12 +570,14 @@ def normalize_tts_text(
     profile: str | None = None,
     *,
     preserve_xai_tags: bool = False,
+    preserve_elevenlabs_tags: bool = False,
 ) -> str:
     """Normalize text for natural, safe TTS playback (emoji stripped; UI may keep raw text)."""
     if not text:
         return ""
 
     text = _repair_malformed_xai_speech_tags(text)
+    text = _repair_duplicate_speech_tag_brackets(text)
     text = strip_llm_citation_artifacts(text)
     text = _OPENCODE_SESSION_ID_RE.sub('', text)
     # Do this before Markdown cleanup strips underscores from the identifier.
@@ -536,7 +590,9 @@ def normalize_tts_text(
         flags=re.IGNORECASE,
     )
     protected_tags: dict[str, str] = {}
-    if preserve_xai_tags:
+    if preserve_elevenlabs_tags:
+        text, protected_tags = _protect_elevenlabs_speech_tags(text)
+    elif preserve_xai_tags:
         text, protected_tags = _protect_xai_speech_tags(text)
 
     text = _strip_speech_tag_markup(text)

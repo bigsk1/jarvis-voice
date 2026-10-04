@@ -17,6 +17,7 @@ from config_loader import (
 from model_prompt_overrides import apply_prompt_override_sections
 from provider_errors import is_provider_error_text
 from user_profile import append_user_profile_card_to_prompt
+from tts_style_tags import elevenlabs_tts_style_tags_instruction
 
 
 class ResponseFormatter:
@@ -70,6 +71,13 @@ class ResponseFormatter:
             "Use exact tag syntax: inline tags use square brackets like [pause]; wrapping tags use angle brackets like <slow>text</slow>. "
             "Do not tag every sentence. Do not use tags in factual lists, code, URLs, filenames, IDs, prices, or data. "
             "Keep the configured word limit; tags should not add extra content."
+        )
+
+    def tts_style_tags_instruction(self) -> str:
+        """Return the instruction for the selected final-speech provider/model."""
+        return (
+            self.xai_tts_style_tags_instruction()
+            + elevenlabs_tts_style_tags_instruction(get_config_value)
         )
 
     def format_natural_response(self, user_query: str, tool_name: str, tool_result: dict[str, Any]) -> str:
@@ -189,7 +197,7 @@ RULES:
 8. NEVER speak long URLs (>30 chars) - summarize as "link saved" or mention domain only (e.g., "on Wikipedia")
 9. Simplify file paths (/home/user/...) to just the filename
 10. NEVER speak auto-generated filenames (e.g., "generated_modify_the_previous_20260209.png") - just say "saved" or "saved to stash"
-{self.xai_tts_style_tags_instruction()}
+{self.tts_style_tags_instruction()}
 
 EXAMPLES:
 Verbose: "Great! I've looked up ntfy. It's an open-source push notification service that lets you..."
@@ -204,7 +212,7 @@ Your condensed response:"""
                 context,
                 system_prompt=self.apply_qa_prompt_overrides(
                     f"Condense for voice output. MAX {qa_limit} words. Keep key info. No greetings/emojis."
-                    f"{self.xai_tts_style_tags_instruction()}"
+                    f"{self.tts_style_tags_instruction()}"
                 ),
             )
             if not response or self.looks_like_provider_error_text(response):
@@ -252,7 +260,7 @@ RULES:
 7. NEVER speak long URLs (>30 chars) - summarize as "link saved" or mention domain only
 8. Simplify file paths (/home/user/project/file.py) to just the filename (file.py)
 9. NEVER speak auto-generated filenames (e.g., "generated_modify_the_previous_20260209.png") - just say "saved" or "saved to stash"
-{self.xai_tts_style_tags_instruction()}
+{self.tts_style_tags_instruction()}
 
 GOOD: "Top 3 date night spots: Copper River, BJ's Brewhouse, Thirsty Lion. Tonight: 47°F clear."
 GOOD: "Image generated and saved to stash." (NOT "Image saved to stash://space_20260201_xxx/f_abc")
@@ -264,7 +272,7 @@ Your response:"""
                 context,
                 system_prompt=self.apply_qa_prompt_overrides(
                     f"Condense to MAX {multi_turn_limit} words. Preserve names, titles, and numbers exactly. No placeholders."
-                    f"{self.xai_tts_style_tags_instruction()}"
+                    f"{self.tts_style_tags_instruction()}"
                 ),
             )
             if not response or self.looks_like_provider_error_text(response):
@@ -302,7 +310,7 @@ CRITICAL RULES:
 3. Don't apologize or say "couldn't find" - give the best answer you can
 4. If data is incomplete, answer what you CAN and note what's missing briefly
 5. NEVER say "hit limit" or mention tool counts
-{self.xai_tts_style_tags_instruction()}
+{self.tts_style_tags_instruction()}
 
 GOOD BEST-EFFORT EXAMPLES:
 - "Top movies at Regal Hillsboro: Wicked, Avatar Fire and Ash, Zootopia 2. Check fandango.com for exact showtimes."
@@ -321,7 +329,7 @@ Your BEST EFFORT response:"""
                 system_prompt=self.apply_qa_prompt_overrides(
                     f"You are a voice assistant. Provide a BEST EFFORT answer using whatever data you have. "
                     f"MAX {multi_turn_limit} words. ALWAYS include any useful info you found - movie titles, theater names, prices, etc."
-                    f"{self.xai_tts_style_tags_instruction()}"
+                    f"{self.tts_style_tags_instruction()}"
                 ),
             )
             if not response or self.looks_like_provider_error_text(response):

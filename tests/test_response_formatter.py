@@ -212,3 +212,33 @@ class ResponseFormatterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_elevenlabs_instruction_is_scoped_to_v4_and_toggle():
+    from tts_normalizer import ELEVENLABS_INLINE_SPEECH_TAGS
+    formatter = ResponseFormatter(
+        provider=_FailIfCalledProvider(), prompt_override=None,
+        extract_useful_data_fn=lambda _data: "",
+    )
+    for provider, model, enabled, expected in (
+        ("elevenlabs", "eleven_v4", "true", True),
+        ("elevenlabs", "eleven_v4_turbo", "true", True),
+        ("elevenlabs", "eleven_v4_turbo", "off", False),
+        ("elevenlabs", "eleven_v4", "off", False),
+        ("elevenlabs", "eleven_v3", "true", False),
+        ("elevenlabs", "eleven_multilingual_v2", "true", False),
+        ("openai", "eleven_v4", "true", False),
+        ("xai", "eleven_v4", "true", False),
+    ):
+        values = {
+            "TTS_PROVIDER": provider, "ELEVENLABS_TTS_MODEL": model,
+            "ELEVENLABS_TTS_STYLE_TAGS_ENABLED": enabled,
+        }
+        with patch("response_formatter.get_config_value", side_effect=lambda k, d="": values.get(k, d)):
+            instruction = formatter.tts_style_tags_instruction()
+        assert ("ElevenLabs v4" in instruction) is expected
+        if expected:
+            for tag in ELEVENLABS_INLINE_SPEECH_TAGS:
+                assert f"[{tag}]" in instruction
+            assert "tool arguments" in instruction
+            assert "<whisper>" not in instruction

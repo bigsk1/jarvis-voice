@@ -457,6 +457,15 @@ class TalkController {
             const boundary = remaining.lastIndexOf(' ', end);
             if (boundary > 400) end = boundary;
           }
+          // A word boundary may be inside a multi-word delivery cue. Move it
+          // before the cue so the next request receives the complete tag.
+          const tagStart = remaining.lastIndexOf('[', end - 1);
+          if (tagStart >= 0 && tagStart < end) {
+            const tagEnd = remaining.indexOf(']', tagStart);
+            if (tagEnd >= end && /^[A-Za-z][A-Za-z -]{0,40}$/.test(remaining.slice(tagStart + 1, tagEnd))) {
+              end = tagStart > 0 ? tagStart : tagEnd + 1;
+            }
+          }
           const chunk = remaining.slice(0, end);
           remaining = remaining.slice(end).trimStart();
           const buffer = await this._request(s, '/api/tts', {

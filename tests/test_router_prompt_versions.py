@@ -430,3 +430,34 @@ def test_web_ui_exposes_and_scopes_router_prompt_override():
     assert "router_prompt_version: document.getElementById('setting-router-prompt-version')" in app_js
     assert "option.textContent = label" in app_js
     assert "'router_prompt_version': 'JARVIS_ROUTER_PROMPT_VERSION'" in chat_py
+
+
+@pytest.mark.parametrize("tts_provider,model,enabled,style,expected", [
+    ("elevenlabs", "eleven_v4", "true", "casual", True),
+    ("elevenlabs", "eleven_v4_turbo", "true", "casual", True),
+    ("elevenlabs", "eleven_v4_turbo", "false", "casual", False),
+    ("elevenlabs", "eleven_v4", "false", "casual", False),
+    ("elevenlabs", "eleven_v4", "true", "detailed", False),
+    ("elevenlabs", "eleven_v3", "true", "casual", False),
+    ("elevenlabs", "eleven_multilingual_v2", "true", "casual", False),
+    ("openai", "eleven_v4", "true", "casual", False),
+])
+def test_runtime_prompt_scopes_elevenlabs_v4_audio_tags(tts_provider, model, enabled, style, expected):
+    values = {
+        "JARVIS_ROUTER_PROMPT_VERSION": "v4", "JARVIS_TIMEZONE": "UTC",
+        "JARVIS_RESPONSE_STYLE": style, "LLM_PROVIDER": "openai",
+        "TTS_PROVIDER": tts_provider, "ELEVENLABS_TTS_MODEL": model,
+        "ELEVENLABS_TTS_STYLE_TAGS_ENABLED": enabled,
+    }
+    with (
+        patch("router_v2.load_config"),
+        patch("router_v2.get_config_value", side_effect=lambda k, d=None: values.get(k, d)),
+        patch.object(LLMRouter, "_create_provider", return_value=MagicMock(model="test-model")),
+        patch("router_v2.load_model_prompt_override", return_value=None),
+        patch("router_v2.append_profile_card_for_router_direct_answer", side_effect=lambda p: p),
+    ):
+        prompt = LLMRouter(mode="cloud", registry=MagicMock()).system_prompt
+    assert ("ElevenLabs v4" in prompt) is expected
+    if expected:
+        assert "[clears throat]" in prompt
+        assert "FINAL SPOKEN RESPONSE only" in prompt

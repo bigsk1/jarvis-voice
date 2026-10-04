@@ -32,6 +32,7 @@ from tool_schema import ToolRegistry, _merged_ghost_tool_names
 from llm_provider import create_configured_provider
 from provider_errors import classify_provider_error, friendly_provider_error, is_provider_error_text
 from user_profile import append_profile_card_for_router_direct_answer
+from tts_style_tags import elevenlabs_tts_style_tags_instruction
 
 
 @dataclass
@@ -1010,6 +1011,7 @@ RESPONSE STYLE: {response_style.upper()}
 - Multi-turn summaries: up to {multi_turn_word_limit} words max
 - No URLs for speech unless critical
 {xai_tts_style_note}
+{elevenlabs_tts_style_tags_instruction(get_config_value)}
 
 """
         
