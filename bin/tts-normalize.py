@@ -11,7 +11,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
-from tts_normalizer import normalize_tts_text, speech_tag_options
+from tts_normalizer import normalize_tts_text
+from tts_style_tags import speech_tag_options
 
 
 def main() -> int:

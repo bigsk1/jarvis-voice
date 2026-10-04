@@ -95,7 +95,7 @@ def test_native_elevenlabs_payload_matches_selected_model(tmp_path, script, mode
         (tmp_path / directory).mkdir()
     for name in (script, "tts-common.sh", "tts-normalize.py"):
         shutil.copy2(ROOT / "bin" / name, tmp_path / "bin" / name)
-    for name in ("config_loader.sh", "tts_normalizer.py"):
+    for name in ("config_loader.sh", "tts_normalizer.py", "tts_style_tags.py"):
         shutil.copy2(ROOT / "lib" / name, tmp_path / "lib" / name)
     (tmp_path / "config/cloud.env").write_text(f"""TTS_PROVIDER=elevenlabs
 ELEVENLABS_API_KEY=fake-key

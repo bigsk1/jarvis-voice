@@ -17,7 +17,7 @@ from config_loader import (
 from model_prompt_overrides import apply_prompt_override_sections
 from provider_errors import is_provider_error_text
 from user_profile import append_user_profile_card_to_prompt
-from tts_style_tags import elevenlabs_tts_style_tags_instruction
+from tts_style_tags import tts_style_tags_enabled, tts_style_tags_instruction
 
 
 class ResponseFormatter:
@@ -50,35 +50,16 @@ class ResponseFormatter:
         return append_user_profile_card_to_prompt(prompt)
 
     def xai_tts_style_tags_enabled(self) -> bool:
-        """Return True when final speech may include xAI TTS style tags."""
-        tts_provider = get_config_value("TTS_PROVIDER", "").strip().lower()
-        enabled = get_config_value("XAI_TTS_STYLE_TAGS_ENABLED", "true").strip().lower()
-        return tts_provider == "xai" and enabled in {"1", "true", "yes", "on"}
+        """Compatibility entry point for existing orchestrator callers."""
+        return tts_style_tags_enabled(get_config_value, provider="xai")
 
     def xai_tts_style_tags_instruction(self) -> str:
-        """Small, final-speech-only instruction for xAI expressive TTS tags."""
-        if not self.xai_tts_style_tags_enabled():
-            return ""
-        return (
-            "\n\nxAI TTS is active. You may use supported TTS tags sparingly in the FINAL SPOKEN RESPONSE only "
-            "when they make delivery more natural. Inline sounds: [pause], [long-pause], [hum-tune], [laugh], "
-            "[chuckle], [giggle], [cry], [tsk], [tongue-click], [lip-smack], [breath], [inhale], [exhale], [sigh]. "
-            "Wrapping styles: <soft>...</soft>, <whisper>...</whisper>, <loud>...</loud>, "
-            "<build-intensity>...</build-intensity>, <decrease-intensity>...</decrease-intensity>, "
-            "<higher-pitch>...</higher-pitch>, <lower-pitch>...</lower-pitch>, <slow>...</slow>, <fast>...</fast>, "
-            "<sing-song>...</sing-song>, <singing>...</singing>, <laugh-speak>...</laugh-speak>, "
-            "<emphasis>...</emphasis>. "
-            "Use exact tag syntax: inline tags use square brackets like [pause]; wrapping tags use angle brackets like <slow>text</slow>. "
-            "Do not tag every sentence. Do not use tags in factual lists, code, URLs, filenames, IDs, prices, or data. "
-            "Keep the configured word limit; tags should not add extra content."
-        )
+        """Compatibility entry point; provider policy owns the instruction."""
+        return tts_style_tags_instruction(get_config_value, provider="xai")
 
     def tts_style_tags_instruction(self) -> str:
         """Return the instruction for the selected final-speech provider/model."""
-        return (
-            self.xai_tts_style_tags_instruction()
-            + elevenlabs_tts_style_tags_instruction(get_config_value)
-        )
+        return tts_style_tags_instruction(get_config_value)
 
     def format_natural_response(self, user_query: str, tool_name: str, tool_result: dict[str, Any]) -> str:
         """Use the LLM to format tool results into short conversational speech."""

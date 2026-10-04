@@ -32,7 +32,7 @@ from tool_schema import ToolRegistry, _merged_ghost_tool_names
 from llm_provider import create_configured_provider
 from provider_errors import classify_provider_error, friendly_provider_error, is_provider_error_text
 from user_profile import append_profile_card_for_router_direct_answer
-from tts_style_tags import elevenlabs_tts_style_tags_instruction
+from tts_style_tags import tts_style_tags_instruction
 
 
 @dataclass
@@ -989,20 +989,6 @@ RESPONSE STYLE: DETAILED (for display/reading - NOT voice synthesis)
 
 """
         else:
-            xai_tts_style_tags_enabled = (
-                get_config_value('TTS_PROVIDER', '').strip().lower() == 'xai'
-                and get_config_value('XAI_TTS_STYLE_TAGS_ENABLED', 'true').strip().lower()
-                in {'1', 'true', 'yes', 'on'}
-            )
-            xai_tts_style_note = ""
-            if xai_tts_style_tags_enabled:
-                xai_tts_style_note = """
-- xAI TTS is active: you may use supported speech tags sparingly in the final spoken answer when they improve delivery
-- Inline sounds: [pause], [long-pause], [hum-tune], [laugh], [chuckle], [giggle], [cry], [tsk], [tongue-click], [lip-smack], [breath], [inhale], [exhale], [sigh]
-- Wrapping styles: <soft>...</soft>, <whisper>...</whisper>, <loud>...</loud>, <build-intensity>...</build-intensity>, <decrease-intensity>...</decrease-intensity>, <higher-pitch>...</higher-pitch>, <lower-pitch>...</lower-pitch>, <slow>...</slow>, <fast>...</fast>, <sing-song>...</sing-song>, <singing>...</singing>, <laugh-speak>...</laugh-speak>, <emphasis>...</emphasis>
-- Use exact tag syntax: inline tags use square brackets like [pause]; wrapping tags use angle brackets like <slow>text</slow>
-- Speech tags are final-answer-only. Never put them in tool arguments, code, URLs, filenames, IDs, prices, data tables, or factual lists. Do not tag every sentence.
-"""
             style_note = f"""
 RESPONSE STYLE: {response_style.upper()}
 - Keep voice output concise using the CURRENT configured runtime limits
@@ -1010,8 +996,7 @@ RESPONSE STYLE: {response_style.upper()}
 - Q&A/informational: up to {qa_word_limit} words max
 - Multi-turn summaries: up to {multi_turn_word_limit} words max
 - No URLs for speech unless critical
-{xai_tts_style_note}
-{elevenlabs_tts_style_tags_instruction(get_config_value)}
+{tts_style_tags_instruction(get_config_value)}
 
 """
         

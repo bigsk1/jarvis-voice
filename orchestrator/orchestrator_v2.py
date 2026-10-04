@@ -34,7 +34,7 @@ from model_catalog import get_provider_fallback_model
 from llm_provider import has_usage_accounting_data
 from status_updater import StatusUpdater
 from security_utils import sanitize_for_speech
-from tts_normalizer import speech_tag_options
+from tts_style_tags import speech_tag_options
 
 from router_v2 import LLMRouter, ProviderRouteInput, extract_current_user_request
 from context_assembler import ContextAssembler

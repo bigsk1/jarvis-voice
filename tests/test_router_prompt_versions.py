@@ -10,21 +10,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
 sys.path.insert(0, str(ROOT / "orchestrator"))
 
+import router_prompts  # noqa: E402
+from config_loader import get_config_value  # noqa: E402
 from router_prompt_catalog import (  # noqa: E402
     DEFAULT_ROUTER_PROMPT_VERSION,
     available_router_prompt_versions,
 )
-from config_loader import get_config_value  # noqa: E402
-import router_prompts  # noqa: E402
 from router_prompts import _validate_router_prompts, get_router_system_prompt  # noqa: E402
 from router_v2 import LLMRouter  # noqa: E402
-from tts_normalizer import XAI_INLINE_SPEECH_TAGS, XAI_WRAPPING_SPEECH_TAGS  # noqa: E402
-
+from tts_style_tags import XAI_INLINE_SPEECH_TAGS, XAI_WRAPPING_SPEECH_TAGS  # noqa: E402
 
 V1_SHA256 = "7e6aba1b93b5765ba409d3bf520b67ab8af9bef288d4926a2faae7821d6b6671"
 V2_SHA256 = "a3ef882708880d0372ad3dc0636e1e01890a79ca611e8c5e582ceca6e459128d"
@@ -461,3 +459,34 @@ def test_runtime_prompt_scopes_elevenlabs_v4_audio_tags(tts_provider, model, ena
     if expected:
         assert "[clears throat]" in prompt
         assert "FINAL SPOKEN RESPONSE only" in prompt
+
+
+
+@pytest.mark.parametrize("provider,model", [
+    ("xai", ""), ("elevenlabs", "eleven_v4"), ("elevenlabs", "eleven_v4_turbo"),
+])
+def test_router_and_formatter_share_the_active_provider_instruction(provider, model):
+    from response_formatter import ResponseFormatter
+    from tts_style_tags import tts_style_tags_instruction
+
+    values = {"JARVIS_ROUTER_PROMPT_VERSION": "v4", "JARVIS_TIMEZONE": "UTC",
+              "JARVIS_RESPONSE_STYLE": "casual", "LLM_PROVIDER": "openai",
+              "TTS_PROVIDER": provider, "ELEVENLABS_TTS_MODEL": model}
+    def get_setting(key, default=""):
+        return values.get(key, default)
+    expected = tts_style_tags_instruction(get_setting)
+    with (
+        patch("router_v2.load_config"),
+        patch("router_v2.get_config_value", side_effect=get_setting),
+        patch("response_formatter.get_config_value", side_effect=get_setting),
+        patch.object(LLMRouter, "_create_provider", return_value=MagicMock(model="test-model")),
+        patch("router_v2.load_model_prompt_override", return_value=None),
+        patch("router_v2.append_profile_card_for_router_direct_answer", side_effect=lambda p: p),
+    ):
+        prompt = LLMRouter(mode="cloud", registry=MagicMock()).system_prompt
+        formatter = ResponseFormatter(provider=MagicMock(), prompt_override=None,
+                                      extract_useful_data_fn=lambda data: "")
+        assert formatter.tts_style_tags_instruction() == expected
+        assert prompt.count(expected) == 1
+        values["JARVIS_RESPONSE_STYLE"] = "detailed"
+        assert expected not in LLMRouter(mode="cloud", registry=MagicMock()).system_prompt

@@ -2718,7 +2718,7 @@ def text_to_speech():
                 status_tts_model if purpose == 'status' else final_tts_model
             )
 
-        from tts_normalizer import speech_tag_options
+        from tts_style_tags import speech_tag_options
         text = sanitize_for_speech(
             text, **speech_tag_options(provider, effective_tts_model or '')
         )

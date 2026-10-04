@@ -14,7 +14,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "orchestrator"))
 
 from orchestrator_v2 import Orchestrator
 from response_formatter import ResponseFormatter
-from tts_normalizer import XAI_INLINE_SPEECH_TAGS, XAI_WRAPPING_SPEECH_TAGS
+from tts_style_tags import XAI_INLINE_SPEECH_TAGS, XAI_WRAPPING_SPEECH_TAGS
 
 
 class _FailIfCalledProvider:

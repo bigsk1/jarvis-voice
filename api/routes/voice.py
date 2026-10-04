@@ -9,7 +9,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 from config_loader import export_config_environment
-from tts_normalizer import normalize_tts_text, speech_tag_options, validate_tts_profile
+from tts_normalizer import normalize_tts_text, validate_tts_profile
+from tts_style_tags import speech_tag_options
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
 

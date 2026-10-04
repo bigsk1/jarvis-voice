@@ -13,6 +13,7 @@ import logging
 from typing import Any, Optional
 
 from tts_normalizer import normalize_tts_text
+from tts_style_tags import SpeechTagPolicy
 from paths import get_allowed_write_paths, get_protected_paths
 
 logger = logging.getLogger(__name__)
@@ -335,14 +336,15 @@ def sanitize_user_input(transcript: str, max_length: int = MAX_TRANSCRIPT_LENGTH
 
 
 def sanitize_for_speech(
-    text: str, *, preserve_xai_tags: bool = False, preserve_elevenlabs_tags: bool = False
+    text: str, *, preserve_xai_tags: bool = False, preserve_elevenlabs_tags: bool = False,
+    speech_tag_policy: SpeechTagPolicy | None = None,
 ) -> str:
     """
     Backward-compatible wrapper around the shared TTS normalizer.
     """
     return normalize_tts_text(
         text, preserve_xai_tags=preserve_xai_tags,
-        preserve_elevenlabs_tags=preserve_elevenlabs_tags,
+        preserve_elevenlabs_tags=preserve_elevenlabs_tags, speech_tag_policy=speech_tag_policy,
     )
 
 

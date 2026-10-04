@@ -757,7 +757,8 @@ class ChatHandler:
         - speech_text: what should be safe to send to TTS
         """
         from security_utils import sanitize_for_speech
-        from tts_normalizer import speech_tag_options, strip_speech_tags_for_display
+        from tts_normalizer import strip_speech_tags_for_display
+        from tts_style_tags import speech_tag_options
 
         raw_response = result.get('raw_llm_response', '') or ''
         primary_speech = result.get('speech')

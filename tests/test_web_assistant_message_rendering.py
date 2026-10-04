@@ -578,13 +578,9 @@ assert.equal(Utils.stripSpeechTagsForDisplay('[slow>Hi</slow> [laugh]'), 'Hi');
 def test_client_speech_tag_cleanup_matches_reviewed_python_vocabulary():
     import sys
     sys.path.insert(0, str(ROOT / "lib"))
-    from tts_normalizer import (
-        ELEVENLABS_INLINE_SPEECH_TAGS,
-        XAI_INLINE_SPEECH_TAGS,
-        XAI_WRAPPING_SPEECH_TAGS,
-    )
-    inline = sorted(ELEVENLABS_INLINE_SPEECH_TAGS | XAI_INLINE_SPEECH_TAGS)
-    wrapping = sorted(XAI_WRAPPING_SPEECH_TAGS)
+    from tts_style_tags import all_inline_speech_tags, all_wrapping_speech_tags
+    inline = sorted(all_inline_speech_tags())
+    wrapping = sorted(all_wrapping_speech_tags())
     run_message_browser(
         f"assert.deepEqual(Array.from(Utils._speechInlineTags), {json.dumps(inline)});\n"
         f"assert.deepEqual(Array.from(Utils._speechWrappingTags), {json.dumps(wrapping)});\n"

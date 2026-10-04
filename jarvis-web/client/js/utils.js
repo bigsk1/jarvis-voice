@@ -34,7 +34,7 @@ const Utils = {
     return s.replace(/[ \t]{2,}/g, ' ');
   },
 
-  // Keep these reviewed cues in sync with lib/tts_normalizer.py.
+  // Keep this browser mirror in sync with lib/tts_style_tags.py (covered by vocabulary parity tests).
   _speechInlineTags: Object.freeze(["breath", "chuckle", "clears throat", "cry", "crying", "curious", "excited", "exhale", "exhales", "giggle", "hum-tune", "inhale", "laugh", "laughing", "laughs", "lip-smack", "long-pause", "mischievously", "pause", "sarcastic", "shouting", "shouts", "sigh", "sighs", "tongue-click", "tsk", "whispering", "whispers"]),
   _speechWrappingTags: Object.freeze(["build-intensity", "decrease-intensity", "emphasis", "fast", "higher-pitch", "laugh-speak", "loud", "lower-pitch", "sing-song", "singing", "slow", "soft", "whisper"]),
 
