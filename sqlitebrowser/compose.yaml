@@ -1,0 +1,32 @@
+name: jarvis-database-browser
+
+services:
+  sqlitebrowser:
+    image: ${SQLITEBROWSER_IMAGE:-lscr.io/linuxserver/sqlitebrowser:latest}
+    restart: unless-stopped
+    ports:
+      - "${SQLITEBROWSER_BIND_IP:-127.0.0.1}:${SQLITEBROWSER_PORT:-8112}:3001"
+    environment:
+      PUID: ${SQLITEBROWSER_PUID:-1000}
+      PGID: ${SQLITEBROWSER_PGID:-1000}
+      TZ: ${SQLITEBROWSER_TZ:-Etc/UTC}
+      CUSTOM_USER: ${SQLITEBROWSER_USER:-admin}
+      PASSWORD: ${SQLITEBROWSER_PASSWORD:?Set SQLITEBROWSER_PASSWORD in sqlitebrowser/.env}
+      HARDEN_DESKTOP: "true"
+      SELKIES_ENABLE_SHARING: "false|locked"
+      SELKIES_ENABLE_COLLAB: "false|locked"
+    volumes:
+      - type: bind
+        source: ${SQLITEBROWSER_DATABASE_PATH:-../data}
+        target: /databases
+        read_only: ${SQLITEBROWSER_READ_ONLY:-true}
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data
+        target: /config
+        bind:
+          create_host_path: false
+    shm_size: "1gb"
+    security_opt:
+      - no-new-privileges:true

@@ -649,6 +649,10 @@ docker compose --profile extras up -d
 
 The `extras` profile also starts the background task worker; individual background tools still require enabling in Web Settings. The safe Docker tool profile is enabled by default. Hybrid users can select the full `default` profile and block container-incompatible tools only in Web UI Settings. See the **[Docker Guide](docs/docker/README.md)** for setup, LAN access, authentication, shell/CLI examples, and native/Docker coexistence.
 
+### Optional Database Browser
+
+The standalone [SQLite browser](sqlitebrowser/README.md) provides a browser-accessible DB Browser for SQLite for Memory, Intelligence, background-task and Source Library databases. Its own Compose project uses read-only data mounts by default; `./start --edit` explicitly enables edits. See its tracked [example configuration](sqlitebrowser/.env.example) for HTTPS access, credentials and host data paths.
+
 ### 4. Run Wake Word or CLI
 
 ```bash

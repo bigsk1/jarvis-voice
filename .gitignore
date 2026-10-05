@@ -35,6 +35,9 @@ data/stash/space_*/
 # Standalone stash browser credentials and persistent database/cache.
 filebrowser/.env
 filebrowser/data/
+# Standalone database browser credentials, settings, certificates and exports.
+sqlitebrowser/.env
+sqlitebrowser/data/
 # Local skill scratch next to the task database; leftover after a killed child.
 data/task-workspaces/
 

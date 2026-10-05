@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Start this standalone Compose project; explicit flags override the .env mode.
+set -euo pipefail
+
+usage() {
+  printf '%s\n' 'Usage: ./start [--read-only | --edit]' \
+    'Default: SQLITEBROWSER_READ_ONLY from .env, otherwise true.' \
+    'Flags recreate the service with the requested mount mode; .env is unchanged.'
+}
+
+if (( $# > 1 )); then
+  usage >&2
+  exit 2
+fi
+case "${1:-}" in
+  '') ;;
+  --read-only) export SQLITEBROWSER_READ_ONLY=true ;;
+  --edit) export SQLITEBROWSER_READ_ONLY=false ;;
+  -h|--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+docker compose config --quiet
+mkdir -p data
+exec docker compose up -d sqlitebrowser
