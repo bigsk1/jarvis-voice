@@ -609,9 +609,9 @@ class AlertManager:
         """Speak alert via TTS and mark as spoken"""
         # Determine urgency phrase
         if severity == "critical":
-            prefix = "Critical alert!"
+            prefix = "Critical alert:"
         elif severity == "high":
-            prefix = "Urgent alert!"
+            prefix = "Urgent alert:"
         else:
             prefix = "Alert:"
         
