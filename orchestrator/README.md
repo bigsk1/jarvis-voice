@@ -81,6 +81,19 @@ Owns the context-prep logic that used to live inline in the orchestrator:
 - Multi-turn turn-context construction
 - Tool-result preview shaping for follow-up turns
 
+### `turn_state.py` (In-Flight Request State)
+Owns the tool loop's request-local results, history, trace, call counters,
+duplicate guards, usage, and provider continuation metadata. Tool-failure retries
+reuse the same `TurnState` and advance its remaining turn budget. Each new
+`process()` call starts with fresh state; the object is neither persisted nor
+stored on the orchestrator. Routing, approval, execution, and response formatting
+remain in `orchestrator_v2.py`.
+
+Native provider continuation submits the latest executed tool result, including
+failures. Missing continuation metadata falls back to the full text context.
+Routing errors return the request's retained results, trace, and usage so earlier
+work remains available even when the final provider call fails.
+
 ### `response_formatter.py` (Final Speech Formatter)
 Owns final answer shaping after the LLM/tool loop:
 - Direct tool-result condensation for short confirmations

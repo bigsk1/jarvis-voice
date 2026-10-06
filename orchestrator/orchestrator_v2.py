@@ -39,6 +39,7 @@ from tts_style_tags import speech_tag_options
 from router_v2 import LLMRouter, ProviderRouteInput, extract_current_user_request
 from context_assembler import ContextAssembler
 from response_formatter import ResponseFormatter
+from turn_state import TurnState
 from executor import ToolExecutor
 from workflow_loader import WorkflowLoader
 from workflow_availability import (
@@ -1348,7 +1349,7 @@ Mode: {self.mode}
                 request_kind: str = '',
                 tool_rag_limit: int | None = None,
                 tool_policy: str = 'auto',
-                _retry_state: dict[str, Any] | None = None) -> dict[str, Any]:
+                _retry_state: TurnState | None = None) -> dict[str, Any]:
         """
         Process user transcript and execute tools or respond.
         Supports multi-turn tool execution until task is complete.
@@ -1491,12 +1492,11 @@ Mode: {self.mode}
             if block and block.strip()
         )
         client_search_hint_active = _has_client_side_search_tool_hint(enhanced_transcript)
-        if _retry_state and "vision_pre_analyzed" in _retry_state:
-            vision_pre_analyzed_active = bool(_retry_state.get("vision_pre_analyzed"))
-        else:
-            vision_pre_analyzed_active = bool(
+        state = _retry_state if _retry_state is not None else TurnState(
+            vision_pre_analyzed=bool(
                 vision_pre_analyzed or _request_has_web_vision_analysis(transcript)
-            )
+            ),
+        )
         routing_provenance = {
             "router_prompt": {
                 "version": getattr(self.router, "system_prompt_version", None),
@@ -1518,7 +1518,7 @@ Mode: {self.mode}
             "tool_policy": tool_policy,
             "tool_rag_skipped": chat_only_mode,
         }
-        if vision_pre_analyzed_active and self._provider_server_side_tools_available():
+        if state.vision_pre_analyzed and self._provider_server_side_tools_available():
             routing_provenance["vision_pre_analyzed_disable_native_tools"] = True
         
         # Multi-turn context tracking
@@ -1539,122 +1539,58 @@ Mode: {self.mode}
                 'XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST',
                 get_int('XAI_SERVER_SIDE_MAX_TOOL_TURNS', 0),
             )
-        retry_state = _retry_state or {}
-        conversation_context = retry_state.get("conversation_context") or []
-        tools_used = retry_state.get("tools_used") or []
-        accumulated_data = retry_state.get("accumulated_data") or {}
-        tool_trace = retry_state.get("tool_trace") or []
-        # Exact-duplicate tracking includes successful executions and accepted
-        # background calls. Admission is not evidence of completed tool work.
-        seen_tool_calls = retry_state.get("seen_tool_calls") or set()
-        blocked_duplicate_calls = retry_state.get("blocked_duplicate_calls") or {}
-        tool_call_counts = retry_state.get("tool_call_counts") or {}
-        duplicate_recovery_attempts = retry_state.get("duplicate_recovery_attempts", 0)
-        max_duplicate_recovery_attempts = retry_state.get("max_duplicate_recovery_attempts", 2)
         xai_store_messages_enabled = (
             getattr(self.router, "provider_type", "") == "xai"
             and str(get_config_value("XAI_STORE_MESSAGES", "false")).strip().lower()
             in {"1", "true", "yes", "on"}
         )
         xai_native_continuation_enabled = self._xai_native_continuation_allowed()
-        xai_previous_response_id = (
-            retry_state.get("xai_previous_response_id")
-            if xai_store_messages_enabled
-            else None
-        )
-        xai_provider_continuation = (
-            retry_state.get("xai_provider_continuation")
-            if xai_store_messages_enabled
-            else None
-        )
-        xai_text_fallback_retry_used = bool(retry_state.get("xai_text_fallback_retry_used"))
+        if not xai_store_messages_enabled:
+            state.xai_previous_response_id = None
+            state.xai_provider_continuation = None
         openai_responses_tracking_enabled = self._openai_responses_tracking_enabled()
         openai_native_continuation_enabled = self._openai_native_continuation_allowed()
-        openai_previous_response_id = (
-            retry_state.get("openai_previous_response_id")
-            if openai_responses_tracking_enabled
-            else None
-        )
-        openai_provider_continuation = (
-            retry_state.get("openai_provider_continuation")
-            if openai_responses_tracking_enabled
-            else None
-        )
-        openai_text_fallback_retry_used = bool(retry_state.get("openai_text_fallback_retry_used"))
+        if not openai_responses_tracking_enabled:
+            state.openai_previous_response_id = None
+            state.openai_provider_continuation = None
 
         # If retrying, augment transcript with error context
         if error_context and retry_count > 0:
             enhanced_transcript = f"{enhanced_transcript}\n\n===PREVIOUS ATTEMPT FAILED WITH ERROR===: {error_context}\nPlease try again with corrected parameters or check logs if needed."
         
-        # Track usage info across all turns
-        total_usage = retry_state.get("total_usage") or {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            # Calls and peak logical context are per user turn. Unlike total_tokens,
-            # peak_context_tokens does not double-count repeated prompt history.
-            "model_calls": 0,
-            "peak_context_tokens": 0,
-            "cost_usd": 0.0,
-            # has_unknown_cost is set when any turn used subscription/compute-metered
-            # billing (e.g. Ollama Cloud) where per-token dollar cost is unknown.
-            "has_unknown_cost": False,
-            "cost_known": True,
-            "billing_mode": None,
-            # input_estimated is set when any turn's input tokens were approximated
-            # because the provider (e.g. Ollama Cloud) omitted prompt_eval_count.
-            "input_estimated": False,
-            "cache_creation_tokens": 0,
-            "cache_creation_5m_tokens": 0,
-            "cache_creation_1h_tokens": 0,
-            "cache_read_tokens": 0,
-            "cache_write_cost_usd": 0.0,
-            "cache_read_cost_usd": 0.0,
-            "cache_cost_usd": 0.0,
-            "cache_savings_usd": 0.0,
-            "server_side_tools": {}  # Track provider-native/server-side tools
-        }
         # Web conversation history already persists usage, so storing the
         # compact version here preserves prompt provenance without copying the
         # much larger routing provenance payload onto every message.
-        self._attach_router_prompt_usage(total_usage)
+        self._attach_router_prompt_usage(state.total_usage)
         
-        # Track thinking from first turn (for display)
-        first_thinking = retry_state.get("first_thinking")
-        
-        # Track available tools from first routing (for intelligence reflection)
-        available_tools = retry_state.get("available_tools") or []
-        web_search_hint_tools = set(retry_state.get("web_search_hint_tools") or [])
-        
-        start_turn_num = int(retry_state.get("start_turn_num", 0) or 0)
-        start_turn_num = max(0, min(start_turn_num, max_turns))
+        state.start_turn_num = max(0, min(state.start_turn_num, max_turns))
 
         # Multi-turn loop
-        for turn_num in range(start_turn_num, max_turns):
+        for turn_num in range(state.start_turn_num, max_turns):
             # Check for cancellation at start of each turn
             if self._is_cancelled():
                 self._emit_progress('routing', message='Processing cancelled')
                 return {
                     "ok": True,
                     "speech": f"Processing stopped after {turn_num} turn(s). Results so far:\n\n" +
-                               (conversation_context[-1].get('summary', 'No results yet.') if conversation_context else 'No results yet.'),
-                    "tools_used": tools_used,
-                    "data": accumulated_data,
-                    "usage": total_usage if any(total_usage.values()) else None,
-                    "thinking": first_thinking,
+                               (state.conversation_context[-1].get('summary', 'No results yet.') if state.conversation_context else 'No results yet.'),
+                    "tools_used": state.tools_used,
+                    "data": state.accumulated_data,
+                    "usage": state.total_usage if any(state.total_usage.values()) else None,
+                    "thinking": state.first_thinking,
                     "cancelled": True
                 }
             
             # Build context for this turn
-            if turn_num == 0 and not conversation_context:
+            if turn_num == 0 and not state.conversation_context:
                 # First turn in a fresh request: use original transcript
                 turn_input = enhanced_transcript
             else:
                 # Subsequent turns and retries: provide context from previous tools
-                turn_input = self._build_turn_context(enhanced_transcript, conversation_context)
+                turn_input = self._build_turn_context(enhanced_transcript, state.conversation_context)
 
-            if blocked_duplicate_calls:
-                recent_blocks = list(blocked_duplicate_calls.values())[-3:]
+            if state.blocked_duplicate_calls:
+                recent_blocks = list(state.blocked_duplicate_calls.values())[-3:]
                 guard_lines = [
                     "DUPLICATE TOOL GUARD:",
                     "- One or more attempted tool calls were blocked in this request.",
@@ -1676,7 +1612,7 @@ Mode: {self.mode}
             # Route using LLM
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: About to route turn {turn_num}", file=sys.stderr)
-            native_search_used = _server_side_tool_call_count(total_usage.get("server_side_tools"))
+            native_search_used = _server_side_tool_call_count(state.total_usage.get("server_side_tools"))
             native_search_remaining = (
                 native_search_request_budget - native_search_used
                 if native_search_request_budget > 0
@@ -1687,7 +1623,7 @@ Mode: {self.mode}
                 or client_search_hint_active
                 or (native_search_remaining is not None and native_search_remaining <= 0)
                 or (
-                    vision_pre_analyzed_active
+                    state.vision_pre_analyzed
                     and self._provider_server_side_tools_available()
                 )
             )
@@ -1702,7 +1638,7 @@ Mode: {self.mode}
                     )
                 else:
                     if (
-                        vision_pre_analyzed_active
+                        state.vision_pre_analyzed
                         and self._provider_server_side_tools_available()
                         and not client_search_hint_active
                         and not (
@@ -1728,22 +1664,22 @@ Mode: {self.mode}
             if (
                 openai_native_continuation_enabled
                 and turn_num > 0
-                and not blocked_duplicate_calls
+                and not state.blocked_duplicate_calls
                 and not disable_server_side_tools
             ):
-                oai_reason = self._openai_continuation_fallback_reason(openai_provider_continuation)
-                if oai_reason is None and openai_provider_continuation:
+                oai_reason = self._openai_continuation_fallback_reason(state.openai_provider_continuation)
+                if oai_reason is None and state.openai_provider_continuation:
                     route_payload = self._build_openai_responses_route_input(
                         retrieval_query=turn_input,
-                        continuation=openai_provider_continuation,
+                        continuation=state.openai_provider_continuation,
                         turn_notice=turn_notice,
                     )
                     used_openai_structural = True
-                    route_previous_response_id = openai_provider_continuation.get("response_id")
+                    route_previous_response_id = state.openai_provider_continuation.get("response_id")
                 elif oai_reason and openai_native_continuation_enabled:
                     routing_provenance["openai_continuation_fallback_reason"] = oai_reason
             elif (
-                blocked_duplicate_calls
+                state.blocked_duplicate_calls
                 and openai_native_continuation_enabled
             ):
                 routing_provenance["openai_continuation_fallback_reason"] = "duplicate_guard_active"
@@ -1754,21 +1690,21 @@ Mode: {self.mode}
                 not used_openai_structural
                 and xai_native_continuation_enabled
                 and turn_num > 0
-                and not blocked_duplicate_calls
+                and not state.blocked_duplicate_calls
                 and not disable_server_side_tools
             ):
-                continuation_fallback_reason = self._xai_continuation_fallback_reason(xai_provider_continuation)
-                if continuation_fallback_reason is None and xai_provider_continuation:
+                continuation_fallback_reason = self._xai_continuation_fallback_reason(state.xai_provider_continuation)
+                if continuation_fallback_reason is None and state.xai_provider_continuation:
                     route_payload = self._build_xai_structural_route_input(
                         retrieval_query=turn_input,
-                        continuation=xai_provider_continuation,
+                        continuation=state.xai_provider_continuation,
                         turn_notice=turn_notice,
                     )
-                    route_previous_response_id = xai_provider_continuation.get("response_id")
+                    route_previous_response_id = state.xai_provider_continuation.get("response_id")
                 elif continuation_fallback_reason and xai_native_continuation_enabled:
                     # Keep this diagnostic in logs; the provider still receives the normal text fallback.
                     routing_provenance["xai_continuation_fallback_reason"] = continuation_fallback_reason
-            elif blocked_duplicate_calls and xai_native_continuation_enabled:
+            elif state.blocked_duplicate_calls and xai_native_continuation_enabled:
                 routing_provenance["xai_continuation_fallback_reason"] = "duplicate_guard_active"
             elif disable_server_side_tools and xai_native_continuation_enabled:
                 routing_provenance["xai_continuation_fallback_reason"] = "server_side_tools_disabled"
@@ -1794,11 +1730,11 @@ Mode: {self.mode}
                 and getattr(route_payload, "responses_continuation_input", None)
                 and route.get("openai_continuation_error")
                 and route_previous_response_id
-                and not openai_text_fallback_retry_used
+                and not state.openai_text_fallback_retry_used
             ):
-                openai_text_fallback_retry_used = True
-                openai_previous_response_id = None
-                openai_provider_continuation = None
+                state.openai_text_fallback_retry_used = True
+                state.openai_previous_response_id = None
+                state.openai_provider_continuation = None
                 routing_provenance["openai_continuation_fallback_reason"] = (
                     "previous_response_error"
                     if "previous_response" in str(route.get("provider_error_raw", "")).lower()
@@ -1823,12 +1759,12 @@ Mode: {self.mode}
             elif (
                 route.get("intent") == "error"
                 and route_previous_response_id
-                and not xai_text_fallback_retry_used
+                and not state.xai_text_fallback_retry_used
                 and route.get("xai_continuation_error")
             ):
-                xai_text_fallback_retry_used = True
-                xai_previous_response_id = None
-                xai_provider_continuation = None
+                state.xai_text_fallback_retry_used = True
+                state.xai_previous_response_id = None
+                state.xai_provider_continuation = None
                 routing_provenance["xai_continuation_fallback_reason"] = (
                     "previous_response_not_found"
                     if "previous_response" in str(route.get("provider_error_raw", "")).lower()
@@ -1867,68 +1803,68 @@ Mode: {self.mode}
                         (usage.get("input_tokens") or 0)
                         + (usage.get("output_tokens") or 0)
                     )
-                total_usage["model_calls"] = total_usage.get("model_calls", 0) + 1
-                total_usage["peak_context_tokens"] = max(
-                    total_usage.get("peak_context_tokens", 0), call_tokens
+                state.total_usage["model_calls"] = state.total_usage.get("model_calls", 0) + 1
+                state.total_usage["peak_context_tokens"] = max(
+                    state.total_usage.get("peak_context_tokens", 0), call_tokens
                 )
                 if usage.get("input_tokens"):
-                    total_usage["input_tokens"] += usage["input_tokens"]
+                    state.total_usage["input_tokens"] += usage["input_tokens"]
                 if usage.get("output_tokens"):
-                    total_usage["output_tokens"] += usage["output_tokens"]
+                    state.total_usage["output_tokens"] += usage["output_tokens"]
                 if usage.get("total_tokens"):
-                    total_usage["total_tokens"] += usage["total_tokens"]
+                    state.total_usage["total_tokens"] += usage["total_tokens"]
                 # Sum only numeric known costs; flag unknown/subscription usage
                 # (e.g. Ollama Cloud) instead of coercing None to $0.
                 if isinstance(usage.get("cost_usd"), (int, float)):
-                    total_usage["cost_usd"] += usage["cost_usd"]
+                    state.total_usage["cost_usd"] += usage["cost_usd"]
                 if usage.get("billing_mode"):
-                    total_usage["billing_mode"] = usage["billing_mode"]
+                    state.total_usage["billing_mode"] = usage["billing_mode"]
                 if usage.get("cost_known") is False or usage.get("billing_mode") in {
                     "ollama_cloud_subscription",
                     "xai_oauth_subscription",
                 }:
-                    total_usage["has_unknown_cost"] = True
-                    total_usage["cost_known"] = False
+                    state.total_usage["has_unknown_cost"] = True
+                    state.total_usage["cost_known"] = False
                 if usage.get("input_estimated"):
-                    total_usage["input_estimated"] = True
+                    state.total_usage["input_estimated"] = True
                 # Accumulate cache metrics
                 if usage.get("cache_creation_tokens"):
-                    total_usage["cache_creation_tokens"] += usage["cache_creation_tokens"]
+                    state.total_usage["cache_creation_tokens"] += usage["cache_creation_tokens"]
                 if usage.get("cache_creation_5m_tokens"):
-                    total_usage["cache_creation_5m_tokens"] += usage["cache_creation_5m_tokens"]
+                    state.total_usage["cache_creation_5m_tokens"] += usage["cache_creation_5m_tokens"]
                 if usage.get("cache_creation_1h_tokens"):
-                    total_usage["cache_creation_1h_tokens"] += usage["cache_creation_1h_tokens"]
+                    state.total_usage["cache_creation_1h_tokens"] += usage["cache_creation_1h_tokens"]
                 if usage.get("cache_read_tokens"):
-                    total_usage["cache_read_tokens"] += usage["cache_read_tokens"]
+                    state.total_usage["cache_read_tokens"] += usage["cache_read_tokens"]
                 if usage.get("cache_write_cost_usd"):
-                    total_usage["cache_write_cost_usd"] += usage["cache_write_cost_usd"]
+                    state.total_usage["cache_write_cost_usd"] += usage["cache_write_cost_usd"]
                 if usage.get("cache_read_cost_usd"):
-                    total_usage["cache_read_cost_usd"] += usage["cache_read_cost_usd"]
+                    state.total_usage["cache_read_cost_usd"] += usage["cache_read_cost_usd"]
                 if usage.get("cache_cost_usd"):
-                    total_usage["cache_cost_usd"] += usage["cache_cost_usd"]
+                    state.total_usage["cache_cost_usd"] += usage["cache_cost_usd"]
                 if usage.get("cache_savings_usd"):
-                    total_usage["cache_savings_usd"] += usage["cache_savings_usd"]
+                    state.total_usage["cache_savings_usd"] += usage["cache_savings_usd"]
                 # Accumulate provider-native/server-side tools usage
                 if usage.get("server_side_tools"):
                     for tool_name, count in usage["server_side_tools"].items():
-                        total_usage["server_side_tools"][tool_name] = total_usage["server_side_tools"].get(tool_name, 0) + count
+                        state.total_usage["server_side_tools"][tool_name] = state.total_usage["server_side_tools"].get(tool_name, 0) + count
 
                 if not usage.get("total_tokens"):
-                    total_usage["total_tokens"] = (
-                        total_usage["input_tokens"]
-                        + total_usage["output_tokens"]
-                        + total_usage["cache_creation_tokens"]
-                        + total_usage["cache_read_tokens"]
+                    state.total_usage["total_tokens"] = (
+                        state.total_usage["input_tokens"]
+                        + state.total_usage["output_tokens"]
+                        + state.total_usage["cache_creation_tokens"]
+                        + state.total_usage["cache_read_tokens"]
                     )
             
             # Capture thinking from first turn (for display)
-            if turn_num == 0 and route.get("thinking") and not first_thinking:
-                first_thinking = route["thinking"]
+            if turn_num == 0 and route.get("thinking") and not state.first_thinking:
+                state.first_thinking = route["thinking"]
             
             # Capture available tools from first turn (for intelligence reflection)
             if turn_num == 0 and route.get("available_tools"):
-                available_tools = route["available_tools"]
-            web_search_hint_tools.update(route.get("web_search_hint_tools") or [])
+                state.available_tools = route["available_tools"]
+            state.web_search_hint_tools.update(route.get("web_search_hint_tools") or [])
             
             # Handle tool execution
             if route["intent"] == "tool":
@@ -1959,18 +1895,18 @@ Mode: {self.mode}
                 
                 # Detect exact repeats of successful or accepted calls in this request.
                 current_call = (tool_name, json.dumps(arguments, sort_keys=True))
-                is_exact_duplicate = current_call in seen_tool_calls
+                is_exact_duplicate = current_call in state.seen_tool_calls
                 is_fresh_same_target_recall = self._is_fresh_same_target_recall(
-                    transcript, tool_name, arguments, conversation_context
+                    transcript, tool_name, arguments, state.conversation_context
                 )
                 is_canvas_capped, canvas_cap_reason = (
-                    self._is_canvas_success_cap(arguments, conversation_context, request_kind)
+                    self._is_canvas_success_cap(arguments, state.conversation_context, request_kind)
                     if tool_name == "canvas"
                     else (False, "")
                 )
                 is_workflow_run_capped = (
                     tool_name == "workflow"
-                    and _workflow_run_is_capped(arguments, tool_trace)
+                    and _workflow_run_is_capped(arguments, state.tool_trace)
                 )
 
                 # @TOOL_CONFIG: single-call cap — expensive tools limited to
@@ -1978,7 +1914,7 @@ Mode: {self.mode}
                 is_over_cap = (
                     (
                         tool_name in SINGLE_CALL_TOOLS
-                        and tool_call_counts.get(tool_name, 0) >= 1
+                        and state.tool_call_counts.get(tool_name, 0) >= 1
                     )
                     or is_workflow_run_capped
                 )
@@ -1996,15 +1932,15 @@ Mode: {self.mode}
                         print(f"⚠️  Duplicate/capped tool call detected: {tool_name} ({reason})")
                         print("   Blocking exact call and giving the model a recovery turn")
 
-                    blocked_duplicate_calls[current_call] = {
+                    state.blocked_duplicate_calls[current_call] = {
                         "tool": tool_name,
                         "reason": reason,
                         "args_json": json.dumps(arguments, sort_keys=True),
                     }
-                    duplicate_recovery_attempts += 1
+                    state.duplicate_recovery_attempts += 1
 
                     executed_at = datetime.now(self.timezone)
-                    conversation_context.append({
+                    state.conversation_context.append({
                         "tool": "duplicate_guard",
                         "arguments": {
                             "blocked_tool": tool_name,
@@ -2038,7 +1974,7 @@ Mode: {self.mode}
                         }
                     })
 
-                    if duplicate_recovery_attempts <= max_duplicate_recovery_attempts and (turn_num + 1) < max_turns:
+                    if state.duplicate_recovery_attempts <= state.max_duplicate_recovery_attempts and (turn_num + 1) < max_turns:
                         self._emit_progress(
                             'routing',
                             message=(
@@ -2051,15 +1987,15 @@ Mode: {self.mode}
                     # Generate intelligent summary using accumulated data (not just tool list!)
                     # This ensures the user gets actual research results, not just "I used tools"
                     final_speech = self._synthesize_duplicate_prevented_response(
-                        transcript, tools_used, accumulated_data, conversation_context
+                        transcript, state.tools_used, state.accumulated_data, state.conversation_context
                     )
 
-                    completed_any_tool = bool(tools_used)
+                    completed_any_tool = bool(state.tools_used)
 
                     self._log_conversation(
                         transcript,
                         final_speech,
-                        tools_used,
+                        state.tools_used,
                         success=completed_any_tool,
                     )
 
@@ -2069,30 +2005,29 @@ Mode: {self.mode}
                     return {
                         "speech": final_speech,
                         "ok": completed_any_tool,
-                        "tools_used": tools_used,
-                        "data": accumulated_data,
+                        "tools_used": state.tools_used,
+                        "data": state.accumulated_data,
                         "duplicate_prevented": True,
                         **(
                             {}
                             if completed_any_tool
                             else {"error": "No tool completed before duplicate prevention stopped the request."}
                         ),
-                        "usage": total_usage if self._has_usage_data(total_usage) else None,
-                        "server_side_tools": total_usage.get("server_side_tools", {})
+                        "usage": state.total_usage if self._has_usage_data(state.total_usage) else None,
+                        "server_side_tools": state.total_usage.get("server_side_tools", {})
                     }
                 
                 # Check for cancellation before executing tool
                 if self._is_cancelled():
                     self._emit_progress('routing', message='Processing cancelled')
                     return self._stopped_tool_result(
-                        tool_name=tool_name, decision='cancelled', tools_used=tools_used,
-                        accumulated_data=accumulated_data, tool_trace=tool_trace,
-                        total_usage=total_usage, first_thinking=first_thinking,
-                        conversation_context=conversation_context)
+                        tool_name=tool_name, decision='cancelled', tools_used=state.tools_used,
+                        accumulated_data=state.accumulated_data, tool_trace=state.tool_trace,
+                        total_usage=state.total_usage, first_thinking=state.first_thinking,
+                        conversation_context=state.conversation_context)
 
                 # Track this tool call for unique IDs in progress events
-                call_index = tool_call_counts.get(tool_name, 0)
-                tool_call_counts[tool_name] = call_index + 1
+                call_index = state.next_call_index(tool_name)
 
                 # The Web surface may pause this exact prepared call. Other
                 # surfaces, direct API calls, and workflow pipeline steps do not
@@ -2106,17 +2041,17 @@ Mode: {self.mode}
                     if decision != 'approved':
                         return self._stopped_tool_result(
                             tool_name=tool_name, decision=decision,
-                            tools_used=tools_used, accumulated_data=accumulated_data,
-                            tool_trace=tool_trace, total_usage=total_usage,
-                            first_thinking=first_thinking,
-                            conversation_context=conversation_context, approval_decision=True)
+                            tools_used=state.tools_used, accumulated_data=state.accumulated_data,
+                            tool_trace=state.tool_trace, total_usage=state.total_usage,
+                            first_thinking=state.first_thinking,
+                            conversation_context=state.conversation_context, approval_decision=True)
                     if self._is_cancelled():
                         return self._stopped_tool_result(
                             tool_name=tool_name, decision='cancelled',
-                            tools_used=tools_used, accumulated_data=accumulated_data,
-                            tool_trace=tool_trace, total_usage=total_usage,
-                            first_thinking=first_thinking,
-                            conversation_context=conversation_context, approval_decision=True)
+                            tools_used=state.tools_used, accumulated_data=state.accumulated_data,
+                            tool_trace=state.tool_trace, total_usage=state.total_usage,
+                            first_thinking=state.first_thinking,
+                            conversation_context=state.conversation_context, approval_decision=True)
 
                 # Only print if in interactive mode
                 if sys.stdout.isatty():
@@ -2127,8 +2062,8 @@ Mode: {self.mode}
                 # Status update before tool execution
                 self.status_updater.set_turn(turn_num + 1)
                 previous_status_outcome = None
-                if conversation_context:
-                    previous_item = conversation_context[-1]
+                if state.conversation_context:
+                    previous_item = state.conversation_context[-1]
                     previous_result = previous_item.get("result")
                     previous_result_speech = (
                         previous_result.get("speech")
@@ -2196,8 +2131,8 @@ Mode: {self.mode}
                 from lib.background_tasks.admission import is_admission
                 pending_admission = is_admission(result)
                 if tool_name == "workflow":
-                    self._merge_workflow_usage(total_usage, result.get("usage"))
-                tool_trace.append({
+                    self._merge_workflow_usage(state.total_usage, result.get("usage"))
+                state.tool_trace.append({
                     "tool": tool_name,
                     "ok": None if pending_admission else bool(result.get("ok")) if isinstance(result, dict) else False,
                     "result_kind": 'background_admission' if pending_admission else 'tool_result',
@@ -2219,6 +2154,36 @@ Mode: {self.mode}
                 # Stop background updates after tool completes
                 if tool_name == 'opencode':
                     self.status_updater.stop_background_updates()
+
+                # Native continuation must submit the result of the latest call,
+                # including failures. Never replay an older successful result if
+                # this call cannot provide usable continuation metadata.
+                provider_continuation = None
+                if xai_store_messages_enabled and route_response_id:
+                    provider_continuation = self._build_xai_provider_continuation(
+                        route=route,
+                        tool_name=tool_name,
+                        arguments=arguments,
+                        result=result,
+                        duration_ms=tool_duration_ms,
+                    )
+                state.xai_provider_continuation = provider_continuation
+                state.xai_previous_response_id = (
+                    provider_continuation["response_id"] if provider_continuation else None
+                )
+                openai_cont = None
+                if openai_responses_tracking_enabled and route_response_id:
+                    openai_cont = self._build_openai_provider_continuation(
+                        route=route,
+                        tool_name=tool_name,
+                        arguments=arguments,
+                        result=result,
+                        duration_ms=tool_duration_ms,
+                    )
+                state.openai_provider_continuation = openai_cont
+                state.openai_previous_response_id = (
+                    openai_cont["response_id"] if openai_cont else None
+                )
                 
                 if result["ok"]:
                     # Emit progress: tool completed successfully
@@ -2236,20 +2201,20 @@ Mode: {self.mode}
                     
                     # An accepted call must not be dispatched again, but only a
                     # completed success counts toward tools_used and outcome learning.
-                    seen_tool_calls.add(current_call)
+                    state.seen_tool_calls.add(current_call)
                     if not pending_admission:
-                        tools_used.append(tool_name)
+                        state.tools_used.append(tool_name)
                     
                     # Aggregate data - handle multiple calls to same tool
                     tool_data = dict(result) if pending_admission else result.get("data", {})
-                    if tool_name in accumulated_data:
+                    if tool_name in state.accumulated_data:
                         # Convert to list if not already, then append
-                        existing = accumulated_data[tool_name]
+                        existing = state.accumulated_data[tool_name]
                         if not isinstance(existing, list):
-                            accumulated_data[tool_name] = [existing]
-                        accumulated_data[tool_name].append(tool_data)
+                            state.accumulated_data[tool_name] = [existing]
+                        state.accumulated_data[tool_name].append(tool_data)
                     else:
-                        accumulated_data[tool_name] = tool_data
+                        state.accumulated_data[tool_name] = tool_data
                     
                     # Add to conversation context for next turn
                     # Store full result (including speech and data) so LLM can see all information
@@ -2275,10 +2240,8 @@ Mode: {self.mode}
                     if route_response_id:
                         if xai_store_messages_enabled:
                             tool_meta["xai_response_id"] = route_response_id
-                            xai_previous_response_id = route_response_id
                         if openai_responses_tracking_enabled:
                             tool_meta["openai_response_id"] = route_response_id
-                            openai_previous_response_id = route_response_id
                     if route.get("tool_call_id"):
                         if xai_store_messages_enabled:
                             tool_meta["xai_tool_call_id"] = route["tool_call_id"]
@@ -2291,33 +2254,11 @@ Mode: {self.mode}
                         "speech": result.get("speech", ""),
                         "meta": tool_meta
                     }
-                    provider_continuation = None
-                    if xai_store_messages_enabled and route_response_id:
-                        provider_continuation = self._build_xai_provider_continuation(
-                            route=route,
-                            tool_name=tool_name,
-                            arguments=arguments,
-                            result=result,
-                            duration_ms=tool_duration_ms,
-                        )
-                        if provider_continuation:
-                            context_item["provider_continuation"] = provider_continuation
-                            xai_provider_continuation = provider_continuation
-                            xai_previous_response_id = provider_continuation["response_id"]
-                    openai_cont = None
-                    if openai_responses_tracking_enabled and route_response_id:
-                        openai_cont = self._build_openai_provider_continuation(
-                            route=route,
-                            tool_name=tool_name,
-                            arguments=arguments,
-                            result=result,
-                            duration_ms=tool_duration_ms,
-                        )
-                        if openai_cont:
-                            context_item["openai_provider_continuation"] = openai_cont
-                            openai_provider_continuation = openai_cont
-                            openai_previous_response_id = openai_cont["response_id"]
-                    conversation_context.append(context_item)
+                    if provider_continuation:
+                        context_item["provider_continuation"] = provider_continuation
+                    if openai_cont:
+                        context_item["openai_provider_continuation"] = openai_cont
+                    state.conversation_context.append(context_item)
 
                     summary_args = None
                     summary_result = None
@@ -2326,14 +2267,14 @@ Mode: {self.mode}
                             result,
                             arguments,
                             transcript,
-                            accumulated_data,
+                            state.accumulated_data,
                         )
                     elif tool_name == "serpapi_youtube":
                         summary_args, summary_result = (
                             self._maybe_auto_summarize_serpapi_youtube_result(
                                 result,
                                 transcript,
-                                accumulated_data,
+                                state.accumulated_data,
                             )
                         )
 
@@ -2341,16 +2282,16 @@ Mode: {self.mode}
                         self._add_auto_summary_context(
                             summary_args,
                             summary_result,
-                            tools_used,
-                            accumulated_data,
-                            conversation_context,
-                            seen_tool_calls,
+                            state.tools_used,
+                            state.accumulated_data,
+                            state.conversation_context,
+                            state.seen_tool_calls,
                         )
                         # The derived summary was not part of the provider-native
                         # tool_result continuation. Force the next routing turn to
                         # use Jarvis's text context so it sees the completed summary.
-                        xai_provider_continuation = None
-                        openai_provider_continuation = None
+                        state.xai_provider_continuation = None
+                        state.openai_provider_continuation = None
                     
                     # Continue to next turn (LLM will decide if more tools needed)
                     continue
@@ -2385,7 +2326,7 @@ Mode: {self.mode}
                     # duplicate-recovery paths must never infer success from an absent
                     # result merely because failed tools are excluded from tools_used.
                     failed_at = datetime.now(self.timezone)
-                    conversation_context.append({
+                    failed_context_item = {
                         "tool": tool_name,
                         "arguments": arguments,
                         "result": result,
@@ -2398,14 +2339,19 @@ Mode: {self.mode}
                             "source": "tool_failure",
                             "authoritative_live": False,
                         },
-                    })
+                    }
+                    if provider_continuation:
+                        failed_context_item["provider_continuation"] = provider_continuation
+                    if openai_cont:
+                        failed_context_item["openai_provider_continuation"] = openai_cont
+                    state.conversation_context.append(failed_context_item)
 
                     # Expensive or side-effecting tools are intentionally limited to
                     # one attempt. Do not invite an LLM retry that the single-call cap
                     # will reject, and never switch a user-selected provider silently.
                     if is_single_call_failure:
                         final_speech = _format_terminal_tool_failure(tool_name, error, arguments)
-                        attempted_tools = list(dict.fromkeys([*tools_used, tool_name]))
+                        attempted_tools = list(dict.fromkeys([*state.tools_used, tool_name]))
                         self._log_conversation(transcript, final_speech, attempted_tools, success=False)
                         self.status_updater.mark_complete()
                         return {
@@ -2415,12 +2361,12 @@ Mode: {self.mode}
                             "tool_name": tool_name,
                             "tool_args": arguments,
                             "tools_used": attempted_tools,
-                            "data": accumulated_data,
-                            "tool_trace": tool_trace,
+                            "data": state.accumulated_data,
+                            "tool_trace": state.tool_trace,
                             "retries": retry_count,
                             "terminal_failure": True,
-                            "usage": total_usage if self._has_usage_data(total_usage) else None,
-                            "server_side_tools": total_usage.get("server_side_tools", {}),
+                            "usage": state.total_usage if self._has_usage_data(state.total_usage) else None,
+                            "server_side_tools": state.total_usage.get("server_side_tools", {}),
                         }
                     
                     # Emit progress: retrying
@@ -2438,7 +2384,7 @@ Mode: {self.mode}
                         error_context = f"Tool '{tool_name}' failed with: {error}. Arguments used: {json.dumps(arguments)}"
                         error_lower = str(error).lower()
                         if (
-                            available_tools
+                            state.available_tools
                             and (
                                 error_lower == "tool not found"
                                 or "required" in error_lower
@@ -2448,7 +2394,7 @@ Mode: {self.mode}
                         ):
                             error_context += (
                                 "\n\nUse ONLY one of these exact tool names and exact argument keys on retry:\n"
-                                f"{self._format_available_tool_contract(available_tools)}\n"
+                                f"{self._format_available_tool_contract(state.available_tools)}\n"
                                 "Do not invent aliases or wrapper names."
                             )
 
@@ -2460,33 +2406,11 @@ Mode: {self.mode}
                             conversation_history=conversation_history,
                             excluded_tools=excluded_tools,
                             tool_overrides=tool_overrides,
-                            vision_pre_analyzed=vision_pre_analyzed_active,
+                            vision_pre_analyzed=state.vision_pre_analyzed,
                             request_kind=request_kind,
                             tool_rag_limit=tool_rag_limit,
                             tool_policy=tool_policy,
-                            _retry_state={
-                                "vision_pre_analyzed": vision_pre_analyzed_active,
-                                "conversation_context": conversation_context,
-                                "tools_used": tools_used,
-                                "accumulated_data": accumulated_data,
-                                "seen_tool_calls": seen_tool_calls,
-                                "blocked_duplicate_calls": blocked_duplicate_calls,
-                                "tool_call_counts": tool_call_counts,
-                                "duplicate_recovery_attempts": duplicate_recovery_attempts,
-                                "max_duplicate_recovery_attempts": max_duplicate_recovery_attempts,
-                                "total_usage": total_usage,
-                                "first_thinking": first_thinking,
-                                "available_tools": available_tools,
-                                "web_search_hint_tools": sorted(web_search_hint_tools),
-                                "tool_trace": tool_trace,
-                                "xai_previous_response_id": xai_previous_response_id,
-                                "xai_provider_continuation": xai_provider_continuation,
-                                "xai_text_fallback_retry_used": xai_text_fallback_retry_used,
-                                "openai_previous_response_id": openai_previous_response_id,
-                                "openai_provider_continuation": openai_provider_continuation,
-                                "openai_text_fallback_retry_used": openai_text_fallback_retry_used,
-                                "start_turn_num": turn_num + 1,
-                            }
+                            _retry_state=state.for_retry(turn_num),
                         )
                     
                     # Max retries exceeded. If useful tools already succeeded,
@@ -2497,8 +2421,8 @@ Mode: {self.mode}
                         tool_name,
                         error,
                         arguments,
-                        tools_used,
-                        accumulated_data,
+                        state.tools_used,
+                        state.accumulated_data,
                     )
                     if not final_speech:
                         friendly_error = _sanitize_error_for_speech(error)
@@ -2513,7 +2437,7 @@ Mode: {self.mode}
                             final_speech = f"{friendly_error.capitalize()}."
                     
                     # Auto-log failed conversation
-                    self._log_conversation(transcript, final_speech, tools_used, success=False)
+                    self._log_conversation(transcript, final_speech, state.tools_used, success=False)
                     
                     # Mark status updates complete
                     self.status_updater.mark_complete()
@@ -2524,30 +2448,30 @@ Mode: {self.mode}
                         "error": error,
                         "tool_name": tool_name,
                         "tool_args": arguments,
-                        "tools_used": tools_used or [tool_name],
-                        "data": accumulated_data,
-                        "tool_trace": tool_trace,
+                        "tools_used": state.tools_used or [tool_name],
+                        "data": state.accumulated_data,
+                        "tool_trace": state.tool_trace,
                         "retries": retry_count,
-                        "usage": total_usage if self._has_usage_data(total_usage) else None,
-                        "server_side_tools": total_usage.get("server_side_tools", {}),
+                        "usage": state.total_usage if self._has_usage_data(state.total_usage) else None,
+                        "server_side_tools": state.total_usage.get("server_side_tools", {}),
                     }
             
             # Handle Q&A (task complete - LLM decided to respond directly)
             elif route["intent"] == "qa":
                 # Status update: near complete (if tools were used)
-                if tools_used:
+                if state.tools_used:
                     self.status_updater.update(
                         category='near_complete',
                         context={'phase': 'wrapping_up'},
                     )
                 
                 # @TOOL_CONFIG: direct speech bypass — tools whose speech is used as-is (LLM won't reformat)
-                last_tool = tools_used[-1] if tools_used else None
+                last_tool = state.tools_used[-1] if state.tools_used else None
                 use_direct_speech = False
                 
-                if last_tool in self.DIRECT_SPEECH_TOOLS and conversation_context:
+                if last_tool in self.DIRECT_SPEECH_TOOLS and state.conversation_context:
                     # Use the tool's speech directly instead of LLM's reformulation
-                    last_ctx = conversation_context[-1]
+                    last_ctx = state.conversation_context[-1]
                     tool_speech = last_ctx.get("speech", "") or last_ctx.get("result", {}).get("speech", "")
                     if tool_speech:
                         raw_speech = tool_speech
@@ -2570,33 +2494,33 @@ Mode: {self.mode}
                     # Format for voice (short & sweet)
                     if turn_num > 0:
                         # Multi-turn: summarize all tool results
-                        speech = self._format_multi_turn_summary(transcript, tools_used, accumulated_data, raw_speech)
+                        speech = self._format_multi_turn_summary(transcript, state.tools_used, state.accumulated_data, raw_speech)
                     else:
                         # Single-turn: condense the LLM's verbose response
                         speech = self._format_single_turn_casual(transcript, raw_speech)
                 elif response_style == 'auto':
                     # Smart mode: decide based on tool type and complexity
-                    speech = self._format_auto_mode(transcript, tools_used, accumulated_data, raw_speech, turn_num)
+                    speech = self._format_auto_mode(transcript, state.tools_used, state.accumulated_data, raw_speech, turn_num)
                 else:
                     # Detailed mode - use LLM's raw response
                     speech = raw_speech
                 
                 if sys.stdout.isatty():
-                    turn_marker = f" after {len(tools_used)} tool(s)" if turn_num > 0 else ""
+                    turn_marker = f" after {len(state.tools_used)} tool(s)" if turn_num > 0 else ""
                     print(f"💬 Task complete{turn_marker}: {speech}")
                 
-                token_info = total_usage if self._has_usage_data(total_usage) else None
+                token_info = state.total_usage if self._has_usage_data(state.total_usage) else None
                 
                 # Build response
                 response = {
                     "speech": speech,
                     "raw_llm_response": raw_speech,  # Original LLM response before voice formatting
                     "ok": True,
-                    "tools_used": tools_used,
-                    "data": accumulated_data,
-                    "tool_trace": tool_trace,
-                    "available_tools": available_tools,  # Schemas exposed on the first route
-                    "web_search_hint_tools": sorted(web_search_hint_tools),
+                    "tools_used": state.tools_used,
+                    "data": state.accumulated_data,
+                    "tool_trace": state.tool_trace,
+                    "available_tools": state.available_tools,  # Schemas exposed on the first route
+                    "web_search_hint_tools": sorted(state.web_search_hint_tools),
                     "intelligence_context": combined_intelligence_context,
                     "routing_provenance": routing_provenance,
                     "response_style": response_style,
@@ -2610,8 +2534,8 @@ Mode: {self.mode}
 
                 # Include native provider tool usage even if token info is omitted.
                 # The Web UI uses this for the server-side tool toast.
-                if total_usage.get("server_side_tools"):
-                    server_tools = total_usage["server_side_tools"]
+                if state.total_usage.get("server_side_tools"):
+                    server_tools = state.total_usage["server_side_tools"]
                     total_searches = sum(server_tools.values())
                     tool_summary = ", ".join(f"{k.replace('SERVER_SIDE_TOOL_', '').lower()}={v}" for k, v in server_tools.items())
                     provider_label = {
@@ -2627,11 +2551,11 @@ Mode: {self.mode}
                     response["server_side_tools"] = server_tools
                 
                 # Add thinking to response if available
-                if first_thinking:
-                    response["thinking"] = first_thinking
+                if state.first_thinking:
+                    response["thinking"] = state.first_thinking
                 
                 # Record experience for self-learning (returns experience_id for feedback linking)
-                experience_id = self._record_learning_experience(transcript, tools_used, response, conversation_context, applied_insights)
+                experience_id = self._record_learning_experience(transcript, state.tools_used, response, state.conversation_context, applied_insights)
                 if experience_id > 0:
                     response["experience_id"] = experience_id
 
@@ -2639,7 +2563,7 @@ Mode: {self.mode}
                 self._log_conversation(
                     transcript,
                     speech,
-                    tools_used,
+                    state.tools_used,
                     success=True,
                     token_info=token_info,
                     experience_id=experience_id if experience_id > 0 else None,
@@ -2659,7 +2583,7 @@ Mode: {self.mode}
                     print(f"❌ Routing error: {error}")
                 
                 # Auto-log error
-                self._log_conversation(transcript, speech, tools_used, success=False)
+                self._log_conversation(transcript, speech, state.tools_used, success=False)
                 
                 # Mark status updates complete
                 self.status_updater.mark_complete()
@@ -2667,7 +2591,15 @@ Mode: {self.mode}
                 return {
                     "speech": speech,
                     "ok": False,
-                    "error": error
+                    "error": error,
+                    "tools_used": state.tools_used,
+                    "data": state.accumulated_data,
+                    "tool_trace": state.tool_trace,
+                    "usage": state.total_usage if self._has_usage_data(state.total_usage) else None,
+                    "server_side_tools": state.total_usage.get("server_side_tools", {}),
+                    "thinking": state.first_thinking,
+                    "available_tools": state.available_tools,
+                    "web_search_hint_tools": sorted(state.web_search_hint_tools),
                 }
         
         # Safety: Max turns reached (after loop completes)
@@ -2676,15 +2608,15 @@ Mode: {self.mode}
         
         if response_style == 'casual' or response_style == 'auto':
             # Casual and auto both format max turns summary
-            final_speech = self._format_max_turns_summary(transcript, tools_used, accumulated_data, max_turns)
+            final_speech = self._format_max_turns_summary(transcript, state.tools_used, state.accumulated_data, max_turns)
         else:
             # Detailed mode: verbose fallback
-            final_speech = f"Reached complexity limit after {len(tools_used)} actions. Tools used: {', '.join(tools_used)}. Please review the results or let me know if you'd like me to continue."
+            final_speech = f"Reached complexity limit after {len(state.tools_used)} actions. Tools used: {', '.join(state.tools_used)}. Please review the results or let me know if you'd like me to continue."
         
         if sys.stdout.isatty():
             print(f"⚠️  Max turns ({max_turns}) reached")
         
-        self._log_conversation(transcript, final_speech, tools_used, success=True)
+        self._log_conversation(transcript, final_speech, state.tools_used, success=True)
         
         # Mark status updates complete
         self.status_updater.mark_complete()
@@ -2692,14 +2624,14 @@ Mode: {self.mode}
         result = {
             "speech": final_speech,
             "ok": True,
-            "tools_used": tools_used,
-            "data": accumulated_data,
-            "tool_trace": tool_trace,
+            "tools_used": state.tools_used,
+            "data": state.accumulated_data,
+            "tool_trace": state.tool_trace,
             "max_turns_reached": True,
-            "available_tools": available_tools,
-            "web_search_hint_tools": sorted(web_search_hint_tools),
-            "usage": total_usage if self._has_usage_data(total_usage) else None,
-            "server_side_tools": total_usage.get("server_side_tools", {})
+            "available_tools": state.available_tools,
+            "web_search_hint_tools": sorted(state.web_search_hint_tools),
+            "usage": state.total_usage if self._has_usage_data(state.total_usage) else None,
+            "server_side_tools": state.total_usage.get("server_side_tools", {})
         }
         
         # Maybe collect feedback (random chance based on env config)
