@@ -154,6 +154,30 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
             provider=DummyProvider(),
         )
 
+    def test_unrelated_workflow_does_not_inject_article_count(self):
+        result = self.executor._build_success_response(
+            {"id": "structured_watch", "success_speech": "Watch complete."},
+            [{"step": 1, "tool": "watch", "ok": True}], {}, ["watch"],
+        )
+        self.assertNotIn("article_count", result["data"]["variables"])
+        self.assertIsNone(result["usage"])
+
+    def test_article_workflow_still_counts_validated_sources(self):
+        for sources in ([], [{"title": "A"}, {"title": "B"}]):
+            result = self.executor._build_success_response(
+                {"id": "research", "success_speech": "Found ${article_count} sources."},
+                [], {"validated_articles": sources}, [],
+            )
+            self.assertEqual(result["data"]["variables"]["article_count"], len(sources))
+            self.assertEqual(result["speech"], f"Found {len(sources)} sources.")
+
+    def test_explicit_article_count_consumer_keeps_zero_fallback(self):
+        result = self.executor._build_success_response(
+            {"id": "research", "success_speech": "Found ${article_count} sources."},
+            [], {}, [],
+        )
+        self.assertEqual(result["speech"], "Found 0 sources.")
+
     def test_embedded_indexed_placeholders_resolve(self):
         variables = {
             "location": "Portland, Oregon",

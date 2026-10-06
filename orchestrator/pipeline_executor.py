@@ -2142,9 +2142,17 @@ class PipelineExecutor:
                                  variables: dict, tools_used: list[str],
                                  start_time: float = None, query: str = None) -> dict[str, Any]:
         """Build success response and log workflow execution."""
-        # Count successful articles
-        article_count = len(variables.get("validated_articles", []))
-        variables["article_count"] = article_count  # Make available for speech
+        # Article counts belong to article-gathering workflows or explicit consumers.
+        # Do not inject a misleading zero into unrelated workflow/follow-up context.
+        if (
+            "validated_articles" in variables
+            or "article_count" in variables
+            or any(
+                "${article_count}" in str(workflow.get(field) or "")
+                for field in ("success_speech", "success_speech_llm_prompt")
+            )
+        ):
+            variables["article_count"] = len(variables.get("validated_articles", []))
         optional_tools_skipped = list(dict.fromkeys(
             str(result.get("tool") or "")
             for result in results
