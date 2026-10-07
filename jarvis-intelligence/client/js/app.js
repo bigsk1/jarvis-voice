@@ -1707,12 +1707,17 @@ async function viewInsight(id) {
           <span>${insight.primary_intent ? escapeHtml(insight.primary_intent) : '-'}</span>
         </div>
         <div>
-          <div class="form-label">Source Experience</div>
+          <div class="form-label" title="Saved interaction used for reflection">Source Experience</div>
           <span>${insight.source_experience_id ? `#${escapeHtml(String(insight.source_experience_id))}` : '-'}</span>
         </div>
         <div>
-          <div class="form-label">Source Web Conversation</div>
+          <div class="form-label">Original Chat ID</div>
           <span>${insight.source_web_conversation_id ? `<code>${escapeHtml(insight.source_web_conversation_id)}</code>` : '-'}</span>
+          ${insight.source_web_conversation_id || evidence.some(item => item.web_conversation_id) ? `
+            <div style="font-size: var(--text-sm); color: var(--text-secondary); margin-top: var(--space-xs);">
+              Original chat history may have been cleared or removed.
+            </div>
+          ` : ''}
         </div>
         <div style="grid-column: 1 / -1;">
           <div class="form-label">Source Tool Sequence</div>
@@ -1724,8 +1729,8 @@ async function viewInsight(id) {
             <div style="display: grid; gap: var(--space-xs);">
               ${evidence.slice(0, 5).map(item => `
                 <div style="font-size: var(--text-sm); color: var(--text-secondary);">
-                  <code>#${escapeHtml(String(item.experience_id || '-'))}</code>
-                  ${item.web_conversation_id ? `web <code>${escapeHtml(item.web_conversation_id)}</code>` : ''}
+                  Experience <code>#${escapeHtml(String(item.experience_id || '-'))}</code>
+                  ${item.web_conversation_id ? `original chat <code>${escapeHtml(item.web_conversation_id)}</code>` : ''}
                   ${item.action ? ` ${escapeHtml(item.action)}` : ''}
                   ${item.preferred_tool ? ` prefer <code>${escapeHtml(item.preferred_tool)}</code>` : ''}
                   ${Array.isArray(item.tool_sequence) && item.tool_sequence.length ? ` via ${escapeHtml(item.tool_sequence.join(' → '))}` : ''}
