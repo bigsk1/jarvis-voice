@@ -204,6 +204,84 @@ class GenerateImageAspectTests(unittest.TestCase):
         self.assertIsNone(captured["config"].tools)
         self.assertTrue(result["is_edit"])
 
+    def test_nano_banana_2_1_pin_reaches_sdk_for_generation_and_editing(self):
+        model = "gemini-nano-banana-2.1"
+        encoded_reference = base64.b64encode(b"reference-image-bytes").decode("ascii")
+        for reference in (None, "stash://space/file"):
+            with self.subTest(reference=reference):
+                captured = {}
+                fake_client = _FakeClient(self._response(grounding=True), captured)
+                values = {"GEMINI_API_KEY": "test-key", "GEMINI_IMAGE_MODEL": model}
+                with (
+                    patch.object(generate_image, "get_config_value", side_effect=lambda key, default=None: values.get(key, default)),
+                    patch.object(generate_image, "_resolve_image_to_base64", return_value=(encoded_reference, "image/jpeg")),
+                    patch.object(genai, "Client", return_value=fake_client),
+                ):
+                    result = generate_image.generate_image_gemini(
+                        "A weather infographic", aspect_ratio="16:9", image_size="2K",
+                        use_grounding=True, reference_image=reference,
+                    )
+                self.assertEqual(captured["model"], model)
+                self.assertEqual(captured["config"].image_config.aspect_ratio, "16:9")
+                self.assertEqual(captured["config"].image_config.image_size, "2K")
+                self.assertIsNotNone(captured["config"].tools[0].google_search)
+                self.assertIsNone(captured["config"].thinking_config)
+                self.assertEqual(result["model"], model)
+                self.assertEqual(result["is_edit"], reference is not None)
+                self.assertEqual(base64.b64decode(result["image_base64"]), b"generated-image-bytes")
+                if reference:
+                    self.assertEqual(captured["contents"].parts[0].inline_data.data, b"reference-image-bytes")
+
+    def test_configured_provider_outranks_chat_provider_argument(self):
+        captured = {}
+        fake_client = _FakeClient(self._response(), captured)
+        values = {
+            "IMAGE_TOOL_PROVIDER": "gemini",
+            "GEMINI_API_KEY": "test-key",
+            "OPENAI_API_KEY": "test-key",
+        }
+        encoded_reference = base64.b64encode(b"reference-image-bytes").decode("ascii")
+        with (
+            patch.object(generate_image, "get_config_value", side_effect=lambda key, default=None: values.get(key, default)),
+            patch("tool_availability.media_provider_preflight", return_value=None) as preflight,
+            patch.object(generate_image, "_resolve_image_to_base64", return_value=(encoded_reference, "image/jpeg")),
+            patch.object(genai, "Client", return_value=fake_client),
+            patch.object(generate_image.requests, "post", side_effect=AssertionError("Must not call OpenAI")),
+        ):
+            result = generate_image.generate_image(
+                "Change the hair to blond", provider="openai", model="gemini-nano-banana-2.1",
+                reference_image="stash://space/file", image_size="2K",
+            )
+        preflight.assert_called_once_with("gemini")
+        self.assertEqual(captured["model"], "gemini-nano-banana-2.1")
+        self.assertEqual(result["provider"], "gemini")
+        self.assertTrue(result["is_edit"])
+
+    def test_mismatched_known_model_is_rejected_before_any_provider_request(self):
+        values = {"IMAGE_TOOL_PROVIDER": "openai", "OPENAI_API_KEY": "test-key"}
+        with (
+            patch.object(generate_image, "get_config_value", side_effect=lambda key, default=None: values.get(key, default)),
+            patch("tool_availability.media_provider_preflight", return_value=None),
+            patch.object(generate_image.requests, "post") as post,
+            patch.object(genai, "Client") as client,
+        ):
+            with self.assertRaisesRegex(ValueError, "belongs to gemini.*selected provider is openai"):
+                generate_image.generate_image("A robot", provider="gemini", model="gemini-nano-banana-2.1")
+        post.assert_not_called()
+        client.assert_not_called()
+
+    def test_omitted_provider_still_uses_configured_image_provider(self):
+        with (
+            patch.object(generate_image, "get_config_value", return_value="openai"),
+            patch("tool_availability.media_provider_preflight", return_value=None),
+            patch.object(generate_image, "generate_image_openai", return_value={"provider": "openai"}) as openai,
+            patch.object(generate_image, "generate_image_gemini") as gemini,
+        ):
+            result = generate_image.generate_image("A robot")
+        self.assertEqual(result["provider"], "openai")
+        openai.assert_called_once()
+        gemini.assert_not_called()
+
     def test_openai_edit_sends_transparent_background_for_gpt_image_1_5(self):
         captured = {}
         encoded_reference = base64.b64encode(b"reference-image-bytes").decode("ascii")

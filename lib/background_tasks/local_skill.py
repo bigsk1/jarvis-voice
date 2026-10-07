@@ -155,6 +155,7 @@ class LocalSkillRunner:
         from config_loader import config_scope
         from executor import ToolExecutor
         from tool_process import OutputLimitExceeded
+        from .admission import media_job_overrides
 
         job = context.claim.job
         remote = job['adapter'] == REMOTE_ADAPTER
@@ -162,7 +163,9 @@ class LocalSkillRunner:
         args = job['admission']['arguments']
         authorization = context.store.authorization(job['admission']['authorization_id'])
         try:
-            with config_scope(job['mode'], overrides=context.config_values):
+            job_overrides = media_job_overrides(name, args)
+            overrides = {**context.config_values, **job_overrides}
+            with config_scope(job['mode'], overrides=overrides):
                 schema, evidence = self.policy(name)
                 if (not authorization or authorization.get('operator') != 'installation'
                         or authorization.get('source') != 'web'
@@ -201,7 +204,12 @@ class LocalSkillRunner:
                 with tempfile.TemporaryDirectory(prefix=job['id'] + '-', dir=workspace) as scratch:
                     executor.skills_dir = Path(scratch)
                     limit = str(settings['limits']['input_bytes'])
-                    environment = context.environment
+                    environment = dict(context.environment)
+                    # Use the admitted non-secret choices in both the scope and
+                    # child. load_config() must not replace them with mode defaults.
+                    for key, value in job_overrides.items():
+                        environment[key] = value
+                        environment[f'JARVIS_OVERRIDE_{key}'] = value
                     child_policy = self.child_environment_policies.get(name)
                     if child_policy is not None:
                         environment = restrict_child_environment(environment, child_policy, args, scratch)

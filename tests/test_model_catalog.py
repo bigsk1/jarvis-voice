@@ -33,6 +33,7 @@ from lib.model_catalog import (  # noqa: E402
     get_provider_fallback_model,
     get_provider_model_options,
     resolve_media_model,
+    validate_media_model_provider,
 )
 
 
@@ -78,6 +79,38 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertIn("full_length", lyria_pro["capabilities"])
         self.assertEqual(lyria_pro["output_formats"], ["mp3", "wav"])
         self.assertFalse(lyria_pro.get("default", False))
+
+    def test_nano_banana_2_1_is_selectable_with_model_specific_pricing(self):
+        model = "gemini-nano-banana-2.1"
+        options = get_media_provider_options("image", {"gemini": model})["gemini"]
+        self.assertEqual(options["model"], model)
+        self.assertEqual(options["model_name"], "Gemini Nano Banana 2.1")
+        self.assertEqual(options["resolutions"], ["1K", "2K", "4K"])
+        self.assertIn("editing", options["capabilities"])
+        self.assertIn("grounding", options["capabilities"])
+        self.assertEqual(
+            [entry["id"] for entry in options["models"]],
+            [model, "gemini-3.1-flash-image", "gemini-3-pro-image"],
+        )
+        self.assertEqual(
+            options["pricing"]["usd_by_size"],
+            {"1K": 0.0336, "2K": 0.0504, "4K": 0.113},
+        )
+        self.assertEqual(resolve_media_model("image", "gemini", model), model)
+        self.assertEqual(
+            resolve_media_model("image", "gemini", "gemini-3.1-flash-image"),
+            "gemini-3.1-flash-image",
+        )
+
+    def test_media_provider_validation_covers_aliases_and_preserves_custom_ids(self):
+        for model in ("gemini-nano-banana-2.1", "gemini-3.1-flash-image-preview"):
+            with self.subTest(model=model):
+                with self.assertRaisesRegex(ValueError, "belongs to gemini"):
+                    validate_media_model_provider("image", "openai", model)
+        with self.assertRaisesRegex(ValueError, "belongs to openai"):
+            validate_media_model_provider("image", "gemini", "gpt-image-2.5-sunburst-2026-09-08")
+        validate_media_model_provider("image", "gemini", "gemini-nano-banana-2.1")
+        validate_media_model_provider("image", "openai", "future-custom-model")
 
     def test_media_provider_options_follow_explicit_model_pin_capabilities(self):
         options = get_media_provider_options(

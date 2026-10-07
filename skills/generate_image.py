@@ -37,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import get_config_value, load_config
 from remote_completion import RemoteCompletionError, completion_for_error, submission_error
 from image_catalog import upsert_image_catalog_entry
-from model_catalog import get_media_model_env_key, get_media_model_metadata, resolve_media_model
+from model_catalog import get_media_model_env_key, get_media_model_metadata, resolve_media_model, validate_media_model_provider
 from paths import assert_not_restricted_read_path
 from stash_helper import safe_download_image
 
@@ -229,7 +229,9 @@ def _resolve_configured_image_model(
 ) -> str:
     env_key = get_media_model_env_key("image", provider)
     configured = requested_model or (get_config_value(env_key, "") if env_key else "")
-    return resolve_media_model("image", provider, configured)
+    model = resolve_media_model("image", provider, configured)
+    validate_media_model_provider("image", provider, model)
+    return model
 
 
 def _resolve_xai_image_size(model_name: str, image_size: str | None) -> str:
@@ -841,11 +843,11 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
         reference_image: Source image for editing (stash ref, path, URL, or data URI)
     """
     
-    # Determine provider
-    # get_config_value checks JARVIS_OVERRIDE_ prefix first (web UI settings),
-    # then falls back to cloud.env default. LLM-passed provider is ignored
-    # when a config/override value exists.
-    provider = get_config_value('IMAGE_TOOL_PROVIDER', provider or 'gemini').lower()
+    # The trusted modal or admitted-job scope outranks ordinary tool arguments.
+    # Without such a scope, saved Web/ENV provider precedence stays authoritative.
+    provider = str(get_config_value('IMAGE_TOOL_PROVIDER', provider or 'gemini')).strip().lower()
+    if provider not in {'gemini', 'openai', 'xai'}:
+        raise ValueError(f"Unsupported image provider: {provider}")
 
     # Credential preflight: fail with configured alternatives instead of a
     # provider-specific API error. Never auto-switches providers.

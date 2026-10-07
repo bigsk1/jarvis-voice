@@ -49,6 +49,15 @@ The catalog also stores provider-specific pricing metadata for future cost
 estimation and UI display. The current attachment UI continues to show its
 existing generic estimate.
 
+The image-to-video modal supplies a trusted configuration scope for that action
+only. Ordinary chat tool arguments do not replace the configured provider.
+Background admission saves the effective provider/model in the job's arguments
+and replays them as scoped/child overrides so a worker's fresh mode configuration
+cannot replace that choice. A known model from another provider is rejected
+before submission. This does not
+change AI Config or either env file. Duration, aspect ratio, resolution, and
+the source image are already carried as task arguments.
+
 ## Provider Comparison
 
 | Feature | xAI Grok | Google Gemini |

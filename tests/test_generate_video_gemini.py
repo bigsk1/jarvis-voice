@@ -94,6 +94,37 @@ def test_unknown_video_provider_fails_closed_without_dispatch():
     xai.assert_not_called()
 
 
+def test_configured_video_provider_outranks_chat_provider_argument():
+    with (
+        patch.object(generate_video, 'get_config_value', return_value='gemini'),
+        patch('tool_availability.media_provider_preflight', return_value=None),
+        patch.object(generate_video, 'generate_video_gemini', return_value={'provider': 'gemini'}) as gemini,
+        patch.object(generate_video, 'generate_video_xai') as xai,
+    ):
+        result = generate_video.generate_video(
+            'Animate the reference', provider='xai', model='veo-3.1-fast-generate-preview',
+            image_url='stash://fixture/image', duration=8, resolution='1080p', aspect_ratio='9:16',
+        )
+    assert result['provider'] == 'gemini'
+    assert gemini.call_args.kwargs['model'] == 'veo-3.1-fast-generate-preview'
+    assert gemini.call_args.kwargs['image_url'] == 'stash://fixture/image'
+    assert gemini.call_args.kwargs['resolution'] == '1080p'
+    xai.assert_not_called()
+
+
+def test_mismatched_video_model_is_rejected_before_provider_request():
+    with (
+        patch.object(generate_video, 'get_config_value', side_effect=lambda key, default=None: {'VIDEO_TOOL_PROVIDER': 'xai', 'XAI_API_KEY': 'test-key'}.get(key, default)),
+        patch('tool_availability.media_provider_preflight', return_value=None),
+        patch.object(generate_video.requests, 'post') as post,
+        patch.object(genai, 'Client') as client,
+    ):
+        with pytest.raises(ValueError, match='belongs to gemini.*selected provider is xai'):
+            generate_video.generate_video('A clip', provider='gemini', model='veo-3.1-fast-generate-preview')
+    post.assert_not_called()
+    client.assert_not_called()
+
+
 def test_video_preflight_receives_only_supported_provider_keys():
     with patch.object(
         generate_video,

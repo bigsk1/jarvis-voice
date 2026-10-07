@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 from remote_completion import (RemoteCompletionError, completion_for_error,
                                gemini_interactions_options, submit)
-from model_catalog import get_media_model_env_key, get_media_model_metadata, resolve_media_model
+from model_catalog import get_media_model_env_key, get_media_model_metadata, resolve_media_model, validate_media_model_provider
 from paths import assert_not_restricted_read_path
 from video_catalog import upsert_video_catalog_entry
 
@@ -84,7 +84,9 @@ def _resolve_configured_video_model(
 ) -> str:
     env_key = get_media_model_env_key("video", provider)
     configured = requested_model or (get_config_value(env_key, "") if env_key else "")
-    return resolve_media_model("video", provider, configured)
+    model = resolve_media_model("video", provider, configured)
+    validate_media_model_provider("video", provider, model)
+    return model
 
 
 def _resolve_video_source(video_source: str) -> str | None:
@@ -688,11 +690,9 @@ def generate_video(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
         model: Explicit provider-specific model; otherwise use Web/ENV/catalog defaults
     """
     
-    # Determine provider
-    # get_config_value checks JARVIS_OVERRIDE_ prefix first (web UI settings),
-    # then falls back to cloud.env default. LLM-passed provider is ignored
-    # when a config/override value exists.
-    provider = get_config_value('VIDEO_TOOL_PROVIDER', provider or 'xai').lower()
+    # A trusted modal/admitted-job scope supplies per-action configuration;
+    # ordinary tool arguments do not outrank saved Web/ENV provider settings.
+    provider = str(get_config_value('VIDEO_TOOL_PROVIDER', provider or 'xai')).strip().lower()
 
     supported_providers = {'xai', 'gemini'}
     if provider not in supported_providers:

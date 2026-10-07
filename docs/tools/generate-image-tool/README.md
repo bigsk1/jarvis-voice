@@ -18,12 +18,33 @@ Image generation and editing tool for Jarvis. Supports text-to-image and image-t
 ### Gemini (default)
 
 - Catalog default: `gemini-3.1-flash-image` (optional pin: `GEMINI_IMAGE_MODEL`)
+- Selectable models also include `gemini-nano-banana-2.1` (Gemini Nano Banana 2.1) and `gemini-3-pro-image` (Nano Banana Pro).
 - Aspect ratios: 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 4:5, 5:4
 - Resolution/size: 1K, 2K, 4K
 - Google Search grounding for real-time data (weather, stocks, current events)
 - Can accept `context_data` from other Jarvis tools
 - Generation API: `google.genai.Client.models.generate_content()` with typed `GenerateContentConfig` and `ImageConfig`
 - Editing: same SDK call with the reference image as a typed content part alongside the text prompt. Current Jarvis tool contract accepts one reference image.
+
+Nano Banana 2.1 is Google's updated Flash-tier image model, based on Gemini 3.6
+Flash. Google reports improved realism, prompt adherence, text/infographic
+rendering, character consistency, and panoramic output. The model supports
+1K/2K/4K output, up to 14 reference images, Web and Image Search grounding, and
+`minimal`/`medium`/`high` thinking (`medium` by default). Jarvis exposes its
+existing generation, single-reference editing, size/aspect, and Google Search
+controls; it leaves thinking at the provider default and does not expose
+multi-reference fusion or a separate Image Search switch.
+
+Select it in Web AI Config under Google Gemini's Image Model, in the image action
+modal, or set `GEMINI_IMAGE_MODEL="gemini-nano-banana-2.1"`. The existing Flash
+catalog default and Pro option remain available. Google's standard image-output
+estimates are $0.0336 (1K), $0.0504 (2K), and $0.113 (4K); input, text/thinking,
+and search can add charges.
+
+Sources: [Google model documentation](https://ai.google.dev/gemini-api/docs/models/gemini-nano-banana-2.1),
+[DeepMind model card](https://deepmind.google/models/model-cards/nano-banana-2-1/),
+[Generate Content image API](https://ai.google.dev/gemini-api/docs/generate-content/image-generation),
+[Google pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-nano-banana-2.1).
 
 ### OpenAI
 
@@ -65,15 +86,29 @@ Ref: https://docs.x.ai/developers/model-capabilities/images/generation
 
 ## Provider selection
 
-Determined by `config_loader.py` with this priority:
+Provider selection uses this priority:
 
-1. `JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER` in a child tool environment (exported from the Web UI's request-local config scope)
-2. `IMAGE_TOOL_PROVIDER` in `config/cloud.env` or `config/local.env`
-3. Fallback: `gemini`
+1. The trusted request scope: temporary modal selection, then saved Web AI Config
+2. `JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER` in a child tool environment
+3. `IMAGE_TOOL_PROVIDER` in `config/cloud.env` or `config/local.env`
+4. Tool `provider` argument, then `gemini`, when no provider setting exists
 
 The Web UI keeps the provider in a request-local config scope and exports the
 `JARVIS_OVERRIDE_` form only to child tools. This preserves a single request's
 choice without mutating the long-lived Web process environment.
+
+Background image/video admission saves the effective provider and model as non-secret
+tool arguments before leaving that request scope. The separately supervised
+worker replays those choices as scoped and child environment overrides even if
+its mode env file has a different provider or
+settings change while the job waits. This does not save the modal choice into
+AI Config or copy credentials into the job record. Duplicate admission of the
+same invocation reuses its original selection.
+Music admission similarly retains its selected provider; music models remain
+deployment configuration because that tool has no per-request model parameter.
+Ordinary chat tool arguments cannot replace the configured provider. A known
+model belonging to another provider is rejected before submission; unknown
+custom model IDs remain supported.
 
 ## Model selection and pricing metadata
 
@@ -84,9 +119,9 @@ the catalog default, or set one when an installation intentionally needs a
 different or newly released model. Unknown explicit model IDs are preserved so
 new provider releases remain usable before the catalog is updated.
 
-The attachment UI does not expose a model selector. Its current generic cost
-estimate is unchanged; the catalog pricing is available for a later UI cost
-estimator without duplicating model data in the client.
+Web AI Config and the image action modal expose model selectors populated from
+the shared catalog. AI Config shows the selected model's catalog capabilities and
+pricing; the attachment modal's generic cost estimate is unchanged.
 
 ## Image-to-image editing
 

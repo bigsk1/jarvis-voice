@@ -771,6 +771,22 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
             "name": "Google Gemini",
             "models": [
                 {
+                    "id": "gemini-nano-banana-2.1",
+                    "name": "Gemini Nano Banana 2.1",
+                    "capabilities": ["generation", "editing", "grounding", "1K", "2K", "4K"],
+                    "resolutions": ["1K", "2K", "4K"],
+                    "pricing": {
+                        "unit": "image",
+                        "usd_by_size": {"1K": 0.0336, "2K": 0.0504, "4K": 0.113},
+                        "text_input_usd_per_million": 1.5,
+                        "image_input_usd_per_million": 1.5,
+                        "text_output_usd_per_million": 7.5,
+                        "image_output_usd_per_million": 30.0,
+                        "grounding_usd_per_1000_queries": 14.0,
+                        "note": "Image output estimate; input, text/thinking, and search billed separately",
+                    },
+                },
+                {
                     "id": "gemini-3.1-flash-image",
                     "name": "Gemini 3.1 Flash Image",
                     "default": True,
@@ -1127,6 +1143,20 @@ def get_media_model_metadata(media_type: str, provider: str, model: str | None) 
         if normalized in {str(value).lower() for value in known_ids if value}:
             return entry
     return None
+
+
+def validate_media_model_provider(media_type: str, provider: str, model: str | None) -> None:
+    """Reject a known model owned by another provider; allow unknown custom IDs."""
+    normalized = str(model or '').strip().lower()
+    if not normalized:
+        return
+    for owner in get_media_catalog_providers(media_type):
+        if owner == provider:
+            continue
+        for entry in get_media_model_catalog(media_type, owner):
+            known_ids = [entry.get('id'), *(entry.get('aliases') or []), *(entry.get('replaces') or [])]
+            if normalized in {str(value).lower() for value in known_ids if value}:
+                raise ValueError(f"{media_type.title()} model '{model}' belongs to {owner}, but the selected provider is {provider}")
 
 
 def resolve_media_model(media_type: str, provider: str, configured_model: str | None = None) -> str:

@@ -273,6 +273,28 @@ class SettingsAvailabilityTests(unittest.TestCase):
             "veo-3.1-fast-generate-preview",
         )
 
+    def test_nano_banana_2_1_saves_and_reloads_in_both_mode_settings(self):
+        model = "gemini-nano-banana-2.1"
+        env = {"IMAGE_TOOL_PROVIDER": "gemini", "GEMINI_API_KEY": "gemini-key"}
+        for mode in ("cloud", "local"):
+            with self.subTest(mode=mode):
+                manager, patches = self._manager(mode, env)
+                web_config = {"cloud": {}, "local": {}}
+                with (
+                    patches[0], patches[1],
+                    patch.object(self.settings_module, "load_web_config", return_value=web_config),
+                    patch.object(self.settings_module, "save_web_config", return_value=True),
+                    patch.object(manager, "_get_provider_models", return_value={}),
+                ):
+                    self.assertTrue(manager.save_web_overrides({"image_provider": "gemini", "image_model": model}))
+                    result = manager.get_settings_for_ui()
+                self.assertEqual(web_config[mode]["image_models"], {"gemini": model})
+                self.assertEqual(web_config["local" if mode == "cloud" else "cloud"], {})
+                self.assertEqual(result["image"]["model"]["value"], model)
+                self.assertIn(model, result["image"]["model"]["options"])
+                self.assertEqual(result["image_providers"]["gemini"]["model"], model)
+                self.assertEqual(result["image_providers"]["gemini"]["resolutions"], ["1K", "2K", "4K"])
+
     def test_media_model_overrides_save_and_clear_for_selected_provider(self):
         env = {
             "IMAGE_TOOL_PROVIDER": "gemini",

@@ -22,6 +22,64 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
+MEDIA_SELECTIONS = {
+    'generate_image': ('image', 'gemini', {'gemini', 'openai', 'xai'}),
+    'generate_video': ('video', 'xai', {'gemini', 'xai'}),
+    'generate_music': ('music', 'elevenlabs', {'gemini', 'elevenlabs'}),
+}
+
+
+def _media_arguments_for_worker(tool, args):
+    """Persist only non-secret media choices, not the request's environment."""
+    from config_loader import get_config_value
+    from model_catalog import get_media_model_env_key, resolve_media_model, validate_media_model_provider
+
+    media_type, default, supported = MEDIA_SELECTIONS[tool]
+    # Saved Web settings and the trusted modal scope outrank LLM arguments.
+    # The argument remains a fallback when the provider setting is absent.
+    provider = get_config_value(f'{media_type.upper()}_TOOL_PROVIDER', args.get('provider') or default)
+    if not isinstance(provider, str) or provider.strip().lower() not in supported:
+        raise AdmissionDenied(f'Unsupported {media_type} provider')
+    provider = provider.strip().lower()
+    if media_type == 'music':
+        # Music exposes a provider choice, but no per-request model parameter.
+        return {**args, 'provider': provider}
+    requested_model = args.get('model')
+    if requested_model is not None and not isinstance(requested_model, str):
+        raise AdmissionDenied(f'{media_type.title()} model must be a string')
+    configured_model = (requested_model or '').strip() or get_config_value(
+        get_media_model_env_key(media_type, provider), ''
+    )
+    model = resolve_media_model(media_type, provider, configured_model)
+    try:
+        validate_media_model_provider(media_type, provider, model)
+    except ValueError as exc:
+        raise AdmissionDenied(str(exc)) from exc
+    return {**args, 'provider': provider, 'model': model}
+
+
+def media_job_overrides(tool, args):
+    """Replay the admitted selection in a worker scope, using fixed config keys."""
+    if tool not in MEDIA_SELECTIONS or not args.get('provider'):
+        return {}  # Pre-existing jobs without a saved choice retain their fallback.
+    from model_catalog import get_media_model_env_key, validate_media_model_provider
+
+    media_type, _, supported = MEDIA_SELECTIONS[tool]
+    provider = args['provider']
+    if not isinstance(provider, str) or provider not in supported:
+        raise AdmissionDenied(f'Unsupported {media_type} provider')
+    overrides = {f'{media_type.upper()}_TOOL_PROVIDER': provider}
+    if media_type != 'music' and args.get('model'):
+        if not isinstance(args['model'], str):
+            raise AdmissionDenied(f'{media_type.title()} model must be a string')
+        try:
+            validate_media_model_provider(media_type, provider, args['model'])
+        except ValueError as exc:
+            raise AdmissionDenied(str(exc)) from exc
+        overrides[get_media_model_env_key(media_type, provider)] = args['model']
+    return overrides
+
+
 def is_admission(value):
     return isinstance(value, dict) and (
         value.get("result_kind") == "background_admission"
@@ -275,6 +333,16 @@ class BackgroundAdmissionService:
         prior = context.calls.get(invocation_id)
         if prior is not None and prior != work:
             raise Conflict("Invocation identity already belongs to different work")
+        if tool in MEDIA_SELECTIONS:
+            # Redelivery reuses the first selection even if configuration has
+            # changed since admission. Readiness/authorization were rechecked above.
+            if prior is not None:
+                for receipt in context.receipts.values():
+                    if receipt.get('invocation_id') == invocation_id:
+                        return dict(receipt)
+            # Background workers do not inherit the Web request's config scope.
+            # Freeze its effective media selections as declared tool arguments.
+            args = _media_arguments_for_worker(tool, args)
         # The orchestrator guards repeated tool/arguments within a user request.
         # Admission identity is strictly the invocation, including on redelivery.
         from .local_contract import SKILL_ADAPTERS

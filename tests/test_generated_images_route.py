@@ -5,7 +5,10 @@ import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from api.routes import generated_images
+from config_loader import config_scope
 
 
 def test_generate_route_passes_shared_gemini_options_to_tool():
@@ -46,6 +49,27 @@ def test_generate_route_passes_shared_gemini_options_to_tool():
     assert run.call_args.kwargs["env"]["JARVIS_MODE"] == "local"
     assert response.ok is True
     assert response.data == {"provider": "gemini"}
+
+
+@pytest.mark.parametrize("mode", ["cloud", "local"])
+def test_generate_route_exports_nano_banana_2_1_model_pin(mode):
+    model = "gemini-nano-banana-2.1"
+    request = generated_images.GenerateRequest(prompt="A robot", provider="gemini", mode=mode)
+    completed = SimpleNamespace(
+        returncode=0, stderr="",
+        stdout=json.dumps({"ok": True, "data": {"provider": "gemini", "model": model}}),
+    )
+    with (
+        config_scope(mode, {"GEMINI_IMAGE_MODEL": model}),
+        patch.object(generated_images.subprocess, "run", return_value=completed) as run,
+    ):
+        response = asyncio.run(generated_images.generate_image(request))
+    env = run.call_args.kwargs["env"]
+    assert env["JARVIS_MODE"] == mode
+    assert env["GEMINI_IMAGE_MODEL"] == model
+    assert env["JARVIS_OVERRIDE_GEMINI_IMAGE_MODEL"] == model
+    assert response.ok is True
+    assert response.data["model"] == model
 
 
 def test_delete_generated_image_preserves_cdn_catalog_entry(tmp_path, monkeypatch):
