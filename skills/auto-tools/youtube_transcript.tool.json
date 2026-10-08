@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "youtube_transcript",
-  "description": "Download YouTube video transcripts in .srt and .md formats. Automatically converts to markdown and saves both files to stash for indexing. Use when user says 'download youtube transcript', 'get transcript from youtube', 'save youtube captions', or pastes a YouTube URL asking for transcripts.",
+  "description": "Download YouTube video transcripts in .srt and .md formats. Automatically converts to markdown and saves both files to stash for indexing. Uses an installed Deno or Node runtime for YouTube extraction. When SERPAPI_YOUTUBE_FALLBACK is explicitly enabled, SERP_API_KEY exists, and serpapi_youtube is enabled in the active profile, it automatically fetches the transcript through SerpApi after yt-dlp fails (uses paid API credits). API fallback preserves segment start timestamps; generated SRT cue endings are inferred. No cookies are configured by this tool. Use when user says 'download youtube transcript', 'get transcript from youtube', 'save youtube captions', or pastes a YouTube URL asking for transcripts.",
   "script": "youtube_transcript.py",
   "proxy_policy": "prefer",
   "parameters": {

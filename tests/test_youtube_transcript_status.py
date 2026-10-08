@@ -33,7 +33,7 @@ def test_transcript_status_requires_markdown_stash_artifact(
             (md_saved, space if md_saved else None, "stash://space_transcript/md" if md_saved else None),
         ]
     )
-    monkeypatch.setattr(sys, "argv", [str(TOOL_PATH), json.dumps({"url": "https://youtu.be/example"})])
+    monkeypatch.setattr(sys, "argv", [str(TOOL_PATH), json.dumps({"url": "https://youtu.be/abcdefghijk"})])
     monkeypatch.setattr(TOOL, "load_config", lambda: None)
     monkeypatch.setattr(TOOL, "build_proxy_url_attempts", lambda **_kwargs: [None])
     monkeypatch.setattr(

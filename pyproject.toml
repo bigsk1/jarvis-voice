@@ -1,6 +1,6 @@
 [project]
 name = "jarvis-voice"
-version = "2.55.10"
+version = "2.55.11"
 description = "Self-hosted intelligent voice assistant"
 requires-python = ">=3.12"
 dependencies = [
@@ -70,7 +70,7 @@ dependencies = [
     "markdown-it-py[linkify]>=4.0.0",
     "pymupdf>=1.26.0",
     "spotipy>=2.25.0",
-    "yt-dlp>=2026.7.4",
+    "yt-dlp[default]>=2026.7.4",
     "qrcode==8.2",
     "paramiko>=3.0.0",
     "yfinance>=1.1.0",

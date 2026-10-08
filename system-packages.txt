@@ -27,6 +27,9 @@ imagemagick            # Image format conversion (jpg, png, webp, gif, etc.)
 potrace                # Raster to vector conversion (jpg/png → svg)
 
 # Optional (Recommended)
+# For YouTube extraction, verify node --version is v22 or newer; the APT version
+# depends on your distribution. Deno 2.3+ is an alternative installed separately.
+nodejs                 # JavaScript runtime for yt-dlp's YouTube EJS solver
 build-essential        # C/C++ compilers (needed for some Python packages)
 libportaudio2          # PortAudio library (for sounddevice)
 libsndfile1            # Audio file reading/writing library

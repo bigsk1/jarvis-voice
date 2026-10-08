@@ -75,7 +75,7 @@ brotli>=1.1.0
 markdown-it-py[linkify]>=4.0.0
 pymupdf>=1.26.0
 spotipy>=2.25.0
-yt-dlp>=2026.7.4
+yt-dlp[default]>=2026.7.4
 paramiko>=3.0.0
 cryptography==49.0.0  # Task integration AES-GCM; keep aligned with pyproject.toml/uv.lock
 yfinance>=1.1.0

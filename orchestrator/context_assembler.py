@@ -2206,7 +2206,7 @@ class ContextAssembler:
         return preview
 
     def build_serpapi_youtube_data_preview(self, data: Any) -> dict[str, Any]:
-        """Keep video identity and a useful transcript excerpt without raw duplication."""
+        """Keep video identity, complete description links, and a transcript excerpt."""
         if not isinstance(data, dict):
             return {}
 
@@ -2240,7 +2240,29 @@ class ContextAssembler:
                 )
 
         description = data.get("description")
+        links_chars = 0
         if isinstance(description, dict):
+            # YouTube shortens displayed URLs in description.content; its links
+            # carry the actual destinations, including timestamped watch URLs.
+            links = description.get("links")
+            if isinstance(links, list):
+                kept_links = []
+                for link in links:
+                    if not isinstance(link, dict):
+                        continue
+                    url = link.get("url")
+                    if not isinstance(url, str) or not url.startswith(("https://", "http://")):
+                        continue
+                    item = {"text": self.truncate_preview_text(link.get("text") or "", 80), "url": url}
+                    item_chars = len(json.dumps(item, separators=(",", ":"))) + 1
+                    # Drop whole entries that exceed the budget; never cut URLs.
+                    if len(kept_links) < 24 and links_chars + item_chars <= 2000:
+                        kept_links.append(item)
+                        links_chars += item_chars
+                if kept_links:
+                    preview["description_links"] = kept_links
+                if len(kept_links) < len(links):
+                    preview["description_links_omitted"] = len(links) - len(kept_links)
             description = description.get("content")
         if isinstance(description, str) and description.strip():
             preview["description"] = self.truncate_preview_text(description, 600)
@@ -2260,7 +2282,8 @@ class ContextAssembler:
             }
             transcript_text = transcript_data.get("transcript_text")
             if isinstance(transcript_text, str) and transcript_text.strip():
-                transcript_preview_limit = 3600
+                # Trade prose excerpt space for exact links within the same cap.
+                transcript_preview_limit = 3600 - links_chars
                 compact_transcript["transcript_text_chars"] = len(transcript_text)
                 compact_transcript["transcript_text_preview_truncated"] = (
                     len(transcript_text) > transcript_preview_limit

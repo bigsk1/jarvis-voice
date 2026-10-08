@@ -1,4 +1,9 @@
+FROM node:22-bookworm-slim AS youtube-js
+
 FROM python:3.12-slim AS jarvis-base
+
+# yt-dlp's bundled EJS solver uses Node; npm is not needed at runtime.
+COPY --from=youtube-js /usr/local/bin/node /usr/local/bin/node
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV JARVIS_VENV=/opt/venv

@@ -186,6 +186,55 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertNotIn("RAW_PAYLOAD_SENTINEL", preview)
         self.assertNotIn("SEGMENT_ARRAY_SENTINEL", preview)
 
+    def test_youtube_preview_preserves_exact_repo_and_timestamp_links(self):
+        watch_url = "https://www.youtube.com/watch?v=9hDyXi5cbQw&t=61s"
+        repo_url = "https://github.com/example/shader-project"
+        links = [
+            {"text": "01:01", "url": watch_url},
+            {"text": "https://github.com/example/shader...", "url": repo_url},
+        ] + [
+            {"text": f"Chapter {i}", "url": f"https://www.youtube.com/watch?v=9hDyXi5cbQw&t={i * 60}s"}
+            for i in range(40)
+        ]
+        result = {"ok": True, "speech": "Fetched video and transcript.", "data": {
+            "video_id": "9hDyXi5cbQw", "url": "https://www.youtube.com/watch?v=9hDyXi5cbQw",
+            "description": {"content": "01:01 - Shader project https://github.com/example/shader...", "links": links},
+            "transcript_stash_ref": "stash://youtube/f_transcript",
+            "transcript_data": {"transcript_text": "Shader project discussion. " * 800, "transcript_count": 120},
+            "raw": {"provider_payload": "RAW_SENTINEL" * 1000},
+        }}
+        original = json.dumps(result)
+        preview, _total, shown, _truncated = self.orch._build_llm_result_context_preview("serpapi_youtube", result)
+        data = json.loads(preview)["llm_context_preview"]["data_preview"]
+        self.assertEqual(data["description_links"][0]["url"], watch_url)
+        self.assertEqual(data["description_links"][1]["url"], repo_url)
+        self.assertGreater(data["description_links_omitted"], 0)
+        self.assertLessEqual(len(data["description_links"]), 24)
+        self.assertLessEqual(shown, 6000)
+        self.assertIn("Shader project discussion", data["transcript_data"]["transcript_text"])
+        self.assertEqual(data["transcript_stash_ref"], "stash://youtube/f_transcript")
+        self.assertNotIn("RAW_SENTINEL", preview)
+        self.assertEqual(json.dumps(result), original)
+
+    def test_youtube_link_budget_omits_whole_urls_instead_of_truncating(self):
+        long_url = "https://example.test/project?ref=" + "a" * 1500
+        oversize_url = "https://example.test/oversize?ref=" + "b" * 3000
+        watch_url = "https://www.youtube.com/watch?v=9hDyXi5cbQw&t=86s"
+        result = {"ok": True, "data": {
+            "description": {"content": "Source links", "links": [
+                {"text": "Project", "url": long_url},
+                {"text": "Oversize", "url": oversize_url},
+                {"text": "01:26", "url": watch_url},
+                {"text": "Missing destination"}, None,
+            ]},
+            "transcript_data": {"transcript_text": "Discussion. " * 1000},
+        }}
+        preview, _total, shown, _truncated = self.orch._build_llm_result_context_preview("serpapi_youtube", result)
+        data = json.loads(preview)["llm_context_preview"]["data_preview"]
+        self.assertEqual([link["url"] for link in data["description_links"]], [long_url, watch_url])
+        self.assertEqual(data["description_links_omitted"], 3)
+        self.assertLessEqual(shown, 6000)
+
     def test_document_ocr_page_preview_fits_and_keeps_primary_artifact_reference(self):
         result = {
             "ok": True,

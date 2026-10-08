@@ -81,6 +81,53 @@ CLI reference: `./bin/manage-tools.py -h` and the usage block at the top of `bin
 
 ---
 
+## YouTube extraction runtime and transcript fallback
+
+`youtube_transcript` and `youtube_video` use yt-dlp from the active Python
+environment, with a standalone executable fallback when the module is absent.
+Install `yt-dlp[default]` so yt-dlp's matching EJS helper updates with it. Native
+installs need Deno 2.3+ or Node.js 22+ on `PATH`; the tools enable an installed
+runtime explicitly. Docker includes Node 22, so rebuild the image for this setup
+change. No JavaScript components are downloaded dynamically by Jarvis.
+
+`bin/update-yt-dlp` upgrades the yt-dlp lock entry and installs the default
+extras with both yt-dlp and EJS pinned to their resolved lockfile versions.
+It verifies both installed versions without running a full `uv sync` against
+the operator environment. Its optional `--smoke-url` test enables the same JS
+runtime and checks native yt-dlp extraction directly; it does not use SerpApi.
+YouTube rate limits can still fail that test after packages installed correctly.
+The updater refuses a dirty lockfile unless explicitly overridden. The scheduled
+`yt_dlp_release_watch` workflow continues watching the published stable `yt-dlp`
+version; it reports releases and does not install updates or test local runtime
+health. No separate EJS watch is needed to install the helper required by each
+locked yt-dlp release.
+
+The tools honor their proxy policy. A direct attempt explicitly disables
+inherited proxies; `require` never attempts direct access. yt-dlp and its JS
+children receive runtime/TLS settings without Jarvis API keys. Transcript title
+and subtitles are obtained in one yt-dlp request per route, reducing duplicate
+extraction. YouTube can still rate-limit public subtitles even with the latest
+version and a working JS runtime. Updating yt-dlp does not guarantee access.
+
+`SERPAPI_YOUTUBE_FALLBACK=false` is the default. If explicitly set to `true`,
+`youtube_transcript` automatically tries SerpApi after yt-dlp routes fail, but
+only with `SERP_API_KEY` configured and `serpapi_youtube` enabled by its manifest
+and active profile. This consumes API credits; a clone without the key/opt-in
+never makes a paid request. The nested call uses the SerpApi tool's own proxy
+policy and saves SRT and Markdown through the transcript tool's normal Stash
+path. Results identify the retrieval provider. All API segments and their start
+timestamps are retained in Markdown. API-generated SRT cue ends are inferred
+from the next start (last cue: three seconds); `srt_timing` discloses this.
+Failure or empty API captions never produce a successful artifact receipt.
+The existing `youtube_video` setting remains a metadata/transcript fallback
+hint; SerpApi is not used to download video media.
+
+No account cookies are enabled by these changes. For account-only material,
+the video downloader's existing cookie options remain operator-controlled;
+never put a password/cookie into a tool argument, tracked config, or logs.
+See [yt-dlp's cookie guidance](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)
+before choosing authenticated extraction.
+
 ## Tool Discovery
 
 Tools are automatically discovered when they have:

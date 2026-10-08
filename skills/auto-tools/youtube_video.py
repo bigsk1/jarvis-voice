@@ -24,6 +24,7 @@ from config_loader import load_config, get_config_value
 from http_client import build_proxy_url_attempts
 from stash_helper import open_space, StashFile
 from memory_db import MemoryDB
+from ytdlp_runtime import resolve_yt_dlp_command, runtime_args, subprocess_environment
 
 
 VALID_HOSTS = {
@@ -116,13 +117,6 @@ def derive_format_selector(quality: str, audio_only: bool) -> str:
     return "bestvideo+bestaudio/best"
 
 
-def resolve_yt_dlp_command() -> list[str]:
-    """Prefer yt-dlp binary, fallback to module invocation."""
-    if shutil.which("yt-dlp"):
-        return ["yt-dlp"]
-    return [sys.executable, "-m", "yt_dlp"]
-
-
 def build_common_args(output_template: str, max_filesize_mb: int, proxy: str | None) -> list[str]:
     """Common yt-dlp args tuned for reliability."""
     args = [
@@ -148,9 +142,7 @@ def build_common_args(output_template: str, max_filesize_mb: int, proxy: str | N
     ]
     if max_filesize_mb and max_filesize_mb > 0:
         args.extend(["--max-filesize", f"{max_filesize_mb}M"])
-    if proxy:
-        args.extend(["--proxy", proxy])
-    return args
+    return args + runtime_args(proxy)
 
 
 def cookie_args_from_config() -> list[str]:
@@ -184,14 +176,14 @@ def fetch_video_metadata(url: str, proxy: str | None) -> dict:
         "--force-ipv4",
         "--socket-timeout", "20",
     ]
-    if proxy:
-        args.extend(["--proxy", proxy])
+    args.extend(runtime_args(proxy))
 
     result = subprocess.run(
         cmd + args + [url],
         capture_output=True,
         text=True,
         timeout=45,
+        env=subprocess_environment(),
     )
     if result.returncode != 0 or not result.stdout.strip():
         return {}
@@ -253,6 +245,7 @@ def run_download_with_fallbacks(
                 capture_output=True,
                 text=True,
                 timeout=900,  # Large videos can take a while
+                env=subprocess_environment(),
             )
         except subprocess.TimeoutExpired:
             last_stdout = ""
