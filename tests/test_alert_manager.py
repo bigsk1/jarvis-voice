@@ -65,6 +65,42 @@ class AlertManagerDedupeTests(unittest.TestCase):
     def tearDown(self):
         self.tmpdir.cleanup()
 
+    def test_source_resolution_is_silent_scoped_and_idempotent(self):
+        alert_id = self.manager.create_alert(
+            title='Traffic impact', source='local_disruptions',
+            metadata={'dedupe_key': 'road-one', 'event_id': 'highways:one:unscheduled'},
+            speak_immediately=False,
+        )
+        with patch.object(self.manager, '_speak') as speak:
+            self.assertFalse(self.manager.resolve_source_alert(alert_id, source='other', dedupe_key='road-one', reason='Gone'))
+            self.assertFalse(self.manager.resolve_source_alert(alert_id, source='local_disruptions', dedupe_key='other', reason='Gone'))
+            self.assertTrue(self.manager.resolve_source_alert(alert_id, source='local_disruptions', dedupe_key='road-one', reason='No longer reported; reopening unconfirmed.'))
+            self.assertFalse(self.manager.resolve_source_alert(alert_id, source='local_disruptions', dedupe_key='road-one', reason='Gone'))
+            speak.assert_not_called()
+        alert = self.manager.get_alert(alert_id)
+        self.assertEqual(alert['status'], 'auto_resolved')
+        self.assertIsNotNone(alert['resolved_at'])
+        self.assertEqual(json.loads(alert['metadata'])['event_id'], 'highways:one:unscheduled')
+        self.assertIn('reopening unconfirmed', json.loads(alert['metadata'])['resolution_reason'])
+
+    def test_source_resolution_preserves_acknowledgement_and_cancellation(self):
+        for status in ('acknowledged', 'canceled'):
+            with self.subTest(status=status):
+                alert_id = self.manager.create_alert(
+                    title=status, source='local_disruptions', metadata={'dedupe_key': status}, speak_immediately=False,
+                )
+                with sqlite3.connect(self.db_path) as conn:
+                    conn.execute('UPDATE alerts SET status = ? WHERE id = ?', (status, alert_id))
+                self.assertFalse(self.manager.resolve_source_alert(alert_id, source='local_disruptions', dedupe_key=status, reason='Gone'))
+                self.assertEqual(self.manager.get_alert(alert_id)['status'], status)
+
+    def test_source_resolution_leaves_malformed_metadata_pending(self):
+        alert_id = self.manager.create_alert(title='Traffic', source='local_disruptions', speak_immediately=False)
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("UPDATE alerts SET metadata = 'invalid' WHERE id = ?", (alert_id,))
+        self.assertFalse(self.manager.resolve_source_alert(alert_id, source='local_disruptions', dedupe_key='one', reason='Gone'))
+        self.assertEqual(self.manager.get_alert(alert_id)['status'], 'pending')
+
     @staticmethod
     def _price_config(*, threshold: float = 8, cooldown_hours: float = 24) -> dict:
         return {

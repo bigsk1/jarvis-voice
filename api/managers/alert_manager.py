@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import subprocess
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -528,6 +529,34 @@ class AlertManager:
         
         return success
     
+    def resolve_source_alert(self, alert_id: int, *, source: str, dedupe_key: str, reason: str) -> bool:
+        """Silently resolve a still-pending notification owned by a source.
+
+        A watcher supplies the evidence and neutral reason. Match its delivery key
+        and preserve user acknowledgement/cancellation and concurrent metadata edits.
+        This does not announce recovery or an official all-clear.
+        """
+        with closing(sqlite3.connect(self.db.db_path)) as conn, conn:
+            row = conn.execute(
+                "SELECT metadata FROM alerts WHERE id = ? AND source = ? AND status = 'pending'",
+                (alert_id, source),
+            ).fetchone()
+            if not row:
+                return False
+            try:
+                metadata = json.loads(row[0] or '{}')
+            except (TypeError, json.JSONDecodeError):
+                return False
+            if not isinstance(metadata, dict) or not dedupe_key or metadata.get('dedupe_key') != dedupe_key:
+                return False
+            metadata['resolution_reason'] = reason
+            now = datetime.now().isoformat()
+            cursor = conn.execute("""
+                UPDATE alerts SET status = 'auto_resolved', resolved_at = ?, updated_at = ?, metadata = ?
+                WHERE id = ? AND source = ? AND status = 'pending' AND metadata IS ?
+            """, (now, now, json.dumps(metadata), alert_id, source, row[0]))
+            return cursor.rowcount > 0
+
     def auto_resolve_alert(self, alert_id: int) -> bool:
         """Mark alert as auto-resolved"""
         conn = sqlite3.connect(self.db.db_path)
