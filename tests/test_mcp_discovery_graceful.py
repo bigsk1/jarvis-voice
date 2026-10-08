@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """MCP discovery should fail fast without auto-restart loops."""
 
-import sys
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -76,7 +76,7 @@ class FakeSearchAndFetchClient(FakeRemoteClient):
 
 
 class TestMCPDiscoveryGraceful(unittest.TestCase):
-    def _build_registry(self, client, tool_metadata=None):
+    def _build_registry(self, client, tool_metadata=None, server_options=None, profile_overrides=None):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             config_path = root / "mcp-servers.json"
@@ -84,6 +84,7 @@ class TestMCPDiscoveryGraceful(unittest.TestCase):
                 json.dumps({"mcpServers": {client.name: {
                     "enabled": True,
                     "tool_metadata": tool_metadata or {},
+                    **(server_options or {}),
                 }}}),
                 encoding="utf-8",
             )
@@ -93,7 +94,7 @@ class TestMCPDiscoveryGraceful(unittest.TestCase):
                 patch("tool_schema.ToolRegistry._discover_tools"),
                 patch("time.sleep"),
                 patch("tool_profiles.get_active_profile_name", return_value="default"),
-                patch("tool_profiles.load_active_profile_overrides", return_value={}),
+                patch("tool_profiles.load_active_profile_overrides", return_value=profile_overrides or {}),
                 patch("tool_profiles.warn_missing_profile_file"),
             ):
                 return ToolRegistry(str(root), str(config_path))
@@ -152,6 +153,76 @@ class TestMCPDiscoveryGraceful(unittest.TestCase):
         self.assertTrue(registry.get_tool("mcp_remote_docs_search").web_search)
         self.assertFalse(registry.get_tool("mcp_remote_docs_fetch").web_search)
         self.assertFalse(registry.mcp_unavailable)
+
+    def test_server_allowlist_excludes_other_tools_even_if_profile_enables_them(self):
+        client = FakeSearchAndFetchClient()
+        registry = self._build_registry(
+            client,
+            server_options={"allowed_tools": ["search"]},
+            profile_overrides={"mcp_remote_docs_fetch": True},
+        )
+        self.assertEqual(set(registry.tools), {"mcp_remote_docs_search"})
+        self.assertIsNone(registry.get_tool("mcp_remote_docs_fetch"))
+        self.assertEqual(registry.get_mcp_info("mcp_remote_docs_search"), ("remote_docs", "search"))
+
+    def test_empty_server_allowlist_exposes_no_tools(self):
+        registry = self._build_registry(
+            FakeRemoteClient(), server_options={"allowed_tools": []},
+        )
+        self.assertFalse(registry.tools)
+
+    def test_unlisted_tool_cannot_execute_through_registry_recovery(self):
+        from orchestrator.executor import ToolExecutor
+
+        registry = self._build_registry(
+            FakeSearchAndFetchClient(), server_options={"allowed_tools": ["search"]},
+        )
+        executor = ToolExecutor.__new__(ToolExecutor)
+        executor.registry = registry
+        executor.mode = "cloud"
+        executor.excluded_tools = set()
+        with (
+            patch("tool_schema.get_tool_registry", return_value=registry),
+            patch("tool_schema.reset_tool_registry"),
+            patch.object(executor, "_execute_mcp_tool") as call,
+        ):
+            result = executor.execute("mcp_remote_docs_fetch", {}, skip_permission_check=True)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "Tool not found")
+        call.assert_not_called()
+
+    def test_invalid_server_allowlist_fails_closed(self):
+        for invalid in (None, "search", {"search": True}, [False], [""]):
+            with self.subTest(allowed_tools=invalid):
+                client = FakeRemoteClient()
+                registry = self._build_registry(
+                    client, server_options={"allowed_tools": invalid},
+                )
+                self.assertFalse(registry.tools)
+                self.assertTrue(client.stopped)
+                self.assertIn("allowed_tools", registry.mcp_unavailable[client.name])
+
+    def test_shipped_malwarebytes_exposes_only_reviewed_lookup_tools(self):
+        config = json.loads(
+            (Path(__file__).resolve().parent.parent / "config/mcp-servers.json").read_text()
+        )["mcpServers"]["malwarebytes"]
+        expected = {
+            "reputation-check_link", "reputation-check_phone", "reputation-check_email",
+            "reputation-whois", "reputation-scan_all",
+        }
+        self.assertEqual(set(config["allowed_tools"]), expected)
+        self.assertEqual(config["type"], "http")
+        self.assertTrue(config["enabled"])
+        client = FakeRemoteClient()
+        client.name = "malwarebytes"
+        client.list_tools = lambda: [
+            {"name": name, "inputSchema": {"type": "object", "properties": {}}}
+            for name in sorted(expected | {"reputation-report", "future_write_tool"})
+        ]
+        registry = self._build_registry(client, server_options=config)
+        self.assertEqual(set(registry.tools), {f"mcp_malwarebytes_{name}" for name in expected})
+        for name in expected:
+            self.assertEqual(registry.get_mcp_info(f"mcp_malwarebytes_{name}"), (client.name, name))
 
 
 if __name__ == "__main__":

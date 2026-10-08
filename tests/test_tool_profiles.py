@@ -13,6 +13,15 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 
 class TestToolProfiles(unittest.TestCase):
+    def test_offline_templates_disable_malwarebytes_lookups(self):
+        config = json.loads((ROOT / "config/mcp-servers.json").read_text())
+        for profile_name in ("offline.json", "offline_lan_first.json"):
+            overrides = json.loads(
+                (ROOT / "skills/profiles/examples" / profile_name).read_text()
+            )["overrides"]
+            for name in config["mcpServers"]["malwarebytes"]["allowed_tools"]:
+                self.assertIs(overrides.get(f"mcp_malwarebytes_{name}"), False)
+
     def test_offline_templates_disable_searxng_search(self):
         examples_dir = ROOT / "skills" / "profiles" / "examples"
         for profile_name in ("offline.json", "offline_lan_first.json"):

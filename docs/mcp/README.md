@@ -12,6 +12,7 @@
 | [MCP_NAMING_CONVENTIONS.md](./MCP_NAMING_CONVENTIONS.md) | **Critical**: Use snake_case for server names |
 | [MCP_REMOTE_TRANSPORT.md](./MCP_REMOTE_TRANSPORT.md) | SSE and Streamable HTTP transport setup |
 | [DEEPWIKI.md](./DEEPWIKI.md) | Public GitHub repository research, citations, Stash, and Canvas |
+| [MALWAREBYTES.md](./MALWAREBYTES.md) | Scam indicator checks, proxy routing, and reporting exclusion |
 | [MCP_SECURITY_AUDIT.md](./MCP_SECURITY_AUDIT.md) | Security best practices, auditing tools |
 | [MCP_REGRESSION_FIX.md](./MCP_REGRESSION_FIX.md) | Parser fix for underscore server names |
 

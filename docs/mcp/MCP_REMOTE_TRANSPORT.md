@@ -77,6 +77,17 @@ Jarvis now supports three MCP transport types:
 
 ## Streamable HTTP Protocol
 
+Remote entries also accept `proxy_policy`: `inherit` preserves existing requests
+behavior (including conventional environment proxies), `off` forces direct access, `prefer` tries the configured proxy chain
+with direct fallback, and `require` prohibits direct fallback. See
+[proxy configuration](../NETWORK_PROXY.md).
+
+All transports accept an optional `allowed_tools` list of exact upstream tool
+names. Only listed tools enter the Jarvis runtime registry and Tool RAG. An empty
+list exposes no tools; an invalid list fails discovery for that server. Omit it
+to retain normal discovery. Profiles may disable listed tools but cannot enable
+unlisted ones. Low-level MCP diagnostics still show the upstream catalog.
+
 The Streamable HTTP transport follows the MCP specification:
 
 1. **Initialize**: Client sends initialize request WITHOUT session ID
@@ -104,6 +115,15 @@ text-encoded `search`/`fetch_content` errors when `isError` is incorrectly
 false; arbitrary `Error:` text from other servers is not globally reclassified.
 
 ## Available Remote MCP Servers
+
+### Malwarebytes
+
+- **URL**: `https://scamguard.malwarebytes.com/claude/mcp`
+- **Authentication**: None required
+- **Transport**: Streamable HTTP (`type: "http"`)
+- **Routing**: `proxy_policy: "prefer"`
+- **Scope**: Five reviewed lookup tools; reporting excluded by `allowed_tools`.
+- See [Malwarebytes](MALWAREBYTES.md) for usage, verdict interpretation, and activation.
 
 ### DeepWiki
 

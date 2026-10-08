@@ -1416,6 +1416,46 @@ def _mcp_text_from_run(run: dict) -> str:
     )
 
 
+def _extract_malwarebytes_followup(data: dict, tool_name: str, value) -> dict:
+    """Keep indicator verdicts from JSON-prefixed MCP text for later turns."""
+    runs = value if isinstance(value, list) else _mcp_text_runs(value)
+    arguments = _successful_tool_trace_arguments(data, tool_name)
+    compact_runs = []
+    for index, run in enumerate(runs[-3:], start=max(0, len(runs) - 3)):
+        if not isinstance(run, dict):
+            continue
+        payload = run.get('data') if isinstance(run.get('data'), dict) else run
+        text = _mcp_text_from_run(payload)
+        compact = {'provider': 'malwarebytes'}
+        bound_args = _workflow_source_arguments(run)
+        request = bound_args if bound_args is not None else (
+            arguments[index] if index < len(arguments) else None
+        )
+        if request:
+            compact['request'] = _bounded_structured_followup_value(request, max_chars=1000)
+        if text:
+            try:
+                result, _ = json.JSONDecoder().raw_decode(text.lstrip())
+            except (ValueError, TypeError):
+                compact['response_excerpt'] = _bounded_head_tail_excerpt(text, 1000)
+            else:
+                compact['result'] = _bounded_structured_followup_value(result, max_chars=2000)
+            if tool_name == 'mcp_malwarebytes_reputation-whois':
+                # The service may put registration facts after its JSON header.
+                raw_whois = text.partition('Raw WHOIS Query Result:')[2].strip()
+                if raw_whois:
+                    compact['whois_excerpt'] = _truncate_followup_text(raw_whois, 1200)
+        compact_runs.append(compact)
+    if not compact_runs:
+        return {}
+    if len(runs) == 1:
+        return compact_runs[0]
+    return {
+        'provider': 'malwarebytes', 'runs_count': len(runs), 'runs': compact_runs,
+        'runs_truncated': len(runs) > len(compact_runs),
+    }
+
+
 def _bounded_fetch_excerpt(text: str) -> str:
     """Keep the useful beginning and pagination-bearing tail of fetched text."""
     return _bounded_head_tail_excerpt(
@@ -2780,6 +2820,11 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             continue
         if key in DEEPWIKI_TOOL_NAMES:
             extracted = _extract_deepwiki_followup(data, key, value, max_candidates)
+            if extracted:
+                followup[key] = extracted
+            continue
+        if key.startswith('mcp_malwarebytes_') and isinstance(value, (dict, list)):
+            extracted = _extract_malwarebytes_followup(data, key, value)
             if extracted:
                 followup[key] = extracted
             continue

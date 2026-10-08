@@ -1762,6 +1762,26 @@ LOCAL_TOOL_SAMPLES = {
 
 
 MCP_TOOL_SAMPLES = {
+    "mcp_malwarebytes_reputation-check_link": _case(
+        {"full_text": '{"type":"url","verdict":"unknown","scanned_url":"https://example.test"}\n\nNo intelligence available.'},
+        {"url": "https://example.test"},
+    ),
+    "mcp_malwarebytes_reputation-check_phone": _case(
+        {"full_text": '{"type":"phone","verdict":"unknown","phone":"+12025550123"}'},
+        {"phone": "+12025550123"},
+    ),
+    "mcp_malwarebytes_reputation-check_email": _case(
+        {"full_text": '{"type":"email","verdict":"suspicious","email":"sender@example.test"}'},
+        {"email": "sender@example.test"},
+    ),
+    "mcp_malwarebytes_reputation-whois": _case(
+        {"full_text": '{"domain":"example.test","registrar":"Example Registrar","registration_date":"2026-01-01"}'},
+        {"domain": "example.test"},
+    ),
+    "mcp_malwarebytes_reputation-scan_all": _case(
+        {"full_text": '{"summary":{"unknown":1},"results":[{"type":"url","value":"https://example.test","verdict":"unknown"}]}'},
+        {"indicators": [{"type": "url", "value": "https://example.test"}]},
+    ),
     "mcp_deepwiki_ask_question": _case(
         {"full_text": "Requests are dispatched using Flask's routing map.\nhttps://deepwiki.com/pallets/flask"},
         {"repoName": "pallets/flask", "question": "How are requests dispatched?"},
@@ -1873,6 +1893,72 @@ def _enabled_local_tool_names():
         if config.get("enabled", True):
             names.add(config["name"])
     return names
+
+
+def test_malwarebytes_followup_keeps_unknown_verdict_and_indicator_identity():
+    name = "mcp_malwarebytes_reputation-check_link"
+    payload, arguments = MCP_TOOL_SAMPLES[name]
+    result = followup.extract_followup_data({
+        name: {"ok": True, "data": payload},
+        "_tool_trace": [{"tool": name, "ok": True, "arguments": arguments}],
+    })[name]
+    assert result["result"]["verdict"] == "unknown"
+    assert result["result"]["scanned_url"] == arguments["url"]
+    assert result["request"] == arguments
+
+
+def test_malwarebytes_followup_repeated_calls_keep_verdicts_with_their_requests():
+    name = "mcp_malwarebytes_reputation-check_link"
+    runs = []
+    trace = []
+    for index, verdict in enumerate(("safe", "unknown", "malicious", "suspicious")):
+        url = f"https://example.test/{index}"
+        runs.append({"data": {"raw": [{"type": "text", "text": json.dumps({
+            "verdict": verdict, "scanned_url": url, "api_token": "SECRET_SENTINEL",
+        }) + "\n\nUser Guidance"}]}})
+        trace.append({"tool": name, "ok": True, "arguments": {"url": url}})
+    result = followup.extract_followup_data({name: runs, "_tool_trace": trace})[name]
+    assert result["runs_count"] == 4
+    assert result["runs_truncated"] is True
+    assert [run["result"]["verdict"] for run in result["runs"]] == ["unknown", "malicious", "suspicious"]
+    for run in result["runs"]:
+        assert run["result"]["scanned_url"] == run["request"]["url"]
+    assert "SECRET_SENTINEL" not in json.dumps(result)
+
+
+def test_malwarebytes_unstructured_followup_is_bounded_without_inventing_a_verdict():
+    name = "mcp_malwarebytes_reputation-check_link"
+    result = followup.extract_followup_data({name: {"full_text": "Service unavailable. " * 1000}})[name]
+    assert "result" not in result
+    assert len(result["response_excerpt"]) <= 1000
+
+
+def test_malwarebytes_whois_preserves_registration_facts_after_json_header():
+    name = "mcp_malwarebytes_reputation-whois"
+    result = followup.extract_followup_data({name: {"full_text": (
+        '{"domain":"example.test","query_method":"whois","error":false}\n\n'
+        'User Guidance: GUIDANCE_SENTINEL\n\nRaw WHOIS Query Result:\n'
+        'Domain Name: EXAMPLE.TEST\nCreation Date: 2026-01-01\nRegistrar: Example Registrar\n'
+        + 'Legal terms. ' * 500
+    )}})[name]
+    assert result["result"]["domain"] == "example.test"
+    assert "Creation Date: 2026-01-01" in result["whois_excerpt"]
+    assert "Registrar: Example Registrar" in result["whois_excerpt"]
+    assert "GUIDANCE_SENTINEL" not in result["whois_excerpt"]
+    assert len(result["whois_excerpt"]) <= 1200
+
+
+def test_malwarebytes_batch_preserves_ten_indicator_verdicts():
+    name = "mcp_malwarebytes_reputation-scan_all"
+    rows = [{"type": "url", "value": f"https://example.test/{index}", "verdict": "unknown"}
+            for index in range(10)]
+    arguments = {"indicators": [{"type": row["type"], "value": row["value"]} for row in rows]}
+    result = followup.extract_followup_data({
+        name: {"full_text": json.dumps({"results": rows, "summary": {"unknown": 10}})},
+        "_tool_trace": [{"tool": name, "ok": True, "arguments": arguments}],
+    })[name]
+    assert result["result"]["results"] == rows
+    assert result["request"] == arguments
 
 
 def test_every_enabled_local_tool_has_an_audited_payload_sample():

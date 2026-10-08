@@ -12,9 +12,9 @@ from typing import Any
 
 from http_client import normalize_proxy_policy
 from hybrid_retrieval import adaptive_rank_cutoff, query_segments
-from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
-from tool_manifest_files import iter_tool_manifests
 from tool_child_environment import parse_child_environment_policy
+from tool_manifest_files import iter_tool_manifests
+from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
 
 _logger = logging.getLogger(__name__)
 _MANDATORY_GHOST_TOOLS = ("tool_search", "workflow")
@@ -657,6 +657,17 @@ class ToolRegistry:
             for server_name, client, previous_auto_restart in enabled_servers_sorted:
                 try:
                     server_config = config.get("mcpServers", {}).get(server_name, {})
+                    # A server-level allowlist survives profile changes and
+                    # keeps unreviewed upstream tools out of Tool RAG/runtime.
+                    allowed_tools = None
+                    if "allowed_tools" in server_config:
+                        configured_tools = server_config["allowed_tools"]
+                        if not isinstance(configured_tools, list) or not all(
+                            isinstance(name, str) and name.strip()
+                            for name in configured_tools
+                        ):
+                            raise ValueError("allowed_tools must be a list of nonempty tool names")
+                        allowed_tools = set(configured_tools)
                     tool_metadata = server_config.get("tool_metadata", {})
                     if not isinstance(tool_metadata, dict):
                         tool_metadata = {}
@@ -686,7 +697,10 @@ class ToolRegistry:
                     self.mcp_clients[server_name] = client
                     
                     # Register each MCP tool
+                    registered_count = 0
                     for tool_info in tools:
+                        if allowed_tools is not None and tool_info['name'] not in allowed_tools:
+                            continue
                         # Use underscores for compatibility with all LLM providers
                         # (Anthropic doesn't allow dots in tool names)
                         tool_name = f"mcp_{server_name}_{tool_info['name']}"
@@ -712,9 +726,10 @@ class ToolRegistry:
                         )
                         
                         self.tools[tool_name] = schema
+                        registered_count += 1
                     
                     if verbose:
-                        print(f"  ✅ {server_name}: {len(tools)} tools")
+                        print(f"  ✅ {server_name}: {registered_count} tools")
                 
                 except Exception as e:
                     reason = str(e).strip() or "discovery failed"

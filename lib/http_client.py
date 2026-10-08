@@ -26,6 +26,8 @@ import logging
 import os
 import socket
 import sys
+import time
+from threading import Event
 from urllib.parse import urlsplit
 
 import requests
@@ -83,9 +85,10 @@ def resolve_proxy_behavior(
     *,
     use_proxy: bool = True,
     fallback_on_proxy_fail: bool = True,
+    proxy_policy: str | None = None,
 ) -> tuple[bool, bool]:
     """Apply the active proxy policy to one helper call's legacy options."""
-    policy = get_proxy_policy()
+    policy = get_proxy_policy() if proxy_policy is None else normalize_proxy_policy(proxy_policy)
     if policy == "off":
         return False, False
     if policy == "prefer":
@@ -209,6 +212,22 @@ def standard_proxy_environment(proxy_url: str) -> dict[str, str]:
 _PROXY_SLOT_KEYS = ("LOCAL_PROXY", "LOCAL_PROXY2")
 
 
+def _bounded_request_timeout(timeout, *, deadline: float | None, cancel_event: Event | None):
+    """Check cancellation before each route attempt and cap socket waits."""
+    if cancel_event is not None and cancel_event.is_set():
+        raise requests.exceptions.Timeout("HTTP request cancelled")
+    if deadline is None:
+        return timeout
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise requests.exceptions.Timeout("HTTP request deadline exceeded")
+    connect, read = timeout if isinstance(timeout, tuple) else (timeout, timeout)
+    return (
+        remaining if connect is None else min(connect, remaining),
+        remaining if read is None else min(read, remaining),
+    )
+
+
 def _first_configured_proxy_slot() -> str | None:
     """Env key name for the primary proxy (first non-empty LOCAL_PROXY or LOCAL_PROXY2)."""
     for key in _PROXY_SLOT_KEYS:
@@ -307,6 +326,11 @@ def http_request(
     use_proxy: bool = True,
     fallback_on_proxy_fail: bool = True,
     timeout: int = 15,
+    proxy_policy: str | None = None,
+    route_metadata: dict | None = None,
+    proxy_timeout: tuple[float, float] | None = None,
+    deadline: float | None = None,
+    cancel_event: Event | None = None,
     **kwargs
 ) -> requests.Response:
     """
@@ -318,6 +342,11 @@ def http_request(
         use_proxy: Whether to use proxy chain if configured (default: True)
         fallback_on_proxy_fail: After LOCAL_PROXY and LOCAL_PROXY2 both fail, retry without proxy (default: True)
         timeout: Request timeout in seconds (default: 15)
+        proxy_policy: Explicit per-request policy; otherwise use the tool policy.
+        route_metadata: Optional credential-free output for the attempted route.
+        proxy_timeout: Optional shorter socket timeouts for proxy attempts.
+        deadline: Optional monotonic deadline shared by all route attempts.
+        cancel_event: Stop launching attempts when the owning call times out.
         **kwargs: Additional arguments passed to requests (params, headers, json, data, etc.)
     
     Returns:
@@ -327,6 +356,7 @@ def http_request(
         requests.RequestException: If request fails (after fallback if enabled)
     """
     kwargs.setdefault('timeout', timeout)
+    direct_timeout = kwargs['timeout']
     
     # Add default user agent if not specified
     headers = kwargs.get('headers', {})
@@ -334,13 +364,19 @@ def http_request(
         headers['User-Agent'] = 'Jarvis-Voice-Assistant/1.0'
         kwargs['headers'] = headers
     
-    policy = get_proxy_policy()
+    policy = get_proxy_policy() if proxy_policy is None else normalize_proxy_policy(proxy_policy)
+    if route_metadata is not None:
+        route_metadata.clear()
+        route_metadata.update({"policy": policy, "used": None, "basis": "http_request"})
     use_proxy, fallback_on_proxy_fail = resolve_proxy_behavior(
         use_proxy=use_proxy,
         fallback_on_proxy_fail=fallback_on_proxy_fail,
+        proxy_policy=policy,
     )
-    chain = get_proxy_chain() if use_proxy else []
+    chain = get_proxy_chain(respect_policy=False) if use_proxy else []
     if policy == "require" and not chain:
+        if route_metadata is not None:
+            route_metadata.update({"used": False, "direct_reason": "required_proxy_unavailable"})
         raise requests.exceptions.ProxyError(
             "proxy_policy=require but LOCAL_PROXY and LOCAL_PROXY2 are not configured"
         )
@@ -350,7 +386,17 @@ def http_request(
     )
 
     for i, proxies in enumerate(chain):
-        slot = _PROXY_SLOT_KEYS[i] if i < len(_PROXY_SLOT_KEYS) else f"proxy_{i}"
+        kwargs['timeout'] = _bounded_request_timeout(
+            proxy_timeout if proxy_timeout is not None else direct_timeout,
+            deadline=deadline, cancel_event=cancel_event,
+        )
+        slot = next(
+            (key for key in _PROXY_SLOT_KEYS
+             if (get_config_value(key, '') or '').strip() == proxies.get('https')),
+            f"proxy_{i}",
+        )
+        if route_metadata is not None:
+            route_metadata.update({"used": True, "slot": slot})
         try:
             kwargs['proxies'] = proxies
             response = requests.request(method, url, **kwargs)
@@ -389,6 +435,9 @@ def http_request(
             print(f"[PROXY] ❌ Proxy failed ({masked_proxy}): {type(e).__name__}", file=sys.stderr)
 
     kwargs.pop('proxies', None)
+    kwargs['timeout'] = _bounded_request_timeout(
+        direct_timeout, deadline=deadline, cancel_event=cancel_event,
+    )
 
     if chain and last_error is not None:
         if not fallback_on_proxy_fail:
@@ -400,9 +449,16 @@ def http_request(
         # "off" and the final leg of "prefer" mean genuinely direct, even if
         # the host process exports conventional proxy variables.
         kwargs["proxies"] = {"http": None, "https": None, "all": None}
-        response = requests.request(method, url, **kwargs)
-    else:
-        response = requests.request(method, url, **kwargs)
+    if route_metadata is not None:
+        route_metadata.pop("slot", None)
+        route_metadata.update({
+            "used": False,
+            "direct_reason": (
+                "policy_off" if policy == "off" else
+                "fallback_after_proxy_failed" if chain else "no_proxy_config"
+            ),
+        })
+    response = requests.request(method, url, **kwargs)
 
     if not chain:
         if log_direct:

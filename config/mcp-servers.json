@@ -1,5 +1,19 @@
 {
   "mcpServers": {
+    "malwarebytes": {
+      "type": "http",
+      "url": "https://scamguard.malwarebytes.com/claude/mcp",
+      "proxy_policy": "prefer",
+      "description": "Malwarebytes threat intelligence for suspicious links, phone numbers, email sender domains, and domain registration. Send only indicators for analysis. Unknown is not safe; safe is not a guarantee. Scam reporting is excluded.",
+      "allowed_tools": [
+        "reputation-check_link",
+        "reputation-check_phone",
+        "reputation-check_email",
+        "reputation-whois",
+        "reputation-scan_all"
+      ],
+      "enabled": true
+    },
     "deepwiki": {
       "type": "http",
       "url": "https://mcp.deepwiki.com/mcp",

@@ -102,6 +102,30 @@ one manifest to `inherit` restores that tool's normal configured proxy chain;
 
 ## MCP proxy translation
 
+Remote HTTP/SSE MCP servers also honor `proxy_policy`. Explicit `prefer` or
+`require` routes every handshake, notification, and tool request through the
+shared HTTP proxy chain; `prefer` permits direct fallback and `require` does not.
+`off` forces direct access, while omitted/`inherit` preserves the prior remote
+requests behavior. Policies are per client and do not modify environment variables.
+Tool-call route metadata reflects the last HTTP attempt, with only the policy,
+proxy slot, and direct reason. Malwarebytes is a shipped remote example using
+`prefer`.
+
+Remote proxy attempts use 3-second connect and 5-second read timeouts; the
+direct fallback keeps the ordinary timeout, capped by the remaining tool-call
+deadline. The deadline defaults to 35 seconds (`MCP_TOOL_CALL_TIMEOUT_SECONDS`).
+After timeout, cancellation prevents further route attempts and discards late
+responses. Python cannot forcibly cancel a running Requests socket operation;
+it may finish in the background. The executor's separate outer timeout defaults
+to 45 seconds (`MCP_EXECUTOR_TIMEOUT_SECONDS`) and no longer waits for a timed-out
+future during pool shutdown. Socket timeout values are not wall-clock guarantees.
+
+The request's cloud/local configuration context is copied into executor, MCP
+tool-call, and SSE listener threads. Header substitution still resolves only
+configured placeholders at client creation; proxy selection uses the current
+request scope. An inherited remote Requests path can honor conventional proxy
+environment variables; `inherit` does not force direct access.
+
 An MCP stdio subprocess receives only variables declared in its `env` object.
 Jarvis intentionally does **not** copy the full host environment.
 

@@ -12,6 +12,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import nullcontext
+from contextvars import copy_context
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -765,8 +766,9 @@ class ToolExecutor:
 
             # Strict outer timeout guard: prevents WebUI "thinking forever"
             mcp_timeout = int(os.environ.get("MCP_EXECUTOR_TIMEOUT_SECONDS", "45"))
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(mcp_client.call_tool, mcp_tool_name, args)
+            pool = ThreadPoolExecutor(max_workers=1)
+            try:
+                future = pool.submit(copy_context().run, mcp_client.call_tool, mcp_tool_name, args)
                 try:
                     result = future.result(timeout=mcp_timeout)
                 except FuturesTimeoutError:
@@ -782,6 +784,9 @@ class ToolExecutor:
                         "speech": f"MCP tool {tool_name} timed out",
                         "error": f"Executor timeout after {mcp_timeout}s"
                     }
+            finally:
+                # A timeout must not then wait for the same running future.
+                pool.shutdown(wait=False, cancel_futures=True)
             
             duration_ms = (time.time() - start_time) * 1000
             

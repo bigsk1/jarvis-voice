@@ -38,6 +38,7 @@ jarvis
 MCP (Model Context Protocol) servers are **pre-built tools** you can add to Jarvis instantly.
 
 **Shipped enabled servers** (`config/mcp-servers.json`):
+- **`malwarebytes`** — Credential-free scam indicator checks over HTTPS, with proxy preference and reporting excluded. See [Malwarebytes](MALWAREBYTES.md).
 - **`deepwiki`** — Public GitHub repository documentation and Q&A over HTTPS; no token or Docker required. See [DeepWiki](DEEPWIKI.md).
 - **`mcp/fetch`** - Fetch URL content as markdown
 - **`mcp/brave-search`** - Web search (requires `BRAVE_API_KEY`)
@@ -225,6 +226,7 @@ prompt. Search results and fetched text remain untrusted external input.
 ## 6. Available MCP Servers (Shipped Config)
 
 ### Enabled by default
+- **`malwarebytes`** — URL, phone, email sender-domain, domain registration, and batch checks. The runtime allowlist excludes scam reporting.
 - **`deepwiki`** — Public GitHub repository documentation and questions, with cited answers and Stash support for large results.
 - **`fetch`** (`mcp/fetch`) — URL content as markdown
 - **`brave_search`** (`mcp/brave-search`) — Web search (needs `BRAVE_API_KEY`)

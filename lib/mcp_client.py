@@ -13,6 +13,8 @@ import re
 import subprocess
 import sys
 import time
+from contextvars import ContextVar, copy_context
+from dataclasses import dataclass, field
 from threading import Event, Lock, RLock, Thread
 from typing import Any, Union
 
@@ -20,11 +22,34 @@ import requests
 from config_loader import get_config_value
 from http_client import (
     STANDARD_PROXY_ENV_KEYS,
+    _bounded_request_timeout,
     get_proxy_url_chain,
+    http_request,
     normalize_proxy_policy,
     select_reachable_proxy_url,
     standard_proxy_environment,
 )
+
+
+@dataclass
+class _RemoteCallBudget:
+    deadline: float
+    cancelled: Event = field(default_factory=Event)
+    route: dict[str, Any] = field(default_factory=dict)
+
+
+_remote_call_budget: ContextVar[_RemoteCallBudget | None] = ContextVar(
+    "mcp_remote_call_budget", default=None,
+)
+
+
+def _check_remote_call_budget():
+    budget = _remote_call_budget.get()
+    if budget is not None and (
+        budget.cancelled.is_set() or time.monotonic() >= budget.deadline
+    ):
+        raise requests.exceptions.Timeout("Remote MCP call deadline exceeded")
+    return budget
 
 
 def _duckduckgo_text_error(server_name: str, tool_name: str, text: str) -> bool:
@@ -638,7 +663,7 @@ class MCPClient:
             except Exception as e:
                 response_holder["error"] = e
 
-        worker = Thread(target=_runner, daemon=True)
+        worker = Thread(target=copy_context().run, args=(_runner,), daemon=True)
         worker.start()
         worker.join(timeout=timeout_seconds)
 
@@ -708,7 +733,8 @@ class MCPRemoteClient:
         → Only MY_API_KEY is substituted, nothing else is exposed
     """
     
-    def __init__(self, name: str, url: str, transport_type: str, headers: dict[str, str] | None = None):
+    def __init__(self, name: str, url: str, transport_type: str, headers: dict[str, str] | None = None,
+                 proxy_policy: str = "inherit"):
         """
         Initialize remote MCP client.
         
@@ -718,11 +744,15 @@ class MCPRemoteClient:
             transport_type: "sse" or "http"
             headers: Optional HTTP headers (e.g., for API keys)
                      SECURITY: Only these explicit headers are sent - no os.environ leakage
+            proxy_policy: Per-server routing; inherit preserves existing behavior.
         """
         self.name = name
         self.url = url.rstrip('/')
         self.transport_type = transport_type
         self.headers = headers or {}
+        self.proxy_policy = normalize_proxy_policy(proxy_policy)
+        self._proxy_route: dict[str, Any] = {}
+        self._call_budgets: dict[int, _RemoteCallBudget] = {}
         # SSE initialization and reconnect both re-enter _send_request() while
         # the outer request is serialized. The remote transport therefore
         # requires a reentrant lock; the stdio client does not.
@@ -740,6 +770,35 @@ class MCPRemoteClient:
         self._sse_thread = None
         self._sse_stop_event = Event()
         self._sse_connected = Event()
+
+    def _http_request(self, method: str, url: str, **kwargs):
+        """Apply this server's policy without changing process-wide settings."""
+        budget = _check_remote_call_budget()
+        if self.proxy_policy == "inherit":
+            # Preserve existing remote MCP behavior unless explicitly opted in.
+            if budget is not None:
+                kwargs['timeout'] = _bounded_request_timeout(
+                    kwargs.get('timeout', 30), deadline=budget.deadline,
+                    cancel_event=budget.cancelled,
+                )
+            return getattr(requests, method.lower())(url, **kwargs)
+        return http_request(
+            method, url, proxy_policy=self.proxy_policy,
+            route_metadata=budget.route if budget else self._proxy_route,
+            proxy_timeout=(3, 5),
+            deadline=budget.deadline if budget else None,
+            cancel_event=budget.cancelled if budget else None,
+            **kwargs,
+        )
+
+    def get_proxy_log_metadata(self) -> dict[str, Any]:
+        """Describe the last remote HTTP attempt without exposing proxy URLs."""
+        return dict(self._proxy_route) if self._proxy_route else {
+            "policy": self.proxy_policy,
+            "used": None,
+            "basis": "http_request",
+            "direct_reason": "unmanaged" if self.proxy_policy == "inherit" else "not_requested",
+        }
 
     def _force_restart(self, reason: str = "unknown"):
         """
@@ -769,12 +828,18 @@ class MCPRemoteClient:
         elif self.transport_type == "http":
             self._initialize_http()
         
+        _check_remote_call_budget()
         self._initialized = True
     
     def _start_sse(self):
         """Start SSE connection in a background thread."""
         self._sse_stop_event.clear()
-        self._sse_thread = Thread(target=self._sse_listener, daemon=True)
+        listener_context = copy_context()
+        # The stream outlives a single tool call, but keeps its mode config.
+        listener_context.run(_remote_call_budget.set, None)
+        self._sse_thread = Thread(
+            target=listener_context.run, args=(self._sse_listener,), daemon=True,
+        )
         self._sse_thread.start()
         
         # Wait for connection with timeout
@@ -793,7 +858,7 @@ class MCPRemoteClient:
                 **self.headers
             }
             
-            response = requests.get(self.url, headers=headers, stream=True, timeout=30)
+            response = self._http_request("GET", self.url, headers=headers, stream=True, timeout=30)
             response.raise_for_status()
             
             event_type = None
@@ -880,25 +945,30 @@ class MCPRemoteClient:
         if os.environ.get("MCP_DEBUG", "").lower() == "true":
             print(f"[MCP DEBUG] HTTP Initialize: {json.dumps(request)}", file=sys.stderr)
         
-        response = requests.post(
-            self.url,
+        response = self._http_request(
+            "POST", self.url,
             json=request,
             headers=headers,
             timeout=30,
             stream=True
         )
-        response.raise_for_status()
-        
-        # Extract session ID from response headers
-        self._session_id = response.headers.get('Mcp-Session-Id')
+        # Publish session state only after the response finishes within budget.
+        session_id = response.headers.get('Mcp-Session-Id')
         
         if os.environ.get("MCP_DEBUG", "").lower() == "true":
-            print(f"[MCP DEBUG] Got session ID: {self._session_id}", file=sys.stderr)
+            print(f"[MCP DEBUG] Got session ID: {session_id}", file=sys.stderr)
         
-        # Consume the SSE response (initialization result)
-        for line in response.iter_lines(decode_unicode=True):
-            if os.environ.get("MCP_DEBUG", "").lower() == "true" and line:
-                print(f"[MCP DEBUG] Init response: {line}", file=sys.stderr)
+        # Consume the SSE response (initialization result).
+        try:
+            response.raise_for_status()
+            for line in response.iter_lines(decode_unicode=True):
+                _check_remote_call_budget()
+                if os.environ.get("MCP_DEBUG", "").lower() == "true" and line:
+                    print(f"[MCP DEBUG] Init response: {line}", file=sys.stderr)
+            _check_remote_call_budget()
+        finally:
+            response.close()
+        self._session_id = session_id
         
         self.request_id = 1  # We used ID 1 for initialize
         
@@ -937,9 +1007,12 @@ class MCPRemoteClient:
     
     def _send_request(self, method: str, params: dict | None = None) -> Any:
         """Send JSON-RPC request and wait for response."""
+        _check_remote_call_budget()
         with self.lock:
+            _check_remote_call_budget()
             if not self._initialized and method != "initialize":
                 self.start()
+            _check_remote_call_budget()
             
             self.request_id += 1
             request = {
@@ -977,8 +1050,8 @@ class MCPRemoteClient:
         }
         
         try:
-            response = requests.post(
-                self._sse_endpoint,
+            response = self._http_request(
+                "POST", self._sse_endpoint,
                 json=request,
                 headers=headers,
                 timeout=30
@@ -1060,24 +1133,24 @@ class MCPRemoteClient:
             print(f"[MCP DEBUG] HTTP Request: {json.dumps(request)}", file=sys.stderr)
             print(f"[MCP DEBUG] Session ID: {self._session_id}", file=sys.stderr)
         
-        response = requests.post(
-            self.url,
+        response = self._http_request(
+            "POST", self.url,
             json=request,
             headers=headers,
             timeout=30,
             stream=True  # Enable streaming for potential SSE responses
         )
-        response.raise_for_status()
-        
-        # Check content type to determine response format
-        content_type = response.headers.get('Content-Type', '')
-        
-        if 'text/event-stream' in content_type:
-            # Parse SSE response
-            result = self._parse_sse_response(response)
-        else:
-            # Parse JSON response
-            result = response.json()
+        try:
+            response.raise_for_status()
+            _check_remote_call_budget()
+            content_type = response.headers.get('Content-Type', '')
+            if 'text/event-stream' in content_type:
+                result = self._parse_sse_response(response)
+            else:
+                result = response.json()
+            _check_remote_call_budget()
+        finally:
+            response.close()
         
         if os.environ.get("MCP_DEBUG", "").lower() == "true":
             print(f"[MCP DEBUG] HTTP response: {json.dumps(result, indent=2)}", file=sys.stderr)
@@ -1097,6 +1170,7 @@ class MCPRemoteClient:
         event_data = []
         
         for line in response.iter_lines(decode_unicode=True):
+            _check_remote_call_budget()
             if line is None:
                 continue
             
@@ -1145,13 +1219,15 @@ class MCPRemoteClient:
         }
         
         try:
-            requests.post(endpoint, json=message, headers=headers, timeout=10)
+            self._http_request("POST", endpoint, json=message, headers=headers, timeout=10)
         except Exception as e:
             if os.environ.get("MCP_DEBUG", "").lower() == "true":
                 print(f"[MCP DEBUG] Post notification failed: {e}", file=sys.stderr)
     
     def stop(self):
         """Stop the remote MCP connection."""
+        for budget in list(self._call_budgets.values()):
+            budget.cancelled.set()
         self._sse_stop_event.set()
         if self._sse_thread and self._sse_thread.is_alive():
             self._sse_thread.join(timeout=2)
@@ -1179,8 +1255,12 @@ class MCPRemoteClient:
         """Call a tool on the remote MCP server."""
         timeout_seconds = int(os.environ.get("MCP_TOOL_CALL_TIMEOUT_SECONDS", "35"))
         response_holder: dict[str, Any] = {}
+        budget = _RemoteCallBudget(time.monotonic() + timeout_seconds)
+        self._call_budgets[id(budget)] = budget
+        self._proxy_route = budget.route
 
         def _runner():
+            token = _remote_call_budget.set(budget)
             try:
                 response_holder["result"] = self._send_request("tools/call", {
                     "name": tool_name,
@@ -1188,12 +1268,16 @@ class MCPRemoteClient:
                 })
             except Exception as e:
                 response_holder["error"] = e
+            finally:
+                _remote_call_budget.reset(token)
+                self._call_budgets.pop(id(budget), None)
 
-        worker = Thread(target=_runner, daemon=True)
+        worker = Thread(target=copy_context().run, args=(_runner,), daemon=True)
         worker.start()
         worker.join(timeout=timeout_seconds)
 
         if worker.is_alive():
+            budget.cancelled.set()
             self._force_restart(f"remote tools/call timeout ({timeout_seconds}s)")
             return {
                 "ok": False,
@@ -1312,7 +1396,10 @@ class MCPManager:
                 raw_headers = server_config.get("headers", {})
                 headers = self._substitute_env_vars(raw_headers)
                 
-                self.servers[name] = MCPRemoteClient(name, url, transport_type, headers)
+                self.servers[name] = MCPRemoteClient(
+                    name, url, transport_type, headers,
+                    proxy_policy=server_config.get("proxy_policy", "inherit"),
+                )
                 
                 if os.environ.get("MCP_DEBUG", "").lower() == "true":
                     print(f"[MCP DEBUG] Loaded remote server: {name} ({transport_type}) -> {url}", file=sys.stderr)
