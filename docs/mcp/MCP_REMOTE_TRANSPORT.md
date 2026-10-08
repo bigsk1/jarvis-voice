@@ -128,6 +128,7 @@ false; arbitrary `Error:` text from other servers is not globally reclassified.
 ### DeepWiki
 
 - **URL**: `https://mcp.deepwiki.com/mcp`
+- **Routing**: `proxy_policy: "prefer"` uses the active mode's configured proxy chain with direct fallback.
 - **Transport**: Streamable HTTP (`type: "http"`)
 - **Authentication**: None; public GitHub repositories only
 - **Tools**: `read_wiki_structure`, `read_wiki_contents`, `ask_question`

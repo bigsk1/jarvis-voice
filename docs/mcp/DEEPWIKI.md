@@ -19,6 +19,7 @@ The following entry is enabled in `config/mcp-servers.json`, inside the existing
   "deepwiki": {
     "type": "http",
     "url": "https://mcp.deepwiki.com/mcp",
+    "proxy_policy": "prefer",
     "description": "Public GitHub repository documentation and code Q&A through DeepWiki. Prefer focused questions; indexed documentation may lag the latest source revision.",
     "enabled": true
   }
@@ -27,6 +28,11 @@ The following entry is enabled in `config/mcp-servers.json`, inside the existing
 
 Jarvis needs `type: "http"` as well as `url`. The public endpoint uses Streamable
 HTTP; the older `/sse` endpoint is unnecessary. No authorization headers are set.
+`proxy_policy: "prefer"` uses the active mode's configured `LOCAL_PROXY`, then
+`LOCAL_PROXY2`, with direct fallback. The executor and MCP workers preserve
+that request's config scope. Proxy selection does not send environment files
+or unrelated credentials to DeepWiki. Existing process registries need a
+restart to load this entry's policy.
 To disable the integration, set `enabled` to `false`, sync tools, and restart
 the Jarvis processes that use it.
 
@@ -114,6 +120,13 @@ The MCP diagnostic can exercise only this server:
 - **Timeout:** try a narrower question or one repository at a time. Jarvis's
   existing MCP timeouts still apply; this integration does not increase them
   for unrelated servers.
+- **TLS hostname mismatch:** the selected network/DNS route may return an
+  address serving a certificate for a different hostname. Compare the machine's
+  DNS answers with fresh public DNS and inspect each address with the DeepWiki
+  hostname as SNI. `prefer` can avoid a faulty direct route when the configured
+  proxy resolves the host correctly; direct fallback may still hit that fault.
+  Keep certificate verification enabled, and fix the resolver/endpoint issue
+  separately rather than pinning an IP or accepting the mismatched certificate.
 - **Expired artifact:** Stash retention still applies. Re-run the public query
   or save a lasting summary to Canvas.
 

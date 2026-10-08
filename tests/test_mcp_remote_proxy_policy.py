@@ -122,6 +122,16 @@ def test_manager_passes_shipped_malwarebytes_proxy_policy_to_client(tmp_path):
     assert manager.servers["malwarebytes"].proxy_policy == "prefer"
 
 
+def test_manager_passes_shipped_deepwiki_proxy_policy_to_client(tmp_path):
+    from pathlib import Path
+
+    config = json.loads((Path(__file__).resolve().parent.parent / "config/mcp-servers.json").read_text())
+    isolated = tmp_path / "mcp.json"
+    isolated.write_text(json.dumps({"mcpServers": {"deepwiki": config["mcpServers"]["deepwiki"]}}))
+    manager = MCPManager(str(isolated))
+    assert manager.servers["deepwiki"].proxy_policy == "prefer"
+
+
 @pytest.mark.parametrize("mode", ["cloud", "local"])
 def test_executor_and_remote_worker_keep_selected_mode_proxy_and_only_declared_header(tmp_path, monkeypatch, mode):
     import config_loader
