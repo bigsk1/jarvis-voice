@@ -25,6 +25,9 @@ config/mcp-servers.json.backup
 jarvis-monitor/.env
 jarvis-web/config/web_config.json
 data/secrets/
+# Standalone service is built from its own allowlisted context.
+google-workspace/
+**/client_secret*.json
 *.key
 **/*.key
 *.pem

@@ -163,6 +163,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 - **Intelligent Memory**: Semantic search + conversation history with auto-save
 - **OpenCode Integration**: Autonomous coding agent for building projects
 - **MCP Support**: Extensible via Model Context Protocol servers
+  - Optional [Google Workspace Docker service](google-workspace/README.md) for a dedicated account, with headless OAuth setup and Gmail/Drive/Docs/Sheets tools.
 
 ### Proactive System
 - **Event-Driven API**: Receive webhooks from external systems (port 8880)
@@ -953,6 +954,32 @@ and the selected mode has a valid key.
 
 **System:**
 - MCP servers (DuckDuckGo search, web fetch, etc.)
+
+### Optional Google Workspace MCP
+
+Connect a dedicated Google account through the optional
+[Google Workspace Docker service](google-workspace/README.md). Its pinned
+complete tier exposes 111 MCP tools for Gmail, Drive, Calendar, Docs, Sheets,
+Slides, Forms, Tasks, Contacts and Apps Script.
+
+- Search mail, create drafts, send messages, and manage Gmail labels.
+- Find, upload and share Drive files; create and edit documents, spreadsheets,
+  presentations and forms; manage calendar events and tasks.
+- Set `stash=true` on supported downloads for a persistent Jarvis file and Web
+  download link. Use `stash_ref` on supported uploads/imports to transfer a
+  selected Stash file for follow-up work.
+
+The service runs independently of Jarvis and owns OAuth consent and token
+refresh. A fresh clone leaves it disabled; each cloud/local mode opts in with
+`GOOGLE_WORKSPACE_MCP_ENABLED` after setup. Enabled tools use the
+`mcp_google_workspace_*` prefix and enter the existing Tool RAG system. Jarvis
+supplies the dedicated account identity automatically on tool calls.
+
+Use `bin/jarvis-google` for setup, consent, health checks and activation. Native
+headless installs can complete browser consent through an SSH tunnel to the
+localhost callback. See the [setup guide](google-workspace/README.md) for Google
+Cloud APIs, OAuth client settings, production consent status and the optional
+Jarvis Docker overlay.
 
 ### How Tool Calling Works - Basic Flow
 

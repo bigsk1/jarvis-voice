@@ -31,6 +31,22 @@ from http_client import (
 )
 
 
+def server_configuration_status(server_config: dict) -> tuple[bool, str]:
+    """Check selected-mode gates without starting a server or exposing values."""
+    if not server_config.get("enabled", True):
+        return False, "disabled in config"
+    gate = server_config.get("enabled_env")
+    if gate and str(get_config_value(gate, "false")).strip().lower() not in {"1", "true", "yes", "on"}:
+        return False, "enable flag is off"
+    required = server_config.get("required_env", [])
+    if not isinstance(required, list) or not all(isinstance(key, str) and key.strip() for key in required):
+        return False, "invalid required_env"
+    missing = [key for key in required if not get_config_value(key, None)]
+    if missing:
+        return False, "missing configuration: " + ", ".join(missing)
+    return True, "configured"
+
+
 @dataclass
 class _RemoteCallBudget:
     deadline: float
@@ -51,6 +67,39 @@ def _check_remote_call_budget():
         raise requests.exceptions.Timeout("Remote MCP call deadline exceeded")
     return budget
 
+
+
+def probe_remote_tools(client, timeout_seconds: float = 3) -> list[dict]:
+    """Bound discovery even if a remote response trickles without finishing."""
+    budget = _RemoteCallBudget(time.monotonic() + timeout_seconds)
+    holder = {}
+    budgets = getattr(client, "_call_budgets", None)
+    if isinstance(budgets, dict):
+        budgets[id(budget)] = budget
+    def runner():
+        token = _remote_call_budget.set(budget)
+        try:
+            client.start()
+            tools = client.list_tools()
+            _check_remote_call_budget()
+            holder["tools"] = tools
+        except Exception:
+            pass
+        finally:
+            _remote_call_budget.reset(token)
+            if isinstance(budgets, dict):
+                budgets.pop(id(budget), None)
+    worker = Thread(target=copy_context().run, args=(runner,), daemon=True)
+    worker.start()
+    worker.join(timeout=timeout_seconds)
+    if worker.is_alive():
+        budget.cancelled.set()
+        try:
+            client._force_restart("discovery deadline exceeded")
+        except AttributeError:
+            client.stop()
+        return []
+    return holder.get("tools", [])
 
 def _duckduckgo_text_error(server_name: str, tool_name: str, text: str) -> bool:
     """Recognize errors that DuckDuckGo returns as successful MCP text content."""
@@ -84,6 +133,11 @@ def _normalize_call_tool_result(
 
         if f"mcp_deepwiki_{tool_name}" in DEEPWIKI_TOOL_NAMES:
             return normalize_deepwiki_result(tool_name, result, arguments)
+
+    if server_name == "google_workspace":
+        from google_workspace import normalize_workspace_result
+
+        return normalize_workspace_result(tool_name, result, arguments)
 
     content = result.get("content", [])
     text_parts = []
@@ -759,6 +813,7 @@ class MCPRemoteClient:
         self.lock = RLock()
         self.request_id = 0
         self._tools_cache = None
+        self._tool_properties: dict[str, set[str]] = {}
         self._initialized = False
         
         # Session management for Streamable HTTP
@@ -864,7 +919,9 @@ class MCPRemoteClient:
             event_type = None
             event_data = []
             
-            for line in response.iter_lines(decode_unicode=True):
+            for line in response.iter_lines(decode_unicode=False):
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8")
                 if self._sse_stop_event.is_set():
                     break
                 
@@ -961,7 +1018,9 @@ class MCPRemoteClient:
         # Consume the SSE response (initialization result).
         try:
             response.raise_for_status()
-            for line in response.iter_lines(decode_unicode=True):
+            for line in response.iter_lines(decode_unicode=False):
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8")
                 _check_remote_call_budget()
                 if os.environ.get("MCP_DEBUG", "").lower() == "true" and line:
                     print(f"[MCP DEBUG] Init response: {line}", file=sys.stderr)
@@ -1111,7 +1170,7 @@ class MCPRemoteClient:
                 raise Exception(f"MCP error: {result['error'].get('message', 'Unknown')}")
             return result.get("result")
     
-    def _send_http_request(self, request: dict) -> Any:
+    def _send_http_request(self, request: dict, retry_count: int = 0) -> Any:
         """
         Send request via Streamable HTTP transport.
         
@@ -1140,6 +1199,22 @@ class MCPRemoteClient:
             timeout=30,
             stream=True  # Enable streaming for potential SSE responses
         )
+        # A rejected session has not executed this request. Only that explicit
+        # rejection permits replay; timeouts and unrelated HTTP errors do not.
+        if response.status_code == 404 and self._session_id and retry_count == 0:
+            try:
+                stale = "session not found" in response.text.lower()
+            finally:
+                response.close()
+            if stale:
+                _check_remote_call_budget()
+                self._initialized = False
+                self._session_id = None
+                self.start()
+                _check_remote_call_budget()
+                self.request_id += 1
+                request = {**request, "id": self.request_id}
+                return self._send_http_request(request, retry_count=1)
         try:
             response.raise_for_status()
             _check_remote_call_budget()
@@ -1169,10 +1244,15 @@ class MCPRemoteClient:
         result = None
         event_data = []
         
-        for line in response.iter_lines(decode_unicode=True):
+        # SSE is UTF-8. Requests defaults text/* without a charset to Latin-1;
+        # its decoded splitlines then treats the last byte of "✅" as a newline
+        # and breaks a valid JSON-RPC event. Split bytes first, then decode.
+        for line in response.iter_lines(decode_unicode=False):
             _check_remote_call_budget()
             if line is None:
                 continue
+            if isinstance(line, bytes):
+                line = line.decode("utf-8")
             
             if line.startswith('event:'):
                 line[6:].strip()
@@ -1218,8 +1298,11 @@ class MCPRemoteClient:
             **self.headers
         }
         
+        if self.transport_type == "http" and self._session_id:
+            headers["Mcp-Session-Id"] = self._session_id
         try:
-            self._http_request("POST", endpoint, json=message, headers=headers, timeout=10)
+            response = self._http_request("POST", endpoint, json=message, headers=headers, timeout=10)
+            response.close()
         except Exception as e:
             if os.environ.get("MCP_DEBUG", "").lower() == "true":
                 print(f"[MCP DEBUG] Post notification failed: {e}", file=sys.stderr)
@@ -1243,16 +1326,71 @@ class MCPRemoteClient:
             return self._tools_cache
         
         try:
-            result = self._send_request("tools/list")
-            tools = result.get("tools", []) if result else []
-            self._tools_cache = tools
-            return tools
+            tools = []
+            cursor = None
+            seen = set()
+            for _page in range(100):
+                result = self._send_request("tools/list", {"cursor": cursor} if cursor else None)
+                tools.extend(result.get("tools", []) if result else [])
+                cursor = result.get("nextCursor") if result else None
+                if not cursor:
+                    break
+                if not isinstance(cursor, str) or cursor in seen:
+                    raise ValueError("Invalid or repeated tools/list cursor")
+                seen.add(cursor)
+            else:
+                raise ValueError("tools/list pagination exceeded 100 pages")
+            valid_tools = []
+            properties = {}
+            for tool in tools:
+                if not isinstance(tool, dict) or not isinstance(tool.get("name"), str) or not tool["name"]:
+                    continue
+                schema = tool.get("inputSchema", {})
+                if not isinstance(schema, dict) or not isinstance(schema.get("properties", {}), dict):
+                    continue
+                if any(not isinstance(value, dict) for value in schema.get("properties", {}).values()):
+                    continue
+                if not isinstance(tool.get("description", ""), str) or not isinstance(tool.get("annotations") or {}, dict):
+                    continue
+                required = schema.get("required", [])
+                if not isinstance(required, list) or any(not isinstance(key, str) for key in required):
+                    continue
+                if tool["name"] in properties:
+                    continue
+                valid_tools.append(tool)
+                properties[tool["name"]] = set(schema.get("properties", {}))
+            _check_remote_call_budget()
+            self._tool_properties = properties
+            self._tools_cache = valid_tools
+            return valid_tools
         except Exception as e:
             print(f"Error listing tools from remote MCP server {self.name}: {e}", file=sys.stderr)
             return []
     
     def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Call a tool on the remote MCP server."""
+        arguments = dict(arguments)
+        for key, default in getattr(self, "tool_defaults", {}).items():
+            if self.name == "google_workspace" and key == "user_google_email":
+                tool_info = next((
+                    info for info in (self._tools_cache or []) if info.get("name") == tool_name
+                ), None)
+                properties = (set(tool_info.get("inputSchema", {}).get("properties", {}))
+                              if tool_info is not None else self._tool_properties.get(tool_name))
+                if (properties is not None and key not in properties) or (
+                    properties is None and tool_name == "generate_trigger_code"
+                ):
+                    # Account-independent helpers (such as trigger code generation)
+                    # reject this field rather than using Google credentials.
+                    arguments.pop(key, None)
+                    continue
+                # This integration owns one dedicated account. A model's
+                # guessed owner must not replace the configured identity.
+                arguments[key] = default
+                continue
+            # Strict provider schemas may send null for an optional property.
+            if arguments.get(key) is None:
+                arguments[key] = default
         timeout_seconds = int(os.environ.get("MCP_TOOL_CALL_TIMEOUT_SECONDS", "35"))
         response_holder: dict[str, Any] = {}
         budget = _RemoteCallBudget(time.monotonic() + timeout_seconds)
@@ -1261,14 +1399,26 @@ class MCPRemoteClient:
 
         def _runner():
             token = _remote_call_budget.set(budget)
+            staged_id = None
             try:
-                response_holder["result"] = self._send_request("tools/call", {
-                    "name": tool_name,
-                    "arguments": arguments
-                })
+                upstream = arguments
+                stash = False
+                space_id = None
+                if self.name == "google_workspace":
+                    from google_workspace import prepare_workspace_transfer
+                    upstream, stash, space_id, staged_id = prepare_workspace_transfer(self, tool_name, arguments)
+                raw = self._send_request("tools/call", {"name": tool_name, "arguments": upstream})
+                normalized = _normalize_call_tool_result(tool_name, raw, server_name=self.name, arguments=arguments)
+                if stash:
+                    from google_workspace import stash_workspace_download
+                    normalized = stash_workspace_download(self, normalized, space_id)
+                response_holder["result"] = normalized
             except Exception as e:
                 response_holder["error"] = e
             finally:
+                if staged_id:
+                    from google_workspace import cleanup_workspace_transfer
+                    cleanup_workspace_transfer(self, staged_id)
                 _remote_call_budget.reset(token)
                 self._call_budgets.pop(id(budget), None)
 
@@ -1293,12 +1443,7 @@ class MCPRemoteClient:
                     self._force_restart(f"remote tools/call error timeout: {err_text[:120]}")
                 raise err
 
-            return _normalize_call_tool_result(
-                tool_name,
-                response_holder.get("result"),
-                server_name=self.name,
-                arguments=arguments,
-            )
+            return response_holder["result"]
             
         except Exception as e:
             import traceback
@@ -1379,15 +1524,19 @@ class MCPManager:
             config = json.load(f)
         
         for name, server_config in config.get("mcpServers", {}).items():
-            # Skip disabled servers
-            if not server_config.get("enabled", True):
+            available, reason = server_configuration_status(server_config)
+            if not available:
+                if reason.startswith(("missing", "invalid")):
+                    print(f"Warning: MCP server '{name}' {reason}", file=sys.stderr)
                 continue
-            
+
             transport_type = server_config.get("type", "").lower()
             
             if transport_type in ("sse", "http"):
                 # Remote MCP server (SSE or HTTP transport)
                 url = server_config.get("url")
+                if server_config.get("url_env"):
+                    url = get_config_value(server_config["url_env"], None) or url
                 if not url:
                     print(f"Warning: MCP server '{name}' has type={transport_type} but no url", file=sys.stderr)
                     continue
@@ -1399,6 +1548,9 @@ class MCPManager:
                 self.servers[name] = MCPRemoteClient(
                     name, url, transport_type, headers,
                     proxy_policy=server_config.get("proxy_policy", "inherit"),
+                )
+                self.servers[name].tool_defaults = self._substitute_env_vars(
+                    server_config.get("tool_defaults", {})
                 )
                 
                 if os.environ.get("MCP_DEBUG", "").lower() == "true":

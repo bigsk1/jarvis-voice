@@ -93,3 +93,19 @@ def test_sse_wait_skips_notification_before_matching_response():
 
     assert client._wait_for_sse_response(request) == expected
     assert client._sse_response_queue.empty()
+
+
+def test_sse_listener_preserves_utf8_checkmark_with_latin1_requests_default(monkeypatch):
+    import json
+
+    import requests
+    client = MCPRemoteClient('utf8', 'http://example.test/sse', 'sse')
+    expected = {'id': 7, 'result': {'content': [{'type': 'text', 'text': '✅ Complete'}]}}
+    response = requests.Response()
+    response.status_code = 200
+    response.encoding = 'ISO-8859-1'
+    response._content = ('event: message\ndata: ' + json.dumps(expected, ensure_ascii=False) + '\n\n').encode()
+    response._content_consumed = True
+    monkeypatch.setattr(client, '_http_request', lambda *a, **k: response)
+    client._sse_listener()
+    assert client._sse_response_queue.get_nowait() == expected

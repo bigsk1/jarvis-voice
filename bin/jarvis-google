@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+jarvis_google_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+jarvis_google_python="$jarvis_google_root/.venv/bin/python"
+if [[ ! -x "$jarvis_google_python" ]]; then
+  jarvis_google_python="$HOME/jarvis-venv/bin/python"
+fi
+if [[ ! -x "$jarvis_google_python" ]]; then
+  echo "Run uv sync --dev in the Jarvis checkout first." >&2
+  exit 1
+fi
+exec "$jarvis_google_python" "$jarvis_google_root/lib/google_workspace_setup.py" "$@"

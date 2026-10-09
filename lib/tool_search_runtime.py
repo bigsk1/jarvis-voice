@@ -164,6 +164,9 @@ def search_tools_runtime(
         include_schema: Include full parameter schema for exact/detail lookups.
         background_context: Server-created Web context for background-only tools.
     """
+    recovery = getattr(registry, "recover_unavailable_mcp", None)
+    if callable(recovery):
+        recovery()
     excluded = {str(name).strip() for name in (excluded_tools or []) if str(name).strip()}
     from lib.background_tasks.admission import background_only_exclusions
     excluded.update(background_only_exclusions(registry, background_context))

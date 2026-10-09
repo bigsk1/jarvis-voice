@@ -227,3 +227,159 @@ class TestMCPDiscoveryGraceful(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_startup_missing_http_recovery_keeps_profile_allowlist_and_healthy_client(monkeypatch, tmp_path):
+    from threading import Lock
+    from unittest.mock import Mock
+    client = FakeSearchAndFetchClient()
+    client.transport_type = 'http'
+    client.start = Mock()
+    registry = ToolRegistry.__new__(ToolRegistry)
+    registry.tools = {}
+    registry.mcp_clients = {'healthy': Mock()}
+    healthy = registry.mcp_clients['healthy']
+    registry.mcp_manager = FakeManager(client)
+    registry.mcp_unavailable = {client.name: 'offline'}
+    registry._mcp_recovery_lock = Lock()
+    registry._mcp_retry_after = {}
+    registry._mcp_server_config = {client.name: {'allowed_tools': ['search'], 'retry_discovery': True}}
+    registry._profile_overrides = {}
+    db = Mock()
+    monkeypatch.setattr('memory_db.get_memory_db', lambda: db)
+    assert registry.get_tool('mcp_remote_docs_search') is None
+    registry.list_tools()
+    client.start.assert_not_called()
+    registry.recover_unavailable_mcp()
+    assert registry.get_tool('mcp_remote_docs_search') is not None
+    assert registry.get_tool('mcp_remote_docs_fetch') is None
+    assert registry.mcp_unavailable == {}
+    client.start.assert_called_once()
+    healthy.start.assert_not_called()
+    assert [t.name for t in db.register_recovered_tools.call_args.args[0]] == ['mcp_remote_docs_search']
+    registry.mcp_unavailable[client.name] = 'offline again'
+    registry.get_tool('mcp_remote_docs_search')
+    client.start.assert_called_once()  # Cooldown applies to repeated probes.
+    registry._mcp_retry_after = {}
+    registry._profile_overrides = {'mcp_remote_docs_search': False}
+    registry.tools = {}
+    registry.recover_unavailable_mcp()
+    assert registry.tools == {}
+
+
+def test_failed_recovery_is_bounded_and_stdio_is_not_started(monkeypatch):
+    from threading import Lock
+    from unittest.mock import Mock
+
+    from mcp_client import _remote_call_budget
+    client = FakeRemoteClient()
+    client.transport_type = 'http'
+    observed = []
+    def start():
+        observed.append(_remote_call_budget.get().deadline)
+        raise OSError('offline')
+    client.start = start
+    stdio = FakeStdioClient()
+    stdio.start = Mock()
+    registry = ToolRegistry.__new__(ToolRegistry)
+    registry.tools = {}
+    registry.mcp_clients = {}
+    registry.mcp_manager = FakeManager(client)
+    registry.mcp_manager.servers[stdio.name] = stdio
+    registry.mcp_unavailable = {client.name: 'offline', stdio.name: 'offline'}
+    registry._mcp_recovery_lock = Lock()
+    registry._mcp_retry_after = {}
+    registry._mcp_server_config = {client.name: {'retry_discovery': True}}
+    registry._profile_overrides = {}
+    registry.recover_unavailable_mcp()
+    registry.recover_unavailable_mcp()
+    assert len(observed) == 1
+    stdio.start.assert_not_called()
+    assert _remote_call_budget.get() is None
+
+
+def test_mcp_description_supplement_and_prerequisite_are_local_and_profile_scoped():
+    registry = TestMCPDiscoveryGraceful()._build_registry(FakeSearchAndFetchClient(), tool_metadata={
+        'fetch': {'description_prefix': 'Fetch a previously located remote document.',
+                  'prerequisite_tools': ['mcp_remote_docs_search']},
+    })
+    fetch = registry.get_tool('mcp_remote_docs_fetch')
+    assert fetch.description.startswith('Fetch a previously located remote document.')
+    assert fetch.description.endswith('fetch')
+    assert fetch.prerequisite_tools == ['mcp_remote_docs_search']
+    assert registry.get_tool('mcp_remote_docs_search').description == 'search'
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'orchestrator'))
+    from router_v2 import expand_prerequisite_tool_names
+    names, _ = expand_prerequisite_tool_names(['mcp_remote_docs_fetch'], registry, registry.list_tools())
+    assert names == ['mcp_remote_docs_search', 'mcp_remote_docs_fetch']
+    names, _ = expand_prerequisite_tool_names(['mcp_remote_docs_fetch'], registry, ['mcp_remote_docs_fetch'])
+    assert names == ['mcp_remote_docs_fetch']
+
+
+def test_default_http_servers_never_retry_during_lookup_or_selection(monkeypatch):
+    from threading import Lock
+    from unittest.mock import Mock
+    registry = ToolRegistry.__new__(ToolRegistry)
+    client = FakeRemoteClient()
+    client.transport_type = 'http'
+    client.start = Mock()
+    registry.tools = {}
+    registry.mcp_manager = FakeManager(client)
+    registry.mcp_unavailable = {client.name: 'offline'}
+    registry._mcp_server_config = {client.name: {'enabled': True}}
+    registry._mcp_recovery_lock = Lock()
+    registry._mcp_retry_after = {}
+    assert registry.get_tool('native_tool') is None
+    assert registry.list_tools() == []
+    registry.recover_unavailable_mcp()
+    client.start.assert_not_called()
+
+
+def test_concurrent_selectors_wait_for_one_recovery_and_see_same_catalog(monkeypatch):
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, Lock
+    from unittest.mock import Mock
+    client = FakeSearchAndFetchClient()
+    client.transport_type = 'http'
+    client.start = Mock(side_effect=lambda: time.sleep(.03))
+    registry = ToolRegistry.__new__(ToolRegistry)
+    registry.tools = {}
+    registry.mcp_clients = {}
+    registry.mcp_manager = FakeManager(client)
+    registry.mcp_unavailable = {client.name: 'offline'}
+    registry._mcp_server_config = {client.name: {'retry_discovery': True}}
+    registry._mcp_recovery_lock = Lock()
+    registry._mcp_retry_after = {}
+    registry._profile_overrides = {}
+    monkeypatch.setattr('memory_db.get_memory_db', lambda: Mock())
+    barrier = Barrier(2)
+    def select(_):
+        barrier.wait()
+        registry.recover_unavailable_mcp()
+        return registry.list_tools()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        catalogs = list(pool.map(select, range(2)))
+    assert catalogs[0] == catalogs[1] == ['mcp_remote_docs_search', 'mcp_remote_docs_fetch']
+    client.start.assert_called_once()
+
+
+def test_discovery_probe_has_outer_deadline_even_if_transport_never_completes():
+    import time
+    from threading import Event
+    from unittest.mock import Mock
+
+    from mcp_client import probe_remote_tools
+    release = Event()
+    client = FakeRemoteClient()
+    client.start = lambda: release.wait(.5)
+    client._force_restart = Mock()
+    started = time.monotonic()
+    try:
+        assert probe_remote_tools(client, timeout_seconds=.02) == []
+        assert time.monotonic() - started < .15
+        client._force_restart.assert_called_once()
+    finally:
+        release.set()

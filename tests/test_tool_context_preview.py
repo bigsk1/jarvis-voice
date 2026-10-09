@@ -4,6 +4,7 @@
 import json
 import sys
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -16,6 +17,50 @@ from orchestrator_v2 import Orchestrator  # noqa: E402
 class ToolContextPreviewTests(unittest.TestCase):
     def setUp(self):
         self.orch = Orchestrator.__new__(Orchestrator)
+
+    def test_current_api_receipt_is_separate_from_price_reuse_policy(self):
+        self.orch.timezone = ZoneInfo('UTC')
+        timestamp = datetime.now(self.orch.timezone).isoformat()
+        entries = [
+            {'tool': 'mcp_google_workspace_list_gmail_labels',
+             'result': {'ok': True, 'data': {'source': 'google_workspace', 'response_text': 'Found 2 labels: INBOX, SENT'}},
+             'meta': {'executed_at_iso': timestamp, 'freshness': 'live_tool_call',
+                      'ttl_seconds': None, 'source': 'google_workspace', 'authoritative_live': False}},
+            {'tool': 'crypto_price', 'result': {'ok': True, 'data': {'coin': 'BTC', 'price_usd': 1}},
+             'meta': {'executed_at_iso': timestamp, 'freshness': 'live_tool_call',
+                      'ttl_seconds': 120, 'source': 'price_api', 'authoritative_live': True}},
+        ]
+        context = self.orch._build_turn_context('Check labels and BTC', entries)
+        google_section = context.split('1. Tool result #1:', 1)[1].split('2. Tool result #2:', 1)[0]
+        self.assertIn('Execution:', google_section)
+        self.assertIn('kind=live_tool_call', google_section)
+        self.assertNotIn('authoritative_live=', google_section)
+        self.assertNotIn('ttl=', google_section)
+        self.assertNotIn('result_chars_total=', google_section)
+        self.assertIn('ttl=120s', context)
+        self.assertIn('authoritative_live=True', context)
+        self.assertIn('do not quote them in user replies', context)
+
+    def test_price_duplicate_guard_preserves_ttl_refresh_and_target_rules(self):
+        self.orch.timezone = ZoneInfo('UTC')
+        now = datetime.now(self.orch.timezone)
+        previous = {'tool': 'crypto_price', 'arguments': {'coin': 'BTC'}, 'result': {'ok': True},
+                    'meta': {'executed_at_iso': (now - timedelta(seconds=60)).isoformat()}}
+        self.assertTrue(self.orch._is_fresh_same_target_recall('BTC price', 'crypto_price', {'coin': 'BTC'}, [previous]))
+        self.assertFalse(self.orch._is_fresh_same_target_recall('refresh BTC price', 'crypto_price', {'coin': 'BTC'}, [previous]))
+        self.assertFalse(self.orch._is_fresh_same_target_recall('ETH price', 'crypto_price', {'coin': 'ETH'}, [previous]))
+        previous['meta']['executed_at_iso'] = (now - timedelta(seconds=180)).isoformat()
+        self.assertFalse(self.orch._is_fresh_same_target_recall('BTC price', 'crypto_price', {'coin': 'BTC'}, [previous]))
+        self.assertIsNone(self.orch._tool_freshness_ttl_seconds('mcp_google_workspace_get_events'))
+
+    def test_real_workspace_truncation_stays_visible(self):
+        self.orch.timezone = ZoneInfo('UTC')
+        context = self.orch._build_turn_context('Read a long document', [{
+            'tool': 'mcp_google_workspace_get_doc_content',
+            'result': {'ok': True, 'data': {'source': 'google_workspace', 'response_text': 'Document fact. ' * 1000}},
+        }])
+        self.assertIn('result_truncated=True', context)
+        self.assertIn('result_chars_total=', context)
 
     def test_url_field_allows_long_querystrings(self):
         """Regression: generic strings used to cap at 240 chars, truncating URLs."""
@@ -2173,9 +2218,13 @@ class ToolContextPreviewTests(unittest.TestCase):
                     self.assertLessEqual(len(message), budget)
                     self.assertEqual(payload["result_truncated"], metadata["result_truncated"])
                     self.assertEqual(metadata["result_chars_shown"], len(body))
-                    expected_header = (f"Result Meta: result_truncated={metadata['result_truncated']}, "
-                                       f"result_chars_shown={len(body)}, "
-                                       f"result_chars_total={metadata['result_chars_total']}\n")
+                    expected_header = f"Result Meta: result_truncated={metadata['result_truncated']}"
+                    if metadata['result_truncated']:
+                        expected_header += (f", result_chars_shown={len(body)}, "
+                                            f"result_chars_total={metadata['result_chars_total']}")
+                    else:
+                        self.assertNotIn('result_chars_total=', message)
+                    expected_header += '\n'
                     self.assertIn(expected_header, message)
                     if not metadata["result_truncated"]:
                         self.assertEqual(payload["result"], result)

@@ -778,6 +778,7 @@ class ToolSearchRuntimeTests(unittest.TestCase):
         )
 
         serialized_tools = {}
+        self.assertIn("Do not repeat prior freshness/trust-flag or preview-size caveats", context)
         for line in context.splitlines():
             if not line.startswith("  └─ ") or " data: " not in line:
                 continue

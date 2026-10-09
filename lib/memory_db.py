@@ -1961,6 +1961,7 @@ class MemoryDB:
             rows = self.conn.execute(
                 """
                 SELECT td.name, td.description, td.schema_json,
+                       td.embedding IS NOT NULL AS has_embedding,
                        bm25(tool_definitions_fts, 0.0, 8.0, 1.0) AS keyword_bm25
                 FROM tool_definitions_fts
                 JOIN tool_definitions td ON td.rowid = tool_definitions_fts.rowid
@@ -1997,7 +1998,8 @@ class MemoryDB:
         ``threshold`` remains the minimum cosine score for dense-only results.
         Lexical-only candidates must have broad term coverage or contain their
         complete tool name in the request, so FTS cannot flood Tool RAG merely
-        because one generic word matched.
+        because one generic word matched. Definitions awaiting their first or
+        refreshed embedding may qualify lexically alongside healthy dense rows.
         """
         logger = logging.getLogger(__name__)
         cursor = self.conn.cursor()
@@ -2093,13 +2095,18 @@ class MemoryDB:
             if not row["exact_name_match"]:
                 if has_dense_evidence and row["keyword_coverage"] < 0.50:
                     continue
-                if not has_dense_evidence and not semantic_disabled_reason:
+                # A newly recovered definition has no vector yet. Let its
+                # actual keyword evidence qualify under the normal fallback
+                # coverage guard even while unrelated tools have embeddings.
+                # A stored vector below threshold still cannot bypass that gate.
+                if not has_dense_evidence and not semantic_disabled_reason and row["has_embedding"]:
                     continue
                 if not has_dense_evidence and row["keyword_coverage"] < 0.34:
                     continue
             item = by_name.get(name, {})
             for field in ("name", "description", "schema_json"):
                 item.setdefault(field, row[field])
+            item["embedding_pending"] = not bool(row["has_embedding"])
             item["keyword_rank"] = row["keyword_rank"]
             item["keyword_bm25"] = row["keyword_bm25"]
             item["keyword_coverage"] = row["keyword_coverage"]
@@ -2174,6 +2181,32 @@ class MemoryDB:
                 "+".join(tool.get("retrieval_channels", [])),
             )
         return final_tools
+
+    def register_recovered_tools(self, tools) -> None:
+        """Restore current discovery rows without making an embedding request.
+
+        Existing vectors survive only unchanged descriptions. New tools are
+        immediately searchable through FTS; normal sync supplies their vectors.
+        Only the registry's allowed, active-profile schemas reach this method.
+        """
+        from config_loader import get_config_value
+        blocked = {name.strip() for name in get_config_value("BLOCKED_TOOLS", "").split(",") if name.strip()}
+        with self.conn:
+            for tool in tools:
+                if tool.name in blocked:
+                    continue
+                self.conn.execute("""
+                    INSERT INTO tool_definitions (name, description, schema_json, enabled)
+                    VALUES (?, ?, ?, 1)
+                    ON CONFLICT(name) DO UPDATE SET
+                        embedding = CASE WHEN description = excluded.description THEN embedding ELSE NULL END,
+                        description = excluded.description,
+                        schema_json = excluded.schema_json,
+                        enabled = 1,
+                        embedding_input_hash = CASE WHEN description = excluded.description AND schema_json = excluded.schema_json
+                            THEN embedding_input_hash ELSE NULL END,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (tool.name, tool.description, json.dumps(tool.to_openai_format())))
 
     def get_tool_definition(self, name: str) -> dict | None:
         """Get specific tool definition by name."""

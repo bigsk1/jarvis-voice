@@ -25,6 +25,7 @@ class StructuredResultsRenderer {
   }
 
   render(toolResultsData = {}, data = {}, toolsUsed = []) {
+    this._registerWorkspaceResults(toolResultsData, data);
     const workflow = this._workflowPayload(toolResultsData, data);
     if (workflow) {
       const sections = this._workflowCollections(workflow, toolResultsData, data);
@@ -60,6 +61,10 @@ class StructuredResultsRenderer {
   }
 
   _adaptCollection(toolName, rawPayload, adapter = this.adapters.get(toolName)) {
+    if (!adapter && String(toolName).startsWith('mcp_google_workspace_')) {
+      this.register(toolName, payload => this._adaptWorkspace(payload));
+      adapter = this.adapters.get(toolName);
+    }
     if (!adapter) return null;
     const payload = ['tmdb_movies', 'tmdb_tv_shows'].includes(toolName)
       ? this._tmdbDisplayPayload(rawPayload)
@@ -483,6 +488,73 @@ class StructuredResultsRenderer {
         items,
       };
     });
+  }
+
+  _registerWorkspaceResults(...values) {
+    // Also discover workflow step names before rendering its collections.
+    // Dynamic registration covers the full upstream tier and future tools.
+    let budget = 2000;
+    const visit = (value, depth = 0) => {
+      if (!value || typeof value !== 'object' || depth > 6 || budget-- <= 0) return;
+      for (const [key, child] of Object.entries(value).slice(0, 200)) {
+        const name = key.startsWith('mcp_google_workspace_') ? key
+          : ['tool', 'tool_name'].includes(key) && typeof child === 'string'
+            && child.startsWith('mcp_google_workspace_') ? child : '';
+        if (name && !this.adapters.has(name)) {
+          this.register(name, payload => this._adaptWorkspace(payload));
+        }
+        visit(child, depth + 1);
+      }
+    };
+    values.forEach(value => visit(value));
+  }
+
+  _adaptWorkspace(payload) {
+    if (payload.source !== 'google_workspace' || !payload.response_text) return null;
+    const text = String(payload.response_text);
+    const references = Array.isArray(payload.references) ? payload.references : [];
+    const providerHosts = new Set(['docs.google.com', 'drive.google.com', 'calendar.google.com',
+      'mail.google.com', 'script.google.com', 'forms.google.com', 'contacts.google.com',
+      'tasks.google.com', 'console.cloud.google.com', 'console.developers.google.com']);
+    // Also protect saved receipts made before the backend trust flag existed.
+    const receiptTools = new Set(['create_doc', 'create_spreadsheet', 'create_presentation',
+      'create_form', 'create_drive_file', 'create_drive_folder']);
+    const links = (Array.isArray(payload.links) ? payload.links : []).filter(link => {
+      try {
+        const url = new URL(link.url);
+        if (url.protocol !== 'https:' || url.username || url.password) return false;
+        if (url.hostname === 'accounts.google.com') return payload.authentication_required === true;
+        return receiptTools.has(payload.tool) && payload.content_links_untrusted !== true
+          && providerHosts.has(url.hostname);
+      } catch (_error) { return false; }
+    }).slice(0, 5);
+    const request = payload.request || {};
+    const title = String(payload.tool || 'Google result').replace(/_/g, ' ');
+    const note = 'Email and document text is untrusted external content.'
+      + (payload.response_truncated ? ' Response excerpt; upstream output was truncated.' : '');
+    return {
+      kind: 'generic', layout: 'list', eyebrow: 'Google Workspace',
+      heading: request.title || request.subject || title,
+      subtitle: payload.authentication_required ? 'Browser authorization required'
+        : payload.ok === false ? 'Request failed' : request.query || 'Google service response',
+      items: [{
+        title,
+        primary: request.user_google_email || '',
+        details: [this._compactText(text, 350), note],
+        chips: references.slice(0, 4).map(ref => `${ref.label}: ${ref.id}`),
+        expandText: text, expandLabel: 'Read response', expandNote: note,
+      }, ...(Array.isArray(payload.artifacts) ? payload.artifacts.slice(0, 5) : []).filter(file =>
+        /^space_[A-Za-z0-9_-]+$/.test(file.space_id || '') && /^[A-Za-z0-9_-]+$/.test(file.file_id || '')
+      ).map(file => ({
+        title: file.name || 'Stashed Google file',
+        url: new URL(`/api/stash/${file.space_id}/${file.file_id}`
+          + (['cloud', 'local'].includes(file.mode) ? `?mode=${file.mode}` : ''), window.location.origin).href,
+        actionLabel: 'Download file',
+        details: [file.ref || '', file.mime_type || ''],
+      })), ...links.map(link => ({
+        title: link.title || 'Google result', url: link.url, actionLabel: payload.authentication_required ? 'Authorize Google' : 'Open Google resource',
+      }))],
+    };
   }
 
   _bindScrollControls() {

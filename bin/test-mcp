@@ -12,13 +12,14 @@ import atexit
 from pathlib import Path
 
 # Force unbuffered output
-sys.stdout.reconfigure(line_buffering=True)
-sys.stderr.reconfigure(line_buffering=True)
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(line_buffering=True)
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from mcp_client import MCPClient, MCPRemoteClient, MCPManager
-from config_loader import load_config
+from mcp_client import MCPRemoteClient, MCPManager, server_configuration_status
+from config_loader import config_scope, load_config
 
 # Global manager for cleanup on interrupt
 _active_manager = None
@@ -68,7 +69,7 @@ def list_all_servers():
     disabled_count = 0
     
     for server_name, server_config in servers.items():
-        enabled = server_config.get("enabled", True)
+        enabled, reason = server_configuration_status(server_config)
         description = server_config.get("description", "No description")
         
         # Determine transport type
@@ -82,6 +83,10 @@ def list_all_servers():
         status_text = "ENABLED" if enabled else "DISABLED"
         
         print(f"{status_icon} {server_name} ({status_text})")
+        if not enabled:
+            print(f"   Reason:      {reason}")
+        if server_config.get("enabled_env"):
+            print(f"   Enable ENV:  {server_config['enabled_env']}")
         print(f"   Transport:   {transport}")
         print(f"   Description: {description}")
         
@@ -240,11 +245,9 @@ def audit_tools(mode='cloud'):
     
     config_path = Path(__file__).parent.parent / "config" / "mcp-servers.json"
     
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-    
-    servers = config.get("mcpServers", {})
-    enabled_servers = {name: cfg for name, cfg in servers.items() if cfg.get("enabled", True)}
+    manager = MCPManager(str(config_path))
+    _active_manager = manager
+    enabled_servers = manager.servers
     
     if not enabled_servers:
         print("❌ No enabled servers to audit")
@@ -256,28 +259,9 @@ def audit_tools(mode='cloud'):
     print(f"\n🔍 Scanning {len(enabled_servers)} server(s) for dangerous capabilities...\n", flush=True)
     
     # Test each server individually with cleanup
-    for server_name, server_config in enabled_servers.items():
-        client = None
+    for server_name, client in enabled_servers.items():
         try:
             print(f"  ⏳ Scanning {server_name}...", end=" ", flush=True)
-            
-            # Create appropriate client
-            transport_type = server_config.get("type", "").lower()
-            
-            if transport_type in ("sse", "http"):
-                from mcp_client import MCPRemoteClient
-                url = server_config.get("url")
-                headers = server_config.get("headers", {})
-                client = MCPRemoteClient(server_name, url, transport_type, headers)
-            else:
-                from mcp_client import MCPClient
-                client = MCPClient(
-                    server_name,
-                    server_config.get("command"),
-                    server_config.get("args", []),
-                    server_config.get("env", {}),
-                    proxy_policy=server_config.get("proxy_policy", "inherit"),
-                )
             
             tools = client.list_tools()
             print(f"found {len(tools)} tools", flush=True)
@@ -434,29 +418,31 @@ Examples:
     if not any([args.list, args.discover, args.audit, args.test, args.all]):
         args.list = True
     
-    if args.all:
-        list_all_servers()
-        discover_tools(args.mode)
-        audit_tools(args.mode)
-    
-    elif args.list:
-        list_all_servers()
-    
-    elif args.discover:
-        discover_tools(args.mode)
-    
-    elif args.audit:
-        audit_tools(args.mode)
-    
-    elif args.test:
-        server_name, tool_name, args_json = args.test
-        try:
-            tool_args = json.loads(args_json)
-        except json.JSONDecodeError as e:
-            print(f"❌ Invalid JSON args: {e}")
-            sys.exit(1)
-        
-        test_tool(server_name, tool_name, tool_args, args.mode)
+    with config_scope(args.mode):
+        if args.all:
+            list_all_servers()
+            discover_tools(args.mode)
+            audit_tools(args.mode)
+
+        elif args.list:
+            list_all_servers()
+
+        elif args.discover:
+            discover_tools(args.mode)
+
+        elif args.audit:
+            audit_tools(args.mode)
+
+        elif args.test:
+            server_name, tool_name, args_json = args.test
+            try:
+                tool_args = json.loads(args_json)
+            except json.JSONDecodeError as e:
+                print(f"❌ Invalid JSON args: {e}")
+                sys.exit(1)
+
+            test_tool(server_name, tool_name, tool_args, args.mode)
+
 
 
 if __name__ == "__main__":

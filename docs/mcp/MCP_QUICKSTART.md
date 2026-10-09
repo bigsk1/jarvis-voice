@@ -46,6 +46,12 @@ MCP (Model Context Protocol) servers are **pre-built tools** you can add to Jarv
 
 Optional (present but disabled by default): `sequentialthinking`, `playwright`.
 
+**Optional Google account integration:** [Google Workspace Docker service](../../google-workspace/README.md)
+provides Gmail, Drive, Docs, Sheets and other supported consumer services.
+It is enabled per mode with `GOOGLE_WORKSPACE_MCP_ENABLED=true` after OAuth setup;
+a fresh clone leaves it off. Its access token and endpoint are explicit settings,
+and its Google credentials live outside the Jarvis process.
+
 ### Why Use MCP Servers?
 
 **Traditional approach:**
@@ -400,3 +406,26 @@ docker pull ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0
 ---
 
 MCP tools are live in the orchestrator once enabled — no separate voice-integration step.
+
+### Local tool descriptions and prerequisites
+
+A server's top-level `description` is configuration documentation. Runtime
+Tool RAG embeds each discovered tool's registered description. Supplement
+specific upstream tools locally in `config/mcp-servers.json`, then sync the
+selected mode:
+
+```json
+"tool_metadata": {
+  "download_file": {
+    "description_prefix": "Download a file by its ID. Example: save a remote PDF for local work.",
+    "prerequisite_tools": ["mcp_my_server_search_files"]
+  }
+}
+```
+
+`description_prefix` precedes the retained upstream description in both Tool RAG
+and provider schemas. `prerequisite_tools` uses complete Jarvis tool names and
+makes bounded companion schemas available through the existing router; it does
+not execute them or bypass profiles, allowlists, exclusions or the schema cap.
+Do not append a server's complete product list to every tool: keep prefixes
+specific to the action and its required inputs.

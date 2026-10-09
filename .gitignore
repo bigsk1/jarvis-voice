@@ -38,6 +38,10 @@ filebrowser/data/
 # Standalone database browser credentials, settings, certificates and exports.
 sqlitebrowser/.env
 sqlitebrowser/data/
+# Optional Google Workspace service OAuth grants, attachments, and machine token.
+google-workspace/.env
+google-workspace/data/
+**/client_secret*.json
 # Local skill scratch next to the task database; leftover after a killed child.
 data/task-workspaces/
 

@@ -7,21 +7,23 @@ This module provides the core functionality for the stash system,
 allowing tools and internal services to store and retrieve artifacts.
 """
 
-import os
-import sys
-import json
 import hashlib
 import io
+import ipaddress
+import json
+import mimetypes
+import os
 import re
 import shutil
 import socket
-import ipaddress
+import sys
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
-import mimetypes
+
+from filelock import BaseFileLock
 
 try:
     import requests
@@ -40,7 +42,6 @@ sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import get_config_value, get_int
 from http_client import http_request
 from paths import assert_not_restricted_read_path, get_restricted_read_match
-
 
 # ============================================================================
 # URL Download Security (SSRF Protection)
@@ -450,9 +451,84 @@ def compute_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _merge_metadata_changes(current: dict, before: dict, edited: dict) -> dict:
+    """Apply only a caller's edits to the latest manifest, retaining new files."""
+    from copy import deepcopy
+    merged = deepcopy(current)
+    for key in before.keys() - edited.keys():
+        merged.pop(key, None)
+    for key, value in edited.items():
+        if key in before and value == before[key]:
+            continue
+        old = before.get(key)
+        latest = merged.get(key)
+        if key == "files" and all(isinstance(rows, list) for rows in (old, latest, value)) and all(
+            isinstance(row, dict) and row.get("file_id") for rows in (old, latest, value) for row in rows
+        ):
+            originals = {row["file_id"]: row for row in old}
+            desired = {row["file_id"]: row for row in value}
+            files = {row["file_id"]: row for row in latest}
+            for removed in originals.keys() - desired.keys():
+                files.pop(removed, None)
+            for file_id, record in desired.items():
+                if file_id in originals and file_id not in files:
+                    continue  # A stale annotation must not resurrect a deleted file.
+                if record != originals.get(file_id):
+                    files[file_id] = _merge_metadata_changes(files.get(file_id, {}), originals.get(file_id, {}), record)
+            merged[key] = list(files.values())
+        elif isinstance(old, dict) and isinstance(latest, dict) and isinstance(value, dict):
+            merged[key] = _merge_metadata_changes(latest, old, value)
+        else:
+            merged[key] = deepcopy(value)
+    return merged
+
+
+def _stash_transaction(method):
+    """Serialize mutating helper operations across threads and processes."""
+    from functools import wraps
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        space = self if isinstance(self, StashSpace) else self.space
+        with space.transaction():
+            return method(self, *args, **kwargs)
+    return wrapped
+
+
 # ============================================================================
 # Space Management
 # ============================================================================
+
+class _StashDirectoryLock(BaseFileLock):
+    """Lock the persistent root inode without creating disposable lock files.
+
+    Native Ubuntu and the Linux Docker runtime share flock semantics, including
+    bind mounts. Root-wide serialization keeps deletion safe for waiting writers;
+    only local file/manifest mutations belong in this short critical section.
+    """
+
+    def _acquire(self):
+        import fcntl
+        self._context.lock_file_fd = None
+        descriptor = os.open(self.lock_file, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(descriptor)
+        except BaseException:
+            os.close(descriptor)
+            raise
+        else:
+            self._context.lock_file_fd = descriptor
+
+    def _release(self):
+        import fcntl
+        descriptor = self._context.lock_file_fd
+        self._context.lock_file_fd = None
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+
 
 class StashSpace:
     """Represents a stash space (task bucket)."""
@@ -463,7 +539,31 @@ class StashSpace:
         self.space_path = self.stash_dir / space_id
         self.meta_path = self.space_path / 'meta.json'
         self._meta = None
-    
+        self._loaded_meta = {}
+        from threading import local
+
+        self._lock_path = self.stash_dir.resolve()
+        self._lock = _StashDirectoryLock(str(self._lock_path), is_singleton=True)
+        self._transaction_state = local()
+
+    def transaction(self, timeout: float = 10):
+        """Refresh under a reentrant Stash lock; network I/O belongs outside."""
+        from contextlib import contextmanager
+        @contextmanager
+        def locked():
+            self._lock_path.mkdir(parents=True, exist_ok=True)
+            with self._lock.acquire(timeout=timeout):
+                depth = getattr(self._transaction_state, "depth", 0)
+                if depth == 0:
+                    self._meta = None
+                    self._loaded_meta = {}
+                self._transaction_state.depth = depth + 1
+                try:
+                    yield self
+                finally:
+                    self._transaction_state.depth = depth
+        return locked()
+
     @property
     def exists(self) -> bool:
         return self.space_path.exists() and self.meta_path.exists()
@@ -481,12 +581,33 @@ class StashSpace:
                 self._meta = json.load(f)
         else:
             self._meta = {}
-    
+        from copy import deepcopy
+        self._loaded_meta = deepcopy(self._meta)
+
     def _save_meta(self):
-        """Save metadata to disk."""
-        with open(self.meta_path, 'w') as f:
-            json.dump(self._meta, f, indent=2)
-    
+        """Atomically publish edits without clobbering another writer's files."""
+        import tempfile
+        from copy import deepcopy
+        self._lock_path.mkdir(parents=True, exist_ok=True)
+        with self._lock.acquire(timeout=10):
+            current = json.loads(self.meta_path.read_text()) if self.meta_path.exists() else {}
+            merged = _merge_metadata_changes(current, self._loaded_meta, self._meta)
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.space_path,
+                                                 prefix=".meta-", delete=False) as stream:
+                    temporary = Path(stream.name)
+                    json.dump(merged, stream, indent=2)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary, self.meta_path)
+            finally:
+                if temporary:
+                    temporary.unlink(missing_ok=True)
+            self._meta = merged
+            self._loaded_meta = deepcopy(merged)
+
+    @_stash_transaction
     def create(self, labels: list[str] = None, scope: str = 'session', 
                ttl_days: int = None, owner: str = 'jarvis') -> dict:
         """Create a new space."""
@@ -519,6 +640,7 @@ class StashSpace:
         
         return self._meta
     
+    @_stash_transaction
     def touch(self):
         """Update last_used_at timestamp."""
         if self.exists:
@@ -526,6 +648,7 @@ class StashSpace:
             self._meta['last_used_at'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
             self._save_meta()
     
+    @_stash_transaction
     def update(self, ttl_days: int = None, pinned: bool = None, 
                labels: list[str] = None) -> dict:
         """Update space metadata."""
@@ -584,6 +707,7 @@ class StashSpace:
         
         return datetime.now(timezone.utc).replace(tzinfo=None) > expiry
     
+    @_stash_transaction
     def delete(self) -> int:
         """Delete the space and return freed bytes."""
         if not self.exists:
@@ -775,6 +899,7 @@ class StashFile:
         result.update(durable_meta)
         return result
     
+    @_stash_transaction
     def _save_data(self, data: bytes, name: str, mime_type: str,
                    on_conflict: str, tags: list[str], tool_origin: str) -> dict:
         """Internal method to save data."""
@@ -895,7 +1020,7 @@ class StashFile:
 # ============================================================================
 
 def open_space(space_id: str = None, labels: list[str] = None,
-               scope: str = 'session', ttl_days: int = None) -> tuple[StashSpace, bool]:
+               scope: str = 'session', ttl_days: int = None, lock_timeout: float = 10) -> tuple[StashSpace, bool]:
     """
     Open or create a stash space.
     
@@ -905,17 +1030,14 @@ def open_space(space_id: str = None, labels: list[str] = None,
     stash_dir = get_stash_dir()
     stash_dir.mkdir(parents=True, exist_ok=True)
     
-    if space_id:
-        space = StashSpace(space_id, stash_dir)
+    space_id = space_id or generate_space_id()
+    space = StashSpace(space_id, stash_dir)
+    with space.transaction(timeout=lock_timeout):
         if space.exists:
             space.touch()
             return space, False
-    else:
-        space_id = generate_space_id()
-    
-    space = StashSpace(space_id, stash_dir)
-    space.create(labels=labels, scope=scope, ttl_days=ttl_days)
-    return space, True
+        space.create(labels=labels, scope=scope, ttl_days=ttl_days)
+        return space, True
 
 
 def get_space(space_id: str) -> StashSpace:
@@ -1018,24 +1140,25 @@ def cleanup_expired(
         if item.is_dir() and item.name.startswith('space_'):
             try:
                 space = StashSpace(item.name, stash_dir)
-                if not space.exists:
-                    continue
-                if _migrate_retention_policy(space, dry_run=dry_run):
-                    migrated += 1
-                if item.name in protected_space_ids:
-                    protected += 1
-                    continue
-                if space.is_expired:
-                    expired += 1
-                    candidates.append(item.name)
-                    candidate_size = sum(
-                        path.stat().st_size
-                        for path in item.rglob('*')
-                        if path.is_file()
-                    )
-                    expired_queue.append(
-                        (_space_expires_at(space), item.name, space, candidate_size)
-                    )
+                with space.transaction():
+                    if not space.exists:
+                        continue
+                    if _migrate_retention_policy(space, dry_run=dry_run):
+                        migrated += 1
+                    if item.name in protected_space_ids:
+                        protected += 1
+                        continue
+                    if space.is_expired:
+                        expired += 1
+                        candidates.append(item.name)
+                        candidate_size = sum(
+                            path.stat().st_size
+                            for path in item.rglob('*')
+                            if path.is_file()
+                        )
+                        expired_queue.append(
+                            (_space_expires_at(space), item.name, space, candidate_size)
+                        )
             except Exception as exc:
                 errors.append({'space_id': item.name, 'error': str(exc)})
 
@@ -1044,13 +1167,27 @@ def cleanup_expired(
         if dry_run:
             freed += candidate_size
             continue
-        limit_reached = deleted >= max_delete_spaces
-        byte_limit_reached = deleted > 0 and freed + candidate_size > max_delete_bytes
-        if limit_reached or byte_limit_reached:
-            deferred += 1
-            continue
-        freed += space.delete()
-        deleted += 1
+        try:
+            with space.transaction():
+                # Scanning and deletion are separate: a writer may have saved,
+                # pinned, protected, or enlarged this space since it was queued.
+                if not space.exists:
+                    continue
+                if space.space_id in protected_space_ids:
+                    protected += 1
+                    continue
+                if not space.is_expired:
+                    continue
+                candidate_size = sum(path.stat().st_size for path in space.space_path.rglob('*') if path.is_file())
+                limit_reached = deleted >= max_delete_spaces
+                byte_limit_reached = deleted > 0 and freed + candidate_size > max_delete_bytes
+                if limit_reached or byte_limit_reached:
+                    deferred += 1
+                    continue
+                freed += space.delete()
+                deleted += 1
+        except Exception as exc:
+            errors.append({'space_id': space.space_id, 'error': str(exc)})
 
     return {
         'deleted_spaces': deleted,
@@ -1225,6 +1362,6 @@ def extract_filename_from_stash_ref(stash_ref: str) -> str | None:
         parts = stash_ref.replace("stash://", "").split("/")
         if len(parts) >= 2:
             return parts[-1]
-    except:
+    except Exception:
         pass
     return None

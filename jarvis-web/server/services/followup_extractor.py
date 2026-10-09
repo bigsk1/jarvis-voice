@@ -2823,6 +2823,20 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             if extracted:
                 followup[key] = extracted
             continue
+        if key.startswith('mcp_google_workspace_') and isinstance(value, (dict, list)):
+            from google_workspace import project_workspace_data
+
+            runs = value if isinstance(value, list) else [value]
+            selected = [run for run in runs[-3:] if isinstance(run, dict)]
+            projected = [project_workspace_data(
+                run, max_chars=7500 // max(1, len(selected)),
+            ) for run in selected]
+            if projected:
+                followup[key] = projected[0] if len(runs) == 1 else {
+                    'runs_count': len(runs), 'results': projected,
+                    'results_truncated': len(projected) < len(runs),
+                }
+            continue
         if key.startswith('mcp_malwarebytes_') and isinstance(value, (dict, list)):
             extracted = _extract_malwarebytes_followup(data, key, value)
             if extracted:

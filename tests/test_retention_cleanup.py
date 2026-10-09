@@ -3,6 +3,9 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
+from lib import stash_helper
 from lib.retention_cleanup import (
     cleanup_web_uploads,
     collect_conversation_asset_references,
@@ -172,3 +175,30 @@ def test_stash_cleanup_limits_backlog_deletion_per_run(tmp_path, monkeypatch):
     assert result["deferred_spaces"] == 1
     assert not older.space_path.exists()
     assert newer.space_path.exists()
+
+
+@pytest.mark.parametrize('change', ['touch', 'pin', 'protect'])
+def test_cleanup_rechecks_queued_space_before_deletion(tmp_path, monkeypatch, change):
+    root = tmp_path / 'stash'
+    space = stash_helper.StashSpace('space_changed', root)
+    space.create(ttl_days=1)
+    space.meta['last_used_at'] = '2025-01-01T00:00:00Z'
+    space._save_meta()
+    protected = set()
+    expires_at = stash_helper._space_expires_at
+    def changed_after_scan(candidate):
+        expiry = expires_at(candidate)
+        writer = stash_helper.StashSpace(candidate.space_id, root)
+        if change == 'touch':
+            StashFile(writer).save_text('new content', 'recent.txt')
+        elif change == 'pin':
+            writer.update(pinned=True)
+        else:
+            protected.add(candidate.space_id)
+        return expiry
+    monkeypatch.setattr(stash_helper, '_space_expires_at', changed_after_scan)
+    result = cleanup_expired(stash_dir=root, protected_space_ids=protected)
+    assert result['expired_spaces'] == 1
+    assert result['deleted_spaces'] == 0
+    assert result['errors'] == []
+    assert space.space_path.exists()

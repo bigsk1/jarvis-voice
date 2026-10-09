@@ -466,6 +466,10 @@ class ToolRegistry:
         self.mcp_clients: dict[str, Any] = {}
         self.mcp_manager = None
         self.mcp_unavailable: dict[str, str] = {}
+        from threading import Lock
+        self._mcp_recovery_lock = Lock()
+        self._mcp_retry_after: dict[str, float] = {}
+        self._mcp_server_config = {}
         self.last_tool_search_meta: dict[str, Any] = {
             "retrieval_mode": "hybrid",
             "semantic_disabled_reason": None,
@@ -597,6 +601,7 @@ class ToolRegistry:
             with open(self.mcp_config_path, 'r') as f:
                 config = json.load(f)
             
+            self._mcp_server_config = config.get("mcpServers", {})
             # Create manager (creates clients but doesn't start them)
             manager = MCPManager(self.mcp_config_path)
             self.mcp_manager = manager
@@ -657,20 +662,6 @@ class ToolRegistry:
             for server_name, client, previous_auto_restart in enabled_servers_sorted:
                 try:
                     server_config = config.get("mcpServers", {}).get(server_name, {})
-                    # A server-level allowlist survives profile changes and
-                    # keeps unreviewed upstream tools out of Tool RAG/runtime.
-                    allowed_tools = None
-                    if "allowed_tools" in server_config:
-                        configured_tools = server_config["allowed_tools"]
-                        if not isinstance(configured_tools, list) or not all(
-                            isinstance(name, str) and name.strip()
-                            for name in configured_tools
-                        ):
-                            raise ValueError("allowed_tools must be a list of nonempty tool names")
-                        allowed_tools = set(configured_tools)
-                    tool_metadata = server_config.get("tool_metadata", {})
-                    if not isinstance(tool_metadata, dict):
-                        tool_metadata = {}
                     # Get tools from started server
                     tools = client.list_tools()
 
@@ -693,41 +684,9 @@ class ToolRegistry:
                             pass
                         continue
                     
-                    # Store client for later use
-                    self.mcp_clients[server_name] = client
-                    
-                    # Register each MCP tool
-                    registered_count = 0
-                    for tool_info in tools:
-                        if allowed_tools is not None and tool_info['name'] not in allowed_tools:
-                            continue
-                        # Use underscores for compatibility with all LLM providers
-                        # (Anthropic doesn't allow dots in tool names)
-                        tool_name = f"mcp_{server_name}_{tool_info['name']}"
-                        metadata = tool_metadata.get(tool_info['name'], {})
-                        if not isinstance(metadata, dict):
-                            metadata = {}
-                        
-                        # Convert MCP tool to our ToolSchema format
-                        schema = ToolSchema(
-                            name=tool_name,
-                            description=tool_info.get('description', ''),
-                            parameters=tool_info.get('inputSchema', {}),
-                            script_path=f"__mcp__{server_name}__{tool_info['name']}",
-                            permissions={
-                                "dangerous": False,
-                                "bash": False,
-                                "network": True,
-                                "filesystem": False,
-                                "auto_approve": True
-                            },
-                            proxy_policy=getattr(client, "proxy_policy", "inherit"),
-                            web_search=metadata.get("web_search") is True,
-                        )
-                        
-                        self.tools[tool_name] = schema
-                        registered_count += 1
-                    
+                    registered_count = self._register_mcp_tools(server_name, client, server_config, tools)
+                    self.mcp_unavailable.pop(server_name, None)
+
                     if verbose:
                         print(f"  ✅ {server_name}: {registered_count} tools")
                 
@@ -748,6 +707,138 @@ class ToolRegistry:
             if verbose:
                 print(f"✗ MCP discovery failed: {str(e)[:80]}")
     
+    def _register_mcp_tools(self, server_name, client, server_config, tools) -> int:
+        """Use the same allowlist, account binding and profile for every discovery."""
+        # A server-level allowlist survives profile changes and
+        # keeps unreviewed upstream tools out of Tool RAG/runtime.
+        allowed_tools = None
+        if "allowed_tools" in server_config:
+            configured_tools = server_config["allowed_tools"]
+            if not isinstance(configured_tools, list) or not all(
+                isinstance(name, str) and name.strip()
+                for name in configured_tools
+            ):
+                raise ValueError("allowed_tools must be a list of nonempty tool names")
+            allowed_tools = set(configured_tools)
+        tool_metadata = server_config.get("tool_metadata", {})
+        if not isinstance(tool_metadata, dict):
+            tool_metadata = {}
+        # Store client for later use
+        self.mcp_clients = {**self.mcp_clients, server_name: client}
+        pending = {}
+
+        # Register each MCP tool
+        registered_count = 0
+        for tool_info in tools:
+            if allowed_tools is not None and tool_info['name'] not in allowed_tools:
+                continue
+            # Use underscores for compatibility with all LLM providers
+            # (Anthropic doesn't allow dots in tool names)
+            tool_name = f"mcp_{server_name}_{tool_info['name']}"
+            metadata = tool_metadata.get(tool_info['name'], {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+
+            # A configured single-account default need not be supplied
+            # by the model; the remote client supplies it on every call.
+            parameters = json.loads(json.dumps(tool_info.get('inputSchema', {})))
+            defaults = getattr(client, "tool_defaults", {})
+            description = tool_info.get('description', '')
+            for parameter, default in defaults.items():
+                if parameter in parameters.get("properties", {}):
+                    if server_name == "google_workspace" and parameter == "user_google_email":
+                        parameters["properties"].pop(parameter)
+                        description = (
+                            f"Uses Jarvis's dedicated Google account {default}. "
+                            "Jarvis supplies the authenticated account automatically; "
+                            "do not ask for or guess its login email. "
+                            "Recipient and sharing-target addresses are separate tool parameters.\n\n"
+                            + re.sub(r"(?m)^\s*user_google_email\s*\([^\n]*\n?", "", description)
+                        )
+                    else:
+                        parameters["properties"][parameter]["default"] = default
+                    parameters["required"] = [
+                        key for key in parameters.get("required", []) if key != parameter
+                    ]
+            if server_name == "google_workspace":
+                from google_workspace import extend_workspace_schema
+                description = extend_workspace_schema(tool_info["name"], parameters, description)
+            prefix = metadata.get("description_prefix")
+            if isinstance(prefix, str) and prefix.strip():
+                description = prefix.strip() + "\n\n" + description
+            annotations = tool_info.get("annotations") or {}
+            side_effect = server_name == "google_workspace" and (
+                annotations.get("readOnlyHint") is False or annotations.get("destructiveHint") is True
+            )
+            # The operator explicitly chose autonomous use of this dedicated
+            # account. Classify effects honestly without introducing a gate.
+            # Convert MCP tool to our ToolSchema format
+            schema = ToolSchema(
+                name=tool_name,
+                description=description,
+                parameters=parameters,
+                script_path=f"__mcp__{server_name}__{tool_info['name']}",
+                permissions={
+                    "dangerous": side_effect,
+                    "bash": False,
+                    "network": True,
+                    "filesystem": server_name == "google_workspace" and bool({"stash", "stash_ref"} & parameters.get("properties", {}).keys()),
+                    "auto_approve": True
+                },
+                proxy_policy=getattr(client, "proxy_policy", "inherit"),
+                web_search=metadata.get("web_search") is True,
+                prerequisite_tools=metadata.get("prerequisite_tools"),
+            )
+
+            if self._profile_overrides.get(tool_name) is not False:
+                pending[tool_name] = schema
+                registered_count += 1
+        # Publish together; existing readers can finish iterating their snapshot.
+        self.tools = {**self.tools, **pending}
+        return registered_count
+
+    def recover_unavailable_mcp(self) -> None:
+        """Retry opted-in HTTP servers during selection, never plain lookup.
+
+        Each server has its own three-second deadline and 30-second cooldown.
+        Concurrent selectors share one probe and then see the published tools.
+        Servers without retry_discovery retain their startup-only discovery.
+        """
+        import time
+
+        from mcp_client import probe_remote_tools
+
+        if not getattr(self, "mcp_unavailable", None) or not self.mcp_manager:
+            return
+        eligible = [name for name in list(self.mcp_unavailable)
+                    if self._mcp_server_config.get(name, {}).get("retry_discovery") is True]
+        if not eligible:
+            return
+        with self._mcp_recovery_lock:
+            recovered = []
+            for name in eligible:
+                if name not in self.mcp_unavailable or time.monotonic() < self._mcp_retry_after.get(name, 0):
+                    continue
+                client = self.mcp_manager.servers.get(name)
+                if client is None or getattr(client, "transport_type", None) != "http":
+                    continue
+                self._mcp_retry_after[name] = time.monotonic() + 30
+                try:
+                    tools = probe_remote_tools(client, timeout_seconds=3)
+                    if not tools:
+                        continue
+                    self._register_mcp_tools(name, client, self._mcp_server_config.get(name, {}), tools)
+                    self.mcp_unavailable.pop(name, None)
+                    recovered.extend(t for t in self.tools.values() if t.name.startswith(f"mcp_{name}_"))
+                except Exception:
+                    continue
+            if recovered:
+                try:
+                    from memory_db import get_memory_db
+                    get_memory_db().register_recovered_tools(recovered)
+                except Exception:
+                    _logger.warning("Recovered MCP tools; Tool RAG refresh failed", exc_info=True)
+
     def is_mcp_tool(self, tool_name: str) -> bool:
         """Check if a tool is an MCP tool."""
         return tool_name.startswith("mcp_")
@@ -806,6 +897,7 @@ class ToolRegistry:
         from config_loader import get_config_value, get_float
         from memory_db import get_memory_db
         
+        self.recover_unavailable_mcp()
         # Get prioritized "ghost" tools from config (or use defaults).
         ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember')
         CORE_TOOLS = _merged_ghost_tool_names(ghost_tools_str, set(self.tools.keys()))

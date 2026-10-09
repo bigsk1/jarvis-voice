@@ -1,0 +1,23 @@
+# Optional overlay for Jarvis itself running in Docker. Stop the standalone
+# Google Compose project first; run with --env-file .env --env-file google-workspace/.env.
+x-google-endpoint: &google-endpoint
+  JARVIS_OVERRIDE_GOOGLE_WORKSPACE_MCP_URL: http://google-workspace:8000/mcp
+
+services:
+  google-workspace:
+    extends:
+      file: google-workspace/compose.yaml
+      service: google-workspace
+    networks:
+      - jarvis-net
+
+  jarvis-api:
+    environment: *google-endpoint
+  jarvis-web:
+    environment: *google-endpoint
+  jarvis-services:
+    environment: *google-endpoint
+  jarvis-intelligence:
+    environment: *google-endpoint
+  jarvis-task-worker:
+    environment: *google-endpoint

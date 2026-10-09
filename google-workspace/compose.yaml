@@ -1,0 +1,37 @@
+name: jarvis-google-workspace
+
+services:
+  google-workspace:
+    build: .
+    image: jarvis-google-workspace:2.0.1
+    restart: unless-stopped
+    init: true
+    user: "${GOOGLE_WORKSPACE_UID:-1000}:${GOOGLE_WORKSPACE_GID:-1000}"
+    ports:
+      - "127.0.0.1:8765:8000"
+    environment:
+      HOME: /app/store_creds
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      USER_GOOGLE_EMAIL: ${GOOGLE_ACCOUNT:?Run bin/jarvis-google prepare first}
+      JARVIS_GOOGLE_MCP_TOKEN: ${GOOGLE_WORKSPACE_MCP_TOKEN:?Run bin/jarvis-google prepare first}
+      GOOGLE_MCP_CREDENTIALS_DIR: /app/store_creds/credentials
+      WORKSPACE_ATTACHMENT_DIR: /app/store_creds/attachments
+      WORKSPACE_MCP_LOG_DIR: /app/store_creds/logs
+      WORKSPACE_MCP_HOST: 0.0.0.0
+      WORKSPACE_MCP_PORT: "8000"
+      WORKSPACE_MCP_PORT_FALLBACK_COUNT: "0"
+      WORKSPACE_EXTERNAL_URL: http://localhost:8765
+      GOOGLE_OAUTH_REDIRECT_URI: http://localhost:8765/oauth2callback
+      OAUTHLIB_INSECURE_TRANSPORT: "1"
+      MCP_ENABLE_OAUTH21: "false"
+      WORKSPACE_MCP_LOG_LEVEL: WARNING
+    volumes:
+      - type: bind
+        source: ./data
+        target: /app/store_creds
+        bind:
+          create_host_path: false
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
