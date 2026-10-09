@@ -1,0 +1,25 @@
+{
+  "enabled": false,
+  "server_url": "https://ntfy.example.com",
+  "publisher_token": "REPLACE_WITH_WRITE_ONLY_NTFY_TOKEN",
+  "poll_seconds": 15,
+  "request_timeout_seconds": 10,
+  "max_attempts": 5,
+  "include_descriptions": false,
+  "alerts": {
+    "enabled": true,
+    "topic": "jarvis-alerts",
+    "severities": ["high", "critical"],
+    "max_age_seconds": 1800
+  },
+  "reminders": {
+    "enabled": true,
+    "topic": "jarvis-reminders",
+    "max_age_seconds": 3600
+  },
+  "background_tasks": {
+    "enabled": false,
+    "topic": "jarvis-tasks",
+    "max_age_seconds": 3600
+  }
+}

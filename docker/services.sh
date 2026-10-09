@@ -62,6 +62,8 @@ start_daemon reminder_scheduler services/reminder_scheduler.py
 sleep 1
 start_daemon scheduled_task_runner services/scheduled_task_runner.py
 sleep 1
+start_daemon ntfy_notifications services/ntfy_notifications.py
+sleep 1
 start_daemon self_healing_daemon services/self_healing_daemon.py
 
 echo "Jarvis background services are running in foreground mode."

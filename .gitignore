@@ -8,6 +8,7 @@ config/*.env
 *.key
 *.pem
 config/contacts.json
+config/ntfy.json
 config/webhook_registry.json
 config/elevenlabs_voices.json
 config/ssh.json

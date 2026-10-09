@@ -85,6 +85,11 @@ MONITORED_DAEMONS = {
         "script": "scheduled_task_runner.py",
         "restart": True,
     },
+    "ntfy_notifications": {
+        "pid_file": "logs/ntfy_notifications.pid",
+        "script": "ntfy_notifications.py",
+        "restart": True,
+    },
     "jarvis_api": {
         "pid_file": "logs/jarvis-api.pid",
         "script": "server.py",  # API runs as python3 server.py
@@ -225,6 +230,7 @@ def speak_daemon_down(daemon_name: str, project_root: Path, mode: str, will_rest
         "reminder_scheduler": "the reminder scheduler",
         "follow_up_daemon": "the follow-up daemon",
         "scheduled_task_runner": "the scheduled task runner",
+        "ntfy_notifications": "the phone notification worker",
         "jarvis_api": "the Jarvis API",
     }
     
@@ -245,6 +251,7 @@ def speak_daemon_recovered(daemon_name: str, project_root: Path, mode: str):
         "reminder_scheduler": "The reminder scheduler",
         "follow_up_daemon": "The follow-up daemon",
         "scheduled_task_runner": "The scheduled task runner",
+        "ntfy_notifications": "The phone notification worker",
         "jarvis_api": "The Jarvis API",
     }
     

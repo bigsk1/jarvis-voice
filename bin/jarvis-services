@@ -1,6 +1,6 @@
 #!/bin/bash
 # Start Jarvis Background Services
-# Runs follow-up, self-healing, reminder, and scheduled-task daemons
+# Runs follow-up, self-healing, reminder, scheduled-task, and optional phone delivery daemons
 #
 # Usage:
 #   ./bin/jarvis-services         # Cloud mode (default)
@@ -42,12 +42,14 @@ FOLLOW_UP_PID="$PIDDIR/follow_up_daemon.pid"
 SELF_HEALING_PID="$PIDDIR/self_healing_daemon.pid"
 REMINDER_PID="$PIDDIR/reminder_scheduler.pid"
 SCHEDULED_TASK_PID="$PIDDIR/scheduled_task_runner.pid"
+NTFY_PID="$PIDDIR/ntfy_notifications.pid"
 
 # Service scripts
 FOLLOW_UP_SCRIPT="$PROJECT_ROOT/services/follow_up_daemon.py"
 SELF_HEALING_SCRIPT="$PROJECT_ROOT/services/self_healing_daemon.py"
 REMINDER_SCRIPT="$PROJECT_ROOT/services/reminder_scheduler.py"
 SCHEDULED_TASK_SCRIPT="$PROJECT_ROOT/services/scheduled_task_runner.py"
+NTFY_SCRIPT="$PROJECT_ROOT/services/ntfy_notifications.py"
 
 # Stop services function
 stop_services() {
@@ -99,6 +101,16 @@ stop_services() {
         rm -f "$SCHEDULED_TASK_PID"
     fi
     
+    if [ -f "$NTFY_PID" ]; then
+        PID=$(cat "$NTFY_PID")
+        if kill -0 "$PID" 2>/dev/null; then
+            kill "$PID" 2>/dev/null
+            echo -e "${GREEN}✅ Stopped phone notification worker (PID $PID)${NC}"
+            stopped_count=$((stopped_count + 1))
+        fi
+        rm -f "$NTFY_PID"
+    fi
+
     if [ $stopped_count -eq 0 ]; then
         echo -e "${YELLOW}No services were running${NC}"
     else
@@ -175,10 +187,21 @@ show_status() {
     fi
     
     echo ""
-    if [ $running_count -eq 4 ]; then
-        echo -e "${GREEN}All 4 services running${NC}"
+    if [ -f "$NTFY_PID" ]; then
+        PID=$(cat "$NTFY_PID")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo -e "  phone notifications ${GREEN}RUNNING${NC}  (PID $PID; delivery requires config)"
+            running_count=$((running_count + 1))
+        else
+            echo -e "  phone notifications ${RED}STOPPED${NC}  (stale PID file)"
+        fi
+    else
+        echo -e "  phone notifications ${RED}STOPPED${NC}"
+    fi
+    if [ $running_count -eq 5 ]; then
+        echo -e "${GREEN}All 5 services running${NC}"
     elif [ $running_count -gt 0 ]; then
-        echo -e "${YELLOW}$running_count of 4 services running${NC}"
+        echo -e "${YELLOW}$running_count of 5 services running${NC}"
     else
         echo -e "${RED}No services running${NC}"
     fi
@@ -244,6 +267,14 @@ if [ -f "$SCHEDULED_TASK_PID" ]; then
     PID=$(cat "$SCHEDULED_TASK_PID")
     if kill -0 "$PID" 2>/dev/null; then
         echo -e "${YELLOW}⚠️  Scheduled task runner already running (PID $PID)${NC}"
+        already_running=true
+    fi
+fi
+
+if [ -f "$NTFY_PID" ]; then
+    PID=$(cat "$NTFY_PID")
+    if kill -0 "$PID" 2>/dev/null; then
+        echo -e "${YELLOW}⚠️  Phone notification worker already running (PID $PID)${NC}"
         already_running=true
     fi
 fi
@@ -358,7 +389,14 @@ echo -e "${GREEN}  ✅ Scheduled task runner started (PID $(cat $SCHEDULED_TASK_
 # Wait a second between starts
 sleep 1
 
-# Start self-healing daemon last so sibling monitoring starts after other daemons exist
+# Start optional phone delivery before the sibling supervisor.
+echo -e "${BLUE}▶ Starting optional phone notification worker...${NC}"
+nohup python3 -u "$NTFY_SCRIPT" >> "$PROJECT_ROOT/logs/ntfy_notifications.log" 2>&1 &
+echo $! > "$NTFY_PID"
+echo -e "${GREEN}  ✅ Phone notification worker started (PID $(cat "$NTFY_PID"))${NC}"
+sleep 1
+
+# Start self-healing last so sibling monitoring sees every daemon.
 echo -e "${BLUE}▶ Starting self-healing daemon...${NC}"
 nohup python3 -u "$SELF_HEALING_SCRIPT" >> "$PROJECT_ROOT/logs/self_healing_daemon.log" 2>&1 &
 echo $! > "$SELF_HEALING_PID"
@@ -371,6 +409,7 @@ echo -e "${BLUE}Services:${NC}"
 echo -e "  • Follow-up daemon: Re-alerts for pending alerts (15-60 min intervals)"
 echo -e "  • Reminder scheduler: Triggers time-based reminders"
 echo -e "  • Scheduled task runner: Executes due queries and workflows"
+echo -e "  • Phone notifications: Optional ntfy delivery (config/ntfy.json)"
 echo -e "  • Self-healing daemon: Auto-resolves alerts and restarts sibling daemons"
 echo ""
 echo -e "${BLUE}Logs:${NC}"
@@ -378,6 +417,7 @@ echo -e "  tail -f $PROJECT_ROOT/logs/follow_up_daemon.log"
 echo -e "  tail -f $PROJECT_ROOT/logs/self_healing_daemon.log"
 echo -e "  tail -f $PROJECT_ROOT/logs/reminder_scheduler.log"
 echo -e "  tail -f $PROJECT_ROOT/logs/scheduled_task_runner.log"
+echo -e "  tail -f $PROJECT_ROOT/logs/ntfy_notifications.log"
 echo ""
 echo -e "${BLUE}Management:${NC}"
 echo -e "  Stop all: ${YELLOW}./bin/jarvis-services --stop${NC}"

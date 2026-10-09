@@ -65,7 +65,7 @@ The worker also retains its **`background-tasks`** profile for core-only deploym
 | `jarvis-web` | yes | yes | Main chat UI (`:5001`) |
 | `jarvis-library-worker` | yes | yes | Separate Source Library import/index loop; no Web startup dependency |
 | `jarvis-canvas` | yes | yes | Canvas viewer (`:8890`) |
-| `jarvis-services` | yes | yes | Background daemons — reminders, follow-up, scheduled tasks, self-healing |
+| `jarvis-services` | yes | yes | Background daemons — reminders, follow-up, scheduled tasks, self-healing, optional ntfy delivery |
 | `jarvis-memory` | — | yes | Memory browser UI (`:5002`) |
 | `jarvis-intelligence` | — | yes | Intelligence dashboard (`:5003`) |
 | `jarvis-docs` | — | yes | Docs reader (`:5004`) |
@@ -143,6 +143,10 @@ media use their existing skill runners, subject to the selected container profil
 dependencies and provider/network configuration. Compose rendering and worker
 isolation have focused tests. A live Windows Docker `generate_image` background
 journey has also been exercised; other tool journeys are not claimed here.
+
+The services container also runs the optional [ntfy phone notification worker](../NTFY_NOTIFICATIONS.md).
+Delivery defaults off and uses private `config/ntfy.json` through the existing
+read-only config mount. Its delivery receipts persist under `data/`.
 
 The FastAPI container includes the Phase 3a authenticated task-callback receiver.
 Web, API and worker share the task database and credential keyring through `./data`.
@@ -546,7 +550,7 @@ All services use `restart: unless-stopped`. If Docker is running, you intend the
 | `jarvis-api` | FastAPI, webhooks, workflows |
 | `jarvis-web` | Main chat UI |
 | `jarvis-canvas` | Canvas viewer |
-| `jarvis-services` | Reminder, follow-up, scheduled tasks, self-healing (foreground wrapper) |
+| `jarvis-services` | Reminder, follow-up, scheduled tasks, self-healing, optional ntfy delivery (foreground wrapper) |
 | `jarvis-memory` | Memory browser (extras) |
 | `jarvis-intelligence` | Intelligence dashboard (extras) |
 | `jarvis-docs` | Docs reader (extras) |

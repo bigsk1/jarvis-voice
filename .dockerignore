@@ -13,6 +13,7 @@
 **/*.env
 config/*.env
 config/contacts.json
+config/ntfy.json
 config/webhook_registry.json
 config/webhook_registry.json.template
 config/elevenlabs_voices.json
