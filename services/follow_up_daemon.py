@@ -49,6 +49,8 @@ def retry_on_db_lock(func, max_retries=5, base_delay=1.0):
                 time.sleep(delay)
             else:
                 raise
+    if last_error is None:
+        raise ValueError("max_retries must be at least 1")
     raise last_error
 
 

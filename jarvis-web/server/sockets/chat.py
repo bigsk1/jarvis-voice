@@ -2708,10 +2708,10 @@ Previous structured data:
             message_id = data.get('message_id')
             run = self.runs.cancel(conversation_id, message_id, self.pending_cancellations)
             if run:
-                emit('cancel:ack', run, room=session_id)
+                emit('cancel:ack', run, to=session_id)
             else:
                 emit('cancel:ack', {'message_id': message_id, 'conversation_id': conversation_id,
-                                    'status': 'not_running'}, room=session_id)
+                                    'status': 'not_running'}, to=session_id)
 
         @self.socketio.on('chat:send')
         def handle_chat_send(data):
@@ -5224,7 +5224,7 @@ Mode: {mode}
             except Exception as emit_err:
                 print(f"[FEEDBACK] ERROR emitting feedback:complete: {emit_err}")
     
-    def _generate_tts(self, text: str, mode: str = None) -> str:
+    def _generate_tts(self, text: str, mode: str | None = None) -> str | None:
         """Generate TTS audio and return URL - mode-aware"""
         try:
             from datetime import datetime
@@ -5279,7 +5279,7 @@ Mode: {mode}
             import traceback
             traceback.print_exc()
             return None
-    def _local_tts(self, text: str, output_dir: Path, timestamp: str, tts_url: str) -> Path:
+    def _local_tts(self, text: str, output_dir: Path, timestamp: str, tts_url: str) -> Path | None:
         """Generate TTS using local/Kokoro API (OpenAI-compatible)"""
         import requests
         from ..config import get_jarvis_setting
@@ -5309,7 +5309,7 @@ Mode: {mode}
             print(f"[CHAT] Local TTS failed: {e}")
             return None
     
-    def _qwen3_tts(self, text: str, output_dir: Path, timestamp: str) -> Path:
+    def _qwen3_tts(self, text: str, output_dir: Path, timestamp: str) -> Path | None:
         """Generate TTS using Qwen3-TTS API (OpenAI-compatible on local network)"""
         import requests
         from ..config import get_jarvis_setting
@@ -5349,7 +5349,7 @@ Mode: {mode}
             print(f"[CHAT] Qwen3-TTS failed: {e}")
             return None
     
-    def _elevenlabs_tts(self, text: str, output_dir: Path, timestamp: str) -> Path:
+    def _elevenlabs_tts(self, text: str, output_dir: Path, timestamp: str) -> Path | None:
         """Generate TTS using ElevenLabs API"""
         import requests
         from ..config import get_jarvis_setting
@@ -5418,7 +5418,7 @@ Mode: {mode}
         
         return output_path
 
-    def _xai_tts(self, text: str, output_dir: Path, timestamp: str) -> Path:
+    def _xai_tts(self, text: str, output_dir: Path, timestamp: str) -> Path | None:
         """Generate TTS using xAI's native TTS API."""
         import requests
         from ..config import get_jarvis_setting
@@ -5474,7 +5474,7 @@ Mode: {mode}
 
         return output_path
     
-    def _openai_tts(self, text: str, output_dir: Path, timestamp: str) -> Path:
+    def _openai_tts(self, text: str, output_dir: Path, timestamp: str) -> Path | None:
         """Generate TTS using OpenAI API"""
         import requests
         from ..config import get_jarvis_setting
@@ -5512,7 +5512,7 @@ Mode: {mode}
         
         return output_path
 
-    def _auto_stash_image(self, image_data: dict, vision_analysis: str = '', mode: str = 'cloud') -> dict:
+    def _auto_stash_image(self, image_data: dict, vision_analysis: str = '', mode: str = 'cloud') -> dict | None:
         """
         Auto-stash uploaded image for future tool access.
         Also adds to memory_db as stash_artifact for cross-session recall.
@@ -5779,7 +5779,7 @@ Mode: {mode}
         image_data['images'] = hydrated_images
         return None
 
-    def _process_vision(self, images_base64: list[str], prompt: str, mode: str) -> str:
+    def _process_vision(self, images_base64: list[str], prompt: str, mode: str) -> str | None:
         """
         Process one or more images with a vision model.
         Returns the vision model's description/analysis.
