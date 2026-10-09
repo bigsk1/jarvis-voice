@@ -67,6 +67,7 @@ class JarvisApp {
    */
   _initialize() {
     this.profileAppearance = window.ProfileAppearance ? new window.ProfileAppearance() : null;
+    this.ntfyStatus = window.NtfyStatusCard ? new window.NtfyStatusCard() : null;
     this.talk = window.TalkController ? new window.TalkController({ app: this, chat: this.chat, socket: this.socket }) : null;
     this.promptLibrary = window.PromptLibrary ? new window.PromptLibrary(this) : null;
     this._setupSocketListeners();
@@ -422,6 +423,7 @@ class JarvisApp {
       }
       if (document.getElementById('settings-profile')?.classList.contains('active')) {
         this._loadTailscaleStatus();
+        this.ntfyStatus?.refresh();
       }
       if (document.getElementById('settings-prompts')?.classList.contains('active')) {
         void this.promptLibrary?.setActive(true);
@@ -477,6 +479,7 @@ class JarvisApp {
           this.profileAppearance?.load();
           this._loadUserProfileSummary();
           this._loadTailscaleStatus();
+          this.ntfyStatus?.refresh();
         }
       });
     });

@@ -4476,6 +4476,16 @@ button.tool-item:focus-visible {
   outline-offset: 2px;
 }
 
+.ntfy-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+#ntfy-test-result:empty {
+  display: none;
+}
+
 @media (max-width: 480px) {
   .tailscale-status {
     grid-template-columns: minmax(0, 1fr);

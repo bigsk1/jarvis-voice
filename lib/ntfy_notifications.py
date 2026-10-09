@@ -9,6 +9,7 @@ import os
 import re
 import sqlite3
 import stat
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -144,6 +145,21 @@ def _source(path: Path) -> sqlite3.Connection:
 def _timestamp(value: str) -> float:
     # Alert timestamps are host-local naive dates; reminder timestamps carry UTC.
     return datetime.fromisoformat(value).timestamp()
+
+
+def write_worker_status(root: Path, mode: str, state: str, poll_seconds: int) -> None:
+    """Private shared heartbeat, readable across native/Docker process namespaces."""
+    folder = root / "logs"
+    folder.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".ntfy-status-", dir=folder)
+    try:
+        with os.fdopen(fd, "w") as output:
+            json.dump({"mode": mode, "state": state, "updated_at": time.time(),
+                       "poll_seconds": poll_seconds}, output)
+        os.replace(temporary, folder / "ntfy_notifications.status.json")
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 class NotificationWorker:

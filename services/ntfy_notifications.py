@@ -14,7 +14,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from lib.config_loader import get_active_config_mode  # noqa: E402
-from lib.ntfy_notifications import NotificationWorker, load_config  # noqa: E402
+from lib.ntfy_notifications import (  # noqa: E402
+    NotificationWorker,
+    load_config,
+    write_worker_status,
+)
 
 LOCK_RETRY_SECONDS = 15
 
@@ -54,15 +58,24 @@ def main():
     try:
         if not acquire_delivery_lock(lock, stop, once=args.once):
             return 0
+        worker = None
+        interval = 15
         try:
             worker = NotificationWorker(PROJECT_ROOT, get_active_config_mode())
             logging.info("ntfy worker started (%s); phone delivery requires private config", worker.mode)
             previous_errors = None
+            interval = 15
             while not stop.is_set():
                 interval = 15
+                enabled = False
                 try:
                     config = load_config(PROJECT_ROOT / "config" / "ntfy.json")
                     interval = config["poll_seconds"]
+                    enabled = config["enabled"]
+                    try:
+                        write_worker_status(PROJECT_ROOT, worker.mode, "checking", interval)
+                    except OSError:
+                        pass  # Diagnostics must not prevent notification delivery.
                     stats = worker.cycle(config)
                     if stats["delivered"] or stats["suppressed"]:
                         logging.info("ntfy delivered=%s suppressed=%s", stats["delivered"], stats["suppressed"])
@@ -70,6 +83,12 @@ def main():
                 except Exception as exc:
                     # Never print exception messages: malformed config can contain secrets.
                     errors = (f"ntfy worker {type(exc).__name__}",)
+                try:
+                    write_worker_status(PROJECT_ROOT, worker.mode,
+                                        "degraded" if errors else "ready" if enabled else "disabled",
+                                        interval)
+                except OSError:
+                    errors = (*errors, "ntfy heartbeat unavailable")
                 if errors != previous_errors:
                     if errors:
                         logging.warning("; ".join(errors))
@@ -80,6 +99,11 @@ def main():
                     return 1 if errors else 0
                 stop.wait(interval)
         finally:
+            try:
+                if worker is not None:
+                    write_worker_status(PROJECT_ROOT, worker.mode, "stopped", interval)
+            except OSError:
+                pass
             lock.release()
     except Timeout:
         logging.warning("Another ntfy worker owns the delivery lock")

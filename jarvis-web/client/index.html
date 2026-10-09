@@ -1050,6 +1050,21 @@
                 </div>
                 <button type="button" class="btn-secondary tailscale-refresh-btn" id="refreshTailscaleStatusBtn" aria-label="Refresh Tailscale status">Refresh</button>
               </section>
+              <section class="tailscale-status ntfy-status" id="ntfy-status" data-tone="neutral" aria-label="ntfy phone notifications">
+                <div class="tailscale-status-copy" role="status" aria-live="polite" aria-atomic="true">
+                  <div class="tailscale-status-heading">
+                    <span aria-hidden="true">🔔</span>
+                    <span>ntfy</span>
+                    <span class="tailscale-status-pill" id="ntfy-status-label">Not checked</span>
+                  </div>
+                  <p id="ntfy-status-detail">Open Profile to check phone notifications.</p>
+                  <p id="ntfy-test-result"></p>
+                </div>
+                <div class="ntfy-status-actions">
+                  <button type="button" class="btn-secondary tailscale-refresh-btn" id="refreshNtfyStatusBtn">Refresh</button>
+                  <button type="button" class="btn-secondary tailscale-refresh-btn" id="testNtfyBtn" disabled>Send test</button>
+                </div>
+              </section>
             </div>
 
             <div class="profile-section">
@@ -1476,6 +1491,7 @@
   <script src="/js/proactive.js"></script>
   <script src="/js/logs.js"></script>
   <script src="/js/profile-appearance.js"></script>
+  <script src="/js/ntfy-status.js"></script>
   <script src="/js/talk-capture.js"></script>
   <script src="/js/talk.js"></script>
   <script src="/js/task-manager.js"></script>

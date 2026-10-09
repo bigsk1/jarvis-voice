@@ -1,5 +1,6 @@
 """Process-level regressions for lock contention in the supervised ntfy daemon."""
 
+import json
 import os
 import signal
 import subprocess
@@ -81,6 +82,7 @@ def test_contending_daemon_stays_alive_without_scanning_and_stops_cleanly(
         assert log.read_text().count('owns the delivery lock; waiting') == 1
         assert not scanned.exists()
         assert not (tmp_path / 'data/ntfy_notifications.db').exists()
+        assert not (tmp_path / 'logs/ntfy_notifications.status.json').exists()
         process.send_signal(shutdown_signal)
         assert process.wait(timeout=5) == 0
         assert not scanned.exists()
@@ -95,6 +97,7 @@ def test_waiting_daemon_takes_over_after_owner_stops_and_releases_lock(tmp_path,
     # Several retries must not flood logs or terminate the standby daemon.
     time.sleep(0.2)
     assert standby.poll() is None
+    assert (tmp_path / 'logs/ntfy_notifications.status.json').exists()
     assert standby_log.read_text().count('owns the delivery lock; waiting') == 1
     assert not standby_scanned.exists()
     lock = FileLock(tmp_path / 'data/ntfy_notifications.db.lock')
@@ -109,5 +112,6 @@ def test_waiting_daemon_takes_over_after_owner_stops_and_releases_lock(tmp_path,
         lock.acquire(timeout=0)
     standby.terminate()
     assert standby.wait(timeout=5) == 0
+    assert json.loads((tmp_path / 'logs/ntfy_notifications.status.json').read_text())['state'] == 'stopped'
     with lock.acquire(timeout=0):
         pass

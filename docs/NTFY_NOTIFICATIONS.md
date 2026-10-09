@@ -52,6 +52,26 @@ to the phone are not recalled when their source resolves.
 
 ## Running the worker
 
+Web **Settings → Profile → System Info** shows an ntfy card below Tailscale.
+It reports private configuration readiness, HTTPS server health, and the worker's
+shared heartbeat. Checks run when Profile opens or **Refresh** is clicked;
+opening the card never sends a notification. Health results are cached for 15
+seconds. An online server does not by itself verify publishing credentials or
+phone delivery.
+
+**Send test** publishes one labeled notification to the first enabled category's
+topic (alerts, then reminders, then background tasks). It works independently of
+the event worker to help diagnose delivery. The API requires the normal Web
+authentication, uses the configured publisher token without returning it to the
+browser, and limits tests to one attempt per 30 seconds. A receipt means ntfy
+accepted the test; confirm its arrival on the phone to verify push delivery.
+
+The heartbeat is `logs/ntfy_notifications.status.json`, written privately and
+atomically by the worker that owns the delivery lock. Stale/missing status is
+shown as unverified rather than presumed healthy. Restart the worker after
+upgrading to pick up heartbeat reporting; Docker Web reads the shared file
+without requiring a Docker socket or host process access.
+
 The native `bin/jarvis-services` launcher starts/stops/reports the worker alongside
 the existing daemons, and self-healing can restart it. Docker's `jarvis-services`
 container starts it with `docker/services.sh`; that container's existing restart

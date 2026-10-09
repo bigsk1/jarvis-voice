@@ -714,6 +714,31 @@ def get_tailscale_status_route():
     return response
 
 
+@api_bp.route('/ntfy/status', methods=['GET'])
+@require_auth
+def get_ntfy_status_route():
+    from ..services.ntfy_status import get_ntfy_status
+
+    response = jsonify(get_ntfy_status())
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
+
+
+@api_bp.route('/ntfy/test', methods=['POST'])
+@require_auth
+def send_ntfy_test_route():
+    from ..services.ntfy_status import send_ntfy_test
+
+    if request.mimetype != 'application/json' or request.get_json(silent=True) != {}:
+        return jsonify({'ok': False, 'error': 'Submit an empty JSON object.'}), 400
+    result, status = send_ntfy_test()
+    response = jsonify(result)
+    response.headers['Cache-Control'] = 'private, no-store'
+    if status == 429:
+        response.headers['Retry-After'] = '30'
+    return response, status
+
+
 @api_bp.route('/logs/folders', methods=['GET'])
 def list_log_folders():
     """List folders under logs/ that contain supported view-only files."""
