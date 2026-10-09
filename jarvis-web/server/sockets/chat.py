@@ -154,6 +154,10 @@ def _scoped_by_mode(method):
         web_config = load_web_config()
         mode_overrides = web_config.get(mode, {}) if isinstance(web_config, dict) else {}
         scoped_overrides = {}
+        # Reuse the Web block list during registry discovery/recovery, before
+        # the same list is passed to the executor. No process-global mutation.
+        web_tools = web_config.get('tools', {}) if isinstance(web_config, dict) else {}
+        blocked_tools = web_tools.get('blocked', []) if isinstance(web_tools, dict) else []
         key_map = {
             'router_prompt_version': 'JARVIS_ROUTER_PROMPT_VERSION',
             'thinking_effort': 'JARVIS_THINKING_EFFORT',
@@ -235,7 +239,7 @@ def _scoped_by_mode(method):
         if (arguments.get('prompt_meta') or {}).get('input_mode') == 'talk':
             scoped_overrides['JARVIS_RESPONSE_STYLE'] = 'casual'
 
-        from config_loader import config_scope
+        from config_loader import config_override_scope, config_scope, get_config_value
         from embeddings import embedding_status_scope
 
         record = arguments.get('record') or {}
@@ -257,7 +261,13 @@ def _scoped_by_mode(method):
 
         callback = embedding_status_callback if session_id and message_id else None
         with config_scope(mode, overrides=scoped_overrides), embedding_status_scope(callback):
-            return method(*args, **kwargs)
+            effective_blocks = {
+                name.strip() for name in (get_config_value('BLOCKED_TOOLS', '') or '').split(',') if name.strip()
+            }
+            if isinstance(blocked_tools, list):
+                effective_blocks.update(name.strip() for name in blocked_tools if isinstance(name, str) and name.strip())
+            with config_override_scope({'BLOCKED_TOOLS': ','.join(sorted(effective_blocks))}):
+                return method(*args, **kwargs)
 
     return wrapper
 
@@ -4488,7 +4498,8 @@ Previous structured data:
             # This allows searching/filtering conversations by web chat session
             orchestrator.set_web_conversation_id(conversation_id)
             self._install_tool_approval(orchestrator, conversation_id, message_id)
-            blocked_tools = list(get_web_setting('tools.blocked', []))
+            from config_loader import get_config_value
+            blocked_tools = [name.strip() for name in get_config_value('BLOCKED_TOOLS', '').split(',') if name.strip()]
             background_tools = [
                 name for name in prompt_meta.get('background_tools', [])
                 if name not in blocked_tools

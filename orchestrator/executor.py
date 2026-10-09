@@ -171,6 +171,9 @@ class ToolExecutor:
     def set_excluded_tools(self, excluded_tools: list[str] | None = None):
         """Set request-scoped tools that must remain hidden from discovery."""
         self.excluded_tools = {str(name).strip() for name in (excluded_tools or []) if str(name).strip()}
+        stop_disallowed = getattr(self.registry, "stop_disallowed_mcp", None)
+        if callable(stop_disallowed):
+            stop_disallowed(self.excluded_tools)
 
     def set_workflow_runtime(
         self,

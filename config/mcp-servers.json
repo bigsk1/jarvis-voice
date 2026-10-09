@@ -56,10 +56,11 @@
       "url": "https://mcp.deepwiki.com/mcp",
       "proxy_policy": "prefer",
       "description": "Public GitHub repository documentation and code Q&A through DeepWiki. Prefer focused questions; indexed documentation may lag the latest source revision.",
-      "enabled": true
+      "enabled": false
     },
     "fetch": {
       "command": "docker",
+      "retry_discovery": true,
       "args": [
         "run",
         "-i",
@@ -74,6 +75,7 @@
     },
     "brave_search": {
       "command": "docker",
+      "retry_discovery": true,
       "args": [
         "run",
         "-e",

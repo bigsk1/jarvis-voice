@@ -8,6 +8,7 @@ import logging
 import os
 import re
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 from http_client import normalize_proxy_policy
@@ -686,6 +687,8 @@ class ToolRegistry:
                     
                     registered_count = self._register_mcp_tools(server_name, client, server_config, tools)
                     self.mcp_unavailable.pop(server_name, None)
+                    if not self._mcp_has_permitted_tools(server_name):
+                        client.stop()
 
                     if verbose:
                         print(f"  ✅ {server_name}: {registered_count} tools")
@@ -797,8 +800,29 @@ class ToolRegistry:
         self.tools = {**self.tools, **pending}
         return registered_count
 
+    def _mcp_has_permitted_tools(self, server_name: str, excluded_tools: set[str] | tuple[str, ...] = ()) -> bool:
+        """Use the registered catalog/profile plus the active mode's block list."""
+        from config_loader import get_config_value
+        blocked = {value.strip() for value in get_config_value("BLOCKED_TOOLS", "").split(",")} | set(excluded_tools)
+        prefix = f"mcp_{server_name}_"
+        return any(
+            name.startswith(prefix) and name not in blocked
+            and self.get_mcp_info(name)[0] == server_name
+            and tool.permissions.get("enabled", True)
+            for name, tool in self.tools.items()
+        )
+
+    def stop_disallowed_mcp(self, excluded_tools: set[str] | tuple[str, ...] = ()) -> None:
+        """Stop unused clients using the same exclusions supplied to execution."""
+        for name, client in list(self.mcp_clients.items()):
+            if not self._mcp_has_permitted_tools(name, excluded_tools):
+                locked = getattr(getattr(client, "lock", None), "locked", None)
+                if (callable(locked) and locked()) or getattr(client, "_call_budgets", None):
+                    continue  # Finish an already accepted call before idle cleanup.
+                client.stop()
+
     def recover_unavailable_mcp(self) -> None:
-        """Retry opted-in HTTP servers during selection, never plain lookup.
+        """Retry opted-in HTTP/Docker servers during selection, never plain lookup.
 
         Each server has its own three-second deadline and 30-second cooldown.
         Concurrent selectors share one probe and then see the published tools.
@@ -806,7 +830,12 @@ class ToolRegistry:
         """
         import time
 
-        from mcp_client import probe_remote_tools
+        from mcp_client import (
+            MCPClient,
+            probe_remote_tools,
+            probe_stdio_tools,
+            server_configuration_status,
+        )
 
         if not getattr(self, "mcp_unavailable", None) or not self.mcp_manager:
             return
@@ -820,17 +849,33 @@ class ToolRegistry:
                 if name not in self.mcp_unavailable or time.monotonic() < self._mcp_retry_after.get(name, 0):
                     continue
                 client = self.mcp_manager.servers.get(name)
-                if client is None or getattr(client, "transport_type", None) != "http":
+                server_config = self._mcp_server_config.get(name, {})
+                if client is None or not server_configuration_status(server_config)[0]:
+                    continue
+                remote = getattr(client, "transport_type", None) == "http"
+                docker = isinstance(client, MCPClient) and client.command == "docker" and "run" in client.args
+                if not remote and not docker:
                     continue
                 self._mcp_retry_after[name] = time.monotonic() + 30
                 try:
-                    tools = probe_remote_tools(client, timeout_seconds=3)
+                    if docker:
+                        # A timed-out probe can finish cleanup later. Give each
+                        # attempt its own client so it cannot stop a successor.
+                        client = MCPClient(name, client.command, client.args, client.env, client.proxy_policy)
+                        tools = probe_stdio_tools(client, timeout_seconds=3)
+                    else:
+                        tools = probe_remote_tools(client, timeout_seconds=3)
                     if not tools:
                         continue
-                    self._register_mcp_tools(name, client, self._mcp_server_config.get(name, {}), tools)
+                    self._register_mcp_tools(name, client, server_config, tools)
+                    self.mcp_manager.servers[name] = client
                     self.mcp_unavailable.pop(name, None)
+                    if not self._mcp_has_permitted_tools(name):
+                        client.stop()
                     recovered.extend(t for t in self.tools.values() if t.name.startswith(f"mcp_{name}_"))
                 except Exception:
+                    if docker:
+                        client.stop()
                     continue
             if recovered:
                 try:
@@ -1056,6 +1101,7 @@ class ToolRegistry:
 
 _tool_registry_instance: ToolRegistry | None = None
 _tool_registry_mode: str | None = None
+_tool_registry_lock = RLock()
 
 
 def get_tool_registry(skills_dir: str = None, mcp_config_path: str = None, mode: str = None) -> ToolRegistry:
@@ -1082,22 +1128,20 @@ def get_tool_registry(skills_dir: str = None, mcp_config_path: str = None, mode:
         skills_dir = skills_dir or str(project_root / "skills")
         mcp_config_path = mcp_config_path or str(project_root / "config" / "mcp-servers.json")
     
-    # Check if we need to create or recreate the registry
-    need_new = (
-        _tool_registry_instance is None or 
-        (mode is not None and mode != _tool_registry_mode)
-    )
-    
-    if need_new:
-        # Cleanup old instance if mode changed
-        if _tool_registry_instance is not None:
-            print(f"🔄 Mode changed ({_tool_registry_mode} → {mode}), recreating registry...")
-            _tool_registry_instance.cleanup()
-        
-        _tool_registry_instance = ToolRegistry(skills_dir, mcp_config_path)
-        _tool_registry_mode = mode
-    
-    return _tool_registry_instance
+    with _tool_registry_lock:
+        # Recheck under the lock: concurrent first requests must share one
+        # registry, even while slow MCP discovery is still constructing it.
+        need_new = (
+            _tool_registry_instance is None or
+            (mode is not None and mode != _tool_registry_mode)
+        )
+        if need_new:
+            if _tool_registry_instance is not None:
+                print(f"🔄 Mode changed ({_tool_registry_mode} → {mode}), recreating registry...")
+                _tool_registry_instance.cleanup()
+            _tool_registry_instance = ToolRegistry(skills_dir, mcp_config_path)
+            _tool_registry_mode = mode
+        return _tool_registry_instance
 
 
 def reset_tool_registry():
@@ -1106,7 +1150,8 @@ def reset_tool_registry():
     """
     global _tool_registry_instance, _tool_registry_mode
     
-    if _tool_registry_instance is not None:
-        _tool_registry_instance.cleanup()
-        _tool_registry_instance = None
-        _tool_registry_mode = None
+    with _tool_registry_lock:
+        if _tool_registry_instance is not None:
+            _tool_registry_instance.cleanup()
+            _tool_registry_instance = None
+            _tool_registry_mode = None

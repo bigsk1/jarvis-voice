@@ -297,6 +297,32 @@ TTS → Voice Response
 - ✅ Docker MCP servers are isolated
 - ✅ Containers stay alive for the Jarvis session instead of restarting for
   every tool call
+- Registry discovery starts enabled servers before listing their tools; a tool
+  sync stops its clients when it finishes. Runtime registries reuse their clients.
+- Docker stdio containers use `jarvis-mcp-<server>-<pid>-<client-id>` names.
+  Each client restarts and cleans up only its own container, so discovery in
+  another process or registry cannot replace an active session. Separate stdio
+  sessions require separate containers; they cannot share one stdin/stdout pair.
+- On Linux, new containers carry owner PID, process start-time, and boot/PID
+  namespace scope labels. A later Docker MCP startup reclaims labeled containers whose
+  owner is verifiably dead, including PID reuse. Live owners, other users/namespaces,
+  unlabeled older containers, and unverifiable ownership are left alone.
+- Timeout resets remove the client's owned container immediately. Concurrent
+  first requests share a single registry, and repeated starts share one client.
+- An idle Web mode switch cleans the previous registry. The new mode applies
+  server configuration, upstream catalog/allowlist, profile, and block rules.
+  A client with no permitted tools is closed; blocking one of several tools
+  keeps the shared server available for its remaining tools. Already active
+  calls finish before idle policy cleanup.
+- Web blocks add to the active configuration's `BLOCKED_TOOLS`; an empty Web
+  list does not clear configuration blocks. Web passes the combined list through
+  its existing request exclusions for routing, tool hints, and execution; the
+  scoped value also reaches idle cleanup and recovered-tool indexing.
+  Closing a container is resource cleanup, not a substitute for denying a call.
+- Fetch and Brave opt into `retry_discovery`: after failed startup, selection
+  can try a fresh Docker client under a three-second deadline and thirty-second
+  cooldown. Recovery uses the same tool permissions and updates Tool RAG;
+  ordinary lookup does not initiate recovery or replay a tool action.
 
 ### Security
 - ✅ Containers provide a separate process/filesystem boundary

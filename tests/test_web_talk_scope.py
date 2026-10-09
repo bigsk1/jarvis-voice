@@ -58,6 +58,52 @@ def test_concurrent_talk_and_text_requests_keep_independent_preferences(monkeypa
 
 
 @pytest.mark.parametrize('mode', ['cloud', 'local'])
+@pytest.mark.parametrize('web_blocks', [[], ['mcp_fetch_fetch', 'mcp_brave_search_brave_web_search']])
+def test_web_mcp_blocks_add_to_mode_policy_without_changing_process_environment(monkeypatch, mode, web_blocks):
+    import os
+
+    import config_loader
+    from config_loader import get_config_value
+    monkeypatch.setenv('BLOCKED_TOOLS', 'process-sentinel')
+    monkeypatch.delenv('JARVIS_OVERRIDE_BLOCKED_TOOLS', raising=False)
+    monkeypatch.setattr(config_loader, '_load_mode_config', lambda selected: {
+        'BLOCKED_TOOLS': f'{selected}_mode_block,mcp_fetch_fetch',
+    })
+    monkeypatch.setattr(web_config, 'load_web_config', lambda: {
+        'tools': {'blocked': web_blocks},
+    })
+    @chat._scoped_by_mode
+    def read(mode):
+        return get_config_value('BLOCKED_TOOLS'), os.environ['BLOCKED_TOOLS']
+    scoped, process = read(mode)
+    assert set(scoped.split(',')) == {f'{mode}_mode_block', 'mcp_fetch_fetch'} | set(web_blocks)
+    assert process == 'process-sentinel'
+    assert os.environ['BLOCKED_TOOLS'] == 'process-sentinel'
+
+
+def test_web_request_passes_combined_blocks_to_existing_execution_path(journey, monkeypatch):
+    import config_loader
+    import orchestrator_v2
+    monkeypatch.delenv('JARVIS_OVERRIDE_BLOCKED_TOOLS', raising=False)
+    load_mode = config_loader._load_mode_config
+    monkeypatch.setattr(config_loader, '_load_mode_config', lambda mode: {
+        **load_mode(mode), 'BLOCKED_TOOLS': 'mcp_fetch_fetch',
+    })
+    settings = web_config.load_web_config()
+    settings.setdefault('tools', {})['blocked'] = ['web_only']
+    monkeypatch.setattr(web_config, 'load_web_config', lambda: settings)
+    observed = []
+    process = orchestrator_v2.Orchestrator.process
+    def capture(self, *args, **kwargs):
+        observed.append(set(kwargs.get('excluded_tools', [])))
+        return process(self, *args, **kwargs)
+    monkeypatch.setattr(orchestrator_v2.Orchestrator, 'process', capture)
+    journey.send(message='Answer in chat.', tool_policy='none')
+    journey.process()
+    assert observed == [{'mcp_fetch_fetch', 'web_only'}]
+
+
+@pytest.mark.parametrize('mode', ['cloud', 'local'])
 @pytest.mark.parametrize('source', ['mode_env', 'web', 'default'])
 def test_talk_inherits_word_limits_from_normal_config_precedence(monkeypatch, mode, source):
     import config_loader

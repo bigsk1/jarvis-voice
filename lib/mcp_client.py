@@ -17,6 +17,7 @@ from contextvars import ContextVar, copy_context
 from dataclasses import dataclass, field
 from threading import Event, Lock, RLock, Thread
 from typing import Any, Union
+from uuid import uuid4
 
 import requests
 from config_loader import get_config_value
@@ -29,6 +30,7 @@ from http_client import (
     select_reachable_proxy_url,
     standard_proxy_environment,
 )
+from mcp_docker import owner_labels, reap_orphans
 
 
 def server_configuration_status(server_config: dict) -> tuple[bool, str]:
@@ -57,6 +59,19 @@ class _RemoteCallBudget:
 _remote_call_budget: ContextVar[_RemoteCallBudget | None] = ContextVar(
     "mcp_remote_call_budget", default=None,
 )
+_stdio_discovery_budget: ContextVar[_RemoteCallBudget | None] = ContextVar(
+    "mcp_stdio_discovery_budget", default=None,
+)
+
+
+def _stdio_timeout(default: float) -> float:
+    budget = _stdio_discovery_budget.get()
+    if budget is None:
+        return default
+    remaining = budget.deadline - time.monotonic()
+    if budget.cancelled.is_set() or remaining <= 0:
+        raise TimeoutError("Stdio MCP discovery deadline exceeded")
+    return min(default, remaining)
 
 
 def _check_remote_call_budget():
@@ -98,6 +113,40 @@ def probe_remote_tools(client, timeout_seconds: float = 3) -> list[dict]:
             client._force_restart("discovery deadline exceeded")
         except AttributeError:
             client.stop()
+        return []
+    return holder.get("tools", [])
+
+
+def probe_stdio_tools(client, timeout_seconds: float = 3) -> list[dict]:
+    """Probe a fresh, isolated stdio client without holding up tool selection."""
+    budget = _RemoteCallBudget(time.monotonic() + timeout_seconds)
+    holder = {}
+    previous_auto_restart = client._auto_restart
+    client._auto_restart = False
+
+    def runner():
+        token = _stdio_discovery_budget.set(budget)
+        try:
+            client.start()
+            tools = client.list_tools()
+            _stdio_timeout(timeout_seconds)
+            holder["tools"] = tools
+        except Exception:
+            pass
+        finally:
+            _stdio_discovery_budget.reset(token)
+            client._auto_restart = previous_auto_restart
+            if budget.cancelled.is_set() or not holder.get("tools"):
+                client.stop()
+
+    worker = Thread(target=copy_context().run, args=(runner,), daemon=True)
+    worker.start()
+    worker.join(timeout=timeout_seconds)
+    if worker.is_alive():
+        budget.cancelled.set()
+        # This client is never published after a failed probe. Cleanup can
+        # interrupt a stuck read without delaying selection or a later probe.
+        Thread(target=client._force_restart, args=("discovery deadline exceeded",), daemon=True).start()
         return []
     return holder.get("tools", [])
 
@@ -227,6 +276,11 @@ class MCPClient:
         self._auto_restart = True
         self._selected_proxy_url: str | None = None
         self._selected_proxy_slot: str | None = None
+        # Stdio sessions belong to one client. Different registries/processes
+        # must not replace each other's Docker server (including during sync).
+        self._docker_container_name: str | None = None
+        self._docker_env: dict[str, str] = {}
+        self._start_lock = RLock()
 
     def _force_restart(self, reason: str = "unknown"):
         """
@@ -239,25 +293,28 @@ class MCPClient:
         except Exception:
             pass
 
-        # Kill current process if present
-        if self.process:
+        # Signal outside the startup lock to interrupt a wedged handshake.
+        process = self.process
+        if process:
             try:
-                self.process.terminate()
-                self.process.wait(timeout=3)
+                process.terminate()
+                process.wait(timeout=3)
             except Exception:
                 try:
-                    self.process.kill()
-                    self.process.wait(timeout=2)
+                    process.kill()
+                    process.wait(timeout=2)
                 except Exception:
                     pass
 
-        # Reset in-memory state so future calls can proceed cleanly
-        self.process = None
-        self._tools_cache = None
-        self.request_id = 0
-
-        # Critical: replace lock in case a prior thread is stuck holding it
-        self.lock = Lock()
+        with self._start_lock:
+            if self.process is not None and self.process is not process:
+                return  # Another caller already established a successor.
+            self._remove_owned_container()
+            self.process = None
+            self._tools_cache = None
+            self.request_id = 0
+            # Replace the request lock if a timed-out reader still holds it.
+            self.lock = Lock()
     
     def _check_health(self) -> bool:
         """
@@ -315,9 +372,25 @@ class MCPClient:
         except Exception as e:
             print(f"❌ MCP {self.name} restart failed: {e}", file=sys.stderr)
             return False
+
+    def _unhealthy_process_reason(self) -> str:
+        if self._in_cooldown:
+            return f"MCP server {self.name} is in cooldown after repeated crashes"
+        exit_code = self.process.poll() if self.process else None
+        if not self._auto_restart:
+            return (
+                f"MCP server {self.name} exited during discovery (code {exit_code}); "
+                "automatic restart is disabled for discovery"
+            )
+        return f"MCP server {self.name} is unavailable after a crash (code {exit_code})"
     
     def start(self):
         """Start the MCP server process."""
+        with self._start_lock:
+            self._start()
+
+    def _start(self):
+        _stdio_timeout(5)
         if self.process:
             return  # Already running
         
@@ -330,25 +403,32 @@ class MCPClient:
         # Expand ${VAR} in args as well
         expanded_args = self._expand_args()
         
-        # For Docker commands, add container naming to prevent duplicates
+        # Reuse one name for this client's restarts, never a server-wide name.
         if self.command == "docker" and "run" in expanded_args:
-            container_name = f"jarvis-mcp-{self.name}"
+            self._docker_env = mcp_env
+            labels = owner_labels()
+            reaped = reap_orphans(labels, env=mcp_env, timeout=_stdio_timeout(5))
+            if reaped:
+                print(f"🧹 Removed {reaped} orphaned Docker MCP container(s)", file=sys.stderr)
+            if self._docker_container_name is None:
+                self._docker_container_name = (
+                    f"jarvis-mcp-{self.name}-{os.getpid()}-{uuid4().hex[:12]}"
+                )
+            container_name = self._docker_container_name
             
-            # Check if container with this name already exists (running or stopped)
+            # Only replace a leftover container from this same client.
             try:
                 result = subprocess.run(
                     ["docker", "ps", "-aq", "--filter", f"name=^{container_name}$"],
-                    capture_output=True, text=True, timeout=5
+                    capture_output=True, text=True, timeout=_stdio_timeout(5), env=mcp_env,
                 )
                 if result.stdout.strip():
-                    # Container exists - remove it (handles both running and stopped)
+                    # Handles this client's running or stopped container.
                     if os.environ.get("MCP_DEBUG", "").lower() == "true":
                         print(f"[MCP DEBUG] Removing existing container: {container_name}", file=sys.stderr)
-                    subprocess.run(
-                        ["docker", "rm", "-f", result.stdout.strip()],
-                        capture_output=True, timeout=10
-                    )
-            except Exception as e:
+                    if not self._remove_owned_container(timeout=_stdio_timeout(10)):
+                        raise RuntimeError(f"MCP container cleanup did not complete for {self.name}")
+            except (OSError, subprocess.TimeoutExpired) as e:
                 if os.environ.get("MCP_DEBUG", "").lower() == "true":
                     print(f"[MCP DEBUG] Container check failed: {e}", file=sys.stderr)
             
@@ -356,13 +436,15 @@ class MCPClient:
             run_idx = expanded_args.index("run")
             expanded_args = self._inject_docker_proxy_env(expanded_args, mcp_env)
             run_idx = expanded_args.index("run")
+            label_args = [arg for key, value in labels.items() for arg in ("--label", f"{key}={value}")]
             expanded_args = (
                 expanded_args[:run_idx + 1] + 
-                ["--name", container_name] + 
+                ["--name", container_name, *label_args] +
                 expanded_args[run_idx + 1:]
             )
         
         # Start process
+        _stdio_timeout(5)  # A cancelled probe must not start a late container.
         self.process = subprocess.Popen(
             [self.command] + expanded_args,
             stdin=subprocess.PIPE,
@@ -374,7 +456,7 @@ class MCPClient:
         )
         
         # Give it a moment to start
-        time.sleep(0.2)
+        time.sleep(_stdio_timeout(0.2))
         
         # Check if it started successfully
         if self.process.poll() is not None:
@@ -383,6 +465,7 @@ class MCPClient:
         
         # Initialize the MCP connection
         self._initialize()
+        _stdio_timeout(5)
     
     def _expand_args(self) -> list[str]:
         """
@@ -491,6 +574,10 @@ class MCPClient:
     
     def stop(self):
         """Stop the MCP server process."""
+        with self._start_lock:
+            self._stop()
+
+    def _stop(self):
         if self.process:
             try:
                 self.process.terminate()
@@ -500,16 +587,29 @@ class MCPClient:
             finally:
                 self.process = None
         
-        # For Docker commands, also explicitly stop the named container
-        if self.command == "docker":
-            container_name = f"jarvis-mcp-{self.name}"
+        self._remove_owned_container()
+
+    def _remove_owned_container(self, timeout: float = 10) -> bool:
+        """Bound cleanup, including Docker's short 'removal in progress' race."""
+        if self.command == "docker" and self._docker_container_name is not None:
+            deadline = time.monotonic() + timeout
             try:
-                subprocess.run(
-                    ["docker", "rm", "-f", container_name],
-                    capture_output=True, timeout=10
-                )
-            except Exception:
-                pass  # Ignore errors - container may already be gone
+                while time.monotonic() < deadline:
+                    result = subprocess.run(
+                        ["docker", "rm", "-f", self._docker_container_name],
+                        capture_output=True, text=True, env=self._docker_env,
+                        timeout=max(.01, deadline - time.monotonic()),
+                    )
+                    if result.returncode == 0 or "no such container" in result.stderr.lower():
+                        return True
+                    if "removal" not in result.stderr.lower() or "progress" not in result.stderr.lower():
+                        break
+                    time.sleep(min(.1, max(0, deadline - time.monotonic())))
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            print(f"⚠️ MCP {self.name} container cleanup did not complete", file=sys.stderr)
+            return False
+        return True
     
     def _initialize(self):
         """Initialize MCP connection with handshake (optional, some servers don't need it)."""
@@ -561,8 +661,9 @@ class MCPClient:
         # IMPORTANT: Never call start() while holding self.lock.
         # start() performs MCP initialize -> _send_request(), and taking
         # the same non-reentrant lock here causes a deadlock on first call.
+        _stdio_timeout(8)
         if not self._check_health():
-            raise Exception(f"MCP server {self.name} is in cooldown after repeated crashes")
+            raise Exception(self._unhealthy_process_reason())
         
         if not self.process:
             self.start()
@@ -570,14 +671,16 @@ class MCPClient:
         with self.lock:
             # Process may have changed after startup/restart checks.
             if not self._check_health():
-                raise Exception(f"MCP server {self.name} is in cooldown after repeated crashes")
+                raise Exception(self._unhealthy_process_reason())
             if not self.process:
                 self.start()
             
             self.request_id += 1
+            request_id = self.request_id
+            process = self.process
             request = {
                 "jsonrpc": "2.0",
-                "id": self.request_id,
+                "id": request_id,
                 "method": method
             }
             
@@ -586,8 +689,8 @@ class MCPClient:
             
             # Send request
             request_json = json.dumps(request) + "\n"
-            self.process.stdin.write(request_json)
-            self.process.stdin.flush()
+            process.stdin.write(request_json)
+            process.stdin.flush()
             
             # Read response (may need to skip notifications)
             max_attempts = 10  # Avoid infinite loop
@@ -596,12 +699,12 @@ class MCPClient:
             for _ in range(max_attempts):
                 # Use select to timeout on readline
                 import select
-                ready, _, _ = select.select([self.process.stdout], [], [], timeout_seconds)
+                ready, _, _ = select.select([process.stdout], [], [], _stdio_timeout(timeout_seconds))
                 
                 if not ready:
                     raise Exception(f"MCP server response timeout after {timeout_seconds}s")
                 
-                response_line = self.process.stdout.readline()
+                response_line = process.stdout.readline()
                 
                 if not response_line:
                     raise Exception("MCP server closed connection")
@@ -629,7 +732,7 @@ class MCPClient:
                     raise Exception(f"MCP error: {error.get('message', 'Unknown error')}")
                 
                 # Check if this is our response (matching request ID)
-                if response.get("id") == self.request_id:
+                if response.get("id") == request_id:
                     return response.get("result")
             
             raise Exception("Did not receive response from MCP server after multiple attempts")

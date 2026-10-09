@@ -382,13 +382,55 @@ Ideas:
 - Cost/latency budgets per request (“max tools”, “max time”, “max cost”)
 - A debug command that prints a short “decision summary” (for humans)
 
-### E) Background Jobs + Notifications (Headless) - when a scheduled task runs workflow it doesnt block.? so this seems while in jarvis webui chat only.? 
-**Why:** Some workflows shouldn’t block interactive voice turns.
+### E) Background Jobs + Notifications (Headless)
 
-Ideas:
-- A small job queue: run long tasks asynchronously (downloads, OCR, big summaries)
-- “Notify me when done” via existing channels (email/webhook/print)
-- Persist job artifacts in stash; keep a job status tool (`jobs.list`, `jobs.status`)
+**Current status:** Reviewed native tools already use the Web background-task
+framework: durable admission, a supervised worker, task cards, and a follow-up
+answer in the originating conversation. See [Background tasks](BACKGROUND-TASKS.md).
+MCP tools do not currently have a background adapter binding.
+
+#### Planned: Opt-In Background Execution for MCP Tools
+
+**Why:** A long MCP call should be able to release the foreground Web chat and
+finish through the existing task machinery. Start with selected tools, then
+reuse the adapter across other MCP servers where their completion behavior fits.
+
+Proposed approach:
+
+- Add a reviewed MCP worker adapter and explicit per-tool registrations alongside
+  the trusted bindings in `lib/background_tasks/production.py`. Expose registered
+  tools in the existing background settings; preserve profile, server allowlist,
+  mode, account, and credential boundaries. Keep this optional for fresh clones.
+- Let the worker own an isolated MCP client and wait for the ordinary tool response
+  under the configured concurrency limits. Save the bounded result, update the
+  original task card, and deliver the existing follow-up answer. Reuse artifact
+  and Stash handling where supported, with Stash remaining optional.
+- Carry a finite job deadline through the MCP client, HTTP transport, and service
+  execution timeout. Queue time counts toward the deadline. Scope longer budgets
+  to the selected call; avoid changing global foreground timeouts or process-wide
+  environment variables while other calls are running.
+- Preserve uncertain remote outcomes after timeout, cancellation, or restart.
+  Stopping the observer does not prove a remote operation stopped; require
+  reconciliation rather than automatically replaying a possible write.
+- Use [task callbacks](TASK-CALLBACKS.md) only when a service implements authenticated
+  submit/receipt and completion events. An ordinary MCP response needs no incoming
+  callback endpoint. Show progress only when the service actually provides it.
+
+**First experiment: Google Apps Script.** Register
+`mcp_google_workspace_run_script_function` for the optional
+[Google Workspace service](../google-workspace/README.md). Use an owned test
+script deployed as an API executable, sharing the OAuth client's standard Cloud
+project and authorized scopes. A multi-step Drive/Sheets/Docs function can exercise
+a call longer than the current foreground budget. Google's
+[execution API](https://developers.google.com/apps-script/api/how-tos/execute)
+waits for the result and allows up to six minutes of script execution; background
+execution cannot extend that provider limit.
+
+**Acceptance checks:** Confirm the chat remains usable, the result or script error
+reaches the correct card and conversation once, and reconnect, concurrent jobs,
+deadline expiry, cancellation, and worker/container restarts do not duplicate
+remote work. Prove isolated mode credentials and optional Stash behavior before
+registering additional MCP tools. Keep the dedicated account's autonomous use.
 
 ### F) Generic Tool-Result References and Automatic Payload Hydration
 **Priority:** Medium context efficiency / safer multi-tool handoffs
@@ -1337,5 +1379,5 @@ Optional: Phase 3B tool recall filter only if search_memory noise returns
 
 ---
 
-**Last Updated:** September 20, 2026
-**Version:** 2.10 (Added restricted local tool child-environment migration)
+**Last Updated:** October 9, 2026
+**Version:** 2.11 (Added optional MCP background execution proposal)

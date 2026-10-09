@@ -137,7 +137,9 @@ def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False) -> dict[
             f"⚠️ MCP servers skipped ({len(registry.mcp_unavailable)}): "
             + ", ".join(sorted(registry.mcp_unavailable.keys()))
         )
-        print("   Pull missing Docker images or set enabled=false in config/mcp-servers.json.")
+        for name, reason in sorted(registry.mcp_unavailable.items()):
+            print(f"   - {name}: {reason[:180]}")
+        print("   Check the connection/process failure above; pull an image only if Docker reports it missing.")
 
     # Tools excluded because required configuration is missing in this mode.
     # Their DB rows are disabled by the stale-tools pass below; adding the

@@ -171,6 +171,44 @@ class TestMCPDiscoveryGraceful(unittest.TestCase):
         )
         self.assertFalse(registry.tools)
 
+    def test_all_profile_disabled_tools_close_client_without_becoming_unavailable(self):
+        client = FakeSearchAndFetchClient()
+        registry = self._build_registry(client, profile_overrides={
+            'mcp_remote_docs_search': False, 'mcp_remote_docs_fetch': False,
+        })
+        self.assertFalse(registry.tools)
+        self.assertTrue(client.stopped)
+        self.assertFalse(registry.mcp_unavailable)
+
+    def test_blocking_one_tool_keeps_shared_client_but_blocking_all_stops_it(self):
+        client = FakeSearchAndFetchClient()
+        registry = self._build_registry(client)
+        registry.stop_disallowed_mcp({'mcp_remote_docs_search'})
+        self.assertFalse(client.stopped)
+        registry.stop_disallowed_mcp({'mcp_remote_docs_search', 'mcp_remote_docs_fetch'})
+        self.assertTrue(client.stopped)
+        self.assertIsNotNone(registry.get_tool('mcp_remote_docs_search'))  # Unblocking can reuse its schema.
+
+    def test_active_mode_block_list_closes_client_after_discovery(self):
+        from config_loader import config_scope
+        client = FakeSearchAndFetchClient()
+        with config_scope('local', overrides={'BLOCKED_TOOLS': 'mcp_remote_docs_search,mcp_remote_docs_fetch'}):
+            registry = self._build_registry(client)
+        self.assertTrue(client.stopped)
+        self.assertFalse(registry.mcp_unavailable)
+
+    def test_new_block_list_does_not_interrupt_active_call(self):
+        from threading import Lock
+        client = FakeSearchAndFetchClient()
+        registry = self._build_registry(client)
+        client.lock = Lock()
+        blocked = {'mcp_remote_docs_search', 'mcp_remote_docs_fetch'}
+        with client.lock:
+            registry.stop_disallowed_mcp(blocked)
+            self.assertFalse(client.stopped)
+        registry.stop_disallowed_mcp(blocked)
+        self.assertTrue(client.stopped)
+
     def test_unlisted_tool_cannot_execute_through_registry_recovery(self):
         from orchestrator.executor import ToolExecutor
 
@@ -296,6 +334,46 @@ def test_failed_recovery_is_bounded_and_stdio_is_not_started(monkeypatch):
     assert len(observed) == 1
     stdio.start.assert_not_called()
     assert _remote_call_budget.get() is None
+
+
+def test_opted_in_docker_recovery_uses_isolated_client_and_normal_permissions(monkeypatch):
+    from threading import Lock
+    from unittest.mock import Mock
+
+    import mcp_client
+    old = MCPClient('brave_search', 'docker', ['run', '-i', 'image'])
+    registry = ToolRegistry.__new__(ToolRegistry)
+    registry.tools = {}
+    registry.mcp_clients = {}
+    registry.mcp_manager = FakeManager(old)
+    registry.mcp_unavailable = {old.name: 'startup failed'}
+    registry._mcp_server_config = {old.name: {
+        'enabled': True, 'retry_discovery': True, 'allowed_tools': ['search'],
+        'tool_metadata': {'search': {'web_search': True}},
+    }}
+    registry._mcp_recovery_lock = Lock()
+    registry._mcp_retry_after = {}
+    registry._profile_overrides = {}
+    probes = []
+    def probe(client, timeout_seconds):
+        assert client is not old
+        assert timeout_seconds == 3
+        probes.append(client)
+        return FakeSearchAndFetchClient().list_tools()
+    monkeypatch.setattr(mcp_client, 'probe_stdio_tools', probe)
+    db = Mock()
+    monkeypatch.setattr('memory_db.get_memory_db', lambda: db)
+    assert registry.get_tool('mcp_brave_search_search') is None
+    assert probes == []
+    registry.recover_unavailable_mcp()
+    assert set(registry.tools) == {'mcp_brave_search_search'}
+    assert registry.tools['mcp_brave_search_search'].web_search
+    assert registry.mcp_manager.servers[old.name] is probes[0]
+    assert registry.mcp_unavailable == {}
+    assert [t.name for t in db.register_recovered_tools.call_args.args[0]] == ['mcp_brave_search_search']
+    registry.mcp_unavailable[old.name] = 'failed again'
+    registry.recover_unavailable_mcp()
+    assert len(probes) == 1  # Thirty-second retry cooldown.
 
 
 def test_mcp_description_supplement_and_prerequisite_are_local_and_profile_scoped():

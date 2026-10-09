@@ -126,6 +126,7 @@ def test_manager_passes_shipped_deepwiki_proxy_policy_to_client(tmp_path):
     from pathlib import Path
 
     config = json.loads((Path(__file__).resolve().parent.parent / "config/mcp-servers.json").read_text())
+    config["mcpServers"]["deepwiki"]["enabled"] = True  # Test wiring independently of the operator's toggle.
     isolated = tmp_path / "mcp.json"
     isolated.write_text(json.dumps({"mcpServers": {"deepwiki": config["mcpServers"]["deepwiki"]}}))
     manager = MCPManager(str(isolated))
