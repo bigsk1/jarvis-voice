@@ -4,7 +4,7 @@ Jarvis Skill: Send Email
 Send emails via n8n SMTP webhook. Resolves contact names to email addresses.
 Supports file attachments from stash or direct paths.
 
-Input: { "to": "andrew" or "andrew@email.com", "subject": "...", "body": "...", "attachment": "stash://..." }
+Input: { "to": "sample_contact" or "recipient@example.com", "subject": "...", "body": "...", "attachment": "stash://..." }
 Output: { "ok": bool, "speech": str, "data": dict }
 """
 import sys
@@ -19,22 +19,12 @@ from pathlib import Path
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
+from email_contacts import load_contacts, resolve_email
 from stash_helper import safe_resolve_file, extract_filename_from_stash_ref
 
 # Rate limit storage (simple file-based)
 RATE_LIMIT_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', '.email_rate_limit')
 RATE_LIMIT_SECONDS = 10  # Minimum seconds between emails to same recipient
-
-
-def load_contacts() -> dict:
-    """Load contacts from config/contacts.json"""
-    contacts_file = os.path.join(os.path.dirname(__file__), '..', 'config', 'contacts.json')
-    try:
-        with open(contacts_file, 'r') as f:
-            data = json.load(f)
-            return data.get('contacts', {})
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
 
 
 def load_webhook_registry() -> dict:
@@ -46,24 +36,6 @@ def load_webhook_registry() -> dict:
             return data.get('webhooks', {})
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
-
-
-def resolve_email(to: str, contacts: dict) -> tuple[str, str]:
-    """
-    Resolve a name or email to actual email address.
-    Returns (email, display_name)
-    """
-    # If it looks like an email, use it directly
-    if '@' in to:
-        return to, to.split('@')[0]
-    
-    # Try to find in contacts (case-insensitive)
-    to_lower = to.lower().strip()
-    for key, contact in contacts.items():
-        if key.lower() == to_lower or contact.get('name', '').lower() == to_lower:
-            return contact['email'], contact.get('name', key)
-    
-    return None, to
 
 
 def check_rate_limit(email: str) -> bool:
@@ -322,4 +294,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

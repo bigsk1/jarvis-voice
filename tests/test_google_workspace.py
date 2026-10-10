@@ -150,6 +150,26 @@ def test_gmail_draft_hints_and_search_prerequisite_reach_registered_schema():
     assert 'Show me that draft' in registry.get_tool('mcp_google_workspace_search_gmail_messages').description
 
 
+@pytest.mark.parametrize('tool_name', ['send_gmail_message', 'draft_gmail_message'])
+def test_local_contact_hints_reach_registered_gmail_schema(tool_name):
+    client = discovery_helpers.FakeRemoteClient()
+    client.name = 'google_workspace'
+    client.list_tools = lambda: [{
+        'name': tool_name, 'description': 'Upstream Gmail operation.',
+        'inputSchema': {'type': 'object', 'properties': {
+            key: {'type': 'string', 'description': 'Upstream email parameter.'}
+            for key in ('to', 'cc', 'bcc', 'from_email')
+        }},
+    }]
+    registry = discovery_helpers.TestMCPDiscoveryGraceful()._build_registry(client)
+    schema = registry.get_tool('mcp_google_workspace_' + tool_name)
+    assert 'config/contacts.json' in schema.description
+    assert 'Unknown names fail without sending' in schema.description
+    for key in ('to', 'cc', 'bcc'):
+        assert 'contact key or display name' in schema.parameters['properties'][key]['description']
+    assert schema.parameters['properties']['from_email']['description'] == 'Upstream email parameter.'
+
+
 @pytest.mark.parametrize('draft_id', ['r1234567890123456789', 'r-123456789'])
 def test_draft_id_is_rejected_before_calling_message_endpoint(monkeypatch, draft_id):
     from unittest.mock import Mock

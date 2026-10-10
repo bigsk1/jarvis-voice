@@ -1504,14 +1504,16 @@ class MCPRemoteClient:
             token = _remote_call_budget.set(budget)
             staged_id = None
             try:
+                resolved_arguments = arguments
                 upstream = arguments
                 stash = False
                 space_id = None
                 if self.name == "google_workspace":
-                    from google_workspace import prepare_workspace_transfer
-                    upstream, stash, space_id, staged_id = prepare_workspace_transfer(self, tool_name, arguments)
+                    from google_workspace import prepare_workspace_transfer, resolve_workspace_recipients
+                    resolved_arguments = resolve_workspace_recipients(tool_name, arguments)
+                    upstream, stash, space_id, staged_id = prepare_workspace_transfer(self, tool_name, resolved_arguments)
                 raw = self._send_request("tools/call", {"name": tool_name, "arguments": upstream})
-                normalized = _normalize_call_tool_result(tool_name, raw, server_name=self.name, arguments=arguments)
+                normalized = _normalize_call_tool_result(tool_name, raw, server_name=self.name, arguments=resolved_arguments)
                 if stash:
                     from google_workspace import stash_workspace_download
                     normalized = stash_workspace_download(self, normalized, space_id)

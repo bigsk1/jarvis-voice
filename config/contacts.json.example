@@ -1,6 +1,6 @@
 {
-  "_description": "Contact list for Jarvis. Used by send_email tool to resolve names to emails.",
-  "_usage": "Say 'send email to Andrew' and Jarvis looks up Andrew's email here.",
+  "_description": "Contact list for Jarvis. Used by send_email and Google Workspace Gmail sends/drafts to resolve names to emails.",
+  "_usage": "Say 'send email to Mom' or 'use Gmail to email Boss' and Jarvis looks up the recipient here. Gmail also resolves CC and BCC names.",
   
   "contacts": {
     "boss": {
@@ -25,4 +25,3 @@
     "email": "jarvis@example.com"
   }
 }
-

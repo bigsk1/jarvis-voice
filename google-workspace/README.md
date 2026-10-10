@@ -149,6 +149,21 @@ tools, and enabling a server does not override a profile's explicit false entrie
 Native sends to Gmail do not use the n8n/Mailgun HTML template; the existing
 `send_email` tool continues to work separately.
 
+Gmail sends and drafts share `send_email`'s local `config/contacts.json` lookup.
+The `to`, `cc` and `bcc` fields accept contact keys or display names
+(case-insensitive), explicit email addresses, or comma-separated recipients.
+For example, “use Gmail to email Boss” can pass `Boss` directly to the Gmail
+tool. Unknown names fail before a Google call; a missing or malformed contacts
+file still permits explicit addresses. Lookup reads the current file on each
+call, and only the selected recipient addresses are sent to Google. The local
+contact list is separate from Google Contacts and does not select the sending
+account or configure Gmail Send As aliases.
+
+Tool descriptions prefer `send_email` for ordinary outgoing email when that
+tool is available. Explicit Gmail/Google Workspace delivery and Gmail replies
+or forwards use `send_gmail_message`. This is description guidance under the
+existing profile and block-list checks; it does not enable either tool.
+
 ## Access and results
 
 For **Jarvis itself in Docker**, use the optional root overlay after preparing

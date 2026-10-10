@@ -13,6 +13,8 @@ from itertools import islice
 from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
+from email_contacts import load_contacts, resolve_email_recipients
+
 PREFIX = "mcp_google_workspace_"
 _REQUEST_KEYS = frozenset({
     "user_google_email", "service_name", "action", "query", "title", "subject",
@@ -261,6 +263,20 @@ def extend_workspace_schema(tool_name: str, parameters: dict, description: str) 
     """Add Jarvis-only options; the upstream schema stays unchanged."""
     props = parameters.setdefault("properties", {})
     hints = []
+    if tool_name in {"send_gmail_message", "draft_gmail_message"}:
+        for key in ("to", "cc", "bcc"):
+            if key in props:
+                props[key]["description"] = (
+                    props[key].get("description", "")
+                    + " Also accepts a contact key or display name from Jarvis config/contacts.json "
+                    "(case-insensitive), or comma-separated names and email addresses."
+                ).strip()
+        hints.append("Gmail recipients in to, cc and bcc accept the same local contact names as "
+                     "send_email, such as Boss. Pass the requested contact name directly; "
+                     "Jarvis resolves it from config/contacts.json before calling Google. Unknown "
+                     "names fail without sending.")
+        hints.append("Use this tool for 'use Gmail to email Boss'." if tool_name == "send_gmail_message"
+                     else "Use this tool for 'draft a Gmail email to Boss'; it creates an unsent draft.")
     if tool_name == "get_gmail_message_content" and "message_id" in props:
         props["message_id"]["description"] = (
             "Gmail Message ID from search_gmail_messages. A Draft ID (r123456789) is not a Message ID; "
@@ -290,6 +306,18 @@ def extend_workspace_schema(tool_name: str, parameters: dict, description: str) 
         parameters["required"] = [key for key in parameters.get("required", []) if key != "file_path"]
         hints.append("For a file already in Jarvis Stash, use stash_ref. Public URLs and inline content remain supported; do not guess container paths.")
     return (" ".join(hints) + "\n\n" + description) if hints else description
+
+
+def resolve_workspace_recipients(tool_name: str, arguments: dict) -> dict:
+    """Resolve only Gmail recipient fields; account and Send As identity are separate."""
+    resolved = dict(arguments)
+    if tool_name in {"send_gmail_message", "draft_gmail_message"}:
+        contacts = load_contacts()
+        for key in ("to", "cc", "bcc"):
+            value = resolved.get(key)
+            if value is not None and value != "":
+                resolved[key] = resolve_email_recipients(value, contacts)
+    return resolved
 
 
 def _service_url(client, path: str) -> str:

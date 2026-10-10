@@ -1,14 +1,14 @@
 {
   "enabled": true,
   "name": "send_email",
-  "description": "Send an email from Jarvis to a named contact, optionally with stash attachments. Use for 'send an email to Andrew', 'email me that image', or 'send this PDF by email'. Do not use for 'check my email', 'what's in my inbox', or 'draft an email'. Contacts are looked up by name (e.g., 'Andrew', 'Mom', 'Boss'). Use the attachment parameter with a stash ref or file path. If stash has expired, say so rather than inventing an attachment. Always compose the email body with context: who is sending and why.",
+  "description": "Default tool for ordinary outgoing email from Jarvis through the configured n8n/Mailgun service, optionally with stash attachments. Use for 'email Boss', 'send an email to Frank', 'email me that image', or 'send this PDF by email' when no specific email service is requested. Use the requested provider's available tools for service-specific delivery or mailbox actions; report if that requested service is unavailable. Do not use for 'check my email', 'what's in my inbox', or 'draft an email'. Contacts are looked up by name (e.g., 'Frank', 'Mom', 'Boss'). Use the attachment parameter with a stash ref or file path. If stash has expired, say so rather than inventing an attachment. Always compose the email body with context: who is sending and why.",
   "script": "send_email.py",
   "parameters": {
     "type": "object",
     "properties": {
       "to": {
         "type": "string",
-        "description": "Recipient name (from contacts) or email address. Examples: 'Andrew', 'mom', 'Boss', 'john@example.com'"
+        "description": "Recipient name (from contacts) or email address. Examples: 'work', 'mom', 'Boss', 'recipient@example.com'"
       },
       "subject": {
         "type": "string",
@@ -53,4 +53,3 @@
     "setup_hint": "Add an enabled send_email entry with a configured URL in config/webhook_registry.json (direct URL or ${N8N_LOCAL_API_URL}/...). contacts.json is optional when using a direct email address."
   }
 }
-
