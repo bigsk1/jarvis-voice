@@ -863,6 +863,44 @@ direct-cloud paths.
 
 ---
 
+### 16) Complete Google Calendar Reminder Update and Cancellation Sync
+
+**Priority:** Optional / revisit when needed
+**Status:** Deferred (2026-10-09); retain the current behavior
+
+The native `create_reminder` tool sends `action=create` to the existing
+Jarvis → Google Calendar n8n workflow and stores the returned event/calendar IDs.
+Jarvis-side edits, cancellations, and permanent deletions currently affect the
+local reminder only. The incoming Google Calendar → Jarvis workflow imports
+Google-origin events and handles their updates and cancellations, but its update
+filter skips events containing `[Jarvis]`. Creation in both directions therefore
+does not provide a complete two-way reminder lifecycle.
+
+**Possible later extension:**
+
+- Add update and delete branches to the existing outgoing n8n workflow, addressed
+  by the stored calendar and event IDs. Extend its named webhook contract to
+  describe those actions.
+- Connect the shared Jarvis reminder mutation paths so Memory UI, API, and native
+  tool actions use consistent sync behavior for linked reminders. Local-only
+  reminders remain local; acknowledging a reminder retains the Calendar event.
+- Allow Google-side edits to linked Jarvis-created events to return to Jarvis.
+  Suppress outbound echoes from inbound sync calls and reuse the current identity
+  matching and deduplication rather than treating every update as a new create.
+- Preserve local cancellation if Google is unavailable and report failed or
+  pending remote sync truthfully. Retain linkage long enough to reconcile a
+  permanent deletion; check remote state before replaying an uncertain write.
+- Define whether recurring reminder edits/deletions target one occurrence or the
+  entire series before enabling propagation.
+
+**Acceptance checks:** Exercise edits and cancellations from Jarvis and Google,
+including Jarvis-created Calendar events, repeated deliveries, already-deleted
+events, multiple calendars, and remote failures. Verify one linked reminder/event,
+no feedback loops or revived canceled reminders, and accurate partial-success
+receipts. See [Google Calendar sync](n8n/docs/GOOGLE_CALENDAR_SYNC.md).
+
+---
+
 ## 📊 Implementation Priority
 
 **High Priority (Next Sprint):**
@@ -1380,4 +1418,4 @@ Optional: Phase 3B tool recall filter only if search_memory noise returns
 ---
 
 **Last Updated:** October 9, 2026
-**Version:** 2.11 (Added optional MCP background execution proposal)
+**Version:** 2.12 (Added deferred Calendar reminder lifecycle sync proposal)
