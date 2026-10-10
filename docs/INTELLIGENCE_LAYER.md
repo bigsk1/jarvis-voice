@@ -1214,7 +1214,7 @@ Output shows:
 # Merge cloud → local (regenerates 768-dim embeddings)
 ./bin/sync-intelligence-db.py local
 
-# Merge local → cloud (regenerates changed/missing 768D embeddings)
+# Merge local → cloud (regenerates embeddings for new rows)
 ./bin/sync-intelligence-db.py cloud
 
 # Replace target with a source mirror, discarding target-only rows
@@ -1223,7 +1223,7 @@ Output shows:
 # Reset a database (with backup)
 ./bin/sync-intelligence-db.py --reset cloud
 
-# Dry run (see what would happen)
+# Dry run (source counts only; does not validate or change the target)
 ./bin/sync-intelligence-db.py --dry-run local
 
 # Reset (delete) a database
@@ -1231,6 +1231,35 @@ Output shows:
 ```
 
 Default sync is additive: it copies missing source experiences, insights, insight evidence, and pending reflections while preserving target-only learning from the other mode. Use `--replace` only when you intentionally want those synchronized tables in the target Intelligence database to mirror the source.
+
+Matching insights receive source refinements when the source's `updated_at` is
+at least as recent as the target's. Rule metadata, trigger signals, reasoning,
+and reflection provenance can refresh without copying source usage counters
+over the target's own results. Unchanged rule text keeps its existing vectors.
+Evidence support counts use the larger value instead of being added repeatedly.
+
+A small `intelligence_sync_state` table records the imported feedback baseline.
+Confidence and strength may follow the source until the destination records
+different feedback or calibration; later syncs preserve that destination-owned
+calibration. For older matching rows without a checkpoint, existing usage,
+reinforced evidence, or a newer destination calibration is preserved
+conservatively. Newly imported rows get a checkpoint immediately. This metadata
+is separate from `meta_knowledge` and does not change runtime tool policy.
+
+An experience already queued or processed in the destination is not queued
+again merely because the source still lists it as pending. Newly copied JSON
+remaps Jarvis's own experience IDs, including Completion Guard and correction
+references. Missing cross-referenced source experiences become `null` rather
+than pointing to an unrelated destination row. Already-imported records get
+their self references repaired while retaining destination feedback and links.
+IDs inside external tool payloads are left intact.
+
+Run real merges with the target services stopped: embedding generation happens
+inside a transaction holding the target's write lock. The target is backed up
+before the merge, and a row or embedding failure rolls back the merge, including
+refinements and sync checkpoints. Review any Local decay separately after the
+merge. Pruning before a merge can be undone when a deleted rule is still present
+in the source; additive sync does not transfer deletion decisions.
 
 Insight and evidence sync preserves `preferred_workflow_id`; the target-mode
 runtime still revalidates that recipe against its own effective registry before

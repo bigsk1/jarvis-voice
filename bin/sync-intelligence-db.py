@@ -28,19 +28,19 @@ Usage:
     ./bin/sync-intelligence-db.py --reset cloud    # Reset cloud intelligence DB
 """
 
-import sys
-import sqlite3
-import pickle
+import json
 import os
+import pickle
+import sqlite3
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from datetime import datetime
 
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
 from config_loader import config_scope
 from embedding_inputs import build_stored_outcome_embedding_text
-from embeddings import EMBEDDING_DIMENSIONS, get_persistable_embedding
 from embedding_metadata import (
     INTELLIGENCE_CONTEXT_NAMESPACE,
     INTELLIGENCE_INSIGHT_NAMESPACE,
@@ -51,6 +51,7 @@ from embedding_metadata import (
     record_embedding_namespace_complete,
     require_embedding_namespace,
 )
+from embeddings import EMBEDDING_DIMENSIONS, get_persistable_embedding
 
 # ANSI colors
 GREEN = '\033[92m'
@@ -80,7 +81,7 @@ def get_db_paths():
     }
 
 
-def backup_db(db_path: Path) -> Path:
+def backup_db(db_path: Path) -> Path | None:
     """Create a backup of the database."""
     if not db_path.exists():
         return None
@@ -232,6 +233,139 @@ def find_existing_evidence(
     return existing['id'] if existing else None
 
 
+INSIGHT_REFINEMENT_FIELDS = (
+    "insight_type", "trigger_concept", "trigger_signals", "primary_intent",
+    "supporting_tools", "sequence_required", "avoided_patterns",
+    "generalizability", "reasoning", "reflection_provider", "reflection_model",
+    "reflection_input_tokens", "reflection_output_tokens", "reflection_total_tokens",
+    "reflection_cost_usd", "source_web_conversation_id", "source_query",
+    "source_tool_sequence", "source_reflection_json",
+)
+INSIGHT_FEEDBACK_FIELDS = (
+    "confidence", "strength", "evidence_count", "times_applied", "times_helpful",
+    "times_failed", "consecutive_failures", "last_outcome", "last_applied",
+)
+
+
+def _feedback_snapshot(row: sqlite3.Row) -> str:
+    return json.dumps({field: row[field] for field in INSIGHT_FEEDBACK_FIELDS}, sort_keys=True)
+
+
+def _save_sync_feedback(cursor, source_mode, insight_id, feedback_owned=False):
+    row = cursor.execute("SELECT * FROM insights WHERE id = ?", (insight_id,)).fetchone()
+    cursor.execute("""
+        INSERT INTO intelligence_sync_state (source_mode, insight_id, feedback_snapshot, feedback_owned)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(source_mode, insight_id) DO UPDATE SET
+            feedback_snapshot = excluded.feedback_snapshot,
+            feedback_owned = excluded.feedback_owned
+    """, (source_mode, insight_id, _feedback_snapshot(row), int(feedback_owned)))
+
+
+def _parse_sync_timestamp(value):
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def refresh_existing_insight(cursor, row, insight_id, source_mode, source_columns, exp_id_map):
+    """Refresh newer rule metadata without resetting destination usage or feedback."""
+    existing = cursor.execute("SELECT * FROM insights WHERE id = ?", (insight_id,)).fetchone()
+    state = cursor.execute(
+        "SELECT feedback_snapshot, feedback_owned FROM intelligence_sync_state "
+        "WHERE source_mode = ? AND insight_id = ?", (source_mode, insight_id),
+    ).fetchone()
+    source_time = _parse_sync_timestamp(row["updated_at"])
+    target_time = _parse_sync_timestamp(existing["updated_at"])
+    if state:
+        feedback_owned = bool(state["feedback_owned"]) or state["feedback_snapshot"] != _feedback_snapshot(existing)
+    else:
+        # Older imports have no baseline. Preserve calibration conservatively
+        # when the destination already shows usage or reinforced evidence.
+        feedback_owned = bool(
+            any(existing[field] for field in (
+                "times_applied", "times_helpful", "times_failed", "consecutive_failures",
+                "last_outcome", "last_applied",
+            )) or (existing["evidence_count"] or 0) > 1
+            or (
+                target_time is not None and (source_time is None or target_time > source_time)
+                and any(existing[field] != row[field] for field in ("confidence", "strength"))
+            )
+        )
+
+    updates = {}
+    if source_time is not None and (target_time is None or source_time >= target_time):
+        for field in INSIGHT_REFINEMENT_FIELDS:
+            if field in source_columns and row[field] != existing[field]:
+                updates[field] = row[field]
+        if row["updated_at"] != existing["updated_at"]:
+            updates["updated_at"] = row["updated_at"]
+        mapped_source = exp_id_map.get(row["source_experience_id"])
+        if mapped_source is not None and mapped_source != existing["source_experience_id"]:
+            updates["source_experience_id"] = mapped_source
+        if not feedback_owned:
+            for field in ("confidence", "strength"):
+                if row[field] is not None and row[field] != existing[field]:
+                    updates[field] = row[field]
+
+    # Support counts can grow in either mode. Taking the maximum avoids
+    # counting the same inherited evidence again on every sync.
+    if (row["evidence_count"] or 0) > (existing["evidence_count"] or 0):
+        updates["evidence_count"] = row["evidence_count"]
+    if updates:
+        assignments = ", ".join(f"{field} = ?" for field in updates)
+        cursor.execute(f"UPDATE insights SET {assignments} WHERE id = ?", (*updates.values(), insight_id))
+    _save_sync_feedback(cursor, source_mode, insight_id, feedback_owned)
+    return bool(updates)
+
+
+def remap_experience_metadata(raw_data, target_id, exp_id_map=None):
+    """Remap Jarvis-owned references, leaving document and tool payload IDs alone.
+
+    Existing destination records get only their self references repaired. Cross
+    references are translated once, from source JSON on newly imported rows.
+    """
+    try:
+        payload = json.loads(raw_data)
+    except (TypeError, ValueError):
+        return raw_data
+    if not isinstance(payload, dict):
+        return raw_data
+    changed = False
+    for key in ("context", "completion_guard"):
+        section = payload.get(key)
+        if isinstance(section, dict) and section.get("experience_id") != target_id:
+            section["experience_id"] = target_id
+            changed = True
+    if exp_id_map is not None:
+        signals = payload.get("user_signals")
+        shadow = payload.get("user_correction_shadow")
+        sections = []
+        if isinstance(signals, dict):
+            sections.append((signals, "previous_experience_id_candidate"))
+        if isinstance(shadow, dict):
+            latest = shadow.get("latest")
+            if isinstance(latest, dict):
+                sections.append((latest, "previous_experience_id"))
+            history = shadow.get("history")
+            if isinstance(history, list):
+                sections.extend((item, "previous_experience_id") for item in history if isinstance(item, dict))
+        for section, field in sections:
+            if field in section:
+                old_id = section[field]
+                # Missing source rows must not accidentally point to a
+                # different experience with that numeric ID in the target.
+                new_id = exp_id_map.get(old_id) if type(old_id) is int else None
+                if old_id != new_id:
+                    section[field] = new_id
+                    changed = True
+    return json.dumps(payload) if changed else raw_data
+
+
 def sync_intelligence(
     target_mode: str,
     dry_run: bool = False,
@@ -247,8 +381,9 @@ def sync_intelligence(
     - insight_evidence (with remapped experience/insight IDs)
     - reflection_queue
 
-    Default behavior is additive merge: copy missing source rows while preserving
-    target-only learning. Use replace=True for the old full-mirror behavior.
+    Default behavior is additive merge: copy missing source rows, refresh newer
+    matching insights, and preserve target-only learning and feedback.
+    Use replace=True for the old full-mirror behavior.
 
     Regenerates embeddings using the target mode's embedding model.
     """
@@ -391,6 +526,21 @@ def sync_intelligence(
     # provider or row failure rolls the complete manual sync back.
     target_conn.commit()
     target_conn.execute("BEGIN IMMEDIATE")
+    target_cursor.execute("""
+        CREATE TABLE IF NOT EXISTS intelligence_sync_state (
+            source_mode TEXT NOT NULL,
+            insight_id INTEGER NOT NULL,
+            feedback_snapshot TEXT NOT NULL,
+            feedback_owned INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (source_mode, insight_id)
+        )
+    """)
+    if replace:
+        target_cursor.execute("DELETE FROM intelligence_sync_state")
+    else:
+        target_cursor.execute(
+            "DELETE FROM intelligence_sync_state WHERE insight_id NOT IN (SELECT id FROM insights)"
+        )
 
     # ============================================
     # SYNC EXPERIENCES
@@ -410,6 +560,7 @@ def sync_intelligence(
     exp_success = 0
     exp_reused = 0
     exp_errors = 0
+    new_experience_ids = set()
 
     # Map old IDs to new IDs for reflection_queue
     exp_id_map = {}
@@ -491,6 +642,7 @@ def sync_intelligence(
 
             new_id = target_cursor.lastrowid
             exp_id_map[row['id']] = new_id
+            new_experience_ids.add(new_id)
             exp_success += 1
 
         except Exception as e:
@@ -502,6 +654,29 @@ def sync_intelligence(
         + (f", reused {exp_reused}" if exp_reused else "")
         + (f" ({exp_errors} errors)" if exp_errors else "")
     )
+
+    # The full experience map is now available, including references to rows
+    # encountered later in the source. Repair old imports without replacing
+    # feedback or other raw data recorded in the destination since that sync.
+    metadata_repaired = 0
+    for target_id in dict.fromkeys(exp_id_map.values()):
+        try:
+            raw_data = target_cursor.execute(
+                "SELECT raw_data FROM experiences WHERE id = ?", (target_id,),
+            ).fetchone()["raw_data"]
+            repaired = remap_experience_metadata(
+                raw_data, target_id,
+                exp_id_map if target_id in new_experience_ids else None,
+            )
+            if repaired != raw_data:
+                target_cursor.execute(
+                    "UPDATE experiences SET raw_data = ? WHERE id = ?", (repaired, target_id),
+                )
+                metadata_repaired += 1
+        except Exception as exc:
+            print(f"{RED}  Error repairing experience metadata #{target_id}: {exc}{NC}")
+            exp_errors += 1
+    print(f"  ✅ Repaired {metadata_repaired} experience metadata records")
 
     # ============================================
     # SYNC INSIGHTS
@@ -554,9 +729,11 @@ def sync_intelligence(
         "source_reflection_json",
     ]
     source_insights = select_with_optional_columns(source_cursor, "insights", insight_columns)
+    source_insight_columns = table_columns(source_cursor, "insights")
 
     insight_success = 0
     insight_reused = 0
+    insight_refreshed = 0
     insight_errors = 0
     insight_id_map = {}
 
@@ -566,6 +743,11 @@ def sync_intelligence(
                 existing_id = find_existing_insight(target_cursor, row)
                 if existing_id:
                     insight_id_map[row['id']] = existing_id
+                    if refresh_existing_insight(
+                        target_cursor, row, existing_id, source_mode,
+                        source_insight_columns, exp_id_map,
+                    ):
+                        insight_refreshed += 1
                     insight_reused += 1
                     continue
 
@@ -654,7 +836,9 @@ def sync_intelligence(
                 row['source_tool_sequence'],
                 row['source_reflection_json'],
             ))
-            insight_id_map[row['id']] = target_cursor.lastrowid
+            new_insight_id = target_cursor.lastrowid
+            insight_id_map[row['id']] = new_insight_id
+            _save_sync_feedback(target_cursor, source_mode, new_insight_id)
             insight_success += 1
 
         except Exception as e:
@@ -664,6 +848,7 @@ def sync_intelligence(
     print(
         f"  ✅ Copied {insight_success} insights"
         + (f", reused {insight_reused}" if insight_reused else "")
+        + (f", refreshed {insight_refreshed}" if insight_refreshed else "")
         + (f" ({insight_errors} errors)" if insight_errors else "")
     )
 
@@ -783,9 +968,8 @@ def sync_intelligence(
                 existing_queue = target_cursor.execute("""
                     SELECT 1 FROM reflection_queue
                     WHERE experience_id = ?
-                      AND processed = ?
                     LIMIT 1
-                """, (new_exp_id, row['processed'])).fetchone()
+                """, (new_exp_id,)).fetchone()
                 if existing_queue:
                     queue_skipped += 1
                     continue
@@ -797,7 +981,7 @@ def sync_intelligence(
         else:
             queue_skipped += 1
 
-    print(f"  ✅ Copied {queue_success} pending reflection entries" + (f" ({queue_skipped} skipped - missing experiences)" if queue_skipped else ""))
+    print(f"  ✅ Copied {queue_success} pending reflection entries" + (f" ({queue_skipped} already queued/completed or missing experiences)" if queue_skipped else ""))
 
     # ============================================
     # CLEANUP
@@ -819,6 +1003,7 @@ def sync_intelligence(
         print(f"{GREEN}✅ Sync complete:{NC}")
     print(f"   Experiences: {exp_success}" + (f" copied, {exp_reused} reused" if exp_reused else "") + (f" ({exp_errors} errors)" if exp_errors else ""))
     print(f"   Insights:    {insight_success}" + (f" copied, {insight_reused} reused" if insight_reused else "") + (f" ({insight_errors} errors)" if insight_errors else ""))
+    print(f"   Insights refreshed: {insight_refreshed}")
     print(f"   Insight evidence: {evidence_success}" + (f" ({evidence_skipped} skipped)" if evidence_skipped else "") + (f" ({evidence_errors} errors)" if evidence_errors else ""))
     print(f"   Pending reflections: {queue_success}" + (f" ({queue_skipped} skipped)" if queue_skipped else ""))
 
