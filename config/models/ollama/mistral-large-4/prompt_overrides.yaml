@@ -1,0 +1,12 @@
+enabled: true
+description: "mistral-large-4 thinking support"
+
+thinking:
+  supported: true
+  disable_supported: true
+  levels:
+    - low
+    - high
+    - max
+  default_level: low
+  disabled_fallback_level: low

@@ -1,7 +1,7 @@
 ---
 description: Manages n8n workflows, nodes, templates, and executions for automation building
 mode: subagent
-model: anthropic/claude-sonnet-4-5-20250929
+model: anthropic/claude-sonnet-5-5
 temperature: 0.2
 tools:
   n8n-mcp_tools_documentation: true
