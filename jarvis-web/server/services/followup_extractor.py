@@ -2795,7 +2795,32 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         max_candidates = FOLLOWUP_DEFAULT_MAX_CANDIDATES
     followup: dict = {}
 
+    # Failed webhook contracts live in the trace; successful runs are accumulated
+    # separately. Retain both so a later correction has the same destination body.
+    from lib.webhook_context import project_webhook_runs
+
+    successful = data.get('send_webhook', [])
+    successful = list(successful) if isinstance(successful, list) else [successful]
+    pending_successes = iter(successful)
+    webhook_runs = []
+    for row in (data.get('_tool_trace') or []):
+        if not isinstance(row, dict) or row.get('tool') != 'send_webhook':
+            continue
+        if row.get('ok') is True:
+            run = next(pending_successes, None)
+            if run is not None:
+                webhook_runs.append(run)
+        elif row.get('ok') is False and isinstance(row.get('result_data'), dict):
+            webhook_runs.append({'ok': False, 'error': row.get('error'), 'data': row['result_data']})
+    webhook_runs.extend(pending_successes)
+    if webhook_runs:
+        projected = project_webhook_runs(webhook_runs)
+        if projected:
+            followup['send_webhook'] = projected
+
     for key, value in data.items():
+        if key == 'send_webhook':
+            continue
         if key in FOLLOWUP_DATA_SKIP_KEYS:
             continue
         if key == 'source_library':

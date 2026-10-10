@@ -1,29 +1,35 @@
 {
   "enabled": true,
   "name": "send_webhook",
-  "description": "Send a named webhook or a direct webhook URL to trigger an external automation. Use for 'trigger the slack webhook', 'send the home assistant webhook', or 'list my webhooks'. Rate limited to prevent duplicates. Use webhook='list' to see named webhooks. Not for sending email; use send_email.",
+  "description": "Send a named webhook or a direct webhook URL to trigger an external automation. Use for 'trigger the slack webhook', 'send the home assistant webhook', or 'list my webhooks'. Each named webhook is a separate destination. A test or sample request must use the destination the user requested; do not send to an unrelated logger or a webhook merely because its name contains 'test'. Before sending to an unfamiliar named webhook, use webhook='list' with data={} to read its required fields, optional payload schema, and example. Build data to match that destination's contract; do not invent a test action. For a single complete contract, use the destination name with describe=true and data={}; listing and inspection send no webhook. Outbound attempts are rate limited to prevent duplicates. Not for sending email; use send_email.",
   "script": "send_webhook.py",
   "parameters": {
     "type": "object",
     "properties": {
       "webhook": {
         "type": "string",
-        "description": "Named webhook from registry (e.g., 'notify_slack', 'home_assistant'). Use 'list' to see available webhooks."
+        "description": "Exact name of the requested destination from the registry (e.g., 'notify_slack', 'home_assistant'). Named webhooks are separate services, not test modes or prerequisites for one another. Use 'list' to see configured webhooks."
       },
       "url": {
         "type": "string",
         "description": "Final direct webhook URL (alternative to named webhook). All HTTP 3xx responses are refused for security."
       },
+      "describe": {
+        "type": "boolean",
+        "description": "Read the selected named webhook's complete payload contract without sending it. Use webhook=<name>, describe=true, data={} when a catalog was compacted or the body requirements are unclear."
+      },
       "data": {
         "type": "object",
-        "description": "JSON data to send in the webhook body"
+        "description": "JSON object sent unchanged as the webhook body. Named destinations can require specific fields, nested structure, or actions: read their contract with webhook='list' first. Use {} when listing. Use {} with describe=true for read-only contract inspection."
       },
       "headers": {
         "type": "object",
         "description": "Optional literal HTTP headers to include in the request. Environment placeholders such as ${API_KEY} are rejected; use a named registry webhook for credential headers."
       }
     },
-    "required": ["data"]
+    "required": [
+      "data"
+    ]
   },
   "permissions": {
     "dangerous": false,

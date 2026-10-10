@@ -133,9 +133,16 @@ def _call_description(tool: str, preview: dict[str, str], permissions: dict,
         if get('body') or get('data'):
             detail.append(f"Content: {get('body') or get('data')}")
     elif tool == 'send_webhook':
-        summary = f"Send a webhook to {get('webhook') or get('url', 'the selected destination')}?"
-        if get('data'):
-            detail.append(f"Content: {get('data')}")
+        if get('webhook') == 'list' or arguments.get('list'):
+            summary = 'List configured webhooks?'
+            detail.append('Reads webhook names and payload requirements. No webhook will be sent.')
+        elif arguments.get('describe'):
+            summary = f"Inspect the payload contract for {get('webhook', 'the selected webhook')}?"
+            detail.append('Reads its configured payload requirements. No webhook will be sent.')
+        else:
+            summary = f"Send a webhook to {get('webhook') or get('url', 'the selected destination')}?"
+            if get('data'):
+                detail.append(f"Content: {get('data')}")
     elif tool == 'phone_call':
         action = get('action', 'call')
         if action == 'contacts' and get('add_number'):
@@ -163,6 +170,8 @@ def _call_description(tool: str, preview: dict[str, str], permissions: dict,
     if ssh_action == 'test':
         warning = 'Connects to the host and runs the read-only check above.'
     elif ssh_action == 'list_hosts':
+        warning = ''
+    elif tool == 'send_webhook' and (get('webhook') == 'list' or arguments.get('list') or arguments.get('describe')):
         warning = ''
     return {'summary': summary, 'detail': detail, 'warning': warning}
 

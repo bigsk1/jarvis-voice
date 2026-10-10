@@ -77,7 +77,7 @@ def create_reminder():
     return jsonify({
         'ok': True,
         'mode': get_mode(),
-        'message': 'Reminder created',
+        'message': 'Reminder saved',
         'reminder_id': reminder_id,
         'reminder': reminder
     })

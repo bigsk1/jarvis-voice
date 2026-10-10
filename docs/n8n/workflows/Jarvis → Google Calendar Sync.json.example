@@ -32,13 +32,33 @@
                 },
                 "conditions": [
                   {
-                    "leftValue": "",
-                    "rightValue": "",
+                    "leftValue": "={{ $json.body?.action || '' }}",
+                    "rightValue": "create",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
                     },
-                    "id": "2e3db6ba-8218-4784-ba9c-8467ac069c08"
+                    "id": "check-create-action"
+                  },
+                  {
+                    "leftValue": "={{ $json.body?.reminder?.title || '' }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    },
+                    "id": "check-reminder-title"
+                  },
+                  {
+                    "leftValue": "={{ $json.body?.reminder?.trigger_time || '' }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    },
+                    "id": "check-reminder-time"
                   }
                 ],
                 "combinator": "and"
@@ -46,7 +66,9 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "fallbackOutput": "extra"
+        }
       },
       "id": "switch-action",
       "name": "Check Action",
@@ -89,7 +111,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ ok: true, gcal_event_id: $json.id, message: 'Event created in Google Calendar' }) }}",
+        "responseBody": "={{ JSON.stringify({ ok: true, gcal_event_id: $json.id, gcal_calendar_id: $node['Create Calendar Event'].parameter.calendar, message: 'Event created in Google Calendar' }) }}",
         "options": {
           "responseCode": 200
         }

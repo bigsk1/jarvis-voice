@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from api.models.reminder import ReminderCreate, Reminder, ReminderResponse, ReminderStatus
-from api.managers.reminder_manager import ReminderManager
+from api.managers.reminder_manager import CalendarIdentityConflict, ReminderManager
 
 router = APIRouter(prefix="/api/reminders", tags=["reminders"])
 
@@ -16,7 +16,7 @@ reminder_manager = ReminderManager()
 @router.post("", response_model=ReminderResponse)
 @router.post("/", response_model=ReminderResponse, include_in_schema=False)
 async def create_reminder(reminder: ReminderCreate):
-    """Create a new reminder"""
+    """Create a reminder or return the existing record for a duplicate delivery."""
     try:
         reminder_id = reminder_manager.create_reminder(
             title=reminder.title,
@@ -34,8 +34,10 @@ async def create_reminder(reminder: ReminderCreate):
             ok=True,
             reminder_id=reminder_id,
             reminder=Reminder(**created_reminder) if created_reminder else None,
-            message=f"Reminder created (ID: {reminder_id})"
+            message=f"Reminder received (ID: {reminder_id})"
         )
+    except CalendarIdentityConflict as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -146,12 +148,15 @@ async def update_reminder(reminder_id: int, reminder: ReminderCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/by-gcal/{gcal_event_id}", response_model=ReminderResponse)
-async def get_reminder_by_gcal_id(gcal_event_id: str):
+async def get_reminder_by_gcal_id(gcal_event_id: str, calendar_id: str | None = Query(None)):
     """Find a reminder by Google Calendar event ID
     
     Used by n8n to find Jarvis reminders when GCal events are updated/cancelled.
     """
-    reminder = reminder_manager.find_by_gcal_event_id(gcal_event_id)
+    try:
+        reminder = reminder_manager.find_by_gcal_event_id(gcal_event_id, calendar_id)
+    except CalendarIdentityConflict as e:
+        raise HTTPException(status_code=409, detail=str(e))
     
     if not reminder:
         raise HTTPException(status_code=404, detail=f"No reminder found with gcal_event_id: {gcal_event_id}")
@@ -162,53 +167,55 @@ async def get_reminder_by_gcal_id(gcal_event_id: str):
     )
 
 @router.delete("/by-gcal/{gcal_event_id}", response_model=ReminderResponse)
-async def cancel_reminder_by_gcal_id(gcal_event_id: str):
-    """Cancel a reminder by Google Calendar event ID
+async def cancel_reminder_by_gcal_id(gcal_event_id: str, calendar_id: str | None = Query(None)):
+    """Cancel all scheduled copies of one Google Calendar event.
     
     Used by n8n when a Google Calendar event is deleted.
     """
-    reminder = reminder_manager.find_by_gcal_event_id(gcal_event_id)
+    try:
+        reminder = reminder_manager.find_by_gcal_event_id(gcal_event_id, calendar_id)
+    except CalendarIdentityConflict as e:
+        raise HTTPException(status_code=409, detail=str(e))
     
     if not reminder:
         raise HTTPException(status_code=404, detail=f"No reminder found with gcal_event_id: {gcal_event_id}")
     
-    reminder_manager.cancel_reminder(reminder['id'])
+    try:
+        count = reminder_manager.cancel_reminders_by_gcal_event_id(gcal_event_id, calendar_id)
+    except CalendarIdentityConflict as e:
+        raise HTTPException(status_code=409, detail=str(e))
     
     return ReminderResponse(
         ok=True,
-        message=f"Reminder {reminder['id']} canceled (gcal_event_id: {gcal_event_id})"
+        message=f"Canceled {count} reminder(s) (gcal_event_id: {gcal_event_id})"
     )
 
 @router.put("/by-gcal/{gcal_event_id}", response_model=ReminderResponse)
-async def update_reminder_by_gcal_id(gcal_event_id: str, reminder: ReminderCreate):
+async def update_reminder_by_gcal_id(gcal_event_id: str, reminder: ReminderCreate,
+                                   calendar_id: str | None = Query(None)):
     """Update a reminder by Google Calendar event ID
     
     Used by n8n when a Google Calendar event is modified.
     """
-    existing = reminder_manager.find_by_gcal_event_id(gcal_event_id)
-    
-    if not existing:
-        raise HTTPException(status_code=404, detail=f"No reminder found with gcal_event_id: {gcal_event_id}")
-    
     try:
-        reminder_manager.update_reminder(
-            reminder_id=existing['id'],
-            title=reminder.title,
-            description=reminder.description,
-            trigger_time=reminder.trigger_time,
-            related_intel_file=reminder.related_intel_file,
-            callback_url=reminder.callback_url,
-            recurrence_rule=reminder.recurrence_rule,
-            metadata=reminder.metadata,
-            reactivate=True,
+        selected_calendar = calendar_id or (reminder.metadata or {}).get('gcal_calendar_id')
+        reminder_id = reminder_manager.update_reminders_by_gcal_event_id(
+            gcal_event_id=gcal_event_id,
+            calendar_id=selected_calendar,
+            **reminder.model_dump(exclude_unset=True),
         )
-        
-        updated_reminder = reminder_manager.get_reminder(existing['id'])
+        if reminder_id is None:
+            raise HTTPException(status_code=404, detail=f"No reminder found with gcal_event_id: {gcal_event_id}")
+        updated_reminder = reminder_manager.get_reminder(reminder_id)
         
         return ReminderResponse(
             ok=True,
             reminder=Reminder(**updated_reminder) if updated_reminder else None,
-            message=f"Reminder {existing['id']} updated (gcal_event_id: {gcal_event_id})"
+            message=f"Reminder {reminder_id} and matching copies updated (gcal_event_id: {gcal_event_id})"
         )
+    except CalendarIdentityConflict as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

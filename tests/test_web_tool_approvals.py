@@ -137,6 +137,41 @@ def test_action_description_uses_the_target_and_a_short_risk_warning():
     assert 'lasting effects' in ssh['warning']
 
 
+def test_webhook_listing_approval_describes_local_discovery():
+    handler = _Handler()
+    manager = ToolApprovals(handler)
+    result = []
+    thread, approval = _request_in_thread(
+        manager, result, tool='send_webhook', arguments={'webhook': 'list', 'data': {}},
+    )
+    assert approval['summary'] == 'List configured webhooks?'
+    assert approval['detail'] == ['Reads webhook names and payload requirements. No webhook will be sent.']
+    assert approval['warning'] == ''
+    assert not any('Content: {}' in line for line in approval['detail'])
+    assert manager.decide(approval_id=approval['approval_id'], conversation_id='conversation',
+                          message_id='message', approved=True)
+    thread.join(2)
+    assert result == ['approved']
+
+
+def test_webhook_send_approval_keeps_actual_destination_and_body():
+    arguments = {'webhook': 'sample_notification', 'data': {'message': 'Sample notification'}}
+    preview = tool_approvals._safe_preview(arguments)
+    description = tool_approvals._call_description('send_webhook', preview, {'network': True}, arguments)
+    assert description['summary'] == 'Send a webhook to sample_notification?'
+    assert description['detail'] == ['Content: {"message": "Sample notification"}']
+    assert description['warning'] == 'This call may connect to the network.'
+
+
+def test_webhook_describe_approval_is_a_read_only_contract_lookup():
+    arguments = {'webhook': 'sample_notification', 'describe': True, 'data': {}}
+    preview = tool_approvals._safe_preview(arguments)
+    description = tool_approvals._call_description('send_webhook', preview, {'network': True}, arguments)
+    assert description['summary'] == 'Inspect the payload contract for sample_notification?'
+    assert description['warning'] == ''
+    assert description['detail'] == ['Reads its configured payload requirements. No webhook will be sent.']
+
+
 def test_ssh_approval_describes_the_actual_action_and_builtin_commands():
     describe = tool_approvals._call_description
     test = describe('ssh_remote', {'host': 'vps2', 'action': 'test'},

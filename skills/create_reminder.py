@@ -693,11 +693,14 @@ def create_single_reminder(title: str, description: str, trigger_time_local: dat
             gcal_synced = True
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
-            metadata = json.dumps({
+            metadata_fields = {
                 "gcal_event_id": gcal_event_id,
                 "gcal_synced": True,
                 "gcal_synced_at": now_utc().isoformat()
-            })
+            }
+            if gcal_result.get('gcal_calendar_id'):
+                metadata_fields['gcal_calendar_id'] = gcal_result['gcal_calendar_id']
+            metadata = json.dumps(metadata_fields)
             cursor.execute("UPDATE reminders SET metadata = ? WHERE id = ?", (metadata, reminder_id))
             conn.commit()
             conn.close()

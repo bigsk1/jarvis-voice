@@ -8,6 +8,14 @@
         "Authorization": "Bearer ${EXAMPLE_WEBHOOK_TOKEN}"
       },
       "required_fields": ["message"],
+      "payload_schema": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": {"type": "string", "minLength": 1}
+        }
+      },
+      "example": {"message": "Sample notification"},
       "rate_limit_seconds": 10,
       "enabled": false
     }

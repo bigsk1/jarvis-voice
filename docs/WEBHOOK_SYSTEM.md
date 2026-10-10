@@ -147,6 +147,40 @@ All HTTP 3xx webhook responses are refused without reading or returning their
 bodies. Configure named and direct webhooks to return their final response
 directly.
 
+For an unfamiliar named destination, first call
+`send_webhook` with `{"webhook": "list", "data": {}}`. Listing reads the local
+registry and sends no webhook. Each result includes its description and
+`required_fields`, plus `optional_fields`, `notes`, `payload_schema`, and `example`
+when configured. The Web
+approval card describes this as listing configured webhooks. For one destination,
+use `{"webhook": "destination_name", "describe": true, "data": {}}` to read its
+complete contract without sending it. Large catalogs retain names and requirements
+and advertise this lookup rather than returning partial schemas.
+
+Build the body from that destination's contract. An arbitrary `action: "test"`
+is only meaningful if the receiver supports it. A valid send can create real
+records; HTTP success confirms delivery, and the receiving workflow's execution
+and destination state confirm the requested effect.
+
+Named webhooks are independent destinations. Testing a requested webhook does
+not require sending to a separate logger. Prefer names that identify the service
+and purpose, such as `remote_n8n_webhook_logger`, over an ambiguous `test_webhook`.
+Listing configured entries does not prove their services are currently online.
+Before renaming an existing entry, update any workflows or scheduled tasks that
+reference its old name.
+
+Required fields and optional JSON Schema constraints are checked before the
+cooldown starts. A locally rejected payload does not consume a send attempt;
+its result includes `request_sent: false` and the contract so it can be corrected.
+A cooldown result includes a positive `retry_after_seconds`. Accepted outbound
+attempts still consume the cooldown, including requests whose outcome is uncertain.
+
+Delivery receipts preserve `request_sent`, `response_received`, and
+`delivery_status` through the model handoff and saved follow-ups. A timeout reports
+unknown delivery and prevents automatic resending; inspect the destination first.
+HTTP acceptance confirms delivery, and the endpoint response may report a result,
+but the destination state or receiving workflow execution verifies that result.
+
 **OR use direct URL (backward compatible):**
 ```json
 {
@@ -193,9 +227,16 @@ directly.
 | `description` | ✅ | Clear description for LLM tool selection |
 | `headers` | ⚠️ | Trusted headers; explicitly named `${ENV_VAR}` placeholders are resolved from the active Jarvis environment |
 | `required_fields` | ⚠️ | Array of required data fields (validated before sending) |
+| `payload_schema` | ⚠️ | Optional JSON Schema for the body; validates nested required fields, types, enums, and other configured constraints before sending |
 | `rate_limit_seconds` | ⚠️ | Min seconds between calls (default: 5) |
 | `enabled` | ⚠️ | Set to `false` to disable (default: true) |
-| `example` | ⚠️ | Example payload for documentation |
+| `example` | ⚠️ | Credential-free example body returned to the model during listing; replace sample values for each actual request |
+| `optional_fields`, `notes` | ⚠️ | Additional destination guidance retained during discovery and follow-ups |
+
+Keep URLs and credential headers in their existing registry fields. Do not place
+secrets in descriptions, schemas, or example bodies, which are returned during
+discovery. JSON Schema `format` annotations are not enforced; use explicit
+constraints such as `pattern` when the receiver needs a particular string shape.
 
 ---
 
@@ -422,8 +463,24 @@ Webhook → Send Email (SMTP) → Respond
 {
   "jarvis_reminder": {
     "url": "http://localhost:5678/webhook/jarvis-reminder",
-    "description": "Sync reminder to Google Calendar",
+    "description": "Create a Google Calendar event from a reminder. This creates a real event; no test action is supported. Use create_reminder for a local Jarvis reminder with automatic Calendar sync.",
     "required_fields": ["action", "reminder"],
+    "payload_schema": {
+      "type": "object",
+      "required": ["action", "reminder"],
+      "properties": {
+        "action": {"const": "create"},
+        "reminder": {
+          "type": "object",
+          "required": ["title", "trigger_time"],
+          "properties": {
+            "title": {"type": "string", "minLength": 1},
+            "trigger_time": {"type": "string", "description": "ISO 8601 timestamp including timezone, for example 2030-01-01T12:00:00Z"}
+          }
+        }
+      }
+    },
+    "example": {"action": "create", "reminder": {"title": "Sample Calendar event", "description": "Temporary webhook test", "trigger_time": "2030-01-01T12:00:00Z"}},
     "rate_limit_seconds": 5
   }
 }
@@ -435,6 +492,29 @@ Webhook → Send Email (SMTP) → Respond
 ```
 Webhook → Parse Reminder → Create Google Calendar Event → Respond
 ```
+
+For the incoming Calendar-to-Jarvis workflow, repeated reminder POSTs with the
+same `gcal_event_id` and `gcal_calendar_id` return the existing reminder ID.
+The workflow sends its configured calendar ID rather than the event organizer,
+and native Calendar creates store the returned calendar ID in reminder metadata.
+Legacy empty or `primary` IDs are matched to a named calendar when that event has
+only one unambiguous calendar scope. Multiple known calendars require the
+`calendar_id` query parameter on `/api/reminders/by-gcal/{event_id}`; ambiguous
+legacy identities return HTTP 409 for reconciliation instead of being guessed.
+Repeating a create does not overwrite an update or revive a canceled import;
+use the update endpoint to reschedule it. A Calendar edit updates matching copies
+together and keeps only one canonical copy eligible to fire. Replaying an edit
+with the same timestamp does not reset a completed or canceled occurrence.
+Fields omitted by a Calendar edit preserve local settings such as callback URLs;
+an explicit null clears an optional field.
+A Calendar cancellation cancels every scheduled copy in the matching calendar,
+including duplicates from earlier runs.
+Without a Calendar event ID, the reminder API reuses a scheduled record only
+when its title, timestamp, details, optional fields, and metadata all match;
+equivalent ISO timestamps with different timezone notation match too.
+The duplicate lookup and insert run in one write transaction so concurrent
+deliveries cannot insert multiple copies. Separate Calendar event identities
+remain separate reminders.
 
 ---
 

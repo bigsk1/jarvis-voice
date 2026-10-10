@@ -245,6 +245,12 @@ class ContextAssembler:
         for tool_name, data in accumulated_data.items():
             items = data if isinstance(data, list) else [data]
             tool_budget = 9500 // max(1, len(accumulated_data))
+            if tool_name == "send_webhook":
+                from webhook_context import project_webhook_runs
+
+                projected = project_webhook_runs(data, max_chars=min(6500, tool_budget))
+                extracted_parts.append((f"\n=== {tool_name} ===", [_followup_json(projected)]))
+                continue
             item_cap = 8000 if tool_name in DEEPWIKI_TOOL_NAMES | {"stash", "text_summarizer"} else 4000
             item_budget = max(120, min(item_cap, tool_budget // max(1, len(items))))
 
@@ -448,11 +454,16 @@ class ContextAssembler:
 
                     for tool_name, result_data in tool_results.items():
                         if isinstance(result_data, dict):
-                            fields = {
-                                key: value
-                                for key, value in result_data.items()
-                                if value not in (None, "", [], {})
-                            }
+                            if tool_name == "send_webhook":
+                                from webhook_context import project_webhook_runs
+
+                                fields = project_webhook_runs(result_data)
+                            else:
+                                fields = {
+                                    key: value
+                                    for key, value in result_data.items()
+                                    if value not in (None, "", [], {})
+                                }
                             if fields:
                                 context_lines.append(
                                     f"  └─ {tool_name} data: {_followup_json(fields)}"
@@ -634,7 +645,7 @@ class ContextAssembler:
             if ttl_seconds is not None and age_seconds is not None:
                 expires_in = ttl_seconds - age_seconds
 
-            if not result.get("ok", True):
+            if not result.get("ok", True) and tool_name != 'send_webhook':
                 summary_parts = ["Status: FAILED"]
                 if "error" in result:
                     summary_parts.append(f"Error: {result['error']}")
@@ -875,6 +886,16 @@ class ContextAssembler:
             if len(rendered) <= available:
                 return finish(rendered, truncated=bool(projected.get("context_truncated")))
 
+        if tool_name == 'send_webhook' and available >= 600:
+            from lib.webhook_context import project_webhook_data
+
+            projected = project_webhook_data(result, max_chars=available - 100)
+            truncated = bool(projected.get('context_truncated') or projected.get('contract_truncated')
+                             or projected.get('catalog_compacted') or projected.get('webhooks_omitted'))
+            rendered = json.dumps({'result': projected, 'result_truncated': truncated}, separators=(',', ':'))
+            if len(rendered) <= available:
+                return finish(rendered, truncated=truncated)
+
         if tool_name in DEEPWIKI_TOOL_NAMES and available >= 600:
             # Re-project the evidence at the provider's actual continuation
             # budget. Truncating serialized JSON here could lose the sources
@@ -935,6 +956,8 @@ class ContextAssembler:
 
     def tool_context_max_chars(self, tool_name: str) -> int:
         lowered = (tool_name or "").lower()
+        if lowered == 'send_webhook':
+            return 6000  # Registry contracts and retry guidance need intact JSON.
         if lowered == "source_library":
             return 16000  # Several exact passages plus source citations.
         if lowered == "project_nomad":
@@ -3407,6 +3430,15 @@ class ContextAssembler:
         full_serialized = json.dumps(result, indent=2, default=str)
         result_chars_total = len(full_serialized)
         max_chars = self.tool_context_max_chars(tool_name)
+
+        if tool_name == 'send_webhook':
+            from lib.webhook_context import project_webhook_data
+
+            data = project_webhook_data(result, max_chars=max_chars - 100)
+            serialized = json.dumps({'ok': result.get('ok', True), 'data': data}, separators=(',', ':'))
+            truncated = bool(data.get('context_truncated') or data.get('contract_truncated')
+                             or data.get('catalog_compacted') or data.get('webhooks_omitted'))
+            return serialized, result_chars_total, len(serialized), truncated
 
         if str(tool_name).startswith("mcp_google_workspace_"):
             from google_workspace import project_workspace_data

@@ -13,12 +13,15 @@ Output: { "ok": bool, "speech": str, "data": dict }
 """
 import hashlib
 import json
+import math
 import os
 import re
 import sys
 import time
 
 import requests
+from jsonschema import SchemaError, ValidationError
+from jsonschema.validators import validator_for
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -123,8 +126,8 @@ def get_webhook_url(webhook_name: str, url: str, webhooks: dict) -> tuple[str, d
     raise ValueError("Either 'webhook' (name) or 'url' is required")
 
 
-def check_rate_limit(identifier: str, limit_seconds: int) -> bool:
-    """Check rate limit. Returns True if OK to proceed."""
+def check_rate_limit(identifier: str, limit_seconds: int) -> tuple[bool, int]:
+    """Reserve an outbound attempt after local validation; return retry seconds."""
     id_hash = hashlib.md5(identifier.encode()).hexdigest()[:8]
     
     try:
@@ -138,7 +141,7 @@ def check_rate_limit(identifier: str, limit_seconds: int) -> bool:
         now = time.time()
         
         if now - last_sent < limit_seconds:
-            remaining = int(limit_seconds - (now - last_sent))
+            remaining = math.ceil(limit_seconds - (now - last_sent))
             return False, remaining
         
         # Update rate limit
@@ -151,6 +154,15 @@ def check_rate_limit(identifier: str, limit_seconds: int) -> bool:
         return True, 0
 
 
+def payload_contract(webhook_config: dict) -> dict:
+    """Expose operator-supplied payload guidance, without URLs or credentials."""
+    contract = {"required_fields": webhook_config.get("required_fields", [])}
+    for key in ("payload_schema", "example", "optional_fields", "notes"):
+        if key in webhook_config:
+            contract[key] = webhook_config[key]
+    return contract
+
+
 def list_available_webhooks(webhooks: dict) -> list:
     """List available webhooks for help message."""
     available = []
@@ -158,7 +170,8 @@ def list_available_webhooks(webhooks: dict) -> list:
         if config.get('enabled', True) and config.get('url'):
             available.append({
                 "name": name,
-                "description": config.get('description', '')
+                "description": config.get('description', ''),
+                **payload_contract(config),
             })
     return available
 
@@ -182,6 +195,10 @@ def main():
     data = input_data.get("data", {})
     headers = input_data.get("headers", {"Content-Type": "application/json"})
 
+    if not isinstance(data, dict) or not isinstance(headers, dict):
+        return_error("data and headers must be JSON objects", data={"request_sent": False})
+        return 1
+
     # Reject caller-selected environment lookups before URL resolution, DNS,
     # rate-limit writes, or any outbound request can occur.
     try:
@@ -195,7 +212,7 @@ def main():
         available = list_available_webhooks(webhooks)
         return_success(
             speech=f"Found {len(available)} configured webhooks",
-            data={"webhooks": available}
+            data={"webhooks": available, "request_sent": False}
         )
         return 0
     
@@ -205,6 +222,17 @@ def main():
     except ValueError as e:
         return_error(str(e))
         return 1
+
+    if input_data.get('describe'):
+        if not webhook_name:
+            return_error('describe requires a named webhook', data={'request_sent': False})
+            return 1
+        return_success(
+            speech=f"Payload contract for '{webhook_name}'; no webhook was sent",
+            data={'webhook': webhook_name, 'description': webhook_config.get('description', ''),
+                  'request_sent': False, **payload_contract(webhook_config)},
+        )
+        return 0
     
     # SECURITY: If using direct URL (not registry), validate for SSRF
     if url and not webhook_name:
@@ -219,21 +247,35 @@ def main():
             return_error(f"URL blocked for security: {e}. Use a named webhook from registry instead.")
             return 1
     
-    # Check rate limit
-    rate_limit = webhook_config.get('rate_limit_seconds', DEFAULT_RATE_LIMIT)
-    identifier = webhook_name or resolved_url
-    ok, remaining = check_rate_limit(identifier, rate_limit)
-    
-    if not ok:
-        return_error(f"Rate limited. Please wait {remaining} seconds before sending again.")
-        return 1
-    
     # Validate required fields if specified
     required_fields = webhook_config.get('required_fields', [])
     missing = [f for f in required_fields if f not in data]
     if missing:
-        return_error(f"Missing required fields for this webhook: {', '.join(missing)}")
+        return_error(
+            f"Missing required fields for this webhook: {', '.join(missing)}. No webhook was sent.",
+            data={"webhook": webhook_name, "request_sent": False, "missing_fields": missing, **payload_contract(webhook_config)},
+        )
         return 1
+
+    # Per-destination contracts remain in the trusted registry, not this tool.
+    if "payload_schema" in webhook_config:
+        try:
+            schema = webhook_config["payload_schema"]
+            if not isinstance(schema, (dict, bool)):
+                raise SchemaError("Expected an object or boolean schema")
+            validator = validator_for(schema)
+            validator.check_schema(schema)
+            validator(schema).validate(data)
+        except SchemaError:
+            return_error("Invalid payload_schema in webhook registry", data={"request_sent": False})
+            return 1
+        except ValidationError as e:
+            path = ".".join(str(part) for part in e.absolute_path) or "data"
+            return_error(
+                f"Invalid webhook payload at {path}: {e.message}. No webhook was sent.",
+                data={"webhook": webhook_name, "request_sent": False, "validation_path": path, **payload_contract(webhook_config)},
+            )
+            return 1
     
     # Only trusted registry headers may resolve environment placeholders.
     try:
@@ -245,6 +287,18 @@ def main():
     # Ensure Content-Type is set
     if "Content-Type" not in merged_headers:
         merged_headers["Content-Type"] = "application/json"
+
+    # Only attempts ready to reach the endpoint consume the cooldown.
+    rate_limit = webhook_config.get('rate_limit_seconds', DEFAULT_RATE_LIMIT)
+    identifier = webhook_name or resolved_url
+    ok, remaining = check_rate_limit(identifier, rate_limit)
+    if not ok:
+        unit = "second" if remaining == 1 else "seconds"
+        return_error(
+            f"Rate limited. Please wait {remaining} {unit} before sending again. No webhook was sent.",
+            data={"webhook": webhook_name, "request_sent": False, "retry_after_seconds": remaining},
+        )
+        return 1
     
     # Send webhook
     try:
@@ -267,6 +321,10 @@ def main():
                     "url": resolved_url,
                     "status_code": response.status_code,
                     "redirect_blocked": True,
+                    "request_sent": True,
+                    "response_received": True,
+                    "delivery_status": "redirect_refused",
+                    "retry_safe": False,
                 },
             )
             return 1
@@ -275,12 +333,16 @@ def main():
         if 200 <= response.status_code < 300:
             webhook_display = webhook_name or resolved_url
             return_success(
-                speech=f"Webhook '{webhook_display}' sent successfully",
+                speech=(f"Webhook '{webhook_display}' delivered (HTTP {response.status_code}). "
+                        "HTTP acceptance alone does not verify the automation's result."),
                 data={
                     "webhook": webhook_name,
                     "url": resolved_url,
                     "status_code": response.status_code,
-                    "response": response.text[:200] if response.text else ""
+                    "response": response.text[:200] if response.text else "",
+                    "request_sent": True,
+                    "response_received": True,
+                    "delivery_status": "accepted",
                 }
             )
             return 0
@@ -290,19 +352,36 @@ def main():
                 data={
                     "url": resolved_url,
                     "status_code": response.status_code,
-                    "error": response.text[:200] if response.text else ""
+                    "error": response.text[:200] if response.text else "",
+                    "webhook": webhook_name,
+                    "request_sent": True,
+                    "response_received": True,
+                    "delivery_status": "rejected",
+                    "retry_safe": False,
                 }
             )
             return 1
             
     except requests.Timeout:
-        return_error("Webhook request timed out")
+        return_error(
+            "Webhook request timed out; it may have reached the destination. Check its state before retrying.",
+            data={'webhook': webhook_name, 'request_sent': None, 'response_received': False,
+                  'delivery_status': 'unknown', 'retry_safe': False},
+        )
         return 1
     except requests.RequestException as e:
-        return_error(f"Webhook request failed: {str(e)}")
+        return_error(
+            f"Webhook request failed: {str(e)}. Delivery is unknown; check the destination before retrying.",
+            data={'webhook': webhook_name, 'request_sent': None, 'response_received': False,
+                  'delivery_status': 'unknown', 'retry_safe': False},
+        )
         return 1
     except Exception as e:
-        return_error(f"Unexpected error: {str(e)}")
+        return_error(
+            f"Unexpected webhook error: {str(e)}. Delivery is unknown; check the destination before retrying.",
+            data={'webhook': webhook_name, 'request_sent': None, 'response_received': False,
+                  'delivery_status': 'unknown', 'retry_safe': False},
+        )
         return 1
 
 
@@ -324,8 +403,7 @@ def return_error(speech, data=None):
         "speech": speech,
         "error": speech
     }
-    if data:
-        result["data"] = data
+    result["data"] = {"request_sent": False, **(data or {})}
     print(json.dumps(result))
 
 

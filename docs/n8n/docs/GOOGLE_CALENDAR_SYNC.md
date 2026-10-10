@@ -101,7 +101,7 @@ Content-Type: application/json
   "metadata": {
     "source": "google_calendar",
     "gcal_event_id": "abc123xyz",
-    "gcal_calendar_id": "primary"
+    "gcal_calendar_id": "calendar@example.test"
   }
 }
 ```
@@ -155,7 +155,7 @@ DELETE http://localhost:8880/api/reminders/by-gcal/{gcal_event_id}
 {
   "source": "google_calendar",
   "gcal_event_id": "event_abc123",
-  "gcal_calendar_id": "primary",
+  "gcal_calendar_id": "calendar@example.test",
   "synced_at": "2025-11-25T10:00:00Z"
 }
 ```
@@ -164,10 +164,20 @@ DELETE http://localhost:8880/api/reminders/by-gcal/{gcal_event_id}
 ```json
 {
   "gcal_event_id": "event_xyz789",
+  "gcal_calendar_id": "calendar@example.test",
   "gcal_synced": true,
   "gcal_synced_at": "2025-11-25T10:00:00Z"
 }
 ```
+
+The incoming workflow uses the trigger's configured calendar ID for create,
+update, and cancellation. It does not use the event organizer as the calendar
+identity. Native creates save the calendar ID returned by the outgoing workflow.
+Repeated creates reuse the existing reminder without reviving a canceled one.
+Updates change all matching legacy copies and keep one eligible to fire;
+cancellations cancel every scheduled copy in that calendar. The `by-gcal` routes
+accept `?calendar_id=...` to select a calendar. Empty or `primary` legacy IDs are
+adopted only when the scope is unambiguous; conflicts return HTTP 409.
 
 ## Avoiding Sync Loops
 

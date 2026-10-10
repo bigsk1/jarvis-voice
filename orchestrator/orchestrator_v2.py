@@ -2132,6 +2132,14 @@ Mode: {self.mode}
                 pending_admission = is_admission(result)
                 if tool_name == "workflow":
                     self._merge_workflow_usage(state.total_usage, result.get("usage"))
+                failed_trace_data = None
+                if isinstance(result, dict) and not result.get('ok') and result.get('data'):
+                    if tool_name == 'send_webhook':
+                        from lib.webhook_context import project_webhook_data
+
+                        failed_trace_data = project_webhook_data(result)
+                    else:
+                        failed_trace_data = self._sanitize_tool_trace_value(result['data'])
                 state.tool_trace.append({
                     "tool": tool_name,
                     "ok": None if pending_admission else bool(result.get("ok")) if isinstance(result, dict) else False,
@@ -2140,9 +2148,7 @@ Mode: {self.mode}
                     "duration_ms": tool_duration_ms,
                     "error": str(result.get("error", ""))[:500] if isinstance(result, dict) and result.get("error") else None,
                     "speech": str(result.get("speech", ""))[:500] if isinstance(result, dict) else "",
-                    "result_data": self._sanitize_tool_trace_value(result["data"])
-                    if isinstance(result, dict) and not result.get("ok") and result.get("data")
-                    else None,
+                    "result_data": failed_trace_data,
                     "workflow_run_started": bool(
                         tool_name == "workflow"
                         and isinstance(result, dict)
@@ -2315,6 +2321,9 @@ Mode: {self.mode}
                     # Status update on error
                     is_server_error = '500' in str(error) or 'Internal Server Error' in str(error)
                     is_single_call_failure = tool_name in SINGLE_CALL_TOOLS
+                    if (tool_name == 'send_webhook' and isinstance(result.get('data'), dict)
+                            and result['data'].get('retry_safe') is False):
+                        is_single_call_failure = True
                     if not is_single_call_failure:
                         self.status_updater.update_error(
                             error_type='server' if is_server_error else 'retry',
@@ -2382,6 +2391,12 @@ Mode: {self.mode}
                         
                         # Build error context for retry
                         error_context = f"Tool '{tool_name}' failed with: {error}. Arguments used: {json.dumps(arguments)}"
+                        if tool_name == 'send_webhook':
+                            from lib.webhook_context import project_webhook_data
+
+                            error_context += '\nWebhook delivery and payload contract: ' + json.dumps(
+                                project_webhook_data(result), separators=(',', ':'),
+                            )
                         error_lower = str(error).lower()
                         if (
                             state.available_tools

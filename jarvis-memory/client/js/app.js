@@ -1403,7 +1403,7 @@ async function handleReminderSubmit(e) {
       showToast('Reminder updated', 'success');
     } else {
       await api.createReminder(data);
-      showToast('Reminder created', 'success');
+      showToast('Reminder saved', 'success');
     }
     closeAllModals();
     await loadReminders();

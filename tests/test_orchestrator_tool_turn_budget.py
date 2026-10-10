@@ -83,6 +83,47 @@ class FakeStatusUpdater:
 
 
 class ToolTurnBudgetTests(unittest.TestCase):
+    def test_webhook_retry_router_receives_nested_payload_contract(self):
+        orchestrator = self._build_orchestrator(fail_on_calls=set(), tool_name='send_webhook')
+        pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
+        schema = {'type': 'object', 'properties': {'notification': {'type': 'object',
+                  'properties': {'scheduled_at': {'type': 'string', 'pattern': pattern}}}}}
+        failure = {'ok': False, 'error': 'Missing required notification field. No webhook was sent.',
+                   'data': {'webhook': 'sample_notification', 'request_sent': False,
+                            'required_fields': ['notification'], 'payload_schema': schema,
+                            'example': {'notification': {'scheduled_at': '2030-01-01T12:00:00Z'}}}}
+        orchestrator.executor.execute = lambda *_args: failure
+        transcripts = []
+
+        def route(query, **_kwargs):
+            transcripts.append(query)
+            if len(transcripts) == 1:
+                return {'intent': 'tool', 'tool_name': 'send_webhook',
+                        'arguments': {'webhook': 'sample_notification', 'data': {}}}
+            return {'intent': 'qa', 'text_response': 'The payload needs correction.'}
+
+        orchestrator.router.route = route
+        result = self._run_with_max_turns(orchestrator, 3)
+        self.assertEqual(len(transcripts), 2)
+        self.assertIn('payload_schema', transcripts[1])
+        self.assertIn('scheduled_at', transcripts[1])
+        self.assertEqual(result['tool_trace'][0]['result_data']['payload_schema'], schema)
+
+    def test_uncertain_webhook_delivery_never_automatically_retries(self):
+        orchestrator = self._build_orchestrator(fail_on_calls=set(), tool_name='send_webhook')
+        calls = []
+
+        def execute(*args):
+            calls.append(args)
+            return {'ok': False, 'error': 'Delivery is unknown; check the destination before retrying.',
+                    'data': {'request_sent': None, 'delivery_status': 'unknown', 'retry_safe': False}}
+
+        orchestrator.executor.execute = execute
+        result = self._run_with_max_turns(orchestrator, 4)
+        self.assertTrue(result['terminal_failure'])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(orchestrator.router.calls, 1)
+
     def _build_orchestrator(self, *, fail_on_calls, tool_name="serpapi_yelp_search"):
         orchestrator = Orchestrator.__new__(Orchestrator)
         orchestrator.executor = FakeExecutor(fail_on_calls=fail_on_calls)
