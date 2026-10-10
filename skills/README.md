@@ -386,6 +386,7 @@ JSON object printed to stdout:
 | [`generate_music`](../docs/tools/generate-music-tool/README.md) | Catalog-backed AI music creation with ElevenLabs or Gemini Lyria |
 | `pdf_create` | Generate PDFs from content |
 | `pdf_read` | Extract text/images from PDFs |
+| [`craft_image`, `craft_pdf`, `craft_photos`, `craft_video`, `craft_motion`, `craft_inspect`](../jarvis-craft-tools/README.md) | Optional self-hosted Craft edits, project artifacts, job inspection and collection; includes a standalone installer and agent setup skill |
 | `screenshot_url` | Full-page screenshots with AI analysis |
 | `crawl_url` | Web scraping with Crawl4AI |
 

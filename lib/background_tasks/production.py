@@ -20,6 +20,11 @@ TRUSTED_BINDINGS = {
     'generate_video': REMOTE_ADAPTER,
     'generate_music': REMOTE_ADAPTER,
     'create_social_clip': REMOTE_ADAPTER,
+    'craft_image': REMOTE_ADAPTER,
+    'craft_pdf': REMOTE_ADAPTER,
+    'craft_photos': REMOTE_ADAPTER,
+    'craft_video': REMOTE_ADAPTER,
+    'craft_motion': REMOTE_ADAPTER,
     'browser_use_cloud': REMOTE_ADAPTER,
     'browser_use': 'http_callback_v1',
 }
@@ -38,6 +43,18 @@ CHILD_ENVIRONMENT_POLICIES = {
         'if_true': {'use_profile': 'BROWSER_USE_CLOUD_PROFILE_ID'},
     },
 }
+
+
+# Craft clients receive their own connection settings and Stash paths only.
+# This policy is separate from foreground manifest child_environment.
+_CRAFT_CHILD_KEYS = frozenset({
+    'PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'JARVIS_MODE',
+    'CRAFT_API_URL', 'CRAFT_API_KEY', 'CRAFT_CA_BUNDLE', 'CRAFT_WAIT_SECONDS',
+    'STASH_DIR', 'JARVIS_OVERRIDE_STASH_DIR',
+    'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
+})
+for _craft_tool in ('craft_image', 'craft_pdf', 'craft_photos', 'craft_video', 'craft_motion'):
+    CHILD_ENVIRONMENT_POLICIES[_craft_tool] = {'always': _CRAFT_CHILD_KEYS, 'if_true': {}}
 
 
 def bindings():

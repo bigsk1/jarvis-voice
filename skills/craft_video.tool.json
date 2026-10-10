@@ -1,0 +1,105 @@
+{
+  "enabled": true,
+  "name": "craft_video",
+  "description": "Assemble image/video inputs in a new FilmCraft timeline on an optional self-hosted gateway. Place each source for duration seconds in supplied order; return preview, optional MP4 and a project archive with media. Use output mp4 for a movie. Each call creates a new timeline; this adapter cannot reopen or modify a saved native timeline. Use generate_video for AI synthesis and convert_file for simple conversions.",
+  "script": "craft_video.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "assemble"
+        ]
+      },
+      "sources": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 16,
+        "description": "Source stash:// references, permitted local paths, or craft://project/artifact references from previous output. Native projects cannot be uploaded."
+      },
+      "project_id": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{32}$",
+        "description": "Existing gateway project to group related jobs and reuse media artifacts. Each call creates a new timeline; this does not reopen a saved native timeline. Omit for a new gateway project."
+      },
+      "width": {
+        "type": "integer",
+        "minimum": 16,
+        "maximum": 1920
+      },
+      "height": {
+        "type": "integer",
+        "minimum": 16,
+        "maximum": 1080
+      },
+      "fps": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 60
+      },
+      "duration": {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 120,
+        "description": "Seconds per clip or title composition."
+      },
+      "output": {
+        "type": "string",
+        "enum": [
+          "png",
+          "mp4"
+        ],
+        "description": "png preview or mp4 movie; defaults to png. Request mp4 for video delivery."
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "CRAFT_API_URL",
+      "CRAFT_API_KEY"
+    ],
+    "setup_hint": "Run jarvis-craft-tools/setup.sh on the app host, then set CRAFT_API_URL and CRAFT_API_KEY in the selected mode ENV. See jarvis-craft-tools/README.md."
+  },
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true,
+    "allow": [
+      "CRAFT_CA_BUNDLE",
+      "CRAFT_WAIT_SECONDS",
+      "STASH_DIR",
+      "JARVIS_BACKGROUND_MAX_INPUT_BYTES"
+    ]
+  },
+  "execution": {
+    "background": {
+      "supported": true,
+      "adapter": "remote_skill_v1",
+      "completion_scope": "remote_work",
+      "timeout_seconds": 1500,
+      "progress_label": "Editing with Craft",
+      "limits": {
+        "memory_bytes": 1073741824,
+        "file_bytes": 536870912,
+        "input_bytes": 52428800,
+        "output_bytes": 2097152
+      },
+      "argument_constraints": {
+        "properties": {}
+      }
+    }
+  }
+}

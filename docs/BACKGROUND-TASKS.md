@@ -9,7 +9,7 @@ Every background tool uses the same admission, saved job, card, late-answer, all
 | Adapter | Who observes completion? | Current examples |
 | --- | --- | --- |
 | `local_skill_v1` | The task worker starts a reviewed local skill and supervises its process group until it exits. | `convert_file` |
-| `remote_skill_v1` | The worker runs the same kind of skill, but that skill calls an external API and waits or polls for a result. The worker is still the observer; stopping its process does not prove the provider stopped. | `generate_image`, `generate_video`, `generate_music`, `create_social_clip`, [Browser Use Cloud](BROWSER-USE-CLOUD.md) |
+| `remote_skill_v1` | The worker runs the same kind of skill, but that skill calls an external API and waits or polls for a result. The worker is still the observer; stopping its process does not prove the provider stopped. | `generate_image`, `generate_video`, `generate_music`, `create_social_clip`, [Browser Use Cloud](BROWSER-USE-CLOUD.md), [Craft editing tools](../jarvis-craft-tools/README.md) |
 | `http_callback_v1` | The worker submits once and stops waiting. A separate service keeps the job identity and later POSTs an authenticated progress or final event to Jarvis. | Local Browser Use; optionally, an owner-installed remote agent over HTTPS |
 
 This is a choice about completion ownership, not three chat systems. A compatible local or remote skill needs reviewed manifest settings and a trusted binding to the shared runner. A callback tool also needs a real submit/receipt service, a configured source and credential, and a reviewed binding; adding a manifest flag or a URL alone cannot make a tool runnable. [Task callbacks](TASK-CALLBACKS.md) documents that protocol.
@@ -282,7 +282,7 @@ cross-container transport and lifecycle design. See the
 
 ## Shared local skill runner
 
-`local_skill_v1` is the policy for process-contained work; `convert_file` remains its only production tool binding. The same runner also serves the three media generators, social clips, and hosted Browser Use Cloud under `remote_skill_v1` (see below). The [implementation plan](personal/background-tasks-and-webhook-integrations-plan.md#phase-2-follow-up-generic-local-skill-runner) tracks the extraction and its gate. The inert local probe lives only in `tests/fixtures/local_skill_probe.*` and runs from a temporary installation, with no production discovery or saved preference changes.
+`local_skill_v1` is the policy for process-contained work; `convert_file` remains its only production tool binding. The same runner also serves the three media generators, social clips, hosted Browser Use Cloud, and the optional Craft editing clients under `remote_skill_v1` (see below). The [implementation plan](personal/background-tasks-and-webhook-integrations-plan.md#phase-2-follow-up-generic-local-skill-runner) tracks the extraction and its gate. The inert local probe lives only in `tests/fixtures/local_skill_probe.*` and runs from a temporary installation, with no production discovery or saved preference changes.
 
 A compatible local skill needs its ordinary manifest/script, reviewed execution metadata, and one `TRUSTED_BINDINGS` entry in `lib/background_tasks/production.py`. No new Python execution wrapper is needed. The tool name binds to its same-named `.py` or `.sh` sibling in `skills/`; manifests cannot select arbitrary paths, dynamic imports, MCP, workflow, or discovery handlers. A durable Web authorization binds the original request, mode, conversation generation, selected tool, and exact manifest/script digests. Before launching, the runner checks these again, current profile/availability, and Web blocks. Those checks do not remove foreground tools from discovery.
 
@@ -340,10 +340,11 @@ These are still local skill subprocesses, sharing the same executor, supervision
 | `generate_video` | 1200 seconds | xAI SDK polling and Gemini operations/interactions can keep generating after the observing process exits; the script waits for output and saves it. |
 | `generate_music` | 2100 seconds | ElevenLabs HTTP generation (up to 1800 seconds for a ten-minute track) and Gemini interactions return audio, then the script saves it. |
 | `create_social_clip` | 2100 seconds | MoneyPrinterTurbo owns a submitted job; the script polls its task ID, downloads the first completed video, and saves it to stash. A local stop cannot cancel the server job. |
+| `craft_image`, `craft_pdf`, `craft_photos`, `craft_video`, `craft_motion` | 1500 seconds | Craft Gateway owns durable jobs. The client observes for up to 1200 seconds and saves verified outputs. Inspect/collect or cancel through `craft_inspect`; stopping the observer does not cancel remote work. |
 
 Queue time counts toward these budgets. All four use a 4 GiB process address-space ceiling, 512 MiB per output file and 2 MiB captured-output limit. `save: false` is rejected for background media so successful replies can retain artifacts. Input resource metadata does not itself validate every reference/download; the existing skill loaders and process ceilings still apply. No provider API, price, model default or foreground timeout changes are part of this binding review.
 
-Social clips require `MONEYPRINTER_API_URL` in the selected mode. Background arguments require a nonempty subject, cap subject/script at 20,000 characters, validate the documented 1–10 paragraphs and positive clip duration, and restrict `video_count` to 1 because the skill only saves the first returned video. The 35-minute budget allows room for its default 20-minute poll, creation waits and download; increasing `MONEYPRINTER_MAX_WAIT_SEC` does not extend the admitted budget. Existing queue-full (429) submission retries remain inside the skill. Jarvis never replays an uncertain attempt. These four media tools and Browser Use Cloud share the `remote_skill_v1` capacity bucket; uncertain attempts also occupy global running capacity, including capacity otherwise available for conversion.
+Social clips require `MONEYPRINTER_API_URL` in the selected mode. Background arguments require a nonempty subject, cap subject/script at 20,000 characters, validate the documented 1–10 paragraphs and positive clip duration, and restrict `video_count` to 1 because the skill only saves the first returned video. The 35-minute budget allows room for its default 20-minute poll, creation waits and download; increasing `MONEYPRINTER_MAX_WAIT_SEC` does not extend the admitted budget. Existing queue-full (429) submission retries remain inside the skill. Jarvis never replays an uncertain attempt. These four media tools, Browser Use Cloud, and the five Craft editing clients share the `remote_skill_v1` capacity bucket; uncertain attempts also occupy global running capacity, including capacity otherwise available for conversion.
 
 These are upper observation budgets, not extensions of a provider/SDK's individual request timeouts. Existing provider waits still apply; a lost response after launch takes the uncertain-outcome path below.
 
@@ -390,3 +391,16 @@ JARVIS_TEST_LONG_ENCODE=1 .venv/bin/python -m pytest tests/test_background_conve
 Portable tests generate audio and images and decode actual converted output. They exercise ordinary foreground conversion too, cancellation during real ffmpeg, lease loss, killed workers, output/input limits, and policy changes. Optional `JARVIS_TEST_VIDEO` / `JARVIS_TEST_IMAGE` paths enable representative-media tests using temporary copies and disposable outputs; no private media is committed. PDF conversion is not supported by this adapter.
 
 Incoming callbacks pass the separate [Phase 3a local HTTP gate](TASK-CALLBACKS.md#isolated-acceptance-proof), covering middleware, body limits, authentication, durable inbox and one saved answer after another Web tool turn. A private long-task binding can be installed only after its completion POST contract is packaged and verified for that deployment. The optional public relay remains future work as a separate deployable service; none of these integrations is required for local background execution.
+
+### Optional Craft editing clients
+
+`craft_image`, `craft_pdf`, `craft_photos`, `craft_video` and `craft_motion`
+use reviewed `remote_skill_v1` bindings with a 1500-second worker budget and
+1200-second client observation budget. The optional gateway owns the work.
+Foreground calls observe for up to 110 seconds and can return an honest running
+receipt; `craft_inspect` checks job/request IDs, collects outputs or requests
+remote cancellation. Stopping the observer does not cancel its gateway job.
+Lost submissions query their persisted request ID instead of replaying a POST;
+unknown outcomes retain existing remote-task uncertainty semantics. Each client
+has a separate trusted restricted background environment; no other provider
+credentials are passed. See [Craft setup and troubleshooting](../jarvis-craft-tools/README.md).

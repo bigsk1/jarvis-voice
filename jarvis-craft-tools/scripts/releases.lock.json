@@ -1,0 +1,37 @@
+{
+  "filmcraft": {
+    "version": "v0.5.0",
+    "asset": "filmcraft-0.5.0-linux-x86_64.tar.gz",
+    "url": "https://github.com/storytold/filmcraft/releases/download/v0.5.0/filmcraft-0.5.0-linux-x86_64.tar.gz",
+    "sha256": "be2183f9859c013cbf2e8dc29524532503a3eb75e2156af617bd4df7ffad40dd",
+    "release_url": "https://github.com/storytold/filmcraft/releases/tag/v0.5.0"
+  },
+  "photocraft": {
+    "version": "v0.6.0",
+    "asset": "photocraft-0.6.0-linux-x86_64.tar.gz",
+    "url": "https://github.com/storytold/photocraft/releases/download/v0.6.0/photocraft-0.6.0-linux-x86_64.tar.gz",
+    "sha256": "b65fd701b6360d3ba0b05900474bf92d9926c76802fefa7be996690fcbc396c6",
+    "release_url": "https://github.com/storytold/photocraft/releases/tag/v0.6.0"
+  },
+  "pdfcraft": {
+    "version": "v0.5.0",
+    "asset": "pdfcraft-0.5.0-linux-x86_64.tar.gz",
+    "url": "https://github.com/storytold/pdfcraft/releases/download/v0.5.0/pdfcraft-0.5.0-linux-x86_64.tar.gz",
+    "sha256": "20b35b3fd099c0ef02a727bf9badbaeeb6639c56742b4d0444cc2974dbff5fdf",
+    "release_url": "https://github.com/storytold/pdfcraft/releases/tag/v0.5.0"
+  },
+  "effectcraft": {
+    "version": "v0.7.0",
+    "asset": "effectcraft-0.7.0-linux-x86_64.tar.gz",
+    "url": "https://github.com/storytold/effectcraft/releases/download/v0.7.0/effectcraft-0.7.0-linux-x86_64.tar.gz",
+    "sha256": "ffec77d7a2e349d9fb00c8ebb902afc2cb8ef54c8a2d58dd404bab15f5b84387",
+    "release_url": "https://github.com/storytold/effectcraft/releases/tag/v0.7.0"
+  },
+  "lightcraft": {
+    "version": "v0.5.0",
+    "asset": "lightcraft-0.5.0-linux-x86_64.tar.gz",
+    "url": "https://github.com/storytold/lightcraft/releases/download/v0.5.0/lightcraft-0.5.0-linux-x86_64.tar.gz",
+    "sha256": "164170bb3745b94cffc1e05d59b20778eb51698558224f846e9e1f5424da3265",
+    "release_url": "https://github.com/storytold/lightcraft/releases/tag/v0.5.0"
+  }
+}

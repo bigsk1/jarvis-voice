@@ -12,6 +12,7 @@
 *.env
 **/*.env
 config/*.env
+config/*.env.craft-new
 config/contacts.json
 config/ntfy.json
 config/webhook_registry.json
@@ -130,6 +131,8 @@ monitoring/
 # Optional standalone browsers are never part of the Jarvis image.
 filebrowser/
 sqlitebrowser/
+# Craft Gateway is installed separately; Jarvis only needs lib/ and skills/ clients.
+jarvis-craft-tools/
 
 # ===== Python / Node caches =====
 # Docker needs the **/ forms to exclude the same names below nested packages.

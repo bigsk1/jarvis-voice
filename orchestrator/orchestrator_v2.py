@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import (
     load_config,
+    get_active_config_mode,
     get_int,
     get_float,
     get_config_value,
@@ -4311,7 +4312,10 @@ def main():
         print("  ./orchestrator_v2.py cloud --prompt deep_research 'Research AI chips'")
         sys.exit(1)
     
-    mode = sys.argv[1]
+    mode = get_active_config_mode(sys.argv[1])
+    # The positional CLI mode owns this process, including helpers that resolve
+    # mode without an explicit argument (such as Ollama endpoint selection).
+    os.environ['JARVIS_MODE'] = mode
     
     # Check for --json flag
     json_only = "--json" in sys.argv

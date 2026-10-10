@@ -1,0 +1,77 @@
+{
+  "enabled": true,
+  "name": "craft_image",
+  "description": "Edit images using an optional self-hosted PhotoCraft gateway: invert colors or grayscale, export PNG and an editable layered project. Sources are required. For ordinary conversion use convert_file; for AI image synthesis use generate_image.",
+  "script": "craft_image.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "invert",
+          "grayscale"
+        ]
+      },
+      "sources": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 16,
+        "description": "Source stash:// references, permitted local paths, or craft://project/artifact references from previous output. Native projects cannot be uploaded."
+      },
+      "project_id": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{32}$",
+        "description": "Existing gateway project for follow-up edits and Craft artifact reuse. Omit for a new project."
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "CRAFT_API_URL",
+      "CRAFT_API_KEY"
+    ],
+    "setup_hint": "Run jarvis-craft-tools/setup.sh on the app host, then set CRAFT_API_URL and CRAFT_API_KEY in the selected mode ENV. See jarvis-craft-tools/README.md."
+  },
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true,
+    "allow": [
+      "CRAFT_CA_BUNDLE",
+      "CRAFT_WAIT_SECONDS",
+      "STASH_DIR",
+      "JARVIS_BACKGROUND_MAX_INPUT_BYTES"
+    ]
+  },
+  "execution": {
+    "background": {
+      "supported": true,
+      "adapter": "remote_skill_v1",
+      "completion_scope": "remote_work",
+      "timeout_seconds": 1500,
+      "progress_label": "Editing with Craft",
+      "limits": {
+        "memory_bytes": 1073741824,
+        "file_bytes": 536870912,
+        "input_bytes": 52428800,
+        "output_bytes": 2097152
+      },
+      "argument_constraints": {
+        "properties": {}
+      }
+    }
+  }
+}

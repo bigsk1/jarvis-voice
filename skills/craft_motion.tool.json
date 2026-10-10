@@ -1,0 +1,118 @@
+{
+  "enabled": true,
+  "name": "craft_motion",
+  "description": "Create a new EffectCraft title composition on an optional self-hosted gateway, with editable native project and PNG preview or MP4 export. Specify text, dimensions, duration, fps and output mp4 for a movie. Each call creates a new composition; this adapter cannot reopen or modify a saved native composition. GPU is optional and defaults off. No source input is required.",
+  "script": "craft_motion.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "title"
+        ]
+      },
+      "project_id": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{32}$",
+        "description": "Existing gateway project to group related jobs. Each call creates a new title composition; this does not reopen a saved native composition. Omit for a new gateway project."
+      },
+      "width": {
+        "type": "integer",
+        "minimum": 16,
+        "maximum": 1920
+      },
+      "height": {
+        "type": "integer",
+        "minimum": 16,
+        "maximum": 1080
+      },
+      "fps": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 60
+      },
+      "duration": {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 120,
+        "description": "Seconds per clip or title composition."
+      },
+      "output": {
+        "type": "string",
+        "enum": [
+          "png",
+          "mp4"
+        ],
+        "description": "png preview or mp4 movie; defaults to png. Request mp4 for video delivery."
+      },
+      "text": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
+      },
+      "font_size": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 300
+      },
+      "color": {
+        "type": "string",
+        "pattern": "^#[0-9a-fA-F]{6}$"
+      },
+      "background": {
+        "type": "string",
+        "pattern": "^#[0-9a-fA-F]{6}$"
+      },
+      "gpu": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "CRAFT_API_URL",
+      "CRAFT_API_KEY"
+    ],
+    "setup_hint": "Run jarvis-craft-tools/setup.sh on the app host, then set CRAFT_API_URL and CRAFT_API_KEY in the selected mode ENV. See jarvis-craft-tools/README.md."
+  },
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true,
+    "allow": [
+      "CRAFT_CA_BUNDLE",
+      "CRAFT_WAIT_SECONDS",
+      "STASH_DIR",
+      "JARVIS_BACKGROUND_MAX_INPUT_BYTES"
+    ]
+  },
+  "execution": {
+    "background": {
+      "supported": true,
+      "adapter": "remote_skill_v1",
+      "completion_scope": "remote_work",
+      "timeout_seconds": 1500,
+      "progress_label": "Editing with Craft",
+      "limits": {
+        "memory_bytes": 1073741824,
+        "file_bytes": 536870912,
+        "input_bytes": 52428800,
+        "output_bytes": 2097152
+      },
+      "argument_constraints": {
+        "properties": {}
+      }
+    }
+  }
+}

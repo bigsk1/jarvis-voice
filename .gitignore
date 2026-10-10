@@ -2,6 +2,8 @@
 
 # ===== Secrets & Config =====
 config/*.env
+# Interrupted Craft configuration writes contain the complete private ENV.
+config/*.env.craft-new
 *.env
 !config/*.env.template
 !config/*.env.example

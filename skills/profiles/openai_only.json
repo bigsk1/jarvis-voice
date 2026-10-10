@@ -56,6 +56,12 @@
     "spotify": false,
     "ssh_remote": false,
     "supa_crawl_knowledge": false,
-    "upload_cloudflare": false
+    "upload_cloudflare": false,
+    "craft_image": false,
+    "craft_pdf": false,
+    "craft_photos": false,
+    "craft_video": false,
+    "craft_motion": false,
+    "craft_inspect": false
   }
 }

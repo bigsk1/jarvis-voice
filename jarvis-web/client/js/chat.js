@@ -3717,15 +3717,21 @@ class ChatUI {
         if (toolName === 'document_ocr') continue;
         if (!toolResult || typeof toolResult !== 'object') continue;
         if (this._shouldSkipAssistantInlineImage(toolResult)) continue;
-        const ref = toolResult.stash_ref || toolResult.ref;
-        if (!ref) continue;
-        const fn = toolResult.filename || toolResult.name || '';
-        const mime = (toolResult.mime_type || '').trim().toLowerCase();
-        const isImage = mime ? mime.startsWith('image/') : imageExtensions.test(fn);
-        if (!isImage) continue;
-        const stashMatch = ref.match(/stash:\/\/([^/]+)\/(.+)/);
-        if (stashMatch) {
-          const stashUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
+        // An artifact-producing tool can return a PDF as its primary output
+        // and a separate image preview. Keep the primary download unchanged.
+        const candidates = [toolResult, ...(Array.isArray(toolResult.outputs)
+          ? toolResult.outputs.filter(output => output?.role === 'preview') : [])];
+        for (const candidate of candidates) {
+          if (!candidate || typeof candidate !== 'object') continue;
+          const ref = candidate.stash_ref || candidate.ref;
+          if (!ref) continue;
+          const fn = candidate.filename || candidate.name || '';
+          const mime = (candidate.mime_type || '').trim().toLowerCase();
+          const isImage = mime ? mime.startsWith('image/') : imageExtensions.test(fn);
+          if (!isImage) continue;
+          const match = String(ref).match(/^stash:\/\/([^/\s?#]+)\/([^/\s?#]+)$/);
+          if (!match) continue;
+          const stashUrl = `/api/stash/${encodeURIComponent(match[1]).replaceAll("'", '%27')}/${encodeURIComponent(match[2]).replaceAll("'", '%27')}`;
           imageHtml = `
             <div class="message-image" onclick="window.showImageLightbox('${stashUrl}')">
               <img src="${stashUrl}" alt="Image from stash" loading="lazy">
@@ -3736,6 +3742,7 @@ class ChatUI {
           `;
           break;
         }
+        if (imageHtml) break;
       }
     }
     

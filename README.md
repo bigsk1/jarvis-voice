@@ -910,6 +910,7 @@ and the selected mode has a valid key.
   - Gemini: 4/6/8s, native audio, up to 4K resolution ($0.15/s)
   - Text-to-video and image-to-video modes (all providers)
   - Auto-saves to stash + memory for cross-session recall
+- [`craft_image`, `craft_pdf`, `craft_photos`, `craft_video`, `craft_motion`, `craft_inspect`](jarvis-craft-tools/README.md) - **Optional self-hosted Craft editing**: reproducible gateway setup, native image/PDF/photo/video/title edits, project files and Stash delivery; includes an [agent setup skill](jarvis-craft-tools/SKILL.md).
 - `create_social_clip` - **Social B-roll clips**: MoneyPrinterTurbo (self-hosted Docker) — stock footage + AI script + TTS + subtitles + BGM
   - TikTok, Reels, Shorts, faceless YouTube — **not** `generate_video` (that tool is Grok/Veo AI animation)
   - Configure `MONEYPRINTER_API_URL`, `MONEYPRINTER_VOICE`, `MONEYPRINTER_MAX_WAIT_SEC` in `config/cloud.env`

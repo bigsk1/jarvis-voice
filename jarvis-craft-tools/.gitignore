@@ -1,0 +1,23 @@
+.venv/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+build/
+dist/
+# Operator state is private even if a custom --root is placed under this folder.
+gateway.json*
+jarvis-client.env*
+state/
+tls/
+releases/
+run/
+current
+.current-new
+# Native downloads/workspaces when --apps-root is placed in this source folder.
+craft-admin/
+craft-workspace/
+filmcraft/
+photocraft/
+pdfcraft/
+effectcraft/
+lightcraft/

@@ -307,6 +307,10 @@ class ToolExecutor:
             return 90  # 60 seconds - search documentation with qmd
         if tool_name == "text_summarizer":
             return 180  # May call configured LLM over long stash/transcript artifacts
+        if tool_name in {"craft_image", "craft_pdf", "craft_photos", "craft_video", "craft_motion"}:
+            return 300  # Bounded transfers plus <=110s foreground observation; remote jobs survive timeout.
+        if tool_name == "craft_inspect":
+            return 180  # Capability/status checks or checksum-verified artifact collection.
         if tool_name == "convert_file":
             return 180  # 3 minutes - convert files various formats, audio, video, image, ect.
         if tool_name == "openclaw":
