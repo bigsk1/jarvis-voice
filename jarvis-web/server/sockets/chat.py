@@ -1160,36 +1160,25 @@ class ChatHandler:
         self,
         mode: str,
         completion_guard_config: dict | None = None,
-        fallback_provider: str | None = None,
-        fallback_model: str | None = None
     ):
         """Create the provider used for Completion Guard auto-evaluation."""
-        from config_loader import load_config, get_config_value
         from llm_provider import create_configured_provider
+        from ..services.settings_manager import SettingsManager
 
-        load_config(mode)
-
-        provider_name = (
-            (completion_guard_config or {}).get('eval_provider')
-            or get_config_value('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', 'openai')
-            or get_config_value('FEEDBACK_PROVIDER', 'openai')
-            or fallback_provider
-            or ('ollama' if mode == 'local' else get_config_value('LLM_PROVIDER', 'anthropic'))
-        ).strip().lower()
-
-        model_name = (
-            (completion_guard_config or {}).get('eval_model')
-            or get_config_value('JARVIS_COMPLETION_GUARD_EVAL_MODEL', get_provider_fallback_model(provider_name))
-            or get_config_value('FEEDBACK_MODEL', get_provider_fallback_model(provider_name))
-            or fallback_model
-            or ''
-        ).strip()
+        # Preserve the pair admitted with this turn, including older records
+        # whose model is blank or belongs to another provider.
+        overrides = None if completion_guard_config is None else {
+            'completion_guard_eval_provider': completion_guard_config.get('eval_provider'),
+            'completion_guard_eval_model': completion_guard_config.get('eval_model'),
+        }
+        selection = SettingsManager(mode).get_completion_guard_eval_selection(overrides)
 
         return create_configured_provider(
-            provider_override=provider_name,
-            model_override=model_name or None,
+            provider_override=selection['eval_provider']['value'],
+            model_override=selection['eval_model']['value'],
             default_provider='ollama' if mode == 'local' else 'openai',
             mode=mode,
+            disable_server_side_tools=True,
         )
 
     @staticmethod
@@ -1209,8 +1198,6 @@ class ChatHandler:
         provider_name, model_name, provider = self._create_completion_guard_eval_provider(
             mode=record_mode,
             completion_guard_config=record.get('completion_guard'),
-            fallback_provider=record.get('provider'),
-            fallback_model=record.get('model')
         )
         if tool_policy == 'none':
             policy_audit_rules = """Tool policy: Chat only (tools were deliberately disabled)

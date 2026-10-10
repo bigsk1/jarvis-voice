@@ -744,6 +744,8 @@ class SettingsManager:
 
     def _model_is_compatible_with_provider(self, provider: str, model: str | None) -> bool:
         """Reject a model override that clearly belongs to another provider/mode."""
+        if provider != 'ollama' and is_ollama_cloud_model(model):
+            return False
         if provider == 'xai' and self._xai_uses_oauth():
             return not model or is_xai_oauth_model(model)
         if not model or provider != 'ollama':
@@ -851,15 +853,6 @@ class SettingsManager:
         env_completion_guard_include_qa = get_jarvis_setting('JARVIS_COMPLETION_GUARD_INCLUDE_QA', 'true').lower() == 'true'
         env_completion_guard_include_tool_tasks = get_jarvis_setting('JARVIS_COMPLETION_GUARD_INCLUDE_TOOL_TASKS', 'true').lower() == 'true'
         env_completion_guard_auto_threshold = float(get_jarvis_setting('JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD', '0.70'))
-        env_completion_guard_eval_provider = get_jarvis_setting('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', 'ollama' if self.mode == 'local' else 'openai')
-        env_completion_guard_eval_model = get_jarvis_setting(
-            'JARVIS_COMPLETION_GUARD_EVAL_MODEL',
-            (
-                self._ollama_env_default_model()
-                if env_completion_guard_eval_provider == 'ollama'
-                else get_default_model_id(env_completion_guard_eval_provider)
-            )
-        )
         
         # Get per-mode web overrides (null = use env default)
         mode_overrides = web_config.get(self.mode, {})
@@ -916,8 +909,6 @@ class SettingsManager:
         web_completion_guard_include_qa = mode_overrides.get('completion_guard_include_qa')
         web_completion_guard_include_tool_tasks = mode_overrides.get('completion_guard_include_tool_tasks')
         web_completion_guard_auto_threshold = mode_overrides.get('completion_guard_auto_threshold')
-        web_completion_guard_eval_provider = mode_overrides.get('completion_guard_eval_provider')
-        web_completion_guard_eval_model = mode_overrides.get('completion_guard_eval_model')
         
         # Calculate effective values
         effective_provider = web_provider or env_provider
@@ -993,21 +984,9 @@ class SettingsManager:
             if web_completion_guard_auto_threshold is not None
             else env_completion_guard_auto_threshold
         )
-        effective_completion_guard_eval_provider = web_completion_guard_eval_provider or env_completion_guard_eval_provider
-        if not self._model_is_compatible_with_provider(
-            effective_completion_guard_eval_provider,
-            web_completion_guard_eval_model,
-        ):
-            web_completion_guard_eval_model = None
-        effective_completion_guard_eval_default = (
-            env_completion_guard_eval_model
-            if effective_completion_guard_eval_provider == env_completion_guard_eval_provider
-            else self._get_env_provider_model(effective_completion_guard_eval_provider)
-        )
-        effective_completion_guard_eval_model = (
-            web_completion_guard_eval_model
-            or effective_completion_guard_eval_default
-        )
+        guard_selection = self.get_completion_guard_eval_selection(mode_overrides)
+        effective_completion_guard_eval_provider = guard_selection['eval_provider']['value']
+        effective_completion_guard_eval_model = guard_selection['eval_model']['value']
         
         _full_raw = get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD_FULL', '').strip()
         try:
@@ -1196,15 +1175,11 @@ class SettingsManager:
                     ),
                 },
                 'eval_provider': {
-                    'value': effective_completion_guard_eval_provider,
-                    'default': env_completion_guard_eval_provider,
-                    'is_override': web_completion_guard_eval_provider is not None,
+                    **guard_selection['eval_provider'],
                     'options': ['ollama'] if self.mode == 'local' else get_catalog_providers()
                 },
                 'eval_model': {
-                    'value': effective_completion_guard_eval_model,
-                    'default': effective_completion_guard_eval_default,
-                    'is_override': web_completion_guard_eval_model is not None,
+                    **guard_selection['eval_model'],
                     'options': self._get_model_options_with_current(
                         effective_completion_guard_eval_provider,
                         effective_completion_guard_eval_model,
@@ -1255,6 +1230,43 @@ class SettingsManager:
             'blocked_tools': web_config.get('tools', {}).get('blocked', [])
         }
     
+    def get_completion_guard_eval_selection(self, mode_overrides: dict | None = None) -> dict:
+        """Resolve the evaluator pair shared by Web settings and execution.
+
+        A model default belongs to its configured provider. When Web selects
+        another provider, use that provider's mode-scoped model default instead.
+        An explicit override remains authoritative when it is compatible.
+        """
+        self._ensure_jarvis_config()
+        if mode_overrides is None:
+            mode_overrides = load_web_config().get(self.mode, {})
+        default_provider = 'ollama' if self.mode == 'local' else 'openai'
+        env_provider = str(
+            get_jarvis_setting('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', default_provider)
+            or default_provider
+        ).strip().lower()
+        requested_provider = mode_overrides.get('completion_guard_eval_provider')
+        provider = str(requested_provider or env_provider).strip().lower()
+        env_model = str(get_jarvis_setting('JARVIS_COMPLETION_GUARD_EVAL_MODEL', '') or '').strip()
+        default_model = (
+            env_model if provider == env_provider and env_model
+            and self._model_is_compatible_with_provider(provider, env_model)
+            else self._get_env_provider_model(provider)
+        )
+        requested_model = str(mode_overrides.get('completion_guard_eval_model') or '').strip() or None
+        if not self._model_is_compatible_with_provider(provider, requested_model):
+            requested_model = None
+        return {
+            'eval_provider': {
+                'value': provider, 'default': env_provider,
+                'is_override': requested_provider is not None,
+            },
+            'eval_model': {
+                'value': requested_model or default_model, 'default': default_model,
+                'is_override': requested_model is not None,
+            },
+        }
+
     def _get_provider_models(self) -> dict:
         """Get provider models with dynamic Ollama fetching"""
         models = {

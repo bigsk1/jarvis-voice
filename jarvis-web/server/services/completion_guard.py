@@ -54,8 +54,9 @@ class CompletionGuardPolicy:
         include_qa = mode_overrides.get("completion_guard_include_qa")
         include_tool_tasks = mode_overrides.get("completion_guard_include_tool_tasks")
         auto_threshold = mode_overrides.get("completion_guard_auto_threshold")
-        eval_provider = mode_overrides.get("completion_guard_eval_provider")
-        eval_model = mode_overrides.get("completion_guard_eval_model")
+        from .settings_manager import SettingsManager
+
+        selection = SettingsManager(mode).get_completion_guard_eval_selection(mode_overrides)
         excluded_tools_raw = (
             get_config_value("COMPLETION_GUARD_EXCLUDED_TOOLS")
             or get_config_value("JARVIS_COMPLETION_GUARD_EXCLUDED_TOOLS")
@@ -99,9 +100,8 @@ class CompletionGuardPolicy:
                 if auto_threshold is not None
                 else get_config_value("JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD", "0.70")
             ),
-            "eval_provider": eval_provider
-            or get_config_value("JARVIS_COMPLETION_GUARD_EVAL_PROVIDER", "ollama" if mode == "local" else "openai"),
-            "eval_model": eval_model or get_config_value("JARVIS_COMPLETION_GUARD_EVAL_MODEL", ""),
+            "eval_provider": selection["eval_provider"]["value"],
+            "eval_model": selection["eval_model"]["value"],
             "manual_prompt_ttl_seconds": max(0, manual_prompt_ttl_seconds),
             "excluded_tools": sorted(excluded_tools),
         }

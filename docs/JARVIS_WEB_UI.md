@@ -190,6 +190,13 @@ when returning to the tab, without fetching conversations or rebuilding the list
 | **Eval provider/model overrides** | ✅ | AI Config exposes per-mode Completion Guard eval provider/model controls |
 | **Ollama cloud judge support** | ✅ | Cloud Ollama eval uses cloud-only model lists and defensive JSON parsing/budgeting for auto eval |
 
+Completion Guard's evaluator selection is independent of the main chat model.
+Web uses its per-mode evaluator provider/model overrides; unset values use ENV
+defaults. If Web selects a different evaluator provider and leaves the model at
+default, that model comes from the selected provider's configuration. The ENV's
+dedicated evaluator model applies when its provider matches. Settings and runtime
+resolve the same pair, and evaluator calls disable provider-native search.
+
 ### Tool Cards, Status, and Reload Behavior
 
 - A pending approval sits beside the active turn and describes its prepared action
