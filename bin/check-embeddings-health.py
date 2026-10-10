@@ -89,11 +89,13 @@ def check_embedding_runtime(mode: str = "cloud", _scoped: bool = False) -> dict:
     }
 
 
-def check_embedding_dimensions(mode: str = "cloud", _scoped: bool = False) -> dict:
+def check_embedding_dimensions(
+    mode: str = "cloud", _scoped: bool = False, *, preflight: bool = False
+) -> dict:
     """Check the selected Memory database without changing its vector state."""
     if not _scoped:
         with config_scope(mode):
-            return check_embedding_dimensions(mode, _scoped=True)
+            return check_embedding_dimensions(mode, _scoped=True, preflight=preflight)
 
     relative_path = (
         "data/jarvis_memory_local.db" if mode == "local" else "data/jarvis_memory.db"
@@ -104,6 +106,9 @@ def check_embedding_dimensions(mode: str = "cloud", _scoped: bool = False) -> di
     if not db_file.exists():
         return {
             "ok": runtime["ok"],
+            "compatible": runtime["ok"],
+            "coverage_complete": True,
+            "preflight": preflight,
             "warning": f"Database not found: {relative_path} (will be created on first use)",
             "mode": mode,
             "db_path": relative_path,
@@ -122,6 +127,13 @@ def check_embedding_dimensions(mode: str = "cloud", _scoped: bool = False) -> di
         memory_total, memory_vectors, memory_issue_count, memory_issues = _scan_vectors(
             cursor, "knowledge_base", "id"
         )
+        # Intel ingestion deliberately stores file hashes without vectors.
+        # Keep auditing any vectors present on those rows, but do not require
+        # embeddings for bookkeeping that is looked up by its exact key.
+        unembedded_bookkeeping_rows = cursor.execute(
+            "SELECT COUNT(*) FROM knowledge_base WHERE category = 'system' "
+            "AND key GLOB 'intel_hash_*' AND embedding IS NULL"
+        ).fetchone()[0]
         tool_total, tool_vectors, tool_issue_count, tool_issues = _scan_vectors(
             cursor, "tool_definitions", "name"
         )
@@ -153,20 +165,22 @@ def check_embedding_dimensions(mode: str = "cloud", _scoped: bool = False) -> di
         except Exception as exc:
             provider_error = str(exc)
 
-    missing_memory_vectors = memory_total - memory_vectors
+    missing_memory_vectors = memory_total - memory_vectors - unembedded_bookkeeping_rows
     missing_tool_vectors = tool_total - tool_vectors
     namespace_issues = [item for item in namespaces if not item["ok"]]
-    ok = (
+    compatible = (
         provider_error is None
         and current_dimensions == EMBEDDING_DIMENSIONS
         and not namespace_issues
         and memory_issue_count == 0
         and tool_issue_count == 0
-        and missing_memory_vectors == 0
-        and missing_tool_vectors == 0
     )
+    coverage_complete = missing_memory_vectors == 0 and missing_tool_vectors == 0
     return {
-        "ok": ok,
+        "ok": compatible and (preflight or coverage_complete),
+        "compatible": compatible,
+        "coverage_complete": coverage_complete,
+        "preflight": preflight,
         "mode": mode,
         "db_path": relative_path,
         "expected_dimensions": EMBEDDING_DIMENSIONS,
@@ -181,6 +195,7 @@ def check_embedding_dimensions(mode: str = "cloud", _scoped: bool = False) -> di
         "memories_total": memory_total,
         "memories_checked": memory_vectors,
         "missing_memory_vectors": missing_memory_vectors,
+        "unembedded_bookkeeping_rows": unembedded_bookkeeping_rows,
         "memory_issues": memory_issues,
         "memory_issues_count": memory_issue_count,
         "tools_total": tool_total,
@@ -193,9 +208,18 @@ def check_embedding_dimensions(mode: str = "cloud", _scoped: bool = False) -> di
 
 def print_health_report(health: dict) -> None:
     mode = health["mode"]
-    title = "Embedding Runtime Preflight" if health.get("runtime_only") else "Embedding Health"
+    title = (
+        "Embedding Runtime Preflight" if health.get("runtime_only") else
+        "Embedding Fingerprint Preflight" if health.get("preflight") else
+        "Embedding Health"
+    )
     print(f"{BOLD}{title} - {mode.upper()}{NC}")
-    print(f"{GREEN if health['ok'] else RED}{'✅ Healthy' if health['ok'] else '❌ Unhealthy'}{NC}")
+    if health["ok"]:
+        print(f"{GREEN}✅ Healthy{NC}")
+    elif health.get("compatible"):
+        print(f"{YELLOW}⚠️ Incomplete vector coverage{NC}")
+    else:
+        print(f"{RED}❌ Unhealthy{NC}")
     print(f"{BLUE}Contract:{NC} Ollama / {health.get('embedding_model')} / {health.get('expected_dimensions')}D")
     print(f"{BLUE}Digest:{NC} {health.get('model_digest')}")
     runtime = health.get("runtime", {})
@@ -225,6 +249,24 @@ def print_health_report(health: dict) -> None:
             f"Tool vectors: {health['tools_checked']}/{health['tools_total']} "
             f"({health['tool_issues_count']} corrupt or wrong-size)"
         )
+        if health.get("unembedded_bookkeeping_rows"):
+            print(
+                f"Intel bookkeeping rows intentionally without vectors: "
+                f"{health['unembedded_bookkeeping_rows']}"
+            )
+
+    if health.get("compatible") and not health.get("coverage_complete", True):
+        print()
+        print(
+            f"{YELLOW}Missing vectors: {health['missing_memory_vectors']} memories, "
+            f"{health['missing_tool_vectors']} tools.{NC}"
+        )
+        print("Fingerprints match; existing compatible vectors remain usable.")
+        print(
+            f"Repair coverage: ./bin/rebuild-embeddings {mode} --database memory "
+            "(backs up the database)."
+        )
+        return
 
     if not health["ok"]:
         print()
@@ -246,16 +288,27 @@ def main() -> None:
     parser.add_argument("mode", nargs="?", default="cloud", choices=["cloud", "local"])
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--both", action="store_true")
-    parser.add_argument(
+    checks = parser.add_mutually_exclusive_group()
+    checks.add_argument(
         "--runtime-only",
         action="store_true",
         help="check configured Ollama hosts/model without reading or creating databases",
     )
+    checks.add_argument(
+        "--preflight",
+        action="store_true",
+        help="check runtime, fingerprints and existing vectors; allow missing vectors to be filled by sync",
+    )
     args = parser.parse_args()
 
     modes = ["cloud", "local"] if args.both else [args.mode]
-    checker = check_embedding_runtime if args.runtime_only else check_embedding_dimensions
-    reports = {mode: checker(mode) for mode in modes}
+    reports = {
+        mode: (
+            check_embedding_runtime(mode) if args.runtime_only else
+            check_embedding_dimensions(mode, preflight=args.preflight)
+        )
+        for mode in modes
+    }
     if args.json:
         payload = reports if args.both else reports[args.mode]
         print(json.dumps(payload, indent=2))

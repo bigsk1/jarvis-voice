@@ -72,6 +72,127 @@ def test_runtime_only_health_does_not_require_a_database():
     assert "db_path" not in report
 
 
+@pytest.fixture(params=["cloud", "local"])
+def isolated_health_check(tmp_path, request):
+    module = _load_health_module()
+    mode = request.param
+    path = tmp_path / "data" / ("jarvis_memory_local.db" if mode == "local" else "jarvis_memory.db")
+    path.parent.mkdir()
+    db = MemoryDB(str(path))
+    vector = pickle.dumps([0.25] * EMBEDDING_DIMENSIONS)
+    db.conn.execute(
+        "INSERT INTO knowledge_base (category, key, value, embedding) VALUES (?, ?, ?, ?)",
+        ("canvas", "sample_page", "Sample page reference", vector),
+    )
+    db.conn.execute(
+        "INSERT INTO tool_definitions (name, description, schema_json, embedding) VALUES (?, ?, ?, ?)",
+        ("sample_tool", "Find a sample", "{}", vector),
+    )
+    record_embedding_namespace_complete(db.conn, MEMORY_KNOWLEDGE_NAMESPACE)
+    record_embedding_namespace_complete(db.conn, MEMORY_TOOLS_NAMESPACE)
+    db.conn.commit()
+    runtime = {
+        "ok": True,
+        "model": "bigsk1/jarvis-embedding:bf16-v1",
+        "model_digest": "a" * 64,
+        "error": None,
+    }
+    with (
+        patch.object(module, "__file__", str(tmp_path / "bin" / "check-embeddings-health.py")),
+        patch.object(module, "get_embedding_runtime_status", return_value=runtime),
+        patch.object(module, "get_persistable_embedding", return_value=[0.25] * EMBEDDING_DIMENSIONS),
+    ):
+        yield module, mode, db.conn, runtime
+    db.close()
+
+
+@pytest.mark.parametrize("table", ["knowledge_base", "tool_definitions"])
+def test_missing_vectors_fail_full_health_but_permit_sync_preflight(isolated_health_check, table, capsys):
+    module, mode, conn, _ = isolated_health_check
+    conn.execute(f"UPDATE {table} SET embedding = NULL")
+    conn.commit()
+    report = module.check_embedding_dimensions(mode)
+    assert report["ok"] is False
+    assert report["compatible"] is True
+    assert report["coverage_complete"] is False
+    assert module.check_embedding_dimensions(mode, preflight=True)["ok"] is True
+    module.print_health_report(report)
+    output = capsys.readouterr().out
+    assert "Incomplete vector coverage" in output
+    assert "existing compatible vectors remain usable" in output
+    assert "Semantic retrieval is fail-closed" not in output
+
+
+def test_intel_bookkeeping_does_not_require_embeddings(isolated_health_check):
+    module, mode, conn, _ = isolated_health_check
+    conn.execute(
+        "INSERT INTO knowledge_base (category, key, value) VALUES (?, ?, ?)",
+        ("system", "intel_hash_sample.md", "sample file hash"),
+    )
+    conn.commit()
+    report = module.check_embedding_dimensions(mode)
+    assert report["ok"] is True
+    assert report["unembedded_bookkeeping_rows"] == 1
+    assert report["missing_memory_vectors"] == 0
+    # A similar name outside the bookkeeping category remains a coverage gap.
+    conn.execute(
+        "INSERT INTO knowledge_base (category, key, value) VALUES (?, ?, ?)",
+        ("fact", "intel_hash_other.md", "A searchable fact"),
+    )
+    conn.commit()
+    assert module.check_embedding_dimensions(mode)["missing_memory_vectors"] == 1
+
+
+def test_existing_bookkeeping_vectors_are_still_audited(isolated_health_check):
+    module, mode, conn, _ = isolated_health_check
+    conn.execute(
+        "INSERT INTO knowledge_base (category, key, value, embedding) VALUES (?, ?, ?, ?)",
+        ("system", "intel_hash_sample.md", "sample file hash", pickle.dumps([0.25])),
+    )
+    conn.commit()
+    report = module.check_embedding_dimensions(mode, preflight=True)
+    assert report["ok"] is False
+    assert report["memory_issues_count"] == 1
+    assert report["unembedded_bookkeeping_rows"] == 0
+
+
+@pytest.mark.parametrize("failure", ["digest", "rebuilding", "untracked", "dimensions", "corrupt", "provider"])
+def test_sync_preflight_still_rejects_incompatible_vectors(isolated_health_check, failure):
+    module, mode, conn, runtime = isolated_health_check
+    if failure == "digest":
+        conn.execute("UPDATE embedding_metadata SET model_digest = ?", ("b" * 64,))
+    elif failure == "rebuilding":
+        conn.execute("UPDATE embedding_metadata SET state = 'rebuilding'")
+    elif failure == "untracked":
+        conn.execute("DELETE FROM embedding_metadata")
+    elif failure == "dimensions":
+        conn.execute("UPDATE knowledge_base SET embedding = ?", (pickle.dumps([0.25]),))
+    elif failure == "corrupt":
+        conn.execute("UPDATE tool_definitions SET embedding = ?", (b"invalid vector",))
+    else:
+        runtime.update(ok=False, error="embedding host unavailable")
+    conn.commit()
+    report = module.check_embedding_dimensions(mode, preflight=True)
+    assert report["ok"] is False
+    assert report["compatible"] is False
+
+
+def test_preflight_cli_uses_compatibility_exit_status(isolated_health_check, capsys):
+    import json
+
+    module, mode, conn, _ = isolated_health_check
+    conn.execute("UPDATE tool_definitions SET embedding = NULL")
+    conn.commit()
+    with patch.object(sys, "argv", ["check-embeddings-health.py", mode, "--json", "--preflight"]):
+        module.main()
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+    with patch.object(sys, "argv", ["check-embeddings-health.py", mode, "--json"]):
+        with pytest.raises(SystemExit) as error:
+            module.main()
+    assert error.value.code == 1
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+
+
 def test_fresh_databases_create_empty_embedding_metadata_namespaces(tmp_path):
     memory = MemoryDB(str(tmp_path / "jarvis_memory.db"))
     intelligence = IntelligenceLayer(

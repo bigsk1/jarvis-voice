@@ -219,7 +219,7 @@ fi
 # Fail closed before startup sync can mix an old or partially rebuilt vector
 # namespace with the configured Jarvis Embedding artifact.
 EMBEDDING_PREFLIGHT_OK=true
-if ! python3 "$PROJECT_ROOT/bin/check-embeddings-health.py" "$MODE" --json > /dev/null 2>&1; then
+if ! python3 "$PROJECT_ROOT/bin/check-embeddings-health.py" "$MODE" --preflight --json > /dev/null 2>&1; then
     EMBEDDING_PREFLIGHT_OK=false
     echo -e "${RED}❌ Embedding fingerprint preflight failed${NC}"
     echo -e "${YELLOW}   Semantic retrieval and Tool RAG embedding writes remain disabled.${NC}"
@@ -263,12 +263,12 @@ echo ""
 
 # Health check: Verify embedding dimensions are correct
 echo -e "${BLUE}🩺 Checking embedding health...${NC}"
-if python3 "$PROJECT_ROOT/bin/check-embeddings-health.py" "$MODE" --json > /dev/null 2>&1; then
+if EMBEDDING_HEALTH_REPORT=$(python3 "$PROJECT_ROOT/bin/check-embeddings-health.py" "$MODE" 2>&1); then
     echo -e "${GREEN}  ✅ Jarvis Embedding fingerprints healthy (768 dimensions)${NC}"
 else
-    echo -e "${RED}  ❌ Embedding fingerprint or vector health check failed!${NC}"
+    echo -e "${YELLOW}  ⚠️  Embedding health needs attention${NC}"
+    printf '%s\n' "$EMBEDDING_HEALTH_REPORT"
     echo -e "${YELLOW}     Run: ./bin/check-embeddings-health.py $MODE${NC}"
-    echo -e "${YELLOW}     Semantic retrieval is fail-closed; lexical fallback remains available.${NC}"
     echo ""
     # Don't exit, but warn loudly
 fi

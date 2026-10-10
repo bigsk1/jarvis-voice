@@ -13,6 +13,11 @@ input-format version, and a completed namespace state.
 # opening or creating Memory/Intelligence databases.
 ./bin/check-embeddings-health.py --both --runtime-only
 
+# Startup sync preflight: verify fingerprints and existing vector integrity,
+# allowing gaps that a sync can fill. This still rejects incompatible vectors
+# and incomplete rebuilds.
+./bin/check-embeddings-health.py cloud --preflight
+
 # Full runtime + Memory/Tool RAG database fingerprint/vector health.
 ./bin/check-embeddings-health.py cloud
 ./bin/check-embeddings-health.py local
@@ -57,6 +62,10 @@ Memory health covers:
 - all vector dimensions and missing vectors
 - configured Ollama hosts and the exact model digest
 
+Intel file-hash bookkeeping rows (`system` / `intel_hash_*`) intentionally have
+no vectors and do not count as missing memory embeddings. Existing vectors on
+those rows are still audited.
+
 Intelligence health covers:
 
 - `intelligence.experiences.query_embedding`
@@ -72,6 +81,13 @@ An absent fingerprint with existing vectors, a mismatched field, or a
 `rebuilding` state disables semantic access to that namespace. Memory retains
 FTS5/keyword fallback; Intelligence does not return results from incompatible
 vectors. Hash-generated fallback vectors are never persisted or queried.
+
+Missing vectors alone do not invalidate compatible vectors or disable semantic
+retrieval. Full health checks report incomplete coverage, while API startup
+preflight permits Tool RAG sync to fill missing tool vectors. Both native
+launchers print the specific health failure instead of assuming it is a model
+or dimension mismatch. The Web toast reports request-time embedding-host
+failure or fallback, so it does not appear for a coverage-only warning.
 
 The most common recovery is:
 
