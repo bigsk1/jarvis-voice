@@ -118,7 +118,13 @@ echo "$TRANSCRIPT" > "$TRANSCRIPT_FILE"
 # Process through orchestrator
 echo "🧠 Processing with orchestrator..."
 configure_wake_response_style
-ORCH_RESULT=$(python3 "$ORCHESTRATOR" local "$TRANSCRIPT" --json 2>/dev/null)
+ORCH_RESULT=$(python3 "$ORCHESTRATOR" local "$TRANSCRIPT" --json --voice-progress 2>/dev/null) || true
+
+# A failed request still has a JSON speech result that should be spoken.
+if [ -z "$ORCH_RESULT" ] || ! echo "$ORCH_RESULT" | jq -e . >/dev/null 2>&1; then
+    echo "❌ Orchestrator returned invalid JSON" >&2
+    exit 1
+fi
 
 # Extract speech from orchestrator result
 SPEECH=$(echo "$ORCH_RESULT" | jq -r '.speech')

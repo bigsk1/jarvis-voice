@@ -127,14 +127,13 @@ class ComprehensiveTest:
                 cwd=self.project_root
             )
             
-            if result.returncode != 0:
-                return {"ok": False, "error": f"Process failed: {result.stderr}"}
-            
             # Parse JSON output (look for last valid JSON object)
             lines = result.stdout.strip().split('\n')
             for line in reversed(lines):
                 try:
                     parsed = json.loads(line)
+                    if not isinstance(parsed, dict):
+                        continue
                     # Track tools used
                     if "tools_used" in parsed:
                         for tool in parsed["tools_used"]:
@@ -143,6 +142,9 @@ class ComprehensiveTest:
                 except json.JSONDecodeError:
                     continue
             
+            if result.returncode != 0:
+                detail = result.stderr.strip() or result.stdout.strip() or f'exit status {result.returncode}'
+                return {"ok": False, "error": f"Process failed: {detail}"}
             return {"ok": False, "error": "No valid JSON output"}
             
         except subprocess.TimeoutExpired:
@@ -774,4 +776,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

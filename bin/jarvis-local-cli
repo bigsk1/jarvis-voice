@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+CLI_BIN=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+exec "$CLI_BIN/jarvis-cli" --mode local "$@"

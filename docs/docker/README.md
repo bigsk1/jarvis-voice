@@ -571,17 +571,26 @@ docker compose exec -it jarvis-web bash
 # Inspect the active tool profile
 docker compose exec -T jarvis-web ./bin/manage-tools.py profile show
 
-# Run a CLI question in the existing container
-docker compose exec -T jarvis-web ./bin/question.sh "What reminders are pending?"
+# Run the full CLI in the existing container (answer-only by default)
+docker compose exec -T jarvis-web ./bin/jarvis-cli "What reminders are pending?"
+
+# Agent-facing JSON; -T keeps stdout free of terminal formatting
+docker compose exec -T jarvis-web ./bin/jarvis-cli \
+  "What reminders are pending?" --json --no-context
 
 # Or use a temporary one-off container with the same mounts and network
 docker compose run --rm --no-deps jarvis-web \
-  ./bin/question.sh "Summarize today's alerts"
+  ./bin/jarvis-cli "Summarize today's alerts"
 ```
 
 The prompt may display `I have no name!@<container-id>`. Compose runs the container with your numeric host UID/GID so bind-mounted files keep correct ownership, but that UID usually has no matching name in the image's `/etc/passwd`. It is harmless; commands still run as the intended numeric user and `HOME` is set to `/tmp`.
 
 `jarvis-dashboard` is still primarily native-oriented: it expects tmux and localhost-managed services, while Docker services use Compose DNS and separate containers. Run the dashboard natively for now; ordinary Jarvis CLI commands can run either natively or through `docker compose exec/run`.
+
+The CLI uses the image's configured production `JARVIS_VENV=/opt/venv`.
+Rebuild the image after pulling changes that add/update the launcher. See the
+[CLI guide and agent skill](../../jarvis-cli/README.md) for stdin, diagnostics,
+exit codes and structured job/file outputs.
 
 ---
 

@@ -665,17 +665,22 @@ source ~/jarvis-venv/bin/activate
 # Local mode (Ollama)
 ./jarvis-local
 
-# CLI mode (no voice)
-./orchestrator/orchestrator_v2.py cloud "What time is it?"
-./orchestrator/orchestrator_v2.py local "What time is it?"
+# CLI mode: production venv, answer-only output
+./bin/jarvis-cli "What time is it?"
+./bin/jarvis-local-cli "What time is it?"
 
-# CLI mode with voice output (speaks result through speakers)
-./orchestrator/orchestrator_v2.py cloud "What time is it?" --speak
-./orchestrator/orchestrator_v2.py local "Turn up my volume" --speak
+# Structured agent results; diagnostics are opt-in
+./bin/jarvis-cli "Inspect Craft capabilities" --json --no-context
+./bin/jarvis-cli "What time is it?" --json --verbose
+
+# Optional final voice output
+./bin/jarvis-cli "What time is it?" --speak
 
 # Command Dashboard (all commands in one TUI!)
 ./bin/jarvis-dashboard
 ```
+See the [complete CLI guide](jarvis-cli/README.md) and [agent skill](jarvis-cli/SKILL.md) for flags, exit codes, stdin, remote usage and structured file/job results.
+
 ### Terminal Wake Word Mode
 
 ![jarvis-voice](docs/images/voice.png)
@@ -1467,7 +1472,7 @@ The tool will be auto-discovered!
 
 ### Shell shortcuts
 
-Install the managed Bash/Zsh command set with `./update-aliases.sh`. Useful operator commands include `jarvis-d`, `jarvis-start`, `jarvis-start-local`, `jarvis-stop`, `jarvis-status`, and the Web-only `jarvis-web-stop`; `jarvis-cli` and `jarvis-local-cli` run the full text-only orchestrator. Run `jarvis-help` whenever you need the complete shortcut list. See [the install guide](docs/INSTALL_GUIDE.md#step-9-setup-aliases) for explicit Zsh selection.
+Install the managed Bash/Zsh command set with `./update-aliases.sh`. Useful operator commands include `jarvis-d`, `jarvis-start`, `jarvis-start-local`, `jarvis-stop`, `jarvis-status`, and the Web-only `jarvis-web-stop`; `jarvis-cli` and `jarvis-local-cli` run the full text-only orchestrator with quiet answers by default. Use `--json` for agent results and `--verbose` for diagnostics; see the [CLI guide and agent skill](jarvis-cli/README.md). Run `jarvis-help` whenever you need the complete shortcut list. See [the install guide](docs/INSTALL_GUIDE.md#step-9-setup-aliases) for explicit Zsh selection.
 
 ### Tool Builder
 

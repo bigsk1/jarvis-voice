@@ -854,21 +854,30 @@ class ToolBuilder:
             
             duration_ms = (time.time() - start_time) * 1000
             
-            if result.returncode != 0:
-                log_entry.update({
-                    "status": "failed",
-                    "error": result.stderr[:1000],
-                    "duration_ms": duration_ms
-                })
-                self._log_research(log_entry)
-                return f"Research query failed: {result.stderr[:500]}"
-            
             # Parse response
             try:
                 response = json.loads(result.stdout)
                 speech = response.get('speech', '')
                 data = response.get('data', {})
                 tools_used = response.get('tools_used', [])
+
+                # A nonzero CLI exit can still carry the complete failed
+                # answer. Preserve that evidence before consulting stderr.
+                if result.returncode != 0 or response.get('ok') is False:
+                    error = response.get('error') or speech or result.stderr or f'Process exited with status {result.returncode}'
+                    log_entry.update({
+                        'status': 'failed', 'error': str(error)[:1000],
+                        'duration_ms': duration_ms, 'tools_used': tools_used,
+                        'response_speech': speech[:500],
+                        'jarvis_response': {'speech': speech, 'error': response.get('error'),
+                                            'data_keys': list(data.keys()) if isinstance(data, dict) else None,
+                                            'tools_used': tools_used},
+                    })
+                    self._log_research(log_entry)
+                    details = str(error)[:500]
+                    if speech and speech != error:
+                        details += '\n' + speech[:500]
+                    return f'Research query failed: {details}'
                 
                 # Combine speech and relevant data
                 research_result = f"Jarvis found:\n{speech}"
@@ -898,6 +907,11 @@ class ToolBuilder:
                 return final_result
                 
             except json.JSONDecodeError:
+                if result.returncode != 0:
+                    error = result.stderr or result.stdout or f'Process exited with status {result.returncode}'
+                    log_entry.update({'status': 'failed', 'error': error[:1000], 'duration_ms': duration_ms})
+                    self._log_research(log_entry)
+                    return f'Research query failed: {error[:500]}'
                 # Return raw output if not JSON
                 log_entry.update({
                     "status": "success_raw",

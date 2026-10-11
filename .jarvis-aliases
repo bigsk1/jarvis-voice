@@ -33,8 +33,8 @@ jarvis() { _jarvis_run ./bin/wake-jarvis.py "$@"; }
 jarvis-local() { _jarvis_run ./bin/wake-jarvis-local.py "$@"; }
 
 # Full Jarvis CLI routing without microphone or speaker output.
-jarvis-cli() { _jarvis_run "$JARVIS_VENV/bin/python" ./orchestrator/orchestrator_v2.py cloud "$@"; }
-jarvis-local-cli() { _jarvis_run "$JARVIS_VENV/bin/python" ./orchestrator/orchestrator_v2.py local "$@"; }
+jarvis-cli() { "$JARVIS_ROOT/bin/jarvis-cli" "$@"; }
+jarvis-local-cli() { "$JARVIS_ROOT/bin/jarvis-local-cli" "$@"; }
 jarvis-cli-json() { jarvis-cli --json "$@"; }
 jarvis-local-cli-json() { jarvis-local-cli --json "$@"; }
 
@@ -89,8 +89,8 @@ Jarvis commands
 Core
   jarvis                         Cloud wake-word listener
   jarvis-local                   Local wake-word listener
-  jarvis-cli <request>           Cloud text-only orchestrator
-  jarvis-local-cli <request>     Local text-only orchestrator
+  jarvis-cli <request>           Cloud CLI; answer-only output by default
+  jarvis-local-cli <request>     Local CLI; append --json for agent results
   jarvis-cli-json <request>      Cloud orchestrator JSON output
   jarvis-local-cli-json <request> Local orchestrator JSON output
   jarvis-d                       Open the terminal dashboard
@@ -119,6 +119,9 @@ Shell helpers
   jarvis-help                    Show this command list
 
 Tip: append --help to the underlying command when supported, for example:
+  jarvis-cli --help
   jarvis-start --help
+
+Full CLI guide and agent skill: jarvis-cli/README.md and jarvis-cli/SKILL.md
 EOF
 }
