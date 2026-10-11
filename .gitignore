@@ -35,6 +35,8 @@ docs/n8n/workflows/*.json
 # ===== Stash (task artifacts) =====
 # Keep directory structure, ignore space contents
 data/stash/space_*/
+# Private Docling single-use result recovery responses and locks.
+**/.docling-recovery/
 # Standalone stash browser credentials and persistent database/cache.
 filebrowser/.env
 filebrowser/data/

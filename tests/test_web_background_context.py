@@ -228,7 +228,7 @@ def test_progress_and_uncertainty_are_bounded_current_evidence(journey, store):
     assert job['state'] == 'needs_attention'
     assert job['attention_reason'] == reason
     assert job['progress']['phase'] == 'Inspecting page 4 of 10'
-    assert job['result'] is None and not job['result_archived']
+    assert job['result']['completion'] == 'unknown' and not job['result_archived']
     assert store.counts()['reserved'] == 1
 
 

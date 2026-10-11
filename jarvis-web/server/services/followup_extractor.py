@@ -122,7 +122,7 @@ FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS = 3000
 FOLLOWUP_SOURCE_MAX_RUNS = 6
 FOLLOWUP_SOURCE_CONTENT_MAX_CHARS = 6000
 _SOURCE_RESULT_TOOLS = frozenset({
-    'pdf_read', 'document_ocr', 'transcribe_audio', 'analyze_video', 'stash', 'text_summarizer',
+    'pdf_read', 'document_ocr', 'docling_convert', 'transcribe_audio', 'analyze_video', 'stash', 'text_summarizer',
 })
 _SOURCE_CONTENT_FIELDS = frozenset({
     'text_excerpt', 'content_excerpt', 'transcript_excerpt', 'markdown_excerpt',
@@ -341,6 +341,11 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'file_path',
     ],
     # --- File/artifact producers ---
+    'docling_convert': ['task_id', 'state', 'partial', 'recovery_available', 'source_stash_ref', 'space_id', 'file_id',
+        'stash_ref', 'file_path', 'mime_type', 'filename', 'outputs', 'receipt_stash_ref',
+        'markdown_stash_ref', 'markdown_file_id', 'markdown_char_count', 'json_stash_ref', 'json_file_id',
+        'text_stash_ref', 'text_file_id', 'page_count', 'table_count', 'processing_time', 'error_count',
+        'content_char_count', 'content_truncated', 'followup_note'],
     'craft_image': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note', 'editable_project_ref', 'document'],
     'craft_pdf': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note', 'editable_project_ref', 'document'],
     'craft_photos': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note', 'editable_project_ref', 'document'],
@@ -2535,6 +2540,9 @@ def _extract_bounded_content_followup(
             ('parsed_json', 'parsed_json', FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS),
             ('parsed_json_excerpt', 'parsed_json_excerpt', FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS),
             ('page_outputs', 'page_outputs', FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS),
+        ),
+        'docling_convert': (
+            ('markdown_excerpt', 'markdown_excerpt', FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS),
         ),
         'transcribe_audio': (
             ('transcript', 'transcript_excerpt', 6000),

@@ -3801,7 +3801,7 @@ class ChatUI {
         if (toolsWithOwnImageDisplay.includes(toolName)) continue;
         // OCR filenames describe the input image; its stash refs point to
         // Markdown, JSON or archive outputs, including in saved conversations.
-        if (toolName === 'document_ocr') continue;
+        if (toolName === 'document_ocr' || toolName === 'docling_convert') continue;
         if (!toolResult || typeof toolResult !== 'object') continue;
         if (this._shouldSkipAssistantInlineImage(toolResult)) continue;
         // An artifact-producing tool can return a PDF as its primary output

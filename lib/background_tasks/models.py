@@ -51,6 +51,18 @@ def digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def recovery_details(value) -> dict[str, str]:
+    """Bounded provider identifiers/receipts, never arbitrary diagnostics or URLs."""
+    if not isinstance(value, dict):
+        return {}
+    details = {key: item for key in ('task_id', 'job_id', 'request_id', 'run_id')
+               if isinstance(item := value.get(key), str) and _IDENTIFIER.fullmatch(item)}
+    receipt = value.get('receipt_stash_ref')
+    if isinstance(receipt, str) and re.fullmatch(r'stash://[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,128}', receipt):
+        details['receipt_stash_ref'] = receipt
+    return details
+
+
 @dataclass(frozen=True)
 class Admission:
     """Trusted caller context; no socket, ENV value, or MemoryDB session can replace it.

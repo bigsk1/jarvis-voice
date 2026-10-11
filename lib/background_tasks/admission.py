@@ -349,6 +349,20 @@ class BackgroundAdmissionService:
 
         timeout = 900
         from lib.webhook_integrations.contracts import ADAPTER as CALLBACK_ADAPTER
+        if self.adapters[tool] in SKILL_ADAPTERS:
+            from jsonschema import ValidationError
+            from referencing.exceptions import Unresolvable
+
+            from .local_skill import validate_arguments
+            try:
+                validate_arguments(schema, args)
+            except (ValidationError, Unresolvable) as exc:
+                # Never include the rejected instance: arguments can contain
+                # private document text or credentials. No job exists yet.
+                field = '.'.join(str(part) for part in getattr(exc, 'absolute_path', ()))
+                field = field if field and len(field) <= 80 and all(
+                    char.isalnum() or char in '._' for char in field) else 'arguments'
+                raise AdmissionDenied(f'Background {field} does not match the tool schema or background constraints; no task was queued') from exc
         if self.adapters[tool] == CALLBACK_ADAPTER:
             from .local_skill import argument_validators
             for validator in argument_validators(schema.parameters, None):

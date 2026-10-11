@@ -4,6 +4,7 @@
     "brave_llm_context": false,
     "crawl_url": false,
     "document_ocr": false,
+    "docling_convert": false,
     "flight_search": false,
     "generate_image": false,
     "generate_music": false,

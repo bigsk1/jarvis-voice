@@ -81,6 +81,14 @@ CLI reference: `./bin/manage-tools.py -h` and the usage block at the top of `bin
 
 ---
 
+## Docling document conversion (optional)
+
+`docling_convert` connects to an authenticated Docling Serve deployment on a
+LAN or remote HTTPS host. Set `DOCLING_BASE_URL` and `DOCLING_API_KEY` in each
+mode that should expose it. It supports OCR, layout/table-preserving exports
+to Stash, background observation and task collection. See
+[Docling setup and usage](../docs/tools/docling-tool/README.md).
+
 ## YouTube extraction runtime and transcript fallback
 
 `youtube_transcript` and `youtube_video` use yt-dlp from the active Python

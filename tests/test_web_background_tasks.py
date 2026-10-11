@@ -310,6 +310,55 @@ def test_web_duplicate_admission_still_allows_independent_foreground_work(web_ta
     assert "allow_repeated_background" not in authorization
 
 
+def test_remote_receipt_confusion_settles_source_and_releases_one_job(web_tasks, monkeypatch):
+    import orchestrator_v2
+
+    from lib.background_tasks import production
+    from lib.background_tasks.worker import TaskWorker
+
+    h = web_tasks
+    schema = h.background.registry.get_tool('fixture')
+    schema.background_execution.update(adapter='remote_skill_v1', completion_scope='remote_work', timeout_seconds=900)
+    schema.background_adapter = 'remote_skill_v1'
+    h.background.adapters['fixture'] = 'remote_skill_v1'
+    h.tasks.touch_worker('remote-fixture', {'remote_skill_v1'})
+    monkeypatch.setattr(production, 'authorize_tools',
+                        lambda names: {name: {'timeout_seconds': 900} for name in names})
+    original_factory = orchestrator_v2.Orchestrator
+
+    def factory(*args, **kwargs):
+        instance = original_factory(*args, **kwargs)
+        steps = iter(range(3))
+
+        def route(*args, **kwargs):
+            step = next(steps)
+            if step == 2:
+                return {'intent': 'qa', 'text_response': 'The task is queued; results will return here.'}
+            arguments = {} if step == 0 else {
+                'action': 'collect', 'task_id': next(iter(instance.background_context.receipts))}
+            return {'intent': 'tool', 'tool_name': 'fixture', 'arguments': arguments,
+                    'tool_call_id': f'call-{step}'}
+
+        instance.router.route = route
+        return instance
+
+    monkeypatch.setattr(orchestrator_v2, 'Orchestrator', factory)
+    h.client.emit('chat:send', {'message': 'Convert the document', 'mode': 'cloud'})
+    job = eventually(lambda: next(iter(h.tasks.conversation_jobs()), None))
+    eventually(lambda: h.tasks.get(job['id'])['dispatch_state'] == 'ready')
+    conversation = h.store.get_conversation(job['conversation_id'])
+    answer = conversation['messages'][-1]
+    assert conversation['run']['status'] == 'completed' and answer['data']['_run_status'] == 'completed'
+    assert len(answer['data']['pending_jobs']) == 1 and len(answer['data']['background_jobs']) == 1
+    assert all(item['ok'] is None for item in answer['data']['_tool_trace'])
+    assert not (h.root / 'foreground_started').exists()
+    assert len(h.tasks.conversation_jobs()) == 1
+    # The real receipt gate and worker release now succeed; the remote check was never executed.
+    assert TaskWorker(h.tasks, {'remote_skill_v1': lambda _: {'ok': True, 'speech': 'Converted'}}).run_once()
+    eventually(lambda: h.tasks.get(job['id'])['delivery_state'] == 'delivered')
+    assert h.tasks.get(job['id'])['state'] == 'succeeded'
+
+
 def test_saved_background_policy_is_authenticated_persistent_and_not_a_client_override(web_tasks):
     h = web_tasks
     http = h.app.test_client()

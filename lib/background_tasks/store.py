@@ -29,6 +29,7 @@ from .models import (
     canonical_json,
     digest,
     identifier,
+    recovery_details,
 )
 
 DEFAULT_SETTINGS = {
@@ -331,9 +332,33 @@ class TaskStore(DeliveryStore, ManagementStore):
         return seconds
 
     @staticmethod
+    def _attention_notice(conn, job_id, now, result=None):
+        """Persist uncertain evidence and queue one notice, without replaying work."""
+        evidence = dict(result) if isinstance(result, dict) else {}
+        row = conn.execute('SELECT progress_json FROM jobs WHERE id=?', (job_id,)).fetchone()
+        progress = json.loads(row['progress_json']) if row['progress_json'] else {}
+        recovery = recovery_details(progress.get('recovery'))
+        if recovery:
+            data = dict(evidence['data']) if isinstance(evidence.get('data'), dict) else {}
+            data.update(recovery)
+            evidence['data'] = data
+        evidence.update(ok=False, completion='unknown', result_kind='background_attention')
+        try:
+            payload = canonical_json(evidence, MAX_RESULT_BYTES)
+        except TaskError:
+            payload = canonical_json({'ok': False, 'completion': 'unknown',
+                                      'result_kind': 'background_attention', 'data': recovery}, MAX_RESULT_BYTES)
+        fingerprint = digest(payload)
+        conn.execute('UPDATE jobs SET result_json=?, result_digest=?, updated_at=? WHERE id=?',
+                     (payload, fingerprint, now, job_id))
+        conn.execute('''INSERT INTO outbox(id,job_id,result_digest,created_at) VALUES(?,?,?,?)
+                        ON CONFLICT(job_id) DO NOTHING''',
+                     (uuid.uuid4().hex, job_id, fingerprint, now))
+
+    @staticmethod
     def _recover(conn, now):
         expired = conn.execute(
-            """SELECT id, attempt_id FROM jobs
+            """SELECT id, attempt_id, deadline FROM jobs
             WHERE state IN ('starting','running') AND ((callback_waiting=0 AND lease_expires_at<=?) OR deadline<=?)""",
             (now, now),
         ).fetchall()
@@ -349,6 +374,17 @@ class TaskStore(DeliveryStore, ManagementStore):
                 WHERE id=?""",
                 (now, row["attempt_id"]),
             )
+            TaskStore._attention_notice(conn, row['id'], now,
+                {'error': 'Background observation deadline expired'} if row['deadline'] <= now else None)
+        # Upgrade previously silent uncertain jobs through the same durable
+        # delivery mechanism. Conversation disposal still fences publication.
+        for row in conn.execute('''SELECT j.id,j.result_json,j.conversation_id,j.generation FROM jobs j
+                WHERE j.state='needs_attention' AND NOT EXISTS
+                (SELECT 1 FROM outbox o WHERE o.job_id=j.id) AND NOT EXISTS
+                (SELECT 1 FROM conversation_fences f WHERE f.conversation_id=j.conversation_id
+                 AND (f.action='delete' OR f.generation>j.generation)) LIMIT 100''').fetchall():
+            TaskStore._attention_notice(conn, row['id'], now,
+                                        json.loads(row['result_json']) if row['result_json'] else None)
         held = conn.execute("SELECT id FROM jobs WHERE state='queued' AND deadline<=?", (now,)).fetchall()
         payload = canonical_json({"ok": False, "speech": "Task expired before execution; it was never dispatched."}, MAX_RESULT_BYTES)
         for row in held:
@@ -456,9 +492,16 @@ class TaskStore(DeliveryStore, ManagementStore):
     def progress(self, claim: Claim, value: dict):
         if not isinstance(value, dict):
             raise TaskError("Progress must be an object")
-        payload = canonical_json(value, MAX_PROGRESS_BYTES)
         with self._connection(write=True) as conn:
-            self._active(conn, claim)
+            row = self._active(conn, claim)
+            previous = json.loads(row['progress_json']) if row['progress_json'] else {}
+            recovery = recovery_details(previous.get('recovery'))
+            for key, item in recovery_details(value.get('recovery')).items():
+                recovery.setdefault(key, item)
+            value = dict(value)
+            if recovery:
+                value['recovery'] = recovery
+            payload = canonical_json(value, MAX_PROGRESS_BYTES)
             conn.execute(
                 "UPDATE jobs SET progress_json=?, updated_at=? WHERE id=?",
                 (payload, self._time(), claim.job_id),
@@ -520,7 +563,7 @@ class TaskStore(DeliveryStore, ManagementStore):
                                     evidence='Supervisor verified local process-group termination or no launch',
                                     verified_stop=True)
 
-    def attention(self, claim: Claim, reason: str):
+    def attention(self, claim: Claim, reason: str, *, result=None):
         """Fence an interrupted/unknown adapter outcome instead of pretending it failed safely."""
         with self._connection(write=True) as conn:
             self._active(conn, claim)
@@ -534,6 +577,56 @@ class TaskStore(DeliveryStore, ManagementStore):
                 "UPDATE attempts SET finished_at=?, outcome='needs_attention' WHERE id=?",
                 (now, claim.attempt_id),
             )
+            self._attention_notice(conn, claim.job_id, now, result)
+
+    def retain_uncertain_result(self, claim: Claim, result) -> bool:
+        """Enrich expiry evidence for this exact attempt, without restoring ownership.
+
+        Operator decisions, another attempt and conversation disposal win. A new
+        receipt replaces a pending notice (fencing stale synthesis), or queues a
+        recovery follow-up if the original notice has already been delivered.
+        """
+        if not isinstance(result, dict):
+            return False
+        with self._connection(write=True) as conn:
+            row = conn.execute('SELECT * FROM jobs WHERE id=?', (claim.job_id,)).fetchone()
+            if (not row or row['state'] != 'needs_attention' or row['fence'] != claim.fence + 1
+                    or row['attention_reason'] != 'Execution ownership or observation deadline expired; not retried'
+                    or (row['owner'], row['attempt_id']) != (claim.owner, claim.attempt_id)
+                    or not self._generation_allowed(conn, row['conversation_id'], row['generation'])):
+                return False
+            old = json.loads(row['result_json']) if row['result_json'] else {}
+            evidence = {**old, **result}
+            if old.get('error'):
+                evidence['error'] = old['error']
+                if result.get('error') and result['error'] != old['error']:
+                    evidence['observer_error'] = result['error']
+            data = dict(old['data']) if isinstance(old.get('data'), dict) else {}
+            if isinstance(result.get('data'), dict):
+                data.update(result['data'])
+            data.update(recovery_details(old.get('data')))
+            evidence['data'] = data
+            evidence.update(ok=False, completion='unknown', result_kind='background_attention')
+            # Never let a malformed/oversized late payload erase durable evidence.
+            try:
+                canonical_json(evidence, MAX_RESULT_BYTES)
+            except TaskError:
+                evidence = {**old, 'data': {**(old['data'] if isinstance(old.get('data'), dict) else {}),
+                                           **recovery_details(result.get('data')),
+                                           **recovery_details(old.get('data'))}}
+            now = self._time()
+            delivery = conn.execute('SELECT * FROM outbox WHERE job_id=?', (claim.job_id,)).fetchone()
+            self._attention_notice(conn, claim.job_id, now, evidence)
+            updated = conn.execute('SELECT result_json,result_digest FROM jobs WHERE id=?', (claim.job_id,)).fetchone()
+            new = json.loads(updated['result_json'])
+            added_recovery = recovery_details(new.get('data')) != recovery_details(old.get('data'))
+            if (delivery and updated['result_digest'] != row['result_digest']
+                    and (delivery['state'] != 'delivered' or added_recovery)):
+                conn.execute('''UPDATE outbox SET id=?,result_digest=?,created_at=?,state=?,
+                    owner=NULL,fence=fence+1,lease_expires_at=NULL,output_json=NULL,next_attempt_at=0,error=NULL
+                    WHERE job_id=?''', (uuid.uuid4().hex, updated['result_digest'], now,
+                                       'suppressed' if delivery['state'] == 'suppressed' else 'pending', claim.job_id))
+            return True
 
     def pending_deliveries(self, *, limit=100) -> list[dict]:
         if type(limit) is not int or not 1 <= limit <= 1000:

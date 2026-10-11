@@ -84,9 +84,53 @@ Identical invocation identities reuse one admission; different work under that i
 
 Within one Web message, the existing exact-duplicate guard treats an accepted tool call as already seen and blocks the same tool/arguments before another admission. Changed conversion arguments remain separate jobs, and a new user message may repeat work. The existing single-attempt caps for expensive generators still apply, including when arguments differ. There is no composer override for either guard. Duplicate tracking does not count receipts as successful execution or change durable invocation identity.
 
+An admission's `job_id` identifies Jarvis's queue, not a provider task. If the
+model tries to pass a current turn's admitted job ID as a remote tool's
+`task_id`, `job_id` or `run_id`, the shared executor returns the existing
+admission receipt. It does not poll the provider or queue another job. This
+keeps the source turn able to settle and release its accepted work rather than
+ending with a misleading collection failure. Native provider IDs continue
+through normal tool execution. Independent tools remain available; admission
+does not end the whole routing turn. Failed, cancelled or interrupted source
+turns still cannot release held jobs.
+
 A matching slash-workflow command takes precedence and runs its ordinary foreground pipeline. Saved background preferences are not inherited by workflow steps. The unsupported-caller guard also recognizes `status=accepted` plus `job_id` as a leaked receipt; it deliberately accepts that broader signal as well as the typed `background_admission` marker.
 
 Adapters receive `ExecutionContext`, use its mode environment for children, and check ownership/deadline/shutdown during cooperative work. A returned result means completion is known; `KnownFailure` means known unsuccessful completion. Unexpected errors and interruption without termination proof produce `needs_attention` without automatic execution retry. A surviving local supervisor can report verified process-group termination for its exact attempt after shutdown or lease/deadline expiry. That settles as failed (or cancelled if cancellation was requested) and releases capacity. This report cannot overwrite an operator disposition or cross a conversation-disposal fence. Remote work remains uncertain after stopping its local observer.
+
+Tool timeouts and uncertain outcomes also queue a durable notice in the same
+conversation. A remote observer reaching its waiting limit does not prove the
+provider failed or stopped. The notice says what Jarvis can confirm and that no
+automatic retry was started; it remains visible after reconnect or reload.
+Timeout/uncertainty notices do not depend on an LLM summary call. They use the
+existing delivery outbox, source settlement and conversation-generation fences,
+with no new service or database migration. Previously silent uncertain jobs
+receive one notice when the store next reconciles, unless their conversation
+was cleared or deleted.
+
+When a skill returns unconfirmed results, the worker preserves its bounded
+result and native task/receipt references for the timeout notice and the next
+turn's background context, even when expiry recovery wins the race. Only the
+same expired attempt can enrich this evidence; it cannot restore its lease,
+release its capacity, overwrite an operator decision or cross conversation
+disposal. New recovery details invalidate a pending notice; if the notice has
+already been delivered, one additional notice carries those details. Suppressed
+deliveries stay suppressed. Identical evidence does not queue another notice.
+
+Remote skills can emit the existing tool-progress protocol with a `recovery`
+object as soon as submission returns, before waiting for completion. Recognized
+fields are `task_id`, `job_id`, `request_id`, `run_id` and `receipt_stash_ref`;
+identifiers and Stash references are bounded and validated. Later progress
+retains these fields, and expiry recovery includes them without requiring final
+child stdout. If the provider never returns an identifier, Jarvis cannot invent
+one or infer completion from files that happen to exist in Stash.
+
+Ask “What is happening with the existing task?” or “Check that conversion;
+do not upload it again.” These questions do not authorize another submission.
+Jarvis can check or collect existing provider work when that tool supports it
+and a usable task ID was returned. No new execution is scheduled just because
+a notice was delivered. A notice is not a completion result; remote work after
+the waiting limit does not automatically receive another observer.
 
 **A `needs_attention` job with an `attempt_id` still reserves a running slot.** Clearing a conversation or stopping a worker is not proof that the operation stopped. The task inspector requires an explicit stopped-operation attestation, evidence, and failed/cancelled disposition before releasing this capacity. The evidence and state change commit together; reconciliation never replays execution.
 

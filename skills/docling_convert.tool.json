@@ -1,0 +1,145 @@
+{
+  "enabled": true,
+  "name": "docling_convert",
+  "description": "Convert existing documents to layout-aware Markdown, structured Docling JSON and plain text using an optional self-hosted Docling Serve service. Use for extracting tables or preserving document reading order from PDFs, scanned PDFs/images, DOCX, PPTX, XLSX, HTML, Markdown and CSV; OCR is optional and enabled by default. Accepts a Stash reference or policy-approved local file on Jarvis; saves full exports to Stash and returns a bounded text excerpt plus page/table counts. Async task_id is preserved for job/collect recovery; never upload again after an unknown result. Prefer pdf_read for quick searchable-PDF text, page rendering or PDF manipulation; document_ocr is the separate OVIS service; analyze_image is for general photo questions. This tool converts existing content, not image generation or PDF creation. After a Web background admission, wait for automatic delivery. Its Jarvis job_id is different from Docling task_id; never pass it to job/collect or submit another conversion to poll. Example requests: \"Convert this PDF to Markdown\", \"Extract tables as JSON\", \"Turn a scanned document into plain text\".",
+  "complementary_tools": [
+    "pdf_read",
+    "document_ocr",
+    "stash",
+    "text_summarizer",
+    "source_library"
+  ],
+  "script": "docling_convert.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "convert",
+          "status",
+          "job",
+          "collect"
+        ],
+        "description": "convert uploads one existing document; status checks readiness; job checks a prior task; collect waits for and saves its outputs without uploading again."
+      },
+      "stash_ref": {
+        "type": "string",
+        "description": "Existing uploaded document stash:// reference. For convert use exactly one of stash_ref or file_path."
+      },
+      "file_path": {
+        "type": "string",
+        "description": "Policy-permitted local document path on the Jarvis host. Prefer stash_ref for Web attachments."
+      },
+      "task_id": {
+        "type": "string",
+        "description": "Exact UUID-style Docling task_id from the provider response or saved docling-task.json. Required for job/collect. A 32-character Jarvis background job_id belongs to the Background Tasks UI; wait for automatic delivery instead. Never invent IDs or resubmit uncertain work.",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      },
+      "formats": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "md",
+            "json",
+            "text"
+          ]
+        },
+        "minItems": 1,
+        "maxItems": 3,
+        "uniqueItems": true,
+        "description": "convert output formats; defaults to all three. JSON is native Docling layout/tables/provenance, not a user-defined business schema."
+      },
+      "do_ocr": {
+        "type": "boolean",
+        "description": "Run OCR on bitmap content. Default true; use false for searchable documents without scans."
+      },
+      "force_ocr": {
+        "type": "boolean",
+        "description": "Replace existing text with OCR. Default false; requires do_ocr true."
+      },
+      "page_start": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Optional first PDF page; defaults to 1 when page_end is supplied."
+      },
+      "page_end": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Optional inclusive last PDF page. Must be >= page_start. Narrow ranges help with long documents."
+      },
+      "output_name": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$",
+        "description": "Safe basename without extension for saved outputs; default converted-document."
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "DOCLING_BASE_URL",
+      "DOCLING_API_KEY"
+    ],
+    "setup_hint": "Set DOCLING_BASE_URL and DOCLING_API_KEY for an existing Docling Serve service in the selected mode ENV. See docs/tools/docling-tool/README.md."
+  },
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true,
+    "allow": [
+      "DOCLING_API_KEY_HEADER",
+      "DOCLING_TIMEOUT_SECONDS",
+      "STASH_DIR",
+      "JARVIS_BACKGROUND_MAX_INPUT_BYTES"
+    ]
+  },
+  "execution": {
+    "background": {
+      "supported": true,
+      "adapter": "remote_skill_v1",
+      "completion_scope": "remote_work",
+      "timeout_seconds": 960,
+      "progress_label": "Converting document with Docling",
+      "limits": {
+        "memory_bytes": 1073741824,
+        "file_bytes": 134217728,
+        "input_bytes": 52428800,
+        "output_bytes": 2097152
+      },
+      "argument_constraints": {
+        "properties": {
+          "action": {
+            "enum": [
+              "convert",
+              "collect"
+            ]
+          }
+        },
+        "if": {
+          "properties": {
+            "action": {
+              "const": "collect"
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "task_id"
+          ]
+        }
+      }
+    }
+  }
+}

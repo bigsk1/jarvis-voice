@@ -154,6 +154,33 @@ def test_two_pdfs_and_text_are_saved_routed_and_restored_in_order(journey):
     assert 'Budget is 120' in history[0]['attachment_context']
 
 
+@pytest.mark.parametrize('manual_hint', [None, 'docling_convert', 'pdf_read', 'document_ocr'])
+@pytest.mark.parametrize('multiple', [False, True])
+def test_pdf_attachments_preserve_only_manual_tool_preferences(journey, monkeypatch, manual_hint, multiple):
+    hint_calls = []
+
+    def sanitize(hints, **kwargs):
+        hint_calls.append(hints)
+        return hints or []
+
+    monkeypatch.setattr(journey.handler, '_sanitize_tool_hints', sanitize)
+    sources = [journey.pdf('Invoice table')]
+    if multiple:
+        sources.append(note('Compare the table'))
+    journey.send(message='Extract the tables and preserve their layout. Save Markdown, JSON and text.',
+                 attachments=sources, tool_hints=[manual_hint] if manual_hint else [])
+    journey.process()
+    prompt, _ = journey.routes[-1]
+    assert hint_calls == [[manual_hint] if manual_hint else []]
+    assert "enabled tool appropriate to the user's request" in prompt
+    if manual_hint:
+        assert f'Selected tool hints: {manual_hint}.' in prompt
+    else:
+        assert 'Selected tool hints:' not in prompt
+    for tool in ('docling_convert', 'pdf_read', 'document_ocr'):
+        assert (tool in prompt) is (tool == manual_hint)
+
+
 def test_denied_web_tool_saves_partial_result_for_followup(journey, monkeypatch):
     """A real Web run pauses, stops its sequence, and persists prior data."""
     import threading
@@ -555,7 +582,7 @@ def test_full_six_source_bundle_keeps_documents_audio_and_image_identity_after_r
     assert note_text in prompt
     assert 'FIRST_PDF_BODY_NOT_INLINE' not in prompt
     assert 'SECOND_PDF_BODY_NOT_INLINE' not in prompt
-    assert 'Read each PDF with pdf_read' in prompt
+    assert "Access each PDF with an enabled tool appropriate to the user's request" in prompt
     assert 'transcribe each recording with transcribe_audio' in prompt
     assert 'filenames and metadata are not evidence of contents' in prompt
 
@@ -599,7 +626,8 @@ def test_full_six_source_bundle_keeps_documents_audio_and_image_identity_after_r
     assert 'Source 2: agreement.pdf' in rendered
     assert 'Uploaded image 2' in rendered
     assert note_text in rendered
-    assert 'pdf_read' in rendered and 'transcribe_audio' in rendered
+    assert "Access each PDF with an enabled tool appropriate to the user's request" in rendered
+    assert 'transcribe_audio' in rendered
     assert not journey.handler.pending_cancellations
 
 

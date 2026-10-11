@@ -234,6 +234,8 @@ class ToolExecutor:
             return 600  # 10 minutes for video generation (typically 2-3 min, up to 5 min for 4k)
         if tool_name == "document_ocr":
             return 1200  # 20 minutes for large GPU OCR jobs plus optional local extraction
+        if tool_name == "docling_convert":
+            return max(30, min(900, get_int("DOCLING_TIMEOUT_SECONDS", 300))) + 30
         if tool_name == "transcribe_audio":
             # Long recordings may be split into several sequential provider
             # requests. The tool owns the request-level deadlines; retain a
@@ -373,7 +375,25 @@ class ToolExecutor:
         if background_context is not None:
             if not isinstance(background_context, WebTaskContext):
                 return {'ok': False, 'error': 'Invalid Web background context'}
-            if tool_name in background_context.selected:
+            schema = self.registry.get_tool(tool_name)
+            if (tool_name in background_context.selected and tool_name not in self.excluded_tools
+                    and getattr(schema, 'background_adapter', None) == 'remote_skill_v1'):
+                # A current-turn Jarvis receipt cannot be a provider's task
+                # handle. Echo its real admission without dispatching another
+                # observer or claiming that the requested remote check ran.
+                with background_context.lock:
+                    for key in ('task_id', 'job_id', 'run_id'):
+                        reference = args.get(key)
+                        receipt = background_context.receipts.get(reference) if isinstance(reference, str) else None
+                        if receipt:
+                            return {**receipt, 'receipt_reused': True,
+                                    'speech': 'That is a Jarvis background job ID, not a remote task ID. '
+                                              'The existing task is queued; results will return to this conversation. '
+                                              'No remote status check or additional task was started.'}
+            # Docling's selected background work is conversion/collection.
+            # Read-only status calls must not recursively queue observer jobs.
+            docling_check = tool_name == 'docling_convert' and args.get('action') in ('status', 'job')
+            if tool_name in background_context.selected and not docling_check:
                 if tool_name in self.excluded_tools:
                     return {'ok': False, 'error': 'Tool blocked for this request'}
                 try:

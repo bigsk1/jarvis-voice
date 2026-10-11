@@ -106,7 +106,9 @@ class ManagementStore:
         # Operator actions are card-only. A verified worker failure uses normal
         # late delivery, unless cancellation was explicitly requested.
         conn.execute("""INSERT INTO outbox(id,job_id,result_digest,created_at,state) VALUES(?,?,?,?,?)
-            ON CONFLICT(job_id) DO UPDATE SET state='suppressed', fence=fence+1, lease_expires_at=NULL""",
+            ON CONFLICT(job_id) DO UPDATE SET id=excluded.id, result_digest=excluded.result_digest,
+            created_at=excluded.created_at, state=excluded.state, fence=fence+1,
+            lease_expires_at=NULL, output_json=NULL, next_attempt_at=0, error=NULL""",
                      (uuid.uuid4().hex, row["id"], fingerprint, now,
                       'pending' if verified_stop and not cancelled else 'suppressed'))
         self._event(conn, row["id"], 'verified_local_stop' if verified_stop else outcome, evidence, now)

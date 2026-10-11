@@ -105,6 +105,49 @@ assert.ok(visible(message(ui)).includes('Report.pdf'));
 """)
 
 
+@pytest.mark.parametrize('form', ['live', 'saved', 'nested', 'object', 'object_nested', 'object_marker'])
+@pytest.mark.parametrize('mode', ['cloud', 'local'])
+def test_conversion_exports_and_supporting_refs_keep_their_own_labels(form, mode):
+    run_message_browser(DOM + f"\nconst form={json.dumps(form)}, mode={json.dumps(mode)};\n" + r"""
+const ui = chat();
+const payload = {_background_mode:mode, docling_convert:{ok:true,data:{
+  // Alias order must not prevent later authoritative descriptors from naming files.
+  receipt_stash_ref:'stash://task_space/f_receipt', source_stash_ref:'stash://input_space/f_pdf',
+  json_stash_ref:'stash://output_space/f_json', markdown_stash_ref:'stash://output_space/f_md',
+  filename:'manual.md', stash_ref:'stash://output_space/f_md', mime_type:'text/markdown',
+  outputs:[{name:'manual.md', stash_ref:'stash://output_space/f_md', mime_type:'text/markdown'},
+    {name:'manual.json', stash_ref:'stash://output_space/f_json', mime_type:'application/json'}]
+}}};
+const before = JSON.stringify(payload), data = lateData(payload, form);
+if (form.startsWith('object')) ui.addAssistantMessage({...data, content:'Converted successfully.'});
+else ui.addAssistantMessage('Converted successfully.', [], data, form === 'live' ? {late:true} : {});
+const links = descendants(message(ui)).filter(el => el.tag === 'a');
+assert.deepEqual(links.map(el => [el.textContent, el.href]), [
+  ['manual.md', '/stash/view/output_space/f_md?mode='+mode],
+  ['manual.json', '/stash/view/output_space/f_json?mode='+mode],
+  ['Task receipt', '/stash/view/task_space/f_receipt?mode='+mode],
+  ['Source file', '/stash/view/input_space/f_pdf?mode='+mode]
+]);
+assert.equal(JSON.stringify(payload), before);
+assert.ok(links.every(el => el.rel === 'noopener noreferrer'));
+""")
+
+
+def test_artifact_names_do_not_leak_to_nested_refs_or_override_explicit_outputs():
+    run_message_browser(DOM + r"""
+const ui = chat();
+const data = {_kind:'continuation', fixture:{filename:'wrong.md', stash_ref:'stash://space/f_main',
+  outputs:[{name:'actual.json',stash_ref:'stash://space/f_main'}],
+  nested:{ref:'stash://space/f_other',name:'<img onerror=alert(1)>.txt'},
+  receipt_stash_ref:'stash://space/f_receipt'},
+  ocr:{filename:'scan.jpg',stash_ref:'stash://space/f_ocr',markdown_stash_ref:'stash://space/f_ocr'}};
+ui.addAssistantMessage('Saved.', [], data);
+const all = descendants(message(ui)), links = all.filter(el => el.tag === 'a');
+assert.deepEqual(links.map(el => el.textContent), ['actual.json','<img onerror=alert(1)>.txt','Task receipt','Markdown file']);
+assert.ok(!all.some(el => el.tag === 'img'));
+""")
+
+
 def test_invalid_stash_refs_are_not_truncated_or_reinterpreted():
     run_message_browser(DOM + r"""
 const ui = chat();

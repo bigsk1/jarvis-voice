@@ -228,7 +228,8 @@ class LocalSkillRunner:
                     if remote and context.local_process_started and not confirmed_failure:
                         raise UncertainOutcome(
                             'Remote skill returned no confirmed success. Provider work may still exist; '
-                            'check tool/provider records before reconciling or retrying. Not replayed.')
+                            'check tool/provider records before reconciling or retrying. Not replayed.',
+                            result=bounded_failure(result))
                     raise KnownFailure(bounded_failure(result))
                 return result
         except CancellationRequested as exc:
@@ -250,7 +251,8 @@ class LocalSkillRunner:
             if remote and context.local_process_started:
                 raise UncertainOutcome(
                     'Remote observation ended without a confirmed result. Provider work may continue; '
-                    'check provider records before reconciling or retrying. Not replayed.') from exc
+                    'check provider records before reconciling or retrying. Not replayed.',
+                    result={'ok': False, 'completion': 'unknown', 'error': type(exc).__name__}) from exc
             raise KnownFailure(bounded_failure({'ok': False,
                 'speech': 'The background task could not complete.',
                 'error': str(exc) if isinstance(exc, AdmissionDenied) else type(exc).__name__})) from exc

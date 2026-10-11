@@ -47,6 +47,12 @@ def _source_run(tool, number, *, enveloped=False):
             "pages": [{"page_number": 1}],
         }
         arguments = {"action": "ocr", "stash_ref": source}
+    elif tool == "docling_convert":
+        payload = {"markdown_excerpt": f"Report {number}: revised offer accepted.",
+                   "markdown_stash_ref": output, "stash_ref": output,
+                   "json_stash_ref": f"stash://processed/structure_{number}",
+                   "source_stash_ref": source, "page_count": 2, "table_count": 1}
+        arguments = {"action": "convert", "stash_ref": source}
     elif tool == "transcribe_audio":
         payload = {
             "source_filename": f"recording-{number}.mp3",
@@ -73,7 +79,7 @@ def _source_run(tool, number, *, enveloped=False):
     return ({"ok": True, "data": payload} if enveloped else payload), trace
 
 
-SOURCE_TOOLS = ("pdf_read", "document_ocr", "transcribe_audio", "stash", "text_summarizer")
+SOURCE_TOOLS = ("pdf_read", "document_ocr", "docling_convert", "transcribe_audio", "stash", "text_summarizer")
 
 
 def _runs(compact):

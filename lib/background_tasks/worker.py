@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 
 from lib.config_loader import config_scope
 
-from .models import Claim, LostLease, TaskError
+from .models import Claim, LostLease, TaskError, recovery_details
 from .store import TaskStore
 
 logger = logging.getLogger(__name__)
@@ -78,6 +78,10 @@ class KnownStopped(TaskError):
 class UncertainOutcome(TaskError):
     """Trusted adapter explanation; never use raw provider exception text here."""
 
+    def __init__(self, reason: str, *, result=None):
+        super().__init__(reason)
+        self.result = result
+
 
 class AwaitingCallback:
     """A prebound durable callback owns completion; never interpret as success."""
@@ -118,8 +122,17 @@ class ExecutionContext:
                 raise CancellationRequested("Operator requested cancellation")
 
     def progress(self, value: dict):
-        self.checkpoint()
-        self.store.progress(self.claim, value)
+        try:
+            self.checkpoint()
+            self.store.progress(self.claim, value)
+        except LostLease:
+            # Only recovery metadata can survive expiry; normal progress still
+            # loses its lease, and this never authorizes further execution.
+            recovery = recovery_details(value.get('recovery'))
+            if recovery:
+                self.store.reconcile()
+                self.store.retain_uncertain_result(self.claim, {'data': recovery})
+            raise
 
 
 Adapter = Callable[[ExecutionContext], dict]
@@ -191,13 +204,15 @@ class TaskWorker:
                 )
                 return
 
-    def _attention(self, claim, reason):
+    def _attention(self, claim, reason, *, result=None):
         try:
-            self.store.attention(claim, reason)
+            self.store.attention(claim, reason, result=result)
             logger.warning('Task needs attention job=%s reason=%s; review Manage tasks', claim.job_id, reason)
         except LostLease:
-            # An expiry racing adapter failure must not write through the fence.
+            # Recovery metadata may enrich this exact expired attempt, but cannot
+            # restore its execution lease or supersede operator/disposal fences.
             self.store.reconcile()
+            self.store.retain_uncertain_result(claim, result)
             logger.warning('Task ownership lost job=%s; execution will not be retried', claim.job_id)
 
     def _recover_execution(self, claim, context):
@@ -302,7 +317,7 @@ class TaskWorker:
             else:
                 self._attention(claim, "Worker stopped during execution; outcome needs review")
         except UncertainOutcome as exc:
-            self._attention(claim, str(exc))
+            self._attention(claim, str(exc), result=exc.result)
         except Exception as exc:
             # Do not copy arbitrary exception text (which may contain credentials).
             self.store.events.emit('execution_error', component='worker', level='ERROR',

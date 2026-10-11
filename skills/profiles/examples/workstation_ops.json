@@ -8,6 +8,7 @@
     "crypto_chart": false,
     "crypto_price": false,
     "document_ocr": false,
+    "docling_convert": false,
     "flight_search": false,
     "generate_image": false,
     "generate_music": false,

@@ -25,6 +25,7 @@ TRUSTED_BINDINGS = {
     'craft_photos': REMOTE_ADAPTER,
     'craft_video': REMOTE_ADAPTER,
     'craft_motion': REMOTE_ADAPTER,
+    'docling_convert': REMOTE_ADAPTER,
     'browser_use_cloud': REMOTE_ADAPTER,
     'browser_use': 'http_callback_v1',
 }
@@ -33,6 +34,15 @@ TRUSTED_BINDINGS = {
 # credential and the runtime paths needed for Stash/HTTPS, not the entire mode
 # file (which can contain unrelated provider and Jarvis API credentials).
 CHILD_ENVIRONMENT_POLICIES = {
+    'docling_convert': {
+        'always': frozenset({
+            'PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'JARVIS_MODE',
+            'DOCLING_BASE_URL', 'DOCLING_API_KEY', 'DOCLING_API_KEY_HEADER', 'DOCLING_TIMEOUT_SECONDS',
+            'STASH_DIR', 'JARVIS_OVERRIDE_STASH_DIR',
+            'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
+        }),
+        'if_true': {},
+    },
     'browser_use_cloud': {
         'always': frozenset({
             'PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ',

@@ -29,6 +29,30 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "docling_convert": _case({
+        "task_id": "00000000-0000-4000-8000-000000000001", "state": "success", "partial": False,
+        "source_stash_ref": "stash://uploads/document", "markdown_excerpt": "# Invoice\nTotal 42.75",
+        "markdown_stash_ref": "stash://converted/markdown", "json_stash_ref": "stash://converted/json",
+        "page_count": 2, "table_count": 1, "followup_note": "Read complete exports from Stash.",
+    }, {"action": "convert", "stash_ref": "stash://uploads/document"}),
+    "craft_image": _case({
+        "app": "photocraft", "state": "succeeded", "project_id": "a" * 32, "project_revision": 1,
+        "stash_ref": "stash://craft/image", "editable_project_ref": "craft://" + "a" * 32 + "/" + "b" * 32,
+        "document": {"width": 320, "height": 180, "layers": [{"id": 3, "name": "Caption", "kind": "Type"}]},
+    }),
+    "craft_video": _case({
+        "app": "filmcraft", "state": "succeeded", "project_id": "a" * 32, "project_revision": 1,
+        "stash_ref": "stash://craft/video", "editable_project_ref": "craft://" + "a" * 32 + "/" + "b" * 32,
+        "document": {"width": 320, "height": 180, "overlays": [{"clip": 13, "layer": 0, "text": "Title"}]},
+    }),
+    "craft_pdf": _case({"app": "pdfcraft", "state": "succeeded", "stash_ref": "stash://craft/pdf",
+                        "filename": "document.pdf"}),
+    "craft_photos": _case({"app": "lightcraft", "state": "succeeded", "stash_ref": "stash://craft/photo",
+                           "followup_note": "Use the exported image; no native library is retained."}),
+    "craft_motion": _case({"app": "effectcraft", "state": "succeeded", "stash_ref": "stash://craft/title",
+                           "followup_note": "Each call creates a new title composition."}),
+    "craft_inspect": _case({"jobs": [{"id": "c" * 32, "state": "running", "project_id": "a" * 32}]},
+                           {"action": "jobs"}),
     "project_nomad": _case({
         "action": "files", "total": 2, "offset": 0, "limit": 10, "has_more": False,
         "files": [{"source": "notes/field-guide.md", "file_name": "field-guide.md",

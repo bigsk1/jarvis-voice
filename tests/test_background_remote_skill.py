@@ -115,7 +115,7 @@ def test_ambiguous_remote_result_reserves_attention_without_replay(remote, behav
     assert worker.run_once()
     saved = p.store.get(job['id'])
     assert saved['state'] == 'needs_attention'
-    assert saved['result'] is None and saved['delivery_state'] is None
+    assert saved['result']['completion'] == 'unknown' and saved['delivery_state'] == 'pending'
     assert p.store.counts()['reserved'] == 1
     assert not worker.run_once()
     assert len(list(p.output.glob('*.started'))) == 1
@@ -144,9 +144,9 @@ def test_lost_remote_response_is_not_a_known_failure(remote, monkeypatch, error)
 
 def test_prelaunch_schema_failure_is_known_and_unbound_adapter_cannot_bypass_policy(remote):
     p = remote
-    job = p.admit({'label': '../bad'})
-    TaskWorker(p.store, {REMOTE_ADAPTER: p.runner}).run_once()
-    assert p.store.get(job['id'])['state'] == 'failed'
+    with pytest.raises(AdmissionDenied, match='no task was queued'):
+        p.admit({'label': '../bad'})
+    assert not TaskWorker(p.store, {REMOTE_ADAPTER: p.runner}).run_once()
     assert p.store.counts()['reserved'] == 0 and not p.output.exists()
     _, policy = p.runner.policy(NAME)
     assert not p.runner._matches_policy(ADAPTER, policy, policy)
@@ -322,7 +322,7 @@ def test_explicit_remote_failure_evidence_controls_capacity(remote, completion, 
     saved = p.store.get(job['id'])
     assert saved['state'] == state
     assert p.store.counts()['reserved'] == reserved
-    assert len(p.store.pending_deliveries()) == (1 if state == 'failed' else 0)
+    assert len(p.store.pending_deliveries()) == 1
     if state == 'failed':
         assert saved['result']['completion'] == completion
     assert not worker.run_once()  # Failure evidence never requests a replay.

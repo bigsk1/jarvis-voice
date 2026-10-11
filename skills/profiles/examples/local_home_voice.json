@@ -6,6 +6,7 @@
     "crawl_url": false,
     "crypto_chart": false,
     "document_ocr": false,
+    "docling_convert": false,
     "external_network_intel": false,
     "flight_search": false,
     "generate_image": false,

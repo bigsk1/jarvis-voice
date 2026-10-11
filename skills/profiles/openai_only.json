@@ -7,6 +7,7 @@
     "crawl_url": false,
     "create_social_clip": false,
     "document_ocr": false,
+    "docling_convert": false,
     "generate_music": false,
     "generate_video": false,
     "mcp_brave_search_brave_image_search": false,

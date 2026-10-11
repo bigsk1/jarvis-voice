@@ -97,22 +97,54 @@ window.continuationRenderer = (() => {
 
   function appendArtifacts(parent, data, media, mode) {
     const seen = new Set([...media].map(url => url.replace('/api/stash/', '/stash/view/') + (mode ? `?mode=${mode}` : '')));
-    const visited = new WeakSet(), list = node('ul');
+    const visited = new WeakSet(), artifacts = new Map(), list = node('ul');
     list.className = 'continuation-artifacts';
-    function visit(value, label) {
+    const roles = {source_stash_ref:'Source file', input_stash_ref:'Input file',
+      receipt_stash_ref:'Task receipt', markdown_stash_ref:'Markdown file', md_stash_ref:'Markdown file',
+      json_stash_ref:'JSON file', text_stash_ref:'Text file', output_stash_ref:'Output file',
+      archive_stash_ref:'Archive file', editable_project_ref:'Editable project'};
+    function add(ref, label, priority) {
+      const url = stashUrl(ref, mode);
+      if (!url || seen.has(url)) return;
+      const previous = artifacts.get(url);
+      if (!previous || priority > previous.priority) artifacts.set(url, {ref, label:label || ref, priority});
+    }
+    function filenameFor(value, ref) {
+      const filename = [value.filename, value.name].find(name => typeof name === 'string' && name.trim());
+      if (!filename) return null;
+      // Some OCR clients describe the input image in filename. A named primary
+      // reference must not contradict an explicit output-format alias.
+      const formats = {markdown_stash_ref:['md','markdown'], md_stash_ref:['md','markdown'],
+        json_stash_ref:['json'], text_stash_ref:['txt','text']};
+      const extension = filename.split('.').pop().toLowerCase();
+      const url = stashUrl(ref, mode);
+      return Object.entries(formats).some(([key, extensions]) => value[key]
+        && stashUrl(value[key], mode) === url && !extensions.includes(extension)) ? null : filename;
+    }
+    function visit(value, key) {
       if (typeof value === 'string') {
-        const url = stashUrl(value, mode);
-        if (url && !seen.has(url)) {
-          seen.add(url);
-          const li = node('li'); link(li, label || value, value, mode); list.appendChild(li);
-        }
+        add(value, roles[key], roles[key] ? 1 : 0);
       } else if (value && typeof value === 'object' && !visited.has(value)) {
         visited.add(value);
-        const filename = typeof value.filename === 'string' ? value.filename : label;
-        for (const child of Object.values(value)) visit(child, filename);
+        // Names belong to this object's own reference, never every descendant.
+        // Output descriptors can improve an earlier alias's generic label.
+        for (const ref of [value.stash_ref, value.ref]) {
+          const filename = filenameFor(value, ref);
+          if (filename) add(ref, filename, typeof value.name === 'string' ? 3 : 2);
+        }
+        if (Array.isArray(value.outputs)) visit(value.outputs);
+        for (const [childKey, child] of Object.entries(value)) {
+          const prefix = childKey.replace(/_stash_ref$/, '');
+          const filename = value[prefix + '_filename'];
+          if (typeof child === 'string' && typeof filename === 'string' && filename.trim()) add(child, filename, 3);
+          visit(child, childKey);
+        }
       }
     }
     visit(data);
+    for (const {ref, label} of artifacts.values()) {
+      const li = node('li'); link(li, label, ref, mode); list.appendChild(li);
+    }
     if (list.children.length) parent.appendChild(list);
   }
 

@@ -227,6 +227,13 @@ class ToolExecutorCancelTests(unittest.TestCase):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("document_ocr"), 1200)
 
+    def test_docling_timeout_covers_observation_and_cleanup(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        with patch.dict(os.environ, {"JARVIS_OVERRIDE_DOCLING_TIMEOUT_SECONDS": "300"}):
+            self.assertEqual(executor._get_subprocess_timeout("docling_convert"), 330)
+        with patch.dict(os.environ, {"JARVIS_OVERRIDE_DOCLING_TIMEOUT_SECONDS": "9999"}):
+            self.assertEqual(executor._get_subprocess_timeout("docling_convert"), 930)
+
     def test_audio_transcription_timeout_tracks_batch_policy_with_cleanup_window(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         with patch.dict(

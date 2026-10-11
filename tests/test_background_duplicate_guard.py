@@ -65,7 +65,7 @@ def routing(store, monkeypatch):
         return orchestrator.process("Run the requested background tasks")
 
     return SimpleNamespace(run=run, store=store, orchestrator=orchestrator,
-                           dispatches=dispatches)
+                           dispatches=dispatches, service=service)
 
 
 def test_accepted_exact_duplicate_is_blocked_before_admission(routing, monkeypatch):
@@ -155,3 +155,35 @@ def test_denied_admission_does_not_prevent_retry(routing, monkeypatch):
     assert len(attempts) == 2
     assert len(result["pending_jobs"]) == 1
     assert result["tools_used"] == []
+
+
+@pytest.mark.parametrize('field', ['task_id', 'job_id', 'run_id'])
+def test_remote_jarvis_receipt_reference_echoes_admission_without_another_call(routing, monkeypatch, field):
+    schemas = routing.orchestrator.registry
+    schemas.get_tool('convert_file').background_execution.update(
+        adapter='remote_skill_v1', completion_scope='remote_work', timeout_seconds=900)
+    schemas.get_tool('convert_file').background_adapter = 'remote_skill_v1'
+    routing.service.adapters['convert_file'] = 'remote_skill_v1'
+    routing.store.touch_worker('remote-worker', {'remote_skill_v1'})
+    routing.orchestrator.background_context = None
+    original_execute = routing.orchestrator.executor.execute
+    references = []
+
+    def execute(tool, args, **kwargs):
+        context = kwargs['background_context']
+        if args.get('action') == 'collect':
+            args = {'action': 'collect', field: next(iter(context.receipts))}
+        value = original_execute(tool, args, **kwargs)
+        assert value.get('ok'), value
+        references.append(value)
+        return value
+
+    monkeypatch.setattr(routing.orchestrator.executor, 'execute', execute)
+    result = routing.run([('convert_file', {}),
+                          ('convert_file', {'action': 'collect'})],
+                         tool_policies={'convert_file': {'timeout_seconds': 900}})
+    assert result['ok'] and result['tools_used'] == []
+    assert len(routing.dispatches) == 1 and len(result['pending_jobs']) == 1
+    assert references[-1]['receipt_reused'] and references[-1]['result_kind'] == 'background_admission'
+    assert 'not a remote task ID' in references[-1]['speech']
+    assert all(item['ok'] is None for item in result['tool_trace'])

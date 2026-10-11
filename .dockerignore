@@ -58,6 +58,7 @@ data/generated_videos/
 data/generated_music/
 data/web_conversations/
 data/stash/
+**/.docling-recovery/
 data/.spotify_cache
 data/.trakt_oauth.json
 data/.trakt_oauth.json.lock

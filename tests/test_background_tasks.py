@@ -308,7 +308,7 @@ def test_expired_attempt_fences_writes_and_is_never_replayed(store):
     assert recovered["fence"] > claim.fence
     ready(store, request_id="new-request")
     assert store.claim("replacement", {"local_fixture"}) is None
-    assert store.pending_deliveries() == []
+    assert len(store.pending_deliveries()) == 1
 
 
 @pytest.mark.parametrize("change", [{"owner": "wrong"}, {"attempt_id": "wrong"}, {"fence": 99}])
@@ -483,7 +483,7 @@ def test_worker_settles_only_known_outcomes(store, config_root, caplog, kind):
     assert worker.run_once(stop)
     settled = store.get(job["id"])
     assert settled["state"] == ("failed" if kind == "failure" else "needs_attention")
-    assert len(store.pending_deliveries()) == (1 if kind == "failure" else 0)
+    assert len(store.pending_deliveries()) == 1
     assert "private-token-must-not-be-persisted" not in json.dumps(settled) + caplog.text
     assert worker.run_once() is False
 
@@ -625,7 +625,7 @@ def test_killed_worker_is_fenced_by_restart_without_reexecution(store, worker_pr
     wait_until(lambda: store.get(job["id"])["state"] == "needs_attention")
     (root / "finish").touch()
     assert not (root / f"{job['id']}.txt").exists()
-    assert store.pending_deliveries() == []
+    assert len(store.pending_deliveries()) == 1
     with sqlite3.connect(store.path) as conn:
         assert conn.execute("SELECT COUNT(*) FROM attempts").fetchone()[0] == 1
 

@@ -24,7 +24,10 @@ def destination(journey, store):
     journey.send(message="Run a background fixture.")
     cid = journey.handler.sessions["client"]["conversation_id"]
     run = journey.handler.runs.active[cid]
-    job = store.admit(admission(conversation_id=cid, generation=0, request_id=run["message_id"]))
+    authorization = store.save_authorization({"provider": "test", "model": "test", "mode": "cloud",
+                                             "conversation_id": cid, "generation": 0})
+    job = store.admit(admission(conversation_id=cid, generation=0, request_id=run["message_id"],
+                                authorization_id=authorization))
     journey.store.add_message(
         cid,
         "assistant",

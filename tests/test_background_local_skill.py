@@ -345,13 +345,10 @@ def test_invalid_background_settings_keep_foreground_schema_available(probe):
 ])
 def test_generic_schema_rejects_invalid_work_before_spawn(probe, args):
     p = probe
-    job = p.admit(args)
-    p.store.release(job['id'], receipt(job))
-    worker = TaskWorker(p.store, {ADAPTER: p.runner})
-    assert worker.run_once()
-    assert p.store.get(job['id'])['state'] == 'failed'
+    with pytest.raises(AdmissionDenied, match='no task was queued'):
+        p.admit(args)
     assert p.store.counts()['reserved'] == 0 and not p.output.exists()
-    assert not worker.run_once()
+    assert not TaskWorker(p.store, {ADAPTER: p.runner}).run_once()
 
 
 @pytest.mark.parametrize('mutation', ['unbound', 'path', 'special', 'network', 'dangerous',
@@ -427,5 +424,6 @@ def test_result_handling_is_shared_without_replaying_uncertain_work(probe, behav
         assert 'head' in saved['result']['error'] and 'tail' in saved['result']['error']
         assert len(p.store.pending_deliveries()) == 1
     else:
-        assert not p.store.pending_deliveries()
+        assert len(p.store.pending_deliveries()) == 1
+        assert saved['result']['completion'] == 'unknown'
     assert not worker.run_once()

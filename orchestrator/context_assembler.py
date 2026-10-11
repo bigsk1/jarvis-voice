@@ -365,7 +365,7 @@ class ContextAssembler:
                 isinstance(result, dict)
                 and isinstance(result.get("results") or result.get("summaries"), list)
                 for tool, result in message["tool_results"].items()
-                if tool in {"pdf_read", "document_ocr", "transcribe_audio", "analyze_video", "stash", "text_summarizer"}
+                if tool in {"pdf_read", "document_ocr", "docling_convert", "transcribe_audio", "analyze_video", "stash", "text_summarizer"}
             )
             for message in recent
         ):
@@ -993,7 +993,7 @@ class ContextAssembler:
             # Keep a few complete, titled candidates instead of allowing the
             # generic fallback to cut an opaque token into an unusable prefix.
             return 8000
-        if lowered == "document_ocr":
+        if lowered in {"document_ocr", "docling_convert"}:
             # The tool already replaces full OCR bodies with bounded excerpts
             # and Stash refs. Preserve enough page-attributed text or structured
             # extraction output for the immediate answer.

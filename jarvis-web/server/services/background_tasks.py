@@ -11,6 +11,7 @@ from filelock import FileLock, Timeout
 
 from lib.background_tasks import AdmissionDenied, LostLease
 from lib.background_tasks.admission import BackgroundAdmissionService, WebTaskContext
+from lib.background_tasks.models import recovery_details
 from lib.webhook_integrations.contracts import ADAPTER as CALLBACK_ADAPTER
 
 from .conversation_store import ConversationBusyError
@@ -248,7 +249,8 @@ class WebBackgroundTasks:
             "are terminal outcomes. A pending/generating/ready delivery_state means the follow-up "
             "answer is pending, not that the tool is still running. delivered means the answer was "
             "saved; suppressed means no follow-up is scheduled. needs_attention means an uncertain "
-            "outcome, not permission to "
+            "outcome; a delivered notice does not mean the remote operation completed. "
+            "A status question is not permission to "
             "retry. expired means the admission deadline passed before execution; the job was "
             "never dispatched. result_archived means retained result evidence was removed. Do not "
             "automatically repeat accepted work or depend on unfinished results. "
@@ -581,6 +583,36 @@ class WebBackgroundTasks:
                     self.ownership.release()
 
     def _synthesize(self, job, authorization, conversation):
+        result = job.get('result') or {}
+        diagnostic = str(result.get('error') or '').lower()
+        timed_out = any(phrase in diagnostic for phrase in
+                        ('timeout', 'timed out', 'observation budget ended', 'observation deadline', 'waiting limit'))
+        if job.get('state') == 'needs_attention' or (job.get('state') == 'failed' and timed_out):
+            uncertain = job['state'] == 'needs_attention'
+            text = (f"Jarvis stopped waiting for the background task `{job['admission']['tool']}`. "
+                    if timed_out else
+                    f"Jarvis could not confirm the outcome of the background task `{job['admission']['tool']}`. ")
+            if timed_out:
+                text += 'The tool\'s waiting limit was reached. '
+            if uncertain:
+                text += ('Remote work may still be running; this is not a confirmed operation failure. '
+                         if job['adapter'] in {'remote_skill_v1', CALLBACK_ADAPTER} else
+                         'The operation may already have taken effect; its outcome needs checking. ')
+            else:
+                text += 'The task ended without a successful result. '
+            text += 'No automatic retry was started. You can ask for the existing task\'s status; do not submit it again just to check.'
+            recovery = recovery_details(result.get('data'))
+            for key, label in (('task_id', 'Remote task ID'), ('job_id', 'Remote job ID'),
+                               ('request_id', 'Remote request ID'), ('run_id', 'Remote run ID'),
+                               ('receipt_stash_ref', 'Task receipt')):
+                if key in recovery:
+                    text += f'\n\n{label}: `{recovery[key]}`'
+            display, speech = self.handler._prepare_web_response_text({'speech': text}, text)
+            # Recovery references are not completed media/output artifacts.
+            return {'text': display, 'data': {'speech': speech, '_background_attention': uncertain,
+                                             '_background_timeout': timed_out,
+                                             '_background_recovery': recovery,
+                                             'background_job_id': job['id']}}
         if job['admission']['tool'] in {'browser_use', 'browser_use_cloud'} or job.get('adapter') == CALLBACK_ADAPTER:
             result = job.get('result') or {}
             text = result.get('speech')

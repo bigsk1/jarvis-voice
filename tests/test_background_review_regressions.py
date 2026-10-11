@@ -284,7 +284,7 @@ def test_unverified_local_termination_keeps_capacity_reserved(probe, monkeypatch
     assert worker.run_once()
     assert p.store.get(job['id'])['state'] == 'needs_attention'
     assert p.store.counts()['reserved'] == 1
-    assert not p.store.pending_deliveries()
+    assert len(p.store.pending_deliveries()) == 1
     assert not worker.run_once()
 
 
