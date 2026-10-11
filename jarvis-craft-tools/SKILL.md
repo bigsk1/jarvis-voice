@@ -64,3 +64,27 @@ verification. Ask only for missing host/access choices that cannot be inferred;
 never request passwords or private keys in chat. Report the selected mode,
 safe endpoint, supported actions and verified result, with remaining platform
 limitations. Do not commit or push unless requested.
+
+For editing, use `craft_image` action `edit` with ordered `edits`, or
+`craft_video` action `edit` with source `clips` and `video_edits`. Native
+project follow-ups pass the returned `editable_project_ref` as that named tool
+input (omitting flattened `sources`), expected
+`project_revision`, and the actual layer or clip IDs in `document`. Never
+flatten to PNG/MP4 when the user wants to revise existing editable text.
+Preserve the source image/footage; a standalone EffectCraft title is not a
+substitute for text on supplied media. Verify full caption visibility and
+source preservation, not just output-file validity. Timed video captions are
+supplied graphic overlays, not generated transcripts. See the README for
+exact parameters, limits and example revisions.
+
+Video `update_text` may omit `text` for placement/style changes. Omit timing;
+copy timing from the selected `document.overlays` entry, or echo `start: 0`
+and `duration: null`. All retain the saved timing; different values are rejected.
+Explicit frame
+changes on a native revision refit footage and reflow text; omitted dimensions
+preserve the saved layout. `assemble` keeps its 640x360 default canvas.
+
+Crop/overlay rectangles use source pixels. Web edit context reports full source
+and preview dimensions; never infer source coordinates from the preview size.
+Wait for an active project job to finish before a revision; inspect/collect
+instead of retrying a busy or uncertain edit.

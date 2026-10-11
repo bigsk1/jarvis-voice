@@ -56,3 +56,16 @@ def test_mcp_error_text_is_reported(tmp_path):
             runner.rpc({'jsonrpc':'2.0','id':1,'method':'fixture'})
     finally:
         runner.stop()
+
+
+def test_nested_probe_cannot_replace_or_orphan_an_active_engine(tmp_path):
+    runner=Engine('/bin/sleep',tmp_path,lambda:False,lambda pid:None)
+    runner.start(['30'],subprocess.PIPE)
+    process=runner.process
+    try:
+        with pytest.raises(RuntimeError,match='session is already running'):
+            runner.start(['1'],subprocess.PIPE)
+        assert runner.process is process and process.poll() is None
+    finally:
+        runner.stop()
+    assert process.poll() is not None

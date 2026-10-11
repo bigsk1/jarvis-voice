@@ -341,12 +341,12 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'file_path',
     ],
     # --- File/artifact producers ---
-    'craft_image': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note'],
-    'craft_pdf': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note'],
-    'craft_photos': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note'],
-    'craft_video': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note'],
-    'craft_motion': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note'],
-    'craft_inspect': ['jobs', 'app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note'],
+    'craft_image': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note', 'editable_project_ref', 'document'],
+    'craft_pdf': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note', 'editable_project_ref', 'document'],
+    'craft_photos': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note', 'editable_project_ref', 'document'],
+    'craft_video': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note', 'editable_project_ref', 'document'],
+    'craft_motion': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note', 'editable_project_ref', 'document'],
+    'craft_inspect': ['jobs', 'app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note', 'editable_project_ref', 'document'],
     'pdf_create': ['ref', 'name', 'size_bytes'],
     'pdf_read': ['page_count', 'stash_ref'],
     'document_ocr': [

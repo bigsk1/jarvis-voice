@@ -9,6 +9,10 @@ import time
 import zipfile
 from contextlib import contextmanager
 
+from .images import execute_image
+from .titles import create_title
+from .videos import execute_video
+
 
 class Cancelled(RuntimeError):
     pass
@@ -52,6 +56,8 @@ class Engine:
                     raise ValueError('Job workspace exceeds its disk limit')
 
     def start(self, args, stdout, *, executable=None):
+        if self.process is not None:
+            raise RuntimeError('An engine session is already running; finish it before starting another process')
         self.guard()
         self.error_stream = (self.workspace / 'engine-error.log').open('w+b')
         self.process = subprocess.Popen([executable or self.binary, *map(str, args)], cwd=self.workspace,
@@ -169,11 +175,7 @@ def execute(engine, operation, inputs):
     op = operation
     exports = []
     if op.app == 'photocraft':
-        project = work / 'image.pcraft'
-        command = 'image.adjustments.invert' if op.action == 'invert' else 'image.adjustments.desaturate'
-        engine.run('run', inputs[0], '--cmd', command, '--params', '{}', '--out', project)
-        engine.run('convert', project, work / 'image.png')
-        exports = [(work / 'image.png', 'primary'), (project, 'project')]
+        exports = execute_image(engine, op, inputs)
         renderer = 'cpu'
     elif op.app == 'pdfcraft':
         out = work / ('page.png' if op.action == 'render' else 'document.pdf')
@@ -199,13 +201,7 @@ def execute(engine, operation, inputs):
         project = work / 'motion.ecproj'
         gpu = ['--gpu'] if op.gpu else []
         with engine.mcp(*gpu) as call:
-            call('execute_command', {'id': 'comp.new', 'params': {'name': 'Title', 'width': op.width,
-                 'height': op.height, 'frameRate': op.fps, 'duration': op.duration, 'background': op.background}})
-            call('execute_command', {'id': 'layer.newText', 'params': {'text': op.text, 'name': 'Text',
-                 'position': [op.width * .1, op.height * .6], 'size': op.font_size, 'fill': op.color}})
-            call('add_keyframe', {'layer': 'Text', 'path': 'transform/position', 'keys': [
-                 {'time': 0, 'value': [op.width * .1, op.height * .6]},
-                 {'time': op.duration, 'value': [op.width * .2, op.height * .6]}]})
+            metadata = create_title(call, op)
             call('save_project', {'path': str(project)})
             renderer = json.dumps(call('get_project', {}).get('renderer', 'unknown'))
         engine.run('--project', project, 'render-frame', '--time', '0', '--out', work / 'preview.png', *gpu)
@@ -216,33 +212,10 @@ def execute(engine, operation, inputs):
         else:
             exports.append((work / 'preview.png', 'primary'))
         exports.append((project, 'project'))
+        (work / 'document.json').write_text(json.dumps(metadata))
+        exports.append((work / 'document.json', 'inspection'))
     else:
-        project = work / 'video.fcproj'
-        with engine.mcp() as call:
-            result = call('command_run', {'id': 'file.import', 'params': {'paths': list(map(str, inputs))}})
-            if result.get('errors') or len(result.get('items', [])) != len(inputs):
-                raise ValueError('FilmCraft could not import all inputs')
-            call('command_run', {'id': 'file.newSequence', 'params': {'name': 'Assembly', 'width': op.width,
-                 'height': op.height, 'fps': op.fps, 'video': 1, 'audio': 1}})
-            for index, item in enumerate(result['items']):
-                call('command_run', {'id': 'timeline.place', 'params': {'item': item, 'track': 'V1',
-                     'seconds': index * op.duration, 'duration': round(op.duration * 254016000000),
-                     'insert': False, 'audio': True, 'audioTrack': 'A1'}})
-            call('command_run', {'id': 'file.saveAs', 'params': {'path': str(project)}})
-        engine.run('--project', project, 'render', '--seconds', '0', '--out', work / 'preview.png')
-        if op.output == 'mp4':
-            engine.run('--project', project, 'export', work / 'video.mp4')
-            exports = [(work / 'video.mp4', 'primary'), (work / 'preview.png', 'preview')]
-        else:
-            exports = [(work / 'preview.png', 'primary')]
-        # The project references its inputs on this host. Return an archive
-        # containing the workspace rather than imply that a bare fcproj is portable.
-        with zipfile.ZipFile(work / 'video-project.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
-            archive.write(project, 'video.fcproj')
-            for path in dict.fromkeys(inputs):
-                archive.write(path, 'media/' + path.name)
-            archive.writestr('README.txt', 'This project retains host media paths. Relink them to media/ when opening elsewhere.\n')
-        exports.append((work / 'video-project.zip', 'project'))
+        exports = execute_video(engine, op, inputs)
         renderer = 'native-default'
     validate_exports(engine, exports)
     return exports, renderer

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "craft_image",
-  "description": "Edit images using an optional self-hosted PhotoCraft gateway: invert colors or grayscale, export PNG and an editable layered project. Sources are required. For ordinary conversion use convert_file; for AI image synthesis use generate_image.",
+  "description": "Edit an existing image or layered PhotoCraft project: add meme text, captions or watermarks ON the supplied photo; revise an existing text layer; crop, resize, rotate or place another image/logo. Use action edit with ordered edits. Returns PNG preview, editable project reference and layer IDs for follow-ups. Requires sources; preserves the base photo. Do not substitute craft_motion for text on a photo. Invert/grayscale also supported. For AI synthesis use generate_image.",
   "script": "craft_image.py",
   "parameters": {
     "type": "object",
@@ -10,7 +10,8 @@
         "type": "string",
         "enum": [
           "invert",
-          "grayscale"
+          "grayscale",
+          "edit"
         ]
       },
       "sources": {
@@ -19,18 +20,354 @@
           "type": "string"
         },
         "maxItems": 16,
-        "description": "Source stash:// references, permitted local paths, or craft://project/artifact references from previous output. Native projects cannot be uploaded."
+        "description": "First source is the base photo, or editable_project_ref from a prior result to preserve layers. Additional raster sources are referenced by zero-based overlay source index. Accepts stash://, permitted local paths or craft://project/artifact; native project uploads are prohibited.",
+        "minItems": 1
       },
       "project_id": {
         "type": "string",
         "pattern": "^[a-f0-9]{32}$",
         "description": "Existing gateway project for follow-up edits and Craft artifact reuse. Omit for a new project."
+      },
+      "edits": {
+        "items": {
+          "discriminator": {
+            "mapping": {
+              "crop": "#/$defs/CropEdit",
+              "overlay": "#/$defs/PlaceEdit",
+              "resize": "#/$defs/ResizeEdit",
+              "rotate": "#/$defs/RotateEdit",
+              "text": "#/$defs/TextEdit",
+              "update_text": "#/$defs/TextEdit"
+            },
+            "propertyName": "action"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TextEdit"
+            },
+            {
+              "$ref": "#/$defs/CropEdit"
+            },
+            {
+              "$ref": "#/$defs/ResizeEdit"
+            },
+            {
+              "$ref": "#/$defs/RotateEdit"
+            },
+            {
+              "$ref": "#/$defs/PlaceEdit"
+            }
+          ]
+        },
+        "maxItems": 16,
+        "title": "Edits",
+        "type": "array",
+        "description": "For action edit, 1..16 edits in execution order. Perform crop/resize/rotate before text. text adds a uniquely named text layer; update_text selects an existing layer ID or exact name. font_size is a maximum in pixels; text fits automatically. overlay uses an additional source index and a rectangle. Crop/overlay coordinates are source-image pixels, not preview pixels.",
+        "minItems": 1
+      },
+      "project_revision": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Expected revision from the last successful result. Rejected calls do not increment it. On conflict, inspect the project; never guess or increment the revision."
+      },
+      "editable_project_ref": {
+        "type": "string",
+        "pattern": "^craft://[a-f0-9]{32}/[a-f0-9]{32}$",
+        "description": "Required for native caption/layer revisions: copy this exact field from the last successful result and omit sources. project_id alone cannot reopen a document. Select layer IDs from document; wait for running jobs to finish."
       }
     },
     "required": [
       "action"
     ],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "$defs": {
+      "CropEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "crop",
+            "title": "Action",
+            "type": "string"
+          },
+          "x": {
+            "minimum": 0,
+            "title": "X",
+            "type": "integer"
+          },
+          "y": {
+            "minimum": 0,
+            "title": "Y",
+            "type": "integer"
+          },
+          "width": {
+            "maximum": 8192,
+            "minimum": 16,
+            "title": "Width",
+            "type": "integer"
+          },
+          "height": {
+            "maximum": 8192,
+            "minimum": 16,
+            "title": "Height",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action",
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "title": "CropEdit",
+        "type": "object"
+      },
+      "PlaceEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "overlay",
+            "title": "Action",
+            "type": "string"
+          },
+          "source": {
+            "description": "Zero-based index into sources; 0 is the base image/project",
+            "maximum": 15,
+            "minimum": 1,
+            "title": "Source",
+            "type": "integer"
+          },
+          "x": {
+            "minimum": 0,
+            "title": "X",
+            "type": "integer"
+          },
+          "y": {
+            "minimum": 0,
+            "title": "Y",
+            "type": "integer"
+          },
+          "width": {
+            "maximum": 8192,
+            "minimum": 1,
+            "title": "Width",
+            "type": "integer"
+          },
+          "height": {
+            "maximum": 8192,
+            "minimum": 1,
+            "title": "Height",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action",
+          "source",
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "title": "PlaceEdit",
+        "type": "object"
+      },
+      "ResizeEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "resize",
+            "title": "Action",
+            "type": "string"
+          },
+          "width": {
+            "maximum": 8192,
+            "minimum": 16,
+            "title": "Width",
+            "type": "integer"
+          },
+          "height": {
+            "maximum": 8192,
+            "minimum": 16,
+            "title": "Height",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action",
+          "width",
+          "height"
+        ],
+        "title": "ResizeEdit",
+        "type": "object"
+      },
+      "RotateEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "const": "rotate",
+            "title": "Action",
+            "type": "string"
+          },
+          "degrees": {
+            "enum": [
+              90,
+              180,
+              270
+            ],
+            "title": "Degrees",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action",
+          "degrees"
+        ],
+        "title": "RotateEdit",
+        "type": "object"
+      },
+      "TextEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "text",
+              "update_text"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Text"
+          },
+          "layer": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Layer"
+          },
+          "name": {
+            "default": "Caption",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string",
+            "description": "Name of a NEW text layer. Ignored on update_text, including echoes of the existing name; revisions never rename the layer."
+          },
+          "placement": {
+            "anyOf": [
+              {
+                "enum": [
+                  "top",
+                  "center",
+                  "bottom"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Placement"
+          },
+          "align": {
+            "anyOf": [
+              {
+                "enum": [
+                  "left",
+                  "center",
+                  "right"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Align"
+          },
+          "font_size": {
+            "anyOf": [
+              {
+                "maximum": 300,
+                "minimum": 8,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Font Size",
+            "description": "Maximum font size in full SOURCE image pixels, not the resized chat preview. For a larger caption increase this value; text shrinks only when full text would overflow or clip the canvas. Omit on a revision to keep its size."
+          },
+          "color": {
+            "anyOf": [
+              {
+                "pattern": "^#[0-9a-fA-F]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Color"
+          },
+          "outline_color": {
+            "default": "#000000",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Outline Color",
+            "type": "string"
+          },
+          "outline_width": {
+            "default": 2,
+            "maximum": 12,
+            "minimum": 0,
+            "title": "Outline Width",
+            "type": "number"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "TextEdit",
+        "type": "object"
+      }
+    },
+    "anyOf": [
+      {
+        "required": [
+          "sources"
+        ]
+      },
+      {
+        "required": [
+          "editable_project_ref"
+        ]
+      }
+    ]
   },
   "permissions": {
     "dangerous": false,

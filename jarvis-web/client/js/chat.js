@@ -1531,7 +1531,7 @@ class ChatUI {
       this.rememberRenderedMessage('error', data.message_id);
       this._clearPendingToolsForMessage(data.message_id);
       if (
-        ['vision_model_unsupported', 'vision_analysis_failed', 'image_edit_stash_failed', 'image_video_stash_failed', 'image_bundle_stash_failed'].includes(data.error_code)
+        ['vision_model_unsupported', 'vision_analysis_failed', 'image_edit_stash_failed', 'image_video_stash_failed', 'image_bundle_stash_failed', 'image_craft_stash_failed'].includes(data.error_code)
         && this.pendingVisionRetryPayload
       ) {
         const retryPayload = this.pendingVisionRetryPayload;
@@ -1547,6 +1547,8 @@ class ChatUI {
               ? 'Image restored — retry video generation'
               : data.error_code === 'image_bundle_stash_failed'
                 ? 'Images restored — retry preparing the attached sources'
+                : data.error_code === 'image_craft_stash_failed'
+                  ? 'Images restored — retry saving the editing sources'
                 : 'Image restored — switch to a vision-capable model and resend';
           Utils.toast(retryMessage, 'info', 5000);
         }
@@ -1809,6 +1811,38 @@ class ChatUI {
   /**
    * Show the image action modal with preview
    */
+  async _refreshCraftImageAction(context) {
+    let available = false;
+    try {
+      const response = await fetch(`/api/tools/craft_image?mode=${encodeURIComponent(context.mode)}`, {
+        signal: context.controller.signal
+      });
+      const data = await response.json();
+      available = response.ok && data.ok && data.tool?.name === 'craft_image'
+        && data.tool.enabled !== false && data.tool.available !== false && !data.tool.blocked;
+    } catch (error) {
+      if (!context.controller.signal.aborted) console.warn('[Chat] Could not check Craft availability:', error);
+    }
+    if (!this._attachmentContextIsCurrent(context)) return false;
+    this._craftImageActionAvailable = Boolean(available);
+    const option = this.imageActionModal?.querySelector('#craftImageActionOption');
+    if (option) {
+      option.hidden = !available;
+      option.style.display = available ? 'flex' : 'none';
+    }
+    const radio = this.imageActionModal?.querySelector('input[name="imageAction"][value="craft"]');
+    if (radio) {
+      radio.disabled = !available;
+      if (!available && radio.checked) {
+        radio.checked = false;
+        const analyze = this.imageActionModal.querySelector('input[name="imageAction"][value="analyze"]');
+        if (analyze) analyze.checked = true;
+        this._updateImageActionOptions();
+      }
+    }
+    return Boolean(available);
+  }
+
   async _showImageActionModal(uploadDataOrArray, preferredAction = 'analyze', context = this._attachmentContext()) {
     if (!this.imageActionModal) return;
 
@@ -1817,6 +1851,8 @@ class ChatUI {
     } catch (error) {
       console.warn('[Chat] Could not refresh media model settings:', error);
     }
+    if (!this._attachmentContextIsCurrent(context)) return;
+    await this._refreshCraftImageAction(context);
     if (!this._attachmentContextIsCurrent(context)) return;
     
     const uploads = Array.isArray(uploadDataOrArray) ? uploadDataOrArray : [uploadDataOrArray];
@@ -1846,7 +1882,8 @@ class ChatUI {
       });
     }
     
-    const allowedActions = new Set(['analyze', 'video', 'image']);
+    const allowedActions = new Set(['analyze', 'video', 'image', 'stash', 'craft']);
+    if (!this._craftImageActionAvailable) allowedActions.delete('craft');
     const selectedAction = allowedActions.has(preferredAction) ? preferredAction : 'analyze';
     const selectedRadio = this.imageActionModal.querySelector(
       `input[name="imageAction"][value="${selectedAction}"]`
@@ -2286,12 +2323,29 @@ class ChatUI {
   /**
    * Confirm the image action and attach image with settings
    */
-  _confirmImageAction() {
+  async _confirmImageAction() {
     if (this._conversationLoadPending) return;
+    if (this._imageUpload) return;
+    if (this._craftActionCheck) return;
     if (!this.pendingImageBatch?.length) return;
     
     const { action, settings } = this._collectImageActionSettings();
-    const batch = this.pendingImageBatch;
+    let batch = this.pendingImageBatch;
+    if (action === 'craft') {
+      const context = this._attachmentContext();
+      this._craftActionCheck = context;
+      let available;
+      try {
+        available = await this._refreshCraftImageAction(context);
+      } finally {
+        if (this._craftActionCheck === context) this._craftActionCheck = null;
+      }
+      if (!this._attachmentContextIsCurrent(context) || this.pendingImageBatch !== batch) return;
+      if (!available) {
+        Utils.toast('Craft editing is unavailable in this mode. Choose another image action.', 'info');
+        return;
+      }
+    }
     
     if (action === 'video' || action === 'image') {
       if (batch.length !== 1 || this.attachedImages.length || this.attachedDocuments.length) {
@@ -2303,6 +2357,34 @@ class ChatUI {
       Utils.toast(`Maximum ${this._getMaxImages()} sources in this mode. Remove sources before adding these images.`, 'error');
       return;
     }
+    if (['craft', 'stash'].includes(action) && batch.some(item => !item.source_preserved)) {
+      const context = this._attachmentContext();
+      const pendingBatch = this.pendingImageBatch;
+      this._imageUpload = context;
+      try {
+        const originals = (this.pendingImageFiles || []).map(item => item.file);
+        if (originals.length === batch.length) {
+          batch = await this._uploadImageFiles(originals, context, true);
+        } else if (batch.length === 1 && batch[0].generated_filename) {
+          const response = await fetch('/api/media-handoff/import', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: context.controller.signal,
+            body: JSON.stringify({media_type: 'image', filename: batch[0].generated_filename, preserve_source: true})
+          });
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.error || 'Could not preserve the original image');
+          batch = [data];
+        } else {
+          throw new Error('Select the original image again to save its full size for Craft or Stash.');
+        }
+        if (!this._attachmentContextIsCurrent(context) || this.pendingImageBatch !== pendingBatch) return;
+        this.pendingImageBatch = batch;
+      } catch (error) {
+        if (this._attachmentContextIsCurrent(context)) Utils.toast(error.message, 'error', 5000);
+        return;
+      } finally {
+        if (this._imageUpload === context) this._imageUpload = null;
+      }
+    }
     
     this.imageAttachmentAction = action;
     this.imageAttachmentSettings = settings;
@@ -2310,7 +2392,9 @@ class ChatUI {
     batch.forEach((uploadData) => {
       this.attachedImages.push({
         url: uploadData.url,
-        filename: uploadData.filename
+        filename: uploadData.filename,
+        source_width: uploadData.source_width, source_height: uploadData.source_height,
+        source_preserved: uploadData.source_preserved
       });
     });
 
@@ -2319,7 +2403,7 @@ class ChatUI {
     this._hideImageActionModal();
     this.inputField.focus();
     
-    const actionLabels = { analyze: 'Analyze', video: 'Video', image: 'Image' };
+    const actionLabels = { analyze: 'Analyze', video: 'Video', image: 'Image', stash: 'Stash', craft: 'Craft edit' };
     const countLabel = batch.length > 1 ? `${batch.length} images` : 'Image';
     Utils.toast(`${countLabel} attached: ${actionLabels[action] || action}`, 'success', 1500);
   }
@@ -2363,6 +2447,8 @@ class ChatUI {
     if (action === 'image') {
       return `IMAGE ${settings.provider || ''}`;
     }
+    if (action === 'stash') return 'SAVE TO STASH';
+    if (action === 'craft') return 'CRAFT EDIT';
     return 'ANALYZE';
   }
 
@@ -2395,7 +2481,7 @@ class ChatUI {
       const imageEl = document.createElement('img');
       imageEl.src = img.url;
       imageEl.alt = `Image ${index + 1}: ${img.filename || 'attached image'}`;
-      imageEl.title = imageEl.alt;
+      imageEl.title = imageEl.alt + (img.source_preserved ? ` · ${img.source_width}×${img.source_height} source pixels` : '');
       thumb.appendChild(imageEl);
       const label = document.createElement('span');
       label.className = 'attachment-image-label';
@@ -2513,7 +2599,7 @@ class ChatUI {
     if (total > this._getMaxImages()) {
       return `Maximum ${this._getMaxImages()} sources in ${window.jarvisSocket?.mode || 'cloud'} mode. No files were added.`;
     }
-    if (files.length && this._hasAttachedImages() && this.imageAttachmentAction !== 'analyze') {
+    if (files.length && this._hasAttachedImages() && ['image', 'video'].includes(this.imageAttachmentAction)) {
       return 'Image editing and video generation use one reference image. Remove it before attaching more sources.';
     }
     let textBytes = this.attachedDocuments.filter(item => item.kind === 'text')
@@ -2532,11 +2618,12 @@ class ChatUI {
     return null;
   }
 
-  async _uploadImageFiles(files, context) {
+  async _uploadImageFiles(files, context, preserveSource = false) {
     const formData = new FormData();
     files.forEach((file) => formData.append('images', file));
     formData.append('mode', context.mode);
     formData.append('include_base64', 'false');
+    if (preserveSource) formData.append('preserve_source', 'true');
     formData.append('current_image_count', String(this.attachedImages.length));
     const response = await fetch('/api/upload-images', {
       method: 'POST', body: formData, signal: context.controller.signal
@@ -3223,7 +3310,7 @@ class ChatUI {
       Utils.toast(attachmentError, 'error', 4000);
       return;
     }
-    if (hasImage && this.imageAttachmentAction !== 'analyze' && (hasFile || this.attachedImages.length !== 1)) {
+    if (hasImage && ['image', 'video'].includes(this.imageAttachmentAction) && (hasFile || this.attachedImages.length !== 1)) {
       Utils.toast('Image editing and video generation require one reference image only.', 'error');
       return;
     }
@@ -3347,7 +3434,7 @@ class ChatUI {
     attachments.forEach(item => { item.mode = context.mode; });
 
     this._resetPendingToolState();
-    this.pendingVisionRetryPayload = ['analyze', 'image', 'video'].includes(imagePayload?.action)
+    this.pendingVisionRetryPayload = ['analyze', 'image', 'video', 'stash', 'craft'].includes(imagePayload?.action)
       ? {
           action: imagePayload.action,
           settings: { ...(imagePayload.settings || {}) },

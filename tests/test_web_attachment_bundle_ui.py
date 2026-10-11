@@ -758,7 +758,7 @@ assert.equal(videoRadio.checked,true);
 assert.equal(ui.pendingImageBatch[0].filename,'photo.jpg');
 assert.equal(ui.attachedImages.length,0);
 assert.equal(sent.length,0);
-assert.deepEqual(requests.map(item=>item.url),['/api/media-handoff/import']);
+assert.deepEqual(requests.map(item=>item.url),['/api/media-handoff/import','/api/tools/craft_image?mode=cloud']);
 """)
 
 
@@ -1004,4 +1004,117 @@ await sending;
 assert.equal(sent.length,0);
 assert.equal(socket.conversationId,null);
 assert.equal(ui._conversationLoadPending,false);
+""")
+
+
+@pytest.mark.parametrize('action', ['stash', 'craft'])
+def test_direct_image_edit_modes_allow_multiple_sources_without_generation(action):
+    run_browser(r"""
+const ui=chat();
+ui.imageAttachmentAction=ACTION;
+ui.attachedImages=[{url:'/a.jpg',filename:'a.jpg'},{url:'/b.jpg',filename:'b.jpg'}];
+assert.equal(ui._validateAttachmentSelection([]),null);
+assert.ok(ui._buildActionBadgeText(ACTION,{}).includes(ACTION==='stash'?'STASH':'CRAFT'));
+await ui.sendMessage();
+assert.equal(sent.length,1);
+assert.equal(sent[0][1].action,ACTION);
+assert.equal(sent[0][1].images.length,2);
+assert.equal(ui.pendingVisionRetryPayload.action,ACTION);
+""".replace('ACTION', json.dumps(action)))
+
+
+def test_craft_confirmation_requests_full_source_only_after_selection_and_keeps_dimensions():
+    run_browser(r"""
+const ui=chat();
+const original=file('original.png','image/png');
+ui.pendingImageFiles=[{file:original,previewUrl:'blob:original'}];
+ui.pendingImageBatch=[{url:'/preview.jpg',filename:'preview.jpg',source_preserved:false}];
+ui._collectImageActionSettings=()=>({action:'craft',settings:{}});
+ui._hideImageActionModal=()=>{ui.pendingImageBatch=null;};
+ui._renderImagePreviews=()=>{};
+sandbox.fetch=async(url,options)=>{requests.push({url,...options});if(url.startsWith('/api/tools/craft_image')) return {ok:true,json:async()=>({ok:true,tool:{name:'craft_image',available:true,enabled:true}})};return {ok:true,json:async()=>({ok:true,images:[{url:'/full-preview.jpg',filename:'full-preview.jpg',source_preserved:true,source_width:1600,source_height:900}]})};};
+await ui._confirmImageAction();
+assert.equal(requests.length,2);
+assert.equal(requests[0].url,'/api/tools/craft_image?mode=cloud');
+assert.equal(requests[1].body.entries.preserve_source,'true');
+assert.equal(requests[1].body.entries.images,original);
+assert.equal(ui.attachedImages[0].filename,'full-preview.jpg');
+assert.equal(ui.attachedImages[0].source_width,1600);
+assert.equal(ui.attachedImages[0].source_preserved,true);
+""")
+
+
+def test_large_craft_source_failure_leaves_preview_available_for_analyze():
+    run_browser(r"""
+const ui=chat();
+ui.pendingImageFiles=[{file:file('phone.jpg','image/jpeg')}];
+ui.pendingImageBatch=[{url:'/preview.jpg',filename:'preview.jpg',source_preserved:false}];
+ui._collectImageActionSettings=()=>({action:'craft',settings:{}});
+sandbox.fetch=async(url)=>url.startsWith('/api/tools/craft_image')?({ok:true,json:async()=>({ok:true,tool:{name:'craft_image',available:true,enabled:true}})}):({ok:false,json:async()=>({ok:false,error:'Full-size Craft/Stash sources are limited to 32 megapixels'})});
+await ui._confirmImageAction();
+assert.equal(ui.attachedImages.length,0);
+assert.equal(ui.pendingImageBatch[0].filename,'preview.jpg');
+assert.equal(ui.pendingImageFiles.length,1);
+ui._collectImageActionSettings=()=>({action:'analyze',settings:{}});
+ui._hideImageActionModal=()=>{ui.pendingImageBatch=null;};
+ui._renderImagePreviews=()=>{};
+await ui._confirmImageAction();
+assert.equal(ui.attachedImages[0].filename,'preview.jpg');
+assert.equal(ui.imageAttachmentAction,'analyze');
+""")
+
+
+@pytest.mark.parametrize('tool', [None, {'name':'craft_image','available':False},
+                                {'name':'craft_image','enabled':False},
+                                {'name':'craft_image','blocked':True},
+                                {'name':'craft_image','available':True,'enabled':True}])
+def test_craft_modal_choice_follows_tool_availability_in_selected_mode(tool):
+    run_browser(r"""
+const ui=chat();
+const option=new Element(),craft={checked:true},analyze={checked:false};
+ui._updateImageActionOptions=()=>{};
+ui.imageActionModal={querySelector:selector=>selector==='#craftImageActionOption'?option:selector.includes('craft')?craft:analyze};
+socket.mode='local';
+sandbox.fetch=async(url,options)=>{requests.push({url,...options});return {ok:true,json:async()=>({ok:true,tool:TOOL})};};
+const available=await ui._refreshCraftImageAction(ui._attachmentContext());
+const expected=Boolean(TOOL && TOOL.enabled!==false && TOOL.available!==false && !TOOL.blocked);
+assert.equal(available,expected);
+assert.equal(option.hidden,!expected);
+assert.equal(option.style.display,expected?'flex':'none');
+assert.equal(craft.disabled,!expected);
+assert.equal(requests[0].url,'/api/tools/craft_image?mode=local');
+if(!expected){assert.equal(craft.checked,false);assert.equal(analyze.checked,true);}
+""".replace('TOOL', json.dumps(tool)))
+
+
+def test_craft_confirmation_rechecks_availability_before_preserving_original():
+    run_browser(r"""
+const ui=chat();
+ui.pendingImageFiles=[{file:file('photo.png','image/png')}];
+ui.pendingImageBatch=[{url:'/preview.jpg',filename:'preview.jpg',source_preserved:false}];
+ui._collectImageActionSettings=()=>({action:'craft',settings:{}});
+sandbox.fetch=async(url,options)=>{requests.push({url,...options});return {ok:true,json:async()=>({ok:true,tool:{name:'craft_image',available:false}})};};
+await ui._confirmImageAction();
+assert.equal(requests.length,1);
+assert.ok(requests[0].url.startsWith('/api/tools/'));
+assert.equal(ui.attachedImages.length,0);
+assert.equal(ui.pendingImageFiles.length,1);
+assert.ok(notices.some(item=>/unavailable/.test(item[0])));
+""")
+
+
+def test_cancel_during_craft_availability_check_does_not_attach_or_upload():
+    run_browser(r"""
+const ui=chat();
+ui.pendingImageBatch=[{url:'/preview.jpg',filename:'preview.jpg',source_preserved:false}];
+ui._collectImageActionSettings=()=>({action:'craft',settings:{}});
+const pending=deferred();
+sandbox.fetch=async(url,options)=>{requests.push({url,...options});return pending.promise;};
+const confirming=ui._confirmImageAction();
+ui.pendingImageBatch=null;
+pending.resolve({ok:true,json:async()=>({ok:true,tool:{name:'craft_image',available:true}})});
+await confirming;
+assert.equal(requests.length,1);
+assert.equal(ui.attachedImages.length,0);
+assert.equal(ui._craftActionCheck,null);
 """)

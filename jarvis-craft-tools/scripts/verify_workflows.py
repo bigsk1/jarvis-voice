@@ -47,6 +47,7 @@ def main():
             if not result['ok'] or result['data'].get('state')!='succeeded':
                 raise RuntimeError(json.dumps(result))
             results[name+':'+parameters['action']]=result['data']
+            (output/'results.json').write_text(json.dumps(results,indent=2)+'\n')
             print(name,parameters['action'],'completed',flush=True)
             return result['data']
         inverted=run('craft_image',{'action':'invert','sources':[refs['source.png']]})
@@ -57,6 +58,15 @@ def main():
         assert gray['project_revision']==2
         r,g,b=Image.open(gray['file_path']).convert('RGB').split()
         assert ImageChops.difference(r,g).getbbox() is None and ImageChops.difference(g,b).getbbox() is None
+        meme=run('craft_image',{'action':'edit','sources':[refs['source.png']],
+                              'edits':[{'action':'text','name':'Caption','text':'Craft meme','placement':'top','font_size':18}]})
+        assert meme['document']['layers'][0]['text']=='Craft meme' and meme['document']['layers'][0]['fully_visible']
+        revised=run('craft_image',{'action':'edit','sources':[meme['editable_project_ref']],
+                    'project_revision':meme['project_revision'],
+                    'edits':[{'action':'update_text','layer':'Caption','text':'Changed words','placement':'bottom'}]})
+        assert revised['project_id']==meme['project_id'] and revised['project_revision']==2
+        assert revised['document']['layers'][0]['id']==meme['document']['layers'][0]['id']
+        results['craft_image:revision']=revised
         rotated=run('craft_pdf',{'action':'rotate','sources':[refs['source.pdf']],'degrees':90,'pages':[1]})
         with fitz.open(rotated['file_path']) as doc:
             assert doc[0].rotation==90 and len(doc)==2
@@ -81,6 +91,45 @@ def main():
             assert probe['streams'][0]['width']==160 and probe['streams'][0]['height']==90
             assert .9<=float(probe['format']['duration'])<=1.2
             subprocess.run(['ffmpeg','-v','error','-xerror','-i',path,'-f','null','-'],check=True,capture_output=True,timeout=30)
+        clip=output/'source.mp4'
+        subprocess.run(['ffmpeg','-y','-v','error','-f','lavfi','-i','testsrc2=size=320x180:rate=12:duration=4',
+                        '-f','lavfi','-i','sine=frequency=440:duration=4','-c:v','libx264','-pix_fmt','yuv420p',
+                        '-c:a','aac','-shortest',str(clip)],check=True,capture_output=True,timeout=30)
+        clip_ref=StashFile(space).save_binary(clip.read_bytes(),'source.mp4',mime_type='video/mp4')['ref']
+        cut=run('craft_video',{'action':'edit','sources':[clip_ref], 'clips':[{'source':0,'start':1,'end':3}],
+                'video_edits':[{'action':'title','text':'Text on footage'},
+                               {'action':'caption','text':'Supplied caption','start':.5,'duration':1}], 'output':'mp4'})
+        assert cut['document']['duration']==2 and len(cut['document']['overlays'])==2
+        overlay_ids={item['clip'] for item in cut['document']['overlays']}
+        base=next(item for item in cut['document']['clips'] if item['track']=='video' and item['id'] not in overlay_ids)
+        assert base['source_start']==1 and base['source_end']==3
+        overlay=cut['document']['overlays'][0]
+        revision=run('craft_video',{'action':'edit','sources':[cut['editable_project_ref']],
+                  'project_revision':cut['project_revision'], 'video_edits':[{'action':'update_text',
+                   'clip':overlay['clip'],'layer':overlay['layer'],'text':'Revised overlay'}], 'output':'mp4'})
+        assert revision['project_id']==cut['project_id'] and revision['project_revision']==2
+        assert revision['document']['clips']==cut['document']['clips']
+        assert revision['document']['overlays'][0]['clip']==overlay['clip']
+        info=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-show_format','-of','json',revision['file_path']]))
+        assert any(stream['codec_type']=='audio' for stream in info['streams'])
+        assert 1.9<=float(info['format']['duration'])<=2.2
+        results['craft_video:revision']=revision
+        # Move a later-starting caption without repeating its words. Schema
+        # copied document timing must not reset it, including on a resized frame.
+        caption=revision['document']['overlays'][1]
+        resized=run('craft_video',{'action':'edit','editable_project_ref':revision['editable_project_ref'],
+                    'project_revision':revision['project_revision'],'width':160,
+                    'video_edits':[{'action':'update_text','clip':caption['clip'],'layer':caption['layer'],
+                                    'placement':'bottom','start':caption['start'],
+                                    'duration':caption['duration']}], 'output':'mp4'})
+        assert resized['document']['clips']==revision['document']['clips']
+        assert (resized['document']['width'],resized['document']['height'])==(160,90)
+        actual=resized['document']['overlays'][1]
+        assert all(actual[key]==caption[key] for key in ('clip','layer','text','start','duration'))
+        resized_probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-of','json',resized['file_path']]))
+        assert any(stream['codec_type']=='audio' for stream in resized_probe['streams'])
+        assert next(stream for stream in resized_probe['streams'] if stream['codec_type']=='video')['width']==160
+        results['craft_video:resized']=resized
     (output/'results.json').write_text(json.dumps(results,indent=2)+'\n')
     print('Verified all five adapters and saved projects. Results:',output/'results.json')
 

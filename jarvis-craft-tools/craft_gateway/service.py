@@ -24,8 +24,8 @@ class Service:
 
     def capabilities(self):
         apps = {}
-        actions = {'photocraft': ['invert', 'grayscale'], 'pdfcraft': ['rotate', 'extract', 'combine', 'render'],
-                   'lightcraft': ['develop'], 'filmcraft': ['assemble'], 'effectcraft': ['title']}
+        actions = {'photocraft': ['invert', 'grayscale', 'edit'], 'pdfcraft': ['rotate', 'extract', 'combine', 'render'],
+                   'lightcraft': ['develop'], 'filmcraft': ['assemble', 'edit'], 'effectcraft': ['title']}
         for app in APPS:
             binary = Path(self.config.get('binaries', {}).get(app, str(Path(self.config['apps_root']) / app / 'current/bin' / (app + '-cli')))).expanduser()
             version = None
@@ -37,7 +37,7 @@ class Service:
             apps[app] = {'installed': binary.is_file(), 'version': version,
                          'tested_version': TESTED_VERSIONS[app], 'supported': supported,
                          'actions': actions[app] if supported else [], 'binary': str(binary.resolve())}
-        return {'protocol_version': 1, 'gateway_version': '0.1.0', 'apps': apps,
+        return {'protocol_version': 1, 'gateway_version': '0.2.0', 'apps': apps,
                 'limits': {'upload_bytes': self.config.get('upload_bytes', 50 * 1024**2),
                            'output_bytes': self.config.get('output_bytes', 50 * 1024**2),
                            'disk_bytes': self.config.get('disk_bytes', 4 * 1024**3),
@@ -125,12 +125,17 @@ class Service:
     def validate_inputs(self, submission):
         image = {'.png', '.jpg', '.jpeg', '.webp'}
         allowed = {'photocraft': image | {'.pcraft'}, 'pdfcraft': {'.pdf'}, 'lightcraft': image,
-                   'filmcraft': image | {'.mp4', '.mov', '.webm'}, 'effectcraft': set()}
-        for artifact_id in submission.operation.inputs:
+                   'filmcraft': image | {'.mp4', '.mov', '.webm', '.fcproj'}, 'effectcraft': set()}
+        for index, artifact_id in enumerate(submission.operation.inputs):
             record = self.store.artifact(artifact_id, submission.project_id)
             if record['job_id'] and self.store.job(record['job_id'])['state'] != 'succeeded':
                 raise ValueError('Input belongs to an unsuccessful or unfinished job')
             if record['path'].suffix.lower() not in allowed[submission.operation.app]:
                 raise ValueError('Input format is not supported by the selected adapter')
-            if record['path'].suffix == '.pcraft' and record['role'] != 'project':
+            if record['path'].suffix in ('.pcraft', '.fcproj') and (record['role'] != 'project' or not record['job_id']):
                 raise ValueError('Only gateway-produced editable projects may be reopened')
+            if record['path'].suffix in ('.pcraft', '.fcproj') and index != 0:
+                raise ValueError('Native projects must be the first source')
+            if record['path'].suffix == '.fcproj' and (submission.operation.action != 'edit'
+                    or len(submission.operation.inputs) != 1 or submission.operation.clips):
+                raise ValueError('Native timeline revisions use one project source and video_edits, without clip ranges')

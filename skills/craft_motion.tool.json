@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "craft_motion",
-  "description": "Create a new EffectCraft title composition on an optional self-hosted gateway, with editable native project and PNG preview or MP4 export. Specify text, dimensions, duration, fps and output mp4 for a movie. Each call creates a new composition; this adapter cannot reopen or modify a saved native composition. GPU is optional and defaults off. No source input is required.",
+  "description": "Create a new EffectCraft title composition on an optional self-hosted gateway, with editable native project and PNG preview or MP4 export. Specify text, dimensions, duration, fps and output mp4 for a movie. Each call creates a new composition; this adapter cannot reopen or modify a saved native composition. GPU is optional and defaults off. No source input is required. For text on an existing image use craft_image; for text over footage use craft_video. Never substitute a standalone title card for a requested source edit.",
   "script": "craft_motion.py",
   "parameters": {
     "type": "object",

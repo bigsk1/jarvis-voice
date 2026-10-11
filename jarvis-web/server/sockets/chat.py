@@ -2791,6 +2791,9 @@ Previous structured data:
                 prompt_meta['tool_hints'] = list(dict.fromkeys(
                     video_hints + prompt_meta['tool_hints']
                 ))[:5]
+            if prompt_meta['tool_policy'] != 'none' and normalized_image and normalized_image.get('action') == 'craft':
+                craft_hints = self._sanitize_tool_hints(['craft_image'], mode=mode)
+                prompt_meta['tool_hints'] = list(dict.fromkeys(craft_hints + prompt_meta['tool_hints']))[:5]
             request_feedback = self._sanitize_feedback_request(
                 request_feedback,
                 prompt_meta['tool_policy'],
@@ -2825,7 +2828,10 @@ Previous structured data:
             # Default message for image-only
             if not message and normalized_image:
                 image_count = len(normalized_image.get('images', []))
-                message = "What's in these images?" if image_count > 1 else "What's in this image?"
+                if normalized_image.get('action') in ('stash', 'craft'):
+                    message = 'Save these images to Stash for later editing.'
+                else:
+                    message = "What's in these images?" if image_count > 1 else "What's in this image?"
             
             # Default message for file-only
             if not message and file_context:
@@ -2853,7 +2859,7 @@ Previous structured data:
                         'status': 'Video/Image mode uses one reference image; extra images ignored.',
                         'timestamp': time.time()
                     })
-                elif image_action == 'analyze' and image_count > image_limit:
+                elif image_action in ('analyze', 'stash', 'craft') and image_count > image_limit:
                     emit('chat:error', {'admitted': False, 'message_id': data.get('request_id'),
                         'error': f'Maximum {image_limit} images allowed in {mode} mode',
                         'conversation_id': conversation_id
@@ -3934,7 +3940,35 @@ Previous structured data:
             }
             print(f"[CHAT] Image action: {image_action}, count: {len(image_items)}, settings: {image_settings}")
 
-            if image_action == 'video':
+            if image_action in ('stash', 'craft'):
+                uploaded_images = []
+                for index, img in enumerate(image_items, start=1):
+                    check_preparation_cancelled()
+                    stashed = self._auto_stash_image({**img, 'action': image_action}, '', mode)
+                    if not stashed or not stashed.get('stash_ref'):
+                        self._emit_run_event('chat:error', {
+                            'message_id': message_id, 'conversation_id': conversation_id,
+                            'error': 'Could not save the uploaded image for editing. Please retry.',
+                            'error_code': 'image_craft_stash_failed', 'retryable': True, 'timestamp': time.time(),
+                        }, room=delivery_room)
+                        return
+                    uploaded_images.append({**stashed, 'ordinal': index, 'source_filename': img.get('filename')})
+                stash_info = {**uploaded_images[0], 'uploaded_images': uploaded_images}
+                inventory = '\n'.join(
+                    f"Image {item['ordinal']}: {item['stash_ref']} — source {item.get('width')}x{item.get('height')} pixels; "
+                    f"preview {item.get('preview_width')}x{item.get('preview_height')} pixels"
+                    for item in uploaded_images)
+                instruction = (
+                    'Use craft_image for supported edits ON these source images. Preserve the first image as the base; '
+                    'Crop and overlay rectangles use SOURCE pixels, not preview pixels. '
+                    'Do not guess numeric coordinates from the preview. '
+                    'Do not create a standalone title card or call generation as a substitute. If Craft is unavailable, explain that.'
+                    if image_action == 'craft' else
+                    'These images have been saved to Stash. Do not analyze or modify them unless the user requests it.'
+                )
+                message += f'\n\n[IMAGE SOURCES]\n{inventory}\n[END IMAGE SOURCES]\n{instruction}'
+
+            elif image_action == 'video':
                 # IMAGE TO VIDEO: Skip vision, stash image, force params via overrides
                 print("[CHAT] Image-to-video mode - skipping vision analysis")
                 user_video_prompt = message.strip()
@@ -5520,10 +5554,22 @@ Mode: {mode}
             
             # Find the uploaded image file
             uploads_path = JARVIS_ROOT / 'jarvis-web' / 'data' / 'uploads' / image_filename
-            
-            if not uploads_path.exists():
+            uploads_root = uploads_path.parent.resolve()
+            if uploads_path.is_symlink() or not uploads_path.is_file() or not uploads_path.resolve().is_relative_to(uploads_root):
                 print(f"[STASH] Upload file not found: {uploads_path}")
                 return None
+            editing_source = image_data.get('action') in ('stash', 'craft')
+            from PIL import Image
+            with Image.open(uploads_path) as preview:
+                preview_size = preview.size
+            if editing_source:
+                original = uploads_path.with_name(uploads_path.name + '.source.png')
+                if original.is_symlink():
+                    return None
+                if original.is_file() and not original.is_symlink():
+                    uploads_path = original
+            with Image.open(uploads_path) as source:
+                source_size = source.size
             
             # Import stash helper
             from stash_helper import open_space
@@ -5544,17 +5590,19 @@ Mode: {mode}
             batch_tags = self._stash_image_batch_tags(batch_id, batch_index, batch_total) if is_multi_image_batch else []
             vision_scope = 'batch' if is_multi_image_batch else 'image'
             space_labels = ['web_upload', 'image']
+            if editing_source:
+                space_labels.append('source_artifact')
             if has_vision:
                 space_labels.append('vision_analyzed')
             space_labels.extend(batch_tags)
             space, _ = open_space(
                 labels=space_labels,
-                scope='session',
-                ttl_days=7
+                scope='project' if editing_source else 'session',
+                ttl_days=120 if editing_source else 7
             )
             
             # Copy image to stash space
-            dest_filename = f"upload_{timestamp}_{uuid.uuid4().hex[:12]}.jpg"
+            dest_filename = f"upload_{timestamp}_{uuid.uuid4().hex[:12]}{uploads_path.suffix.lower()}"
             dest_path = space.space_path / dest_filename
             shutil.copy2(uploads_path, dest_path)
             
@@ -5578,8 +5626,9 @@ Mode: {mode}
                 'file_id': file_id,
                 'name': dest_filename,
                 'stored_name': dest_filename,
-                'mime_type': 'image/jpeg',
+                'mime_type': 'image/png' if dest_path.suffix == '.png' else 'image/jpeg',
                 'size_bytes': file_size,
+                'width': source_size[0], 'height': source_size[1],
                 'hash_sha256': file_hash,
                 'tags': file_tags,
                 'tool_origin': 'web_upload',
@@ -5660,8 +5709,10 @@ Mode: {mode}
                 'file_id': file_id,
                 'stash_ref': stash_ref,
                 'path': str(dest_path),
+                'width': source_size[0], 'height': source_size[1],
+                'preview_width': preview_size[0], 'preview_height': preview_size[1],
                 'filename': dest_filename,
-                'mime_type': 'image/jpeg',
+                'mime_type': file_meta['mime_type'],
                 'action': image_data.get('action', 'upload'),
                 'tool_origin': 'web_upload',
                 'has_vision_analysis': has_vision,

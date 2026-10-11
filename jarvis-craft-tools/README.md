@@ -33,10 +33,10 @@ paste a password, private key or API token into the conversation.
 
 | Jarvis tool | Actions and outputs | Tested upstream version |
 | --- | --- | --- |
-| `craft_image` | Invert/grayscale, PNG plus editable `.pcraft` | PhotoCraft v0.6.0 |
+| `craft_image` | Text overlays and revisions, crop/resize/rotate, image placement, invert/grayscale; PNG plus editable `.pcraft` and layer inspection | PhotoCraft v0.6.0 |
 | `craft_pdf` | Rotate/extract/combine PDFs, render pages and previews | PdfCraft v0.5.0 |
 | `craft_photos` | Raster photo exposure development to full-size PNG | LightCraft v0.5.0 |
-| `craft_video` | Assemble supplied images/videos with per-clip duration, PNG or MP4 plus project/media archive | FilmCraft v0.5.0 |
+| `craft_video` | Trim source ranges, assemble clips, fitted titles/timed captions over footage, native text revisions; MP4/preview plus editable timeline and media archive | FilmCraft v0.5.0 |
 | `craft_motion` | Title composition, PNG or MP4 plus native `.ecproj`; optional GPU | EffectCraft v0.7.0 |
 | `craft_inspect` | Capabilities, project/job state, collect outputs, request cancellation | Gateway protocol v1 |
 
@@ -287,9 +287,22 @@ Completed outputs are checksum verified and saved to the configured canonical
 Stash, including supporting project files, with links and follow-up metadata.
 Reuse `craft://PROJECT/ARTIFACT` sources with the matching `project_id` to avoid
 uploading again, or use a Stash output as a new source. Adapter scope still
-applies: a PhotoCraft editable project can be reopened, while title creation
+applies: image and video native projects can be reopened for supported edits, while title creation
 currently creates a fresh composition per request. Do not imply a full live
 browser/native editing session or automatic project synchronization.
+
+`craft://PROJECT/ARTIFACT` is a gateway artifact identifier. The gateway
+resolves it inside its configured `state_dir/projects/PROJECT/` workspace,
+usually beneath a job subfolder; it is independent of a client's filesystem
+paths. `stash://SPACE/FILE` identifies a copy on the Jarvis host. A confirmed
+Web Craft upload is first preserved in Jarvis upload storage; sending the
+turn saves it to Stash, and the tool uploads a processing copy to the gateway.
+Successful exports, native projects and inspection files are downloaded back
+to Jarvis Stash. Both references can therefore point to copies of the same
+artifact on different hosts. `editable_project_ref` selects the gateway's
+native project for subsequent edits; the result's `file_path` names its
+downloaded Jarvis copy. The modal hides Craft when `craft_image` is disabled,
+blocked, or missing its gateway configuration in the selected mode.
 
 Default limits: 50 MiB per input/output artifact, 512 MiB scratch per job,
 4 GiB gateway workspace storage, eight active/queued jobs, 900 seconds per
@@ -312,41 +325,155 @@ expires, `craft_inspect` action `collect` can download a successful job again
 while its gateway artifacts remain. Back up gateway state/projects for durable
 retention; Stash retention and gateway retention are separate.
 
-Only the PhotoCraft adapter currently reopens its gateway-produced native
-project. EffectCraft title creation creates a new composition per call;
-LightCraft development exports a PNG without a persistent library; FilmCraft
-creates a new timeline and returns a project/media archive with host paths to
-relink. Reusing a `project_id` organizes related jobs and serializes writers;
-it does not turn these three adapters into a persistent editing session.
-The tested cross-app handoff is EffectCraft MP4 to FilmCraft. Importing a
-PhotoCraft graphic into an existing EffectCraft composition is future adapter
-work. Native engine capabilities do not imply that the gateway exposes them.
+PhotoCraft reopens gateway-produced native projects using the returned
+`editable_project_ref`. Follow-up results include `document` with layer IDs,
+names, text and bounds. Supply `project_revision` from the prior result to
+reject a stale write. Use the native project reference rather than the PNG to
+preserve editable text and layers. Native projects uploaded from another
+machine remain prohibited; the gateway trusts only its own produced projects.
+
+### Image editing and follow-ups
+
+Use `craft_image` action `edit` with `sources` and 1..16 ordered `edits`:
+
+```json
+{
+  "action": "edit",
+  "sources": ["stash://YOUR_SPACE/YOUR_FILE"],
+  "edits": [
+    {"action": "resize", "width": 800, "height": 450},
+    {"action": "text", "name": "Caption", "text": "WHEN THE UPLOAD CANCELS", "placement": "top", "font_size": 64}
+  ]
+}
+```
+
+Supported image edits are `text`, `update_text`, `crop`, `resize`, `rotate`
+(90/180/270 degrees clockwise), and `overlay`. Caption placement is `top`,
+`center` or `bottom`; alignment is `left`, `center` or `right`. White text and
+black outline are defaults; colors and outline width are configurable. Font
+size is a maximum in pixels; the native layout is checked and reduced until
+all words fit. Captions that cannot fit at a readable size fail instead of
+publishing a partial caption. No AI image generation runs for these edits.
+
+For a revision, use the prior result's `editable_project_ref` as the first
+source and target the returned text-layer ID or exact unique name:
+
+```json
+{
+  "action": "edit",
+  "editable_project_ref": "craft://YOUR_PROJECT/YOUR_PROJECT_ARTIFACT",
+  "project_revision": 1,
+  "edits": [{"action": "update_text", "layer": "Caption", "text": "NEW WORDS", "placement": "bottom"}]
+}
+```
+
+For revisions, pass `editable_project_ref` directly and omit `sources`. The
+exported `stash_ref` is flattened media for delivery; it cannot select an
+editable text layer. Flat-image/movie `update_text` requests are rejected
+before upload or project creation. An echoed default `name: "Caption"` on an
+image revision, or an echoed existing layer name, is accepted and ignored;
+existing layer names are preserved. For size/placement changes, omit `text`
+to keep the words. Font size uses full source-image pixels, rather than the
+resized preview. Reuse the revision from the last successful result: rejected
+calls do not advance it. Conflicts return the current revision for inspection.
+Wait for running jobs to complete and collect their native project before
+revising. The single-writer rule rejects a second edit while one is active;
+inspect the job instead of replaying it.
+
+The client infers the project ID from a Craft reference. Changes create a new
+saved project artifact and increment the gateway revision; earlier artifacts
+remain intact. Additional image sources are used by `overlay` through their
+zero-based `source` index (1 is the second source), with an `x`, `y`, `width`,
+`height` placement rectangle. Place crop/resize/rotation edits before captions;
+a final edit that clips text is rejected. Originals are never overwritten.
+
+### Video cuts, overlays and revisions
+
+Use `craft_video` action `edit`. A new cut accepts ordered `clips` with
+zero-based source index and source `start`/`end` seconds. Source audio is
+retained. Example: keep seconds 5 through 20, then put a title over the cut:
+
+```json
+{
+  "action": "edit",
+  "sources": ["stash://YOUR_SPACE/YOUR_VIDEO"],
+  "clips": [{"source": 0, "start": 5, "end": 20}],
+  "video_edits": [{"action": "title", "text": "My edited video", "placement": "top"}],
+  "output": "mp4"
+}
+```
+
+`video_edits` actions `title` and `caption` add editable graphic text ON the
+footage. Their `start` and `duration` use seconds in the **edited timeline**,
+not source timestamps. Captions default to the bottom, titles to the top;
+text fits into a safe paragraph box. Overlays must lie within the footage;
+clipped or overlapping text is rejected. Supplied timed captions use native
+graphic text layers: this is not automatic transcription, SRT import/export,
+or a native subtitle-track adapter.
+
+The result includes `editable_project_ref` for `.fcproj`, a `document` with
+source ranges and overlay `clip`/`layer` IDs, and a project/media ZIP. To revise
+text, supply that project reference as the sole source, keep `clips` omitted,
+and use `video_edits` with `action: "update_text"`, its `clip` and `layer`, and
+optional new `text`. Omit `text` to keep the words while changing `placement`,
+font size or color. Omit timing fields; echoed defaults `start: 0` and
+`duration: null` also retain the saved timing, even when the caption starts
+later than zero. You may instead copy the selected overlay's actual `start`
+and `duration` from `document.overlays`. The gateway compares them with the
+saved clip before changing its text or style; different timing values are
+rejected. Clip timing, footage and
+linked audio remain in the existing timeline. New source cuts use media
+sources and `clips`; trimming an existing native clip in place, arbitrary
+compositing, grading and audio mixing remain future adapters.
+
+New video cuts automatically fit oversized sources within 1920x1080 while
+preserving aspect ratio, with even default dimensions for MP4. One explicit
+dimension derives the other for new cuts and reopened timelines. The default frame rate preserves
+the source rate up to 60fps. Reopened timelines keep their settings unless
+explicitly changed. A frame-size revision refits and centers the retained
+source clips and reflows existing text boxes, preserving IDs, words and timing.
+Explicit supported dimensions/fps override defaults; `assemble`
+retains its existing 640x360/24fps defaults. Limits are 1920x1080, 1..60fps,
+120 seconds of output and the gateway's transfer/disk quotas. Longer source
+videos can provide a short range. PNG output is a preview; request `mp4` for
+a movie. The ZIP includes every referenced media file, even on a follow-up;
+opening it elsewhere still requires relinking its saved host paths. External
+native project uploads remain prohibited.
 
 ### Try it in Jarvis Web
 
-For a chat image upload, choose **Analyze** and send a message first. After a
-successful analysis, Jarvis saves an image copy to Stash for follow-up tools.
-Cancelling the image-action dialog does not save the image to Stash. The
-**Image** and **Video** choices route to AI generation tools, rather than Craft.
-Chat image uploads are resized to at most 1024 pixels and converted to JPEG;
-use an original file already in Stash for full-resolution edits.
+Attach an image, choose **Edit with Craft**, enter the edit instructions and
+send. **Save to Stash** saves it for later requests when you send, without
+vision analysis or forced generation. Multiple image sources can be used for
+image/logo overlays. Craft must be configured for actual edits; saving to
+Stash does not require the gateway. Cancelling the dialog does not save it.
 
-Try these in the same conversation, using an explicit `stash://` reference if
-the intended source is ambiguous:
+Ordinary uploads create only the reduced JPEG preview. Analyze and AI
+generation retain their existing preview behavior, including phone photos
+above 32 megapixels (subject to the existing 30 MB and Pillow decode limits).
+Choosing Craft/Stash prepares a full-resolution, orientation-normalized static
+PNG source, including transparency, from the selected original. Only this
+explicit full-source path has the 32 megapixel limit. If it is too large, the
+modal keeps the preview and original selection so you can choose Analyze or
+resize the original. Older uploads without a saved source fall back to their
+existing preview. Craft/Stash source copies use normal project retention, 120
+days; Analyze and generation uploads retain their seven-day copies.
 
-- "Use PhotoCraft to invert the colors of the uploaded image and save the PNG
-  and editable project." Then: "Make that saved PhotoCraft project grayscale."
-- "Use LightCraft to brighten the uploaded image by 0.6 stops and export PNG."
-- "Use FilmCraft to make a two-second clip from the uploaded image at 320 by
-  180 pixels, 12 fps. Export MP4 and the project archive."
-- "Use EffectCraft to make a two-second animated title saying Craft Test,
-  320 by 180 pixels, 12 fps, with GPU rendering. Export MP4 and the project."
-- After attaching a PDF: "Use PdfCraft to rotate only page 1 by 90 degrees,
-  save the PDF, and show its preview."
+Upload responses distinguish preview `width`/`height` from original
+`source_width`/`source_height` and report whether `source_preserved` is true.
+Stashed edit context reports the actual source and preview dimensions. Crop
+and overlay coordinates use source pixels; do not guess them from the 1024px
+preview. The attachment tooltip shows preserved source dimensions.
 
-Expect a successful job and saved Stash outputs, or an honest running receipt
-with a job ID. For a running receipt, ask Jarvis to inspect and collect that
-job; avoid repeating the editing request while its outcome is unknown.
+Try: "Put WHEN THE UPLOAD CANCELS at the top of this photo as a meme."
+Then: "Change the existing caption to BUT THE PHOTO IS STILL HERE and move it
+to the bottom." Jarvis receives the saved project reference and layer metadata
+for the next turn. The browser editors still have separate sessions; export
+native files explicitly to open them there.
+
+EffectCraft standalone titles now use native text bounds to fit the complete
+caption inside the frame, with a fade at the end. Use PhotoCraft for text on a
+photo; a standalone title card is not a replacement for a source-image edit.
 
 ## Service operation and maintenance
 

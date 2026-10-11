@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "craft_video",
-  "description": "Assemble image/video inputs in a new FilmCraft timeline on an optional self-hosted gateway. Place each source for duration seconds in supplied order; return preview, optional MP4 and a project archive with media. Use output mp4 for a movie. Each call creates a new timeline; this adapter cannot reopen or modify a saved native timeline. Use generate_video for AI synthesis and convert_file for simple conversions.",
+  "description": "Edit existing videos with FilmCraft on an optional self-hosted gateway: trim source in/out ranges, assemble clips, add fitted title text ON the footage or supplied timed captions, and revise saved timeline text overlays. Retains source audio. Returns preview, optional MP4, editable_project_ref, clip/layer IDs and project/media archive. Use action edit with clips for a new cut and video_edits for text; reopen editable_project_ref with video_edits update_text to revise the same timeline. Never substitute a separate title card for text on a video. Use output mp4 for a movie. generate_video is separate AI synthesis.",
   "script": "craft_video.py",
   "parameters": {
     "type": "object",
@@ -9,7 +9,8 @@
       "action": {
         "type": "string",
         "enum": [
-          "assemble"
+          "assemble",
+          "edit"
         ]
       },
       "sources": {
@@ -18,27 +19,31 @@
           "type": "string"
         },
         "maxItems": 16,
-        "description": "Source stash:// references, permitted local paths, or craft://project/artifact references from previous output. Native projects cannot be uploaded."
+        "description": "Source videos/images, or one editable_project_ref to reopen the native FilmCraft timeline. Accepts stash://, permitted local paths or craft:// references. External native project uploads are prohibited.",
+        "minItems": 1
       },
       "project_id": {
         "type": "string",
         "pattern": "^[a-f0-9]{32}$",
-        "description": "Existing gateway project to group related jobs and reuse media artifacts. Each call creates a new timeline; this does not reopen a saved native timeline. Omit for a new gateway project."
+        "description": "Gateway project ID, inferred from Craft sources when omitted. Reopen the editable_project_ref to retain the native timeline."
       },
       "width": {
         "type": "integer",
         "minimum": 16,
-        "maximum": 1920
+        "maximum": 1920,
+        "description": "Output width. New edit dimensions fit within 1920x1080 preserving aspect ratio; assemble defaults to 640x360. One explicit dimension derives the other. Reopened timelines retain their size by default; explicit frame changes refit footage and reflow text."
       },
       "height": {
         "type": "integer",
         "minimum": 16,
-        "maximum": 1080
+        "maximum": 1080,
+        "description": "Output height. New edits preserve source aspect ratio within 1920x1080; assemble defaults to 640x360. One explicit dimension derives the other. Explicit frame changes on revisions refit footage and reflow text."
       },
       "fps": {
         "type": "integer",
         "minimum": 1,
-        "maximum": 60
+        "maximum": 60,
+        "description": "Output frame rate; edit defaults to the source/existing timeline rate."
       },
       "duration": {
         "type": "number",
@@ -53,12 +58,205 @@
           "mp4"
         ],
         "description": "png preview or mp4 movie; defaults to png. Request mp4 for video delivery."
+      },
+      "project_revision": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Expected project revision from the prior result; stale writes are rejected."
+      },
+      "clips": {
+        "items": {
+          "$ref": "#/$defs/ClipRange"
+        },
+        "maxItems": 16,
+        "title": "Clips",
+        "type": "array",
+        "description": "For a new cut, 1..16 ranges in final order. source is the zero-based sources index; start/end are seconds in the SOURCE media. At most 120 seconds total. Omit when reopening a native project. A still image uses start 0 and end equal to its display duration."
+      },
+      "video_edits": {
+        "items": {
+          "$ref": "#/$defs/VideoText"
+        },
+        "maxItems": 32,
+        "title": "Video Edits",
+        "type": "array",
+        "description": "title and caption add fitted text overlays at start seconds in the EDITED timeline; duration defaults to remaining footage. caption defaults to bottom. update_text selects clip/layer from document.overlays, retaining timing and, if text is omitted, words. Omit timing, echo defaults 0/null, or copy the selected overlay saved start/duration; different timing values are rejected. All captions are supplied text, not automatic transcription."
+      },
+      "editable_project_ref": {
+        "type": "string",
+        "pattern": "^craft://[a-f0-9]{32}/[a-f0-9]{32}$",
+        "description": "For a revision, pass the previous result editable_project_ref here and omit sources. This reopens native layers/timeline; the exported stash_ref is flattened media. Select the layer/clip IDs from document and wait for any running job to finish."
       }
     },
     "required": [
       "action"
     ],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "$defs": {
+      "ClipRange": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "default": 0,
+            "maximum": 15,
+            "minimum": 0,
+            "title": "Source",
+            "type": "integer"
+          },
+          "start": {
+            "default": 0,
+            "maximum": 86400,
+            "minimum": 0,
+            "title": "Start",
+            "type": "number"
+          },
+          "end": {
+            "exclusiveMinimum": 0,
+            "maximum": 86400,
+            "title": "End",
+            "type": "number"
+          }
+        },
+        "required": [
+          "end"
+        ],
+        "title": "ClipRange",
+        "type": "object"
+      },
+      "VideoText": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "title",
+              "caption",
+              "update_text"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Text",
+            "description": "Required for new title/caption. Omit on update_text to retain the existing words for placement or style changes."
+          },
+          "clip": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Clip"
+          },
+          "layer": {
+            "default": 0,
+            "maximum": 15,
+            "minimum": 0,
+            "title": "Layer",
+            "type": "integer"
+          },
+          "start": {
+            "default": 0,
+            "maximum": 120,
+            "minimum": 0,
+            "title": "Start",
+            "type": "number",
+            "description": "New overlay start in edited timeline seconds. On update_text, omit, echo 0, or copy the selected overlay start from document.overlays. The gateway checks it against the saved clip and retains timing; actual timing changes are unsupported."
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "maximum": 120,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Duration",
+            "description": "New overlay duration in seconds. On update_text, omit, echo null, or copy the selected overlay duration from document.overlays. The gateway checks it against the saved clip and retains timing; actual timing changes are unsupported."
+          },
+          "placement": {
+            "anyOf": [
+              {
+                "enum": [
+                  "top",
+                  "center",
+                  "bottom"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Placement"
+          },
+          "font_size": {
+            "anyOf": [
+              {
+                "maximum": 300,
+                "minimum": 8,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Font Size"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "pattern": "^#[0-9a-fA-F]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Color"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "VideoText",
+        "type": "object"
+      }
+    },
+    "anyOf": [
+      {
+        "required": [
+          "sources"
+        ]
+      },
+      {
+        "required": [
+          "editable_project_ref"
+        ]
+      }
+    ]
   },
   "permissions": {
     "dangerous": false,

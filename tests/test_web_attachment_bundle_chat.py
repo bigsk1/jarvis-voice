@@ -765,3 +765,38 @@ def test_video_default_question_and_preparation_cancel_are_durable(journey, vide
     saved = journey.store.get_conversation(cid)
     assert saved['messages'][0]['data']['attachments'][0]['stash_ref'] == video_source['stash_ref']
     assert saved['messages'][-1]['data']['cancelled'] is True
+
+
+@pytest.mark.parametrize('action', ['stash', 'craft'])
+def test_direct_stash_and_craft_skip_vision_and_generation(journey, monkeypatch, action):
+    called=[]
+    def save(payload, analysis, mode):
+        called.append((payload,analysis,mode))
+        return {'stash_ref':f'stash://space/f_{len(called)}','filename':'source.png','action':action}
+    monkeypatch.setattr(journey.handler, '_auto_stash_image', save)
+    result=journey.handler._prepare_uploaded_images(
+        image_data={'action':action,'images':[{'filename':'one.jpg'},{'filename':'two.jpg'}]},
+        message='Put words on the first photo', mode='cloud', message_id='m', conversation_id='c',
+        delivery_room='c', original_user_message='Put words on the first photo', attachments=[],
+        check_preparation_cancelled=lambda:None)
+    message,vision,stash,overrides,errors=result
+    assert vision is None and overrides=={} and not errors
+    assert len(called)==2 and all(item[1]=='' for item in called)
+    assert len(stash['uploaded_images'])==2
+    assert 'stash://space/f_1' in message and 'stash://space/f_2' in message
+    if action=='craft':
+        assert 'craft_image' in message and 'standalone title card' in message
+
+
+def test_craft_stash_uses_full_size_source_and_correct_mime(journey, monkeypatch):
+    import memory_db
+    from PIL import Image
+    monkeypatch.setattr(chat,'JARVIS_ROOT',journey.tmp)
+    monkeypatch.setattr(memory_db,'MemoryDB',lambda:SimpleNamespace(remember=lambda **kwargs:None))
+    uploads=journey.tmp/'jarvis-web/data/uploads';uploads.mkdir(parents=True)
+    Image.new('RGB',(20,10),'blue').save(uploads/'preview.jpg')
+    Image.new('RGBA',(100,50),(20,40,60,80)).save(uploads/'preview.jpg.source.png')
+    result=journey.handler._auto_stash_image({'filename':'preview.jpg','action':'craft'},'','cloud')
+    assert result['mime_type']=='image/png'
+    with Image.open(result['path']) as im:
+        assert im.size==(100,50) and im.mode=='RGBA'

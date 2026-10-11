@@ -4,6 +4,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .image_models import ImageEdit
+from .video_models import ClipRange, VideoText
+
 APPS = ("photocraft", "pdfcraft", "lightcraft", "filmcraft", "effectcraft")
 TESTED_VERSIONS = {"photocraft": "v0.6.0", "pdfcraft": "v0.5.0", "lightcraft": "v0.5.0",
                    "filmcraft": "v0.5.0", "effectcraft": "v0.7.0"}
@@ -14,7 +17,10 @@ class ClosedModel(BaseModel):
 
 class Operation(ClosedModel):
     app: Literal["photocraft", "pdfcraft", "lightcraft", "filmcraft", "effectcraft"]
-    action: Literal["invert", "grayscale", "rotate", "extract", "combine", "render", "develop", "assemble", "title"]
+    action: Literal["invert", "grayscale", "edit", "rotate", "extract", "combine", "render", "develop", "assemble", "title"]
+    edits: list[ImageEdit] = Field(default_factory=list, max_length=16)
+    clips: list[ClipRange] = Field(default_factory=list, max_length=16)
+    video_edits: list[VideoText] = Field(default_factory=list, max_length=32)
     inputs: list[str] = Field(default_factory=list, max_length=16)
     degrees: Literal[90, 180, 270] = 90
     pages: list[int] = Field(default_factory=lambda: [1], min_length=1, max_length=200)
@@ -32,8 +38,8 @@ class Operation(ClosedModel):
 
     @model_validator(mode="after")
     def validate_action(self):
-        actions = {"photocraft": {"invert", "grayscale"}, "pdfcraft": {"rotate", "extract", "combine", "render"},
-                   "lightcraft": {"develop"}, "filmcraft": {"assemble"}, "effectcraft": {"title"}}
+        actions = {"photocraft": {"invert", "grayscale", "edit"}, "pdfcraft": {"rotate", "extract", "combine", "render"},
+                   "lightcraft": {"develop"}, "filmcraft": {"assemble", "edit"}, "effectcraft": {"title"}}
         if self.action not in actions[self.app]:
             raise ValueError("Action is not supported by this app adapter")
         if any(not re.fullmatch(ID_PATTERN, value) for value in self.inputs):
@@ -41,7 +47,7 @@ class Operation(ClosedModel):
         if self.app == "effectcraft":
             if self.inputs:
                 raise ValueError("Title composition does not accept external projects or inputs")
-        elif self.action in {"combine", "assemble"}:
+        elif self.action in {"combine", "assemble", "edit"}:
             if not self.inputs:
                 raise ValueError("At least one input is required")
         elif len(self.inputs) != 1:
@@ -50,8 +56,25 @@ class Operation(ClosedModel):
             raise ValueError("Pages must be positive one-based integers")
         # Each adapter's options are explicit; reject irrelevant settings rather
         # than reporting success for an ignored instruction.
-        allowed = {"photocraft": set(), "pdfcraft": {"degrees", "pages"}, "lightcraft": {"exposure"},
-                   "filmcraft": {"width", "height", "fps", "duration", "output"},
+        if self.app == 'photocraft' and self.action == 'edit':
+            if not self.edits:
+                raise ValueError('Image edit requires at least one edit')
+            used = {edit.source for edit in self.edits if edit.action == 'overlay'}
+            if used != set(range(1, len(self.inputs))):
+                raise ValueError('Every additional source must be used by an overlay edit')
+        elif self.edits:
+            raise ValueError('edits only applies to image edit')
+        if self.app == 'filmcraft' and self.action == 'edit':
+            if not self.clips and not self.video_edits:
+                raise ValueError('Video edit requires source ranges or overlay edits')
+            if self.clips and {clip.source for clip in self.clips} != set(range(len(self.inputs))):
+                raise ValueError('Every video source must be selected by a clip range')
+            if sum(clip.end - clip.start for clip in self.clips) > 120:
+                raise ValueError('Edited timeline must not exceed 120 seconds')
+        elif self.clips or self.video_edits:
+            raise ValueError('clips and video_edits only apply to video edit')
+        allowed = {"photocraft": {'edits'} if self.action == 'edit' else set(), "pdfcraft": {"degrees", "pages"}, "lightcraft": {"exposure"},
+                   "filmcraft": {"width", "height", "fps", "output"} | ({'clips', 'video_edits'} if self.action == 'edit' else {'duration'}),
                    "effectcraft": {"width", "height", "fps", "duration", "text", "font_size", "color", "background", "gpu", "output"}}
         if self.model_fields_set - {"app", "action", "inputs"} - allowed[self.app]:
             raise ValueError("Option does not apply to the selected app")

@@ -8,7 +8,7 @@ CHAT_JS = (PROJECT_ROOT / "jarvis-web" / "client" / "js" / "chat.js").read_text(
 
 
 def test_chat_restores_analyze_attachment_after_typed_vision_failure():
-    assert "this.pendingVisionRetryPayload = ['analyze', 'image', 'video'].includes(imagePayload?.action)" in CHAT_JS
+    assert "this.pendingVisionRetryPayload = ['analyze', 'image', 'video', 'stash', 'craft'].includes(imagePayload?.action)" in CHAT_JS
     assert "'vision_model_unsupported', 'vision_analysis_failed'" in CHAT_JS
     assert "this.attachedImages = retryPayload.images.map" in CHAT_JS
     assert "clearAttachedImage({ preserveVisionRetry: true })" in CHAT_JS

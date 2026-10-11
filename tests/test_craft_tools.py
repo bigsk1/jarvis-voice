@@ -272,3 +272,87 @@ def test_submission_rejection_reaches_tool_completion_for_background(provider,mo
         result=craft_tools.execute_tool('craft_motion',{'action':'title'})
     assert not result['ok'] and result['completion']=='rejected'
     assert provider['posts']==1 and provider['gets']==0
+
+
+def test_image_metadata_and_editable_project_are_delivered_and_kept_in_followup(provider,tmp_path,monkeypatch):
+    document={'width':800,'height':450,'layers':[{'id':3,'name':'Caption','kind':'Type','text':'All words','fully_visible':True}]}
+    items=[('image.png','primary',b'png','image/png'),('image.pcraft','project',b'native','application/octet-stream'),('document.json','inspection',json.dumps(document).encode(),'application/json')]
+    outputs=[{'id':str(i)*32,'name':name,'role':role,'size_bytes':len(content),'sha256':hashlib.sha256(content).hexdigest(),'mime_type':mime} for i,(name,role,content,mime) in enumerate(items,1)]
+    job={'id':'b'*32,'request_id':'d'*32,'project_id':'a'*32,'app_version':'v0.6.0','state':'succeeded','operation':{'app':'photocraft'},'outputs':outputs}
+    with config_scope('cloud',{**settings(provider['url']),'STASH_DIR':str(tmp_path/'stash')}):
+        client=CraftClient()
+        monkeypatch.setattr(client,'download',lambda item:items[int(item['id'][0])-1][2])
+        result=save_outputs(client,job,'craft_image')
+        client.close()
+    data=result['data']
+    assert data['document']==document
+    assert data['editable_project_ref']=='craft://'+'a'*32+'/'+'2'*32
+    from server.services.followup_extractor import extract_followup_data
+    followup=extract_followup_data({'craft_image':result})['craft_image']
+    assert followup['editable_project_ref']==data['editable_project_ref']
+    assert followup['document']==document
+
+
+@pytest.mark.parametrize('name,args', [
+    ('craft_image',{'action':'edit','sources':['stash://space/file'],'edits':[{'action':'text','text':'Hello'}]}),
+    ('craft_video',{'action':'edit','sources':['stash://space/file'],'clips':[{'source':0,'start':1,'end':3}],
+                    'video_edits':[{'action':'title','text':'On footage'}],'output':'mp4'}),
+    ('craft_video',{'action':'edit','editable_project_ref':'craft://'+'a'*32+'/'+'b'*32,
+                    'video_edits':[{'action':'update_text','clip':13,'placement':'top','start':0,'duration':None}]}),
+    ('craft_video',{'action':'edit','editable_project_ref':'craft://'+'a'*32+'/'+'b'*32,
+                    'video_edits':[{'action':'update_text','clip':13,'placement':'top','start':.5,'duration':1}]}),
+])
+def test_edit_schemas_validate_in_the_real_background_admission_path(name,args):
+    from lib.background_tasks import production
+    from lib.background_tasks.local_skill import validate_arguments
+    with config_scope('cloud',settings('https://craft.invalid/craft-api/v1')):
+        schema,_=production.runner().policy(name)
+        validate_arguments(schema,args)
+
+
+def test_stale_project_revision_is_rejected_before_upload_or_submit(provider,monkeypatch):
+    import craft_tools
+    with config_scope('cloud',settings(provider['url'])):
+        client=CraftClient()
+        monkeypatch.setattr(client,'capabilities',lambda:{'apps':{'photocraft':{'supported':True,'actions':['edit']}}})
+        monkeypatch.setattr(client,'project',lambda project_id:{'id':project_id,'revision':2})
+        monkeypatch.setattr(craft_tools,'CraftClient',lambda:client)
+        result=craft_tools.execute_tool('craft_image',{'action':'edit','sources':['craft://'+'a'*32+'/'+'b'*32],
+                    'project_revision':1,'edits':[{'action':'update_text','layer':3,'text':'New words'}]})
+    assert not result['ok'] and result['completion']=='rejected'
+    assert 'revision changed' in result['error']
+    assert result['data']['current_project_revision']==2
+    assert result['data']['requested_project_revision']==1
+    assert result['data']['edit_submitted'] is False
+    assert provider['posts']==0 and provider['gets']==0
+
+
+@pytest.mark.parametrize('source',['stash://space/file','/tmp/flattened.png'])
+def test_flat_text_revision_rejected_before_project_creation(provider,source):
+    from craft_tools import execute_tool
+    with config_scope('cloud',settings(provider['url'])):
+        result=execute_tool('craft_image',{'action':'edit','sources':[source],
+                    'edits':[{'action':'update_text','layer':3,'text':'Changed'}]})
+    assert not result['ok'] and 'editable_project_ref' in result['error']
+    assert provider['posts']==0 and provider['gets']==0
+
+
+def test_explicit_native_project_input_drives_revision_without_sources(provider,monkeypatch):
+    import craft_tools
+    source='craft://'+'a'*32+'/'+'b'*32
+    calls=[]
+    class Client:
+        def capabilities(self):return {'apps':{'photocraft':{'supported':True,'actions':['edit']}}}
+        def project(self,identifier):return {'id':identifier,'revision':1,'artifacts':[{'id':'b'*32,'role':'project','name':'image.pcraft'}]}
+        identifier=staticmethod(CraftClient.identifier)
+        def submit(self,project,operation):
+            calls.append(operation)
+            return {'state':'running','id':'c'*32,'project_id':'a'*32,'request_id':'d'*32}
+        def wait(self,job,seconds):return job
+        def close(self):pass
+    monkeypatch.setattr(craft_tools,'CraftClient',Client)
+    with config_scope('cloud',{**settings(provider['url']),'JARVIS_BACKGROUND_MAX_INPUT_BYTES':''}):
+        result=craft_tools.execute_tool('craft_image',{'action':'edit','editable_project_ref':source,'project_revision':1,
+                      'edits':[{'action':'update_text','layer':3,'text':'Changed','name':'Caption'}]})
+    assert result['ok'] and calls[0]['inputs']==['b'*32]
+    assert 'editable_project_ref' not in calls[0]

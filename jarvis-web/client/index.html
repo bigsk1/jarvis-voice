@@ -1329,6 +1329,14 @@
             <label class="setting-label">What do you want to do?</label>
             <div class="image-action-radios" style="display: flex; flex-direction: column; gap: var(--space-xs); margin-top: var(--space-xs);">
               <label class="image-action-radio" style="display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <input type="radio" name="imageAction" value="stash">
+                <span>💾 <strong>Save to Stash</strong> <span style="color: var(--text-secondary); font-size: var(--text-xs);">— Save the full-size image when you send</span></span>
+              </label>
+              <label id="craftImageActionOption" class="image-action-radio" hidden style="display: none; align-items: center; gap: var(--space-sm); cursor: pointer; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <input type="radio" name="imageAction" value="craft" disabled>
+                <span>🛠️ <strong>Edit with Craft</strong> <span style="color: var(--text-secondary); font-size: var(--text-xs);">— Add text, crop, resize or combine images</span></span>
+              </label>
+              <label class="image-action-radio" style="display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
                 <input type="radio" name="imageAction" value="analyze" checked>
                 <span>🔍 <strong>Analyze Image</strong> <span style="color: var(--text-secondary); font-size: var(--text-xs);">— Vision analysis, then chat</span></span>
               </label>

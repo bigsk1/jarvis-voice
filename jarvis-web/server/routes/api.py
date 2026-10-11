@@ -3462,7 +3462,7 @@ def _uploaded_file_size_bytes(file) -> int | None:
         return None
 
 
-def _process_uploaded_image_file(file, suffix: str = '', include_base64: bool = True) -> dict:
+def _process_uploaded_image_file(file, suffix: str = '', include_base64: bool = True, preserve_source: bool = False) -> dict:
     """
     Process one uploaded image file for vision analysis.
     Resizes large images and stores for conversation history.
@@ -3489,6 +3489,12 @@ def _process_uploaded_image_file(file, suffix: str = '', include_base64: bool = 
     try:
         img = Image.open(file.stream)
         img = ImageOps.exif_transpose(img)
+        source_size = img.size
+        source_img = None
+        if preserve_source:
+            if img.width * img.height > 32_000_000:
+                return {'ok': False, 'error': 'Full-size Craft/Stash sources are limited to 32 megapixels. Choose Analyze or resize the original first.'}
+            source_img = img.convert('RGBA' if 'A' in img.getbands() or 'transparency' in img.info else 'RGB')
         
         if img.mode in ('RGBA', 'P'):
             img = img.convert('RGB')
@@ -3506,6 +3512,8 @@ def _process_uploaded_image_file(file, suffix: str = '', include_base64: bool = 
         filepath = UPLOADS_PATH / filename
         
         img.save(filepath, 'JPEG', quality=85, optimize=True)
+        if source_img is not None:
+            source_img.save(UPLOADS_PATH / (filename + '.source.png'), 'PNG')
         
         file_size_kb = filepath.stat().st_size / 1024
         print(f"[Upload] Saved {filename} ({img.size[0]}x{img.size[1]}, {file_size_kb:.1f}KB)")
@@ -3517,6 +3525,9 @@ def _process_uploaded_image_file(file, suffix: str = '', include_base64: bool = 
             'width': img.size[0],
             'height': img.size[1],
             'size_kb': round(file_size_kb, 1),
+            'source_width': source_size[0],
+            'source_height': source_size[1],
+            'source_preserved': preserve_source,
         }
         if include_base64:
             import base64
@@ -3576,11 +3587,13 @@ def import_media_handoff():
         result = _process_uploaded_image_file(
             FileStorage(stream=stream, filename=filename),
             include_base64=False,
+            preserve_source=data.get('preserve_source') is True,
         )
     if not result.get('ok'):
         return jsonify(result), 400
 
     result['media_type'] = media_type
+    result['generated_filename'] = filename
     return jsonify(result)
 
 
@@ -3602,7 +3615,8 @@ def upload_image():
         }), 400
 
     include_base64 = request.form.get('include_base64', 'true').lower() in {'1', 'true', 'yes', 'on'}
-    result = _process_uploaded_image_file(request.files['image'], include_base64=include_base64)
+    result = _process_uploaded_image_file(request.files['image'], include_base64=include_base64,
+                preserve_source=request.form.get('preserve_source', 'false').lower() in {'1', 'true', 'yes', 'on'})
     if not result.get('ok'):
         return jsonify(result), 400
     return jsonify(result)
@@ -3852,6 +3866,7 @@ def upload_images():
             file,
             suffix=f'_{index}' if index else '',
             include_base64=include_base64,
+            preserve_source=request.form.get('preserve_source', 'false').lower() in {'1', 'true', 'yes', 'on'},
         )
         if result.get('ok'):
             uploaded.append(result)
