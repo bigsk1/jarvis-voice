@@ -884,6 +884,7 @@ explicit-destination workflows fail-closed by omitting
 | `action` | No | For tools with actions (stash, canvas) |
 | `params` | No | Tool parameters, supports `${variables}` |
 | `output_var` | No | Store full result in variable |
+| `search_output_var` | No | Store normalized search `{urls, data}` under an independent name; defaults to shared `search_results` |
 | `extract` | No | Extract specific fields: `{"var": "path"}` |
 | `llm_prompt` | No | LLM generates `content` param from this |
 | `required` | No | Default `true`. Abort workflow if fails |

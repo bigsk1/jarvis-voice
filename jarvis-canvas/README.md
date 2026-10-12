@@ -42,6 +42,36 @@ You: "Save that code snippet to my canvas"
 
 Canvas pages support embedded images. Jarvis can now pass an explicit `image_url` (including normal `https://` URLs and `stash://` refs) when creating or updating a page, and the Canvas tool will insert the markdown image block automatically at the top of the page. If a tool or model only includes a plain text line such as `Image: https://...`, the Canvas tool will now recover that inline URL and convert it into a real embedded image block automatically.
 
+## Collapsible details in a page
+
+Canvas supports the browser's native disclosure element using its existing
+local Markdown parser and sanitizer. No new library or external service is
+needed. Keep the short summary visible and put evidence or technical notes in
+a closed section:
+
+```markdown
+# Daily brief
+
+Three useful things to explore today.
+
+<details>
+<summary>Advanced details</summary>
+
+## Evidence and caveats
+
+- Supporting evidence, dates and limitations.
+- [Original source](https://example.org/report)
+
+</details>
+```
+
+Keep the blank lines around the inner Markdown. The section starts closed
+when `open` is omitted. Click the label, or focus it and press Space, to expand
+it. The existing sanitizer still removes scripts and event handlers; do not
+put scripts, styles or executable attributes in page content. This is a
+browser interaction; downloaded Markdown retains the markup rather than an
+interactive UI.
+
 ## Architecture
 
 ```

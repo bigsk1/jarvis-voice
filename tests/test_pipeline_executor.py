@@ -1716,32 +1716,31 @@ MIME type: application/pdf
         self.assertEqual(youtube_step["extract"]["youtube_top_url"], "top_url")
         self.assertEqual(youtube_step["extract"]["youtube_top_results"], "top_results")
 
-        for step in canvas_steps[1:]:
-            prompt = step["llm_prompt"].lower()
+        fresh_step = next(
+            step for step in workflow["steps"]
+            if step["tool"] == "stash" and step.get("llm_prompt")
+        )
+        self.assertEqual(canvas_steps[1]["params"]["content"].split("\n")[0], "${fresh_radar_content}")
+        self.assertNotIn("llm_prompt", canvas_steps[1])
+        history_step = next(
+            step for step in workflow["steps"]
+            if step["tool"] == "stash" and step.get("description", "").startswith("Summarize previous runs")
+        )
+        self.assertNotIn("${radar_existing_content}", fresh_step["llm_prompt"])
+        self.assertIn("tavily search results", fresh_step["llm_prompt"].lower())
+        self.assertIn("${radar_existing_content}", history_step["llm_prompt"])
+        self.assertNotIn("${fresh_radar_content}", history_step["llm_prompt"])
+        self.assertNotIn("llm_prompt", canvas_steps[2])
+        self.assertEqual(canvas_steps[2]["params"]["content"], "${fresh_radar_content}\n\n${radar_history_content}")
+        self.assertIn("<summary>Advanced details</summary>", fresh_step["llm_prompt"])
+        self.assertIn("<summary>Recent history</summary>", history_step["llm_prompt"])
+        self.assertEqual(youtube_step["search_output_var"], "youtube_search_results")
+        for step in [fresh_step, history_step]:
             rejects = step["llm_output_validation"]["reject_patterns"]
-            self.assertIn("raw markdown only", prompt)
-            self.assertIn("do not output html", prompt)
-            self.assertIn("youtube search results", prompt)
-            self.assertIn("featured video", prompt)
-            self.assertIn("so canvas can embed", prompt)
             self.assertIn("```", rejects)
             self.assertIn("<!doctype", rejects)
             self.assertIn("<html", rejects)
-            self.assertIn("<pre", rejects)
 
-        update_prompt = canvas_steps[2]["llm_prompt"].lower()
-        update_rejects = canvas_steps[2]["llm_output_validation"]["reject_patterns"]
-        update_required = canvas_steps[2]["llm_output_validation"]["required_patterns"]
-        self.assertIn("full replacement markdown content", update_prompt)
-        self.assertIn("do not output only a delta", update_prompt)
-        self.assertIn("previous snapshots", update_prompt)
-        self.assertIn("do not include previous youtube watch urls", update_prompt)
-        self.assertIn("unable to update", update_rejects)
-        self.assertIn("# GitHub AI Radar", update_required)
-        self.assertIn("## Latest Snapshot", update_required)
-        self.assertIn("## Notable Projects", update_required)
-        self.assertIn("## Sources", update_required)
-        self.assertIn("## Run Log", update_required)
 
     def test_jarvis_self_check_uses_health_issues_alerts_and_single_canvas_page(self):
         workflow = json.loads(

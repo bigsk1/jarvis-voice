@@ -11,7 +11,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT / "orchestrator"))
 
@@ -25,6 +24,50 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("Workflow root must be a JSON object")
     return data
+
+
+def _has_validated_content_prefix(steps: list, target: dict, content: str) -> bool:
+    """Recognize a full-page brief validated before deterministic publication."""
+    saved_ids = {}
+    content_vars = set()
+    for producer in steps:
+        if producer is target:
+            break
+        if (
+            not isinstance(producer, dict)
+            or producer.get("required", True) is not True
+            or producer.get("on_fail") == "continue"
+            or producer.get("condition") not in (None, target.get("condition"))
+        ):
+            continue
+        if producer.get("tool") != "stash":
+            continue
+        params = producer.get("params", {})
+        extracts = producer.get("extract", {})
+        validation = producer.get("llm_output_validation", {})
+        if not all(isinstance(value, dict) for value in (params, extracts, validation)):
+            continue
+        action = producer.get("action", params.get("action"))
+        patterns = validation.get("required_patterns", [])
+        if (
+            action == "save"
+            and params.get("kind") == "text"
+            and validation.get("param") == "text"
+            and isinstance(patterns, list)
+            and len(patterns) >= 3
+            and any(isinstance(pattern, str) and pattern.startswith("# ") for pattern in patterns)
+        ):
+            for name, path in extracts.items():
+                if path == "file_id":
+                    saved_ids[f"${{{name}}}"] = params.get("space_id")
+        elif (
+            action == "read"
+            and params.get("mode") == "text"
+            and params.get("file_id") in saved_ids
+            and params.get("space_id") == saved_ids[params["file_id"]]
+        ):
+            content_vars.update(name for name, path in extracts.items() if path == "content")
+    return any(content.lstrip().startswith(f"${{{name}}}") for name in content_vars)
 
 
 def _check_workflow(
@@ -79,7 +122,9 @@ def _check_workflow(
         action = step.get("action")
         validation = step.get("llm_output_validation")
         if step.get("llm_prompt") and not isinstance(validation, dict):
-            warnings.append(f"Step {step_num}: llm_prompt should usually define llm_output_validation")
+            warnings.append(
+                f"Step {step_num}: llm_prompt should usually define llm_output_validation"
+            )
 
         if tool == "canvas" and action in {"create", "update"} and step.get("llm_prompt"):
             if not isinstance(validation, dict):
@@ -88,7 +133,9 @@ def _check_workflow(
                 rejects = {str(item).lower() for item in validation.get("reject_patterns", [])}
                 for pattern in ("```", "<html", "<pre", "https://..."):
                     if pattern not in rejects:
-                        warnings.append(f"Step {step_num}: consider rejecting {pattern!r} in Canvas output")
+                        warnings.append(
+                            f"Step {step_num}: consider rejecting {pattern!r} in Canvas output"
+                        )
 
         params = step.get("params", {})
         if (
@@ -97,13 +144,20 @@ def _check_workflow(
             and isinstance(params, dict)
             and params.get("allow_content_shrink") is True
         ):
-            required = validation.get("required_patterns", []) if isinstance(validation, dict) else []
+            required = (
+                validation.get("required_patterns", []) if isinstance(validation, dict) else []
+            )
             content = str(params.get("content") or "")
             required_headings_in_content = [
-                heading for heading in ("# ", "## Current Status", "## Run Log")
+                heading
+                for heading in ("# ", "## Current Status", "## Run Log")
                 if heading in content
             ]
-            if len(required) < 3 and len(required_headings_in_content) < 3:
+            if (
+                len(required) < 3
+                and len(required_headings_in_content) < 3
+                and not _has_validated_content_prefix(steps, step, content)
+            ):
                 errors.append(
                     f"Step {step_num}: allow_content_shrink=true requires strong required_patterns or deterministic full-page content"
                 )

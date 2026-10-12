@@ -661,6 +661,39 @@
 .page-content h3 { font-size: 1.25rem; }
 .page-content h4 { font-size: 1.1rem; }
 
+.page-content details {
+    margin: 1.25em 0;
+    padding: 0.85em 1em;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.page-content details > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-primary);
+    padding: 0.15em 0;
+}
+
+.page-content details > summary::marker {
+    color: var(--accent);
+}
+
+.page-content details > summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+    border-radius: 3px;
+}
+
+.page-content details[open] > summary {
+    margin-bottom: 0.75em;
+    padding-bottom: 0.75em;
+    border-bottom: 1px solid var(--border-color);
+}
+
 .page-content p {
     margin-bottom: 1.25em;
     color: var(--text-primary);

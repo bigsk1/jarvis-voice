@@ -1456,10 +1456,13 @@ class PipelineExecutor:
         # Search tools - extract URLs
         if self._is_search_tool(tool_name):
             urls = self._extract_urls_from_search(data)
-            if urls:
-                variables["search_results"] = {"urls": urls, "data": data}
+            search_output_var = step.get("search_output_var") or "search_results"
+            if urls or step.get("search_output_var"):
+                # Multiple searches need independent bindings; retain the legacy
+                # shared alias when a workflow has not selected one explicitly.
+                variables[search_output_var] = {"urls": urls, "data": data}
                 # Mark as successful if we got URLs even if tool reported failure
-                if not result.get("ok"):
+                if urls and not result.get("ok"):
                     result["ok"] = True
                     result["recovered"] = True
         
@@ -1853,6 +1856,16 @@ class PipelineExecutor:
                 results_list = data.get("results", data.get("raw", []))
                 if len(results_list) < min_results:
                     return False
+
+            # A crawl producer can require actual URL extraction separately
+            # from result count, without changing legacy search validation.
+            min_urls = heuristic.get("min_urls", 0)
+            if min_urls > 0:
+                if (
+                    not isinstance(data, dict)
+                    or len(self._extract_urls_from_search(data)) < min_urls
+                ):
+                    return False
         
         # LLM validation (if hybrid or llm type)
         if validation.get("type") in ["llm", "hybrid"] and validation.get("llm_prompt"):
@@ -2115,6 +2128,10 @@ class PipelineExecutor:
                 # Generate name from step context if not provided
                 action = step.get("params", {}).get("action", step.get("action", ""))
                 if action == "save":
+                    if step.get("params", {}).get("name"):
+                        # The resolved explicit filename already belongs to
+                        # params; generated text must not replace that identity.
+                        return {"text": content}
                     # Try to generate a sensible filename
                     topic = variables.get("topic", "research")
                     index = variables.get("_loop_index", 0)

@@ -6,6 +6,31 @@ Use this document as the **format contract** when authoring or editing workflows
 
 Private workflows can live in `data/workflows/personal/*.json`. That folder is gitignored for JSON workflow files, but loaded by the same workflow APIs and scheduler. Personal workflows with the same `id` as a shared workflow override the shared definition locally.
 
+### GitHub AI Radar discovery and history
+
+`/github_ai_radar` uses Brave for broad recent signals and optional
+`tavily_search` for independent GitHub/Hugging Face project discovery. Tavily
+uses one basic search per run when enabled and configured; it can consume
+credits. Its repository pass does not require publication dates, because
+undated project pages would be excluded. Results are discovery leads; dates
+and current star-growth claims still need evidence. YouTube uses its own
+search binding and this-week upload filter, so it cannot replace web crawl
+inputs.
+
+The workflow saves a fresh brief **without prior Canvas content**, then
+separately summarizes dated history. Canvas receives a deterministic
+concatenation of these two files; the history model cannot rewrite the fresh
+brief. Existing pages use two model calls per run, initial creation uses one.
+The main view contains short takeaways, a project table and an optional recent
+video. Evidence/caveats/sources and older runs use closed **Advanced details**
+and **Recent history** sections. See the [Canvas markup example](../../jarvis-canvas/README.md#collapsible-details-in-a-page).
+
+The prompt favors supplied primary repository/release URLs and avoids counting
+forked digests as independent evidence. This is editorial guidance, not an
+automatic GitHub parent/source metadata check; URLs are never repaired by
+guessing upstream owners or issue numbers. Unavailable optional searches are
+skipped through normal workflow availability rules.
+
 ---
 
 ## Top-level object (required shape)
@@ -253,6 +278,8 @@ Each step typically includes:
 - `params` — object; values may contain `${variables}` strings.
 - `extract` — maps **new variable names** to paths under **`result.data`** (paths must **not** use a `data.` prefix).
 - `output_var` — optional; stores step output under that variable name. If a built-in transform creates a workflow-friendly value with the same name, that value is preserved instead of being overwritten by the raw payload.
+- `search_output_var` — optional; selects the normalized `{urls, data}` binding for a search step instead of the legacy shared `search_results`. Use separate names for web, secondary-engine and video searches so one cannot replace another's crawl inputs. An explicit binding is cleared to empty URLs when a successful search has no results; it does not promote a failed search to success without URLs.
+- `validation.min_urls` — optional for `heuristic` validation (or `validation.heuristic.min_urls` for `hybrid`); requires at least that many URLs from the search URL extractor. Use it on a required search that feeds a crawl, because `min_results` alone can accept rows containing only titles. Omit it to keep existing validation behavior.
 - `for_each` — repeats a step over an array such as `${search_results.urls[:5]}`.
 - `retry.max_attempts` — when explicitly set on a `for_each` step, caps the number of input items attempted; the workflow-wide `max_total_retries` still caps accumulated failed attempts.
 - `required_success_count` — for a `for_each` producer, stop after this many successful/validated results (default `1`).
@@ -264,6 +291,13 @@ Each step typically includes:
   on `on_fail`.
 - `on_fail` — e.g. `"continue"` for optional steps.
 - `llm_prompt` — optional; LLM fills params (uses tokens).
+- For generated Stash text, set `params.name` explicitly; the LLM filler writes
+  `text` and preserves that resolved filename. Give separate artifacts distinct
+  names, and use `on_conflict: "version"` when retaining earlier copies is intended.
+- A shrinking Canvas update can publish a deterministic full-page template or
+  a validated full-page Stash brief read earlier in the workflow. The authoring
+  checker recognizes a required text save with heading validation, followed
+  by a required text read, when its content is the update's leading variable.
 - `llm_variable_max_chars` — optional per-step cap for each structured `${...}` value inserted into `llm_prompt`; defaults to `3000` and is clamped to `500`–`50000`. Raise it only for bounded inputs whose complete rows must reach the helper model.
 - Workflow-level `disable_server_side_tools` — optional boolean; when true, workflow LLM helper calls for `llm_prompt`, validation, branching, or completion speech run without provider-native search/tools. Explicit workflow steps such as Brave search, crawl, or other Jarvis tools still run normally.
 
@@ -293,7 +327,7 @@ Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 6. For **`llm_prompt`** steps that produce user-visible markdown, instruct the model to emit **real values**, not literal `${var}` text.
 7. Prefer **`JARVIS_DEFAULT_LOCATION`** (env-backed `variables`) for default geography instead of embedding a specific city in shared workflow JSON.
 8. Set workflow-level **`disable_server_side_tools: true`** when deterministic source/tool steps already provide the facts and `llm_prompt` should only extract or synthesize from workflow variables.
-9. For search → crawl workflows, keep the search step's **`output_var`** as **`search_results`** so the built-in transform exposes `${search_results.urls[:N]}`.
+9. For a single search → crawl workflow, **`output_var: "search_results"`** exposes `${search_results.urls[:N]}`. For multiple searches, give each step its own **`search_output_var`** and crawl that binding; `output_var` may use the same name for the normalized shape or a separate name for the raw payload.
 10. For single URL crawl workflows, use **`output_var: "article"`** when later steps need `${article.content}`, `${article.url}`, or `${article.title}`.
 11. For mode-scoped data such as memory or intelligence, expose the active mode/source in the workflow output and in saved Canvas/stash reports.
 12. Assume autonomous foreground execution may select the recipe: keep `name`, `description`, explicit triggers, and query-derived variables clear enough for compact metadata search.
@@ -453,6 +487,13 @@ Search-like tools, including `mcp_brave_search_brave_web_search`, expose:
 ```
 
 Use this shape for crawl loops:
+
+Each search that extracts URLs replaces the default `search_results` alias. Set
+`search_output_var: "web_sources"` on the web step and
+`search_output_var: "video_sources"` on the video step, then use
+`${web_sources.urls[:N]}` for web crawling. These explicit bindings preserve
+each engine's evidence independently. `output_var` continues to control the
+raw payload unless it matches the normalized binding.
 
 ```json
 {
