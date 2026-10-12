@@ -50,6 +50,34 @@ can still cause a duplicate on retry; ntfy publishing does not provide an
 exactly-once transaction with the local database. Notifications already delivered
 to the phone are not recalled when their source resolves.
 
+## Delivery history
+
+The `deliveries` table in `data/ntfy_notifications.db` records `sent_at` for
+alerts, reminders, and background-task notifications. It is an ISO 8601 UTC
+timestamp recorded after ntfy returns a valid publishing receipt. It tells you
+when Jarvis confirmed that ntfy accepted the message; phone arrival or reading
+is not tracked. Pending, failed, suppressed, and baseline rows have no send
+timestamp. Restarting the worker does not change a completed send's timestamp.
+
+The existing `stamp` column identifies a source occurrence for deduplication:
+it is empty for alerts, the source trigger timestamp for reminders, and the
+terminal state for background jobs. A reminder's `stamp` can precede `sent_at`,
+especially when publishing had to retry.
+
+To inspect recent alert sends:
+
+```sql
+SELECT mode, source_id AS alert_id, sent_at, receipt
+FROM deliveries
+WHERE category = 'alerts' AND state = 'delivered'
+ORDER BY sent_at DESC;
+```
+
+The worker automatically adds `sent_at` to older delivery databases on startup.
+Existing receipts are preserved, and older rows remain `NULL` because their
+send times were not recorded. No manual migration or notification replay is
+needed.
+
 ## Running the worker
 
 Web **Settings → Profile → System Info** shows an ntfy card below Tailscale.
@@ -76,7 +104,7 @@ The native `bin/jarvis-services` launcher starts/stops/reports the worker alongs
 the existing daemons, and self-healing can restart it. Docker's `jarvis-services`
 container starts it with `docker/services.sh`; that container's existing restart
 policy handles daemon exits. Existing running services need a restart to pick up
-the additional daemon. No new Python package or database migration is needed.
+the additional daemon. No new Python package or manual database migration is needed.
 
 For a focused one-cycle check, use the repo environment:
 

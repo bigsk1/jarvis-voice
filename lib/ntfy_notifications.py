@@ -191,10 +191,13 @@ class NotificationWorker:
                 source_id TEXT NOT NULL, stamp TEXT, expires REAL NOT NULL,
                 payload TEXT, state TEXT NOT NULL DEFAULT 'pending',
                 attempts INTEGER NOT NULL DEFAULT 0, next_try REAL NOT NULL DEFAULT 0,
-                receipt TEXT, error TEXT
+                receipt TEXT, error TEXT, sent_at TEXT
             );
             CREATE INDEX IF NOT EXISTS deliveries_pending ON deliveries(state,next_try);
         """)
+        if "sent_at" not in {row["name"] for row in conn.execute("PRAGMA table_info(deliveries)")}:
+            with conn:
+                conn.execute("ALTER TABLE deliveries ADD COLUMN sent_at TEXT")
         return conn
 
     def _rows(self, category: str, cursor, now: float):
@@ -385,9 +388,10 @@ class NotificationWorker:
                         )
                     stats["errors"].append(str(exc))
                 else:
+                    sent_at = datetime.fromtimestamp(self.clock(), timezone.utc).isoformat()
                     with state:
                         state.execute("UPDATE deliveries SET state='delivered',receipt=?,"
-                                      "payload=NULL,error=NULL WHERE event_key=?",
-                                      (receipt, item["event_key"]))
+                                      "sent_at=?,payload=NULL,error=NULL WHERE event_key=?",
+                                      (receipt, sent_at, item["event_key"]))
                     stats["delivered"] += 1
         return stats

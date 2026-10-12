@@ -59,6 +59,89 @@ def states(root):
         return conn.execute("SELECT state,attempts,payload FROM deliveries ORDER BY event_key").fetchall()
 
 
+@pytest.mark.parametrize("category", ntfy.CATEGORIES)
+def test_send_timestamp_records_receipt_time_and_survives_restart(setup, category):
+    root, config, now, sent, worker = setup
+    config["background_tasks"]["enabled"] = True
+    worker.cycle(config)
+    now[0] += 30
+    occurrence = now[0]
+    if category == "alerts":
+        alert(root, occurrence)
+        expected_stamp = None
+    elif category == "reminders":
+        expected_stamp = iso(occurrence)
+        sql(root, "INSERT INTO reminders VALUES(1,'Reminder',NULL,'triggered',?)",
+            (expected_stamp,))
+    else:
+        expected_stamp = "succeeded"
+        sql(root, "INSERT INTO jobs(id,admission_json,mode,state,updated_at) VALUES(?,?,?,?,?)",
+            ("job", '{"tool":"generate_image"}', "cloud", "succeeded", occurrence), tasks=True)
+
+    def publish_after_delay(config, payload):
+        sent.append(payload)
+        now[0] += 7.5
+        return "receipt"
+
+    worker.sender = publish_after_delay
+    assert worker.cycle(config)["delivered"] == 1
+    expected = (expected_stamp, iso(occurrence + 7.5), "receipt", "delivered")
+    with closing(sqlite3.connect(worker.state_path)) as conn:
+        assert conn.execute(
+            "SELECT stamp,sent_at,receipt,state FROM deliveries WHERE category=?", (category,)
+        ).fetchone() == expected
+    now[0] += 60
+    restarted = ntfy.NotificationWorker(root, "cloud", sender=worker.sender, clock=worker.clock)
+    assert restarted.cycle(config)["delivered"] == 0
+    assert len(sent) == 1
+    with closing(sqlite3.connect(worker.state_path)) as conn:
+        assert conn.execute(
+            "SELECT stamp,sent_at,receipt,state FROM deliveries WHERE category=?", (category,)
+        ).fetchone() == expected
+
+
+def test_old_delivery_database_preserves_history_and_deduplication(setup):
+    root, config, now, sent, worker = setup
+    alert(root, now[0])
+    legacy_key = json.dumps(["cloud", "alerts", "1", None])
+    with closing(sqlite3.connect(worker.state_path)) as conn, conn:
+        conn.executescript("""
+            CREATE TABLE cursors (
+                category TEXT, mode TEXT, value TEXT NOT NULL, PRIMARY KEY(category, mode)
+            );
+            CREATE TABLE deliveries (
+                event_key TEXT PRIMARY KEY, category TEXT NOT NULL, mode TEXT NOT NULL,
+                source_id TEXT NOT NULL, stamp TEXT, expires REAL NOT NULL,
+                payload TEXT, state TEXT NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0, next_try REAL NOT NULL DEFAULT 0,
+                receipt TEXT, error TEXT
+            );
+        """)
+        conn.execute("INSERT INTO cursors VALUES('alerts','cloud','0')")
+        conn.execute(
+            "INSERT INTO deliveries(event_key,category,mode,source_id,expires,state,receipt) "
+            "VALUES(?,'alerts','cloud','1',?,'delivered','legacy-receipt')",
+            (legacy_key, now[0] + 1800),
+        )
+        old_delivery = conn.execute("SELECT * FROM deliveries").fetchone()
+        old_cursor = conn.execute("SELECT * FROM cursors").fetchone()
+
+    # Repeated schema opens preserve every legacy field without inventing a send time.
+    for _ in range(2):
+        with closing(worker._state()) as conn:
+            assert tuple(conn.execute("SELECT * FROM deliveries").fetchone()) == (*old_delivery, None)
+            assert tuple(conn.execute("SELECT * FROM cursors").fetchone()) == old_cursor
+    assert worker.cycle(config)["delivered"] == 0
+    assert not sent
+    now[0] += 1
+    alert(root, now[0], 2)
+    assert worker.cycle(config)["delivered"] == 1
+    with closing(sqlite3.connect(worker.state_path)) as conn:
+        assert conn.execute(
+            "SELECT source_id,sent_at,receipt FROM deliveries ORDER BY source_id"
+        ).fetchall() == [("1", None, "legacy-receipt"), ("2", iso(now[0]), "receipt")]
+
+
 def test_baseline_filters_dedupes_and_keeps_producers_unchanged(setup):
     root, config, now, sent, worker = setup
     alert(root, now[0])
@@ -93,11 +176,17 @@ def test_retry_then_resolve_or_expire_suppresses_phone_message(setup):
     worker.sender = failed
     assert worker.cycle(config)["errors"] == ["ntfy URLError", "ntfy URLError"]
     assert all(row[:2] == ("pending", 1) for row in states(root))
+    with closing(sqlite3.connect(worker.state_path)) as conn:
+        assert conn.execute("SELECT sent_at FROM deliveries").fetchall() == [(None,), (None,)]
     sql(root, "UPDATE alerts SET status='auto_resolved' WHERE id=1")
     now[0] += 31
     worker.sender = lambda config, payload: sent.append(payload) or "retry-receipt"
     assert worker.cycle(config)["delivered"] == 1
     assert [row[0] for row in states(root)] == ["suppressed", "delivered"]
+    with closing(sqlite3.connect(worker.state_path)) as conn:
+        assert conn.execute(
+            "SELECT state,sent_at FROM deliveries ORDER BY source_id"
+        ).fetchall() == [("suppressed", None), ("delivered", iso(now[0]))]
     alert(root, now[0] - 1900, 3)
     worker.cycle(config)
     assert len(sent) == 1
@@ -309,6 +398,8 @@ def test_failed_delivery_retries_are_bounded_and_privacy_change_applies(setup):
     worker.cycle(config)
     assert sent[1]["message"] == "Road closure"
     assert states(root) == [("failed", 2, None)]
+    with closing(sqlite3.connect(worker.state_path)) as conn:
+        assert conn.execute("SELECT sent_at FROM deliveries").fetchone() == (None,)
     now[0] += 100
     worker.cycle(config)
     assert len(sent) == 2
