@@ -223,6 +223,11 @@ class ScheduledTaskManager:
 
         fields: dict[str, Any] = {}
         timezone_name = updates.get('timezone') or existing['timezone']
+        task_payload = json.loads(existing['task_payload'] or "{}")
+        schedule_changed = updates.get('when') is not None and (
+            updates['when'] != task_payload.get('when_original')
+            or timezone_name != existing['timezone']
+        )
         if updates.get('name') is not None:
             fields['name'] = updates['name']
         if updates.get('enabled') is not None:
@@ -230,12 +235,12 @@ class ScheduledTaskManager:
             if updates['enabled'] and not existing.get('enabled'):
                 if existing.get('last_status') == self.RUN_ONCE_PENDING_STATUS:
                     fields['last_status'] = None
-                    if updates.get('when') is None:
+                    if not schedule_changed:
                         expr = json.loads(existing['schedule_expr'])
                         fields['next_run_at'] = calculate_next_run(
                             existing['schedule_type'], expr, tz_name=timezone_name
                         )
-                elif updates.get('when') is None and not existing.get('next_run_at'):
+                elif not schedule_changed and not existing.get('next_run_at'):
                     if existing.get('schedule_type') != 'once':
                         expr = json.loads(existing['schedule_expr'])
                         fields['next_run_at'] = calculate_next_run(
@@ -255,7 +260,6 @@ class ScheduledTaskManager:
         if updates.get('timezone') is not None:
             fields['timezone'] = timezone_name
 
-        task_payload = json.loads(existing['task_payload'] or "{}")
         if existing['task_type'] in {'query', 'workflow'} and updates.get('query') is not None:
             task_payload['query'] = updates['query']
         if existing['task_type'] == 'workflow' and (
@@ -278,7 +282,8 @@ class ScheduledTaskManager:
         if updates.get('metadata') is not None:
             fields['metadata'] = json.dumps(updates['metadata'])
 
-        if updates.get('when') is not None:
+        # Forms resend the schedule during notification edits; keep its existing slot.
+        if schedule_changed:
             schedule = parse_schedule_expression(updates['when'], tz_name=timezone_name)
             fields['schedule_type'] = schedule['schedule_type']
             fields['schedule_expr'] = json.dumps(schedule['schedule_expr'])

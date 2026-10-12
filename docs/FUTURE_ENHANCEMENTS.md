@@ -1442,21 +1442,39 @@ operator's permission configuration.
 
 ---
 
-## Scheduled Tasks UI: deferred follow-ups
+## Scheduled Tasks UI follow-ups — resolved October 12, 2026
 
-Reported October 12, 2026; investigation and fixes are deferred.
+- **Alert-on-failure state mismatch:** an API/CLI-created task can have no
+  notification metadata, which the scheduler correctly treats as alerts off.
+  The detail view reflected that state, but the edit form defaulted a missing
+  `alert_on_failure` field to checked. Editing now reflects the saved value;
+  new UI-created tasks retain their existing checked default. No saved schedule
+  or notification policy was changed during troubleshooting.
+- **Edit-modal delay:** the form waited for a fresh workflow catalog before
+  opening. A measured first catalog request took about 9.7 seconds; a subsequent
+  request took about 6 ms. The form now opens immediately after the task fetch,
+  with visible workflow-loading feedback. The detail view stays visible and its
+  Edit button says “Loading…” only during the task fetch, then becomes available
+  again even while discovery is pending. Existing workflow tasks can retain their
+  saved workflow ID and save schedule or notification changes while discovery is
+  loading or unavailable. Choosing a new workflow requires successful catalog
+  loading. Failures remain visible, and cancelling prevents late responses from
+  reopening or overwriting another form.
+- **Faithful edit/save behavior:** a saved zero-retry value remains zero, and
+  unrelated metadata survives notification edits. These changes apply to all
+  scheduled tasks, including tasks created outside the UI.
+- **Interval restart on unrelated edits:** the shared update path preserves
+  `next_run_at` when the submitted schedule phrase and timezone match the saved
+  values. Notification edits no longer restart an interval from the save time.
+  Changing the phrase or its submitted timezone still recalculates the next run;
+  re-enabling a normally cancelled recurring task retains its stored occurrence,
+  with the runner's usual overdue/missed handling. A manual run-once transition
+  or a recurring task with no stored next run still calculates a fresh time.
 
-- **Alert-on-failure state mismatch:** the Jarvis Email Inbox task's detail view
-  shows “Alert on failure: No,” while its edit form opens with “Create alert on
-  failure” checked. Other existing workflows display the enabled state correctly.
-  Check the persisted notification value, API serialization, and edit-form
-  initialization/defaults. It is not yet known whether this relates to the
-  programmatically created schedule or is a broader UI regression. Do not assume
-  the checkbox reflects saved state, or change the schedule while investigating.
-- **Edit-modal delay:** clicking Edit closes the task details, followed by about
-  ten seconds with no visible feedback before the edit form opens. Identify the
-  awaited request(s) and consider a loading indicator or keeping the details
-  visible until the form is ready, with a visible error if loading fails.
+Verified with handler regression tests and a browser check using the existing
+inbox task, delayed API responses and intercepted saves. The live task was not
+edited or run by the check. Source: `jarvis-memory/client/js/app.js` and
+`jarvis-memory/client/index.html`.
 
 ---
 
@@ -1483,4 +1501,4 @@ Reported October 12, 2026; investigation and fixes are deferred.
 ---
 
 **Last Updated:** October 12, 2026
-**Version:** 2.14 (Added deferred Scheduled Tasks UI follow-ups)
+**Version:** 2.15 (Resolved Scheduled Tasks UI follow-ups)

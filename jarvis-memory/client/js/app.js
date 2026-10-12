@@ -14,6 +14,8 @@ let alerts = [];
 let scheduledTasks = [];
 let scheduledTaskWorkflows = [];
 let scheduledTaskWorkflowsLoaded = false;
+let scheduledTaskWorkflowsLoading = false;
+let scheduledTaskModalGeneration = 0;
 let searchQuery = '';
 let editingMemory = null;
 let editingFile = null;
@@ -878,7 +880,7 @@ function renderScheduledTaskCard(task) {
         <div class="memory-actions">
           <button class="btn btn-icon" onclick="event.stopPropagation(); toggleScheduledTaskRuns(${task.id})" title="Toggle recent runs">${isExpanded ? '▾' : '▸'}</button>
           <button class="btn btn-icon" onclick="event.stopPropagation(); runScheduledTaskNow(${task.id})" title="Run now">▶️</button>
-          <button class="btn btn-icon" onclick="event.stopPropagation(); editScheduledTask(${task.id})" title="Edit">✏️</button>
+          <button class="btn btn-icon" onclick="event.stopPropagation(); editScheduledTask(${task.id}, this)" title="Edit">✏️</button>
           <button class="btn btn-icon" onclick="event.stopPropagation(); cancelScheduledTask(${task.id})" title="Cancel">⏸️</button>
           <button class="btn btn-icon" onclick="event.stopPropagation(); confirmDeleteScheduledTask(${task.id})" title="Delete">🗑️</button>
         </div>
@@ -1632,12 +1634,13 @@ async function cancelAlert(id) {
   }
 }
 
-async function loadScheduledTaskWorkflows(force = false) {
+async function loadScheduledTaskWorkflows(force = false, generation = null) {
   if (scheduledTaskWorkflowsLoaded && !force) {
     return scheduledTaskWorkflows;
   }
 
   const result = await api.listScheduledTaskWorkflows();
+  if (generation !== null && generation !== scheduledTaskModalGeneration) return;
   scheduledTaskWorkflows = result.workflows || [];
   scheduledTaskWorkflowsLoaded = true;
   return scheduledTaskWorkflows;
@@ -1666,10 +1669,13 @@ function renderScheduledTaskWorkflowOptions(selectedId = '') {
   ];
 
   if (selectedId && !selectedKnown) {
-    options.push(`<option value="${escapeHtml(selectedId)}">${escapeHtml(selectedId)} (not currently loaded)</option>`);
+    const loading = scheduledTaskWorkflowsLoading && !scheduledTaskWorkflowsLoaded;
+    const state = loading ? 'loading…' : 'not currently loaded';
+    options.push(`<option value="${escapeHtml(selectedId)}">${escapeHtml(selectedId)} (${state})</option>`);
   }
   if (!workflows.length && !selectedId) {
-    options[0] = '<option value="">No workflows loaded</option>';
+    options[0] = scheduledTaskWorkflowsLoading && !scheduledTaskWorkflowsLoaded
+      ? '<option value="">Loading workflows…</option>' : '<option value="">No workflows loaded</option>';
   }
 
   select.innerHTML = options.join('');
@@ -1696,6 +1702,11 @@ function updateScheduledTaskWorkflowDetails() {
   }
   if (!workflow) {
     details.style.display = workflowId ? 'block' : 'none';
+    if (workflowId && !scheduledTaskWorkflowsLoaded) {
+      details.textContent = scheduledTaskWorkflowsLoading
+        ? 'Loading workflow details…' : 'Workflow details are unavailable until the catalog loads.';
+      return;
+    }
     details.innerHTML = workflowId
       ? `<div class="workflow-detail-title">${escapeHtml(workflowId)}</div><div class="workflow-detail-muted">This workflow is not currently loaded from data/workflows or data/workflows/personal.</div>`
       : '';
@@ -1725,7 +1736,11 @@ function updateScheduledTaskWorkflowDetails() {
 }
 
 async function openScheduledTaskModal(task = null) {
+  closeAllModals();
+  const generation = ++scheduledTaskModalGeneration;
   editingScheduledTask = task;
+  scheduledTaskWorkflowsLoaded = false;
+  scheduledTaskWorkflowsLoading = true;
 
   const modal = document.getElementById('scheduledTaskModal');
   const title = document.getElementById('scheduledTaskModalTitle');
@@ -1752,27 +1767,55 @@ async function openScheduledTaskModal(task = null) {
   document.getElementById('scheduledTaskNotifyWebhook').value = notifications.webhook_name || '';
   document.getElementById('scheduledTaskEmailOnSuccess').checked = !!notifications.email_on_success;
   document.getElementById('scheduledTaskEmailOnFailure').checked = !!notifications.email_on_failure;
-  document.getElementById('scheduledTaskAlertOnFailure').checked = notifications.alert_on_failure !== false;
+  document.getElementById('scheduledTaskAlertOnFailure').checked = task
+    ? !!notifications.alert_on_failure : true;
   document.getElementById('scheduledTaskWebhookOnSuccess').checked = !!notifications.webhook_on_success;
   document.getElementById('scheduledTaskWebhookOnFailure').checked = !!notifications.webhook_on_failure;
 
+  const workflowSelect = document.getElementById('scheduledTaskWorkflowId');
+  const loadStatus = document.getElementById('scheduledTaskWorkflowLoadStatus');
+  workflowSelect.disabled = true;
+  loadStatus.hidden = false;
+  loadStatus.textContent = 'Loading available workflows…';
   handleScheduledTaskTypeChange();
+  showModal(modal);
   try {
-    await loadScheduledTaskWorkflows(true);
+    await loadScheduledTaskWorkflows(true, generation);
+    if (generation !== scheduledTaskModalGeneration) return;
     renderScheduledTaskWorkflowOptions(selectedWorkflowId);
+    loadStatus.hidden = true;
   } catch (error) {
+    if (generation !== scheduledTaskModalGeneration) return;
     scheduledTaskWorkflows = [];
     scheduledTaskWorkflowsLoaded = false;
+    scheduledTaskWorkflowsLoading = false;
     renderScheduledTaskWorkflowOptions(selectedWorkflowId);
+    loadStatus.textContent = canSaveScheduledTaskWorkflow()
+      ? 'Could not load workflows. You can keep this task’s saved workflow, or reopen to try again.'
+      : 'Could not load workflows. Close and reopen this form to retry.';
     showToast(`Could not load workflows: ${error.message}`, 'error');
+  } finally {
+    if (generation === scheduledTaskModalGeneration) {
+      scheduledTaskWorkflowsLoading = false;
+      workflowSelect.disabled = !scheduledTaskWorkflowsLoaded;
+      handleScheduledTaskTypeChange();
+    }
   }
-  showModal(modal);
+}
+
+function canSaveScheduledTaskWorkflow() {
+  if (scheduledTaskWorkflowsLoaded) return true;
+  if (editingScheduledTask?.task_type !== 'workflow') return false;
+  const payload = parseJsonSafe(editingScheduledTask.task_payload) || {};
+  const savedId = editingScheduledTask.task_target || payload.workflow_id || '';
+  return !!savedId && document.getElementById('scheduledTaskWorkflowId').value.trim() === savedId;
 }
 
 function handleScheduledTaskTypeChange() {
   const type = document.getElementById('scheduledTaskType').value;
   const queryLabel = document.getElementById('scheduledTaskQueryLabel');
   const queryInput = document.getElementById('scheduledTaskQuery');
+  document.getElementById('scheduledTaskSave').disabled = type === 'workflow' && !canSaveScheduledTaskWorkflow();
   document.getElementById('scheduledTaskQueryGroup').style.display = 'block';
   document.getElementById('scheduledTaskWorkflowGroup').style.display = type === 'workflow' ? 'block' : 'none';
   if (type === 'workflow') {
@@ -1807,6 +1850,7 @@ async function handleScheduledTaskSubmit(e) {
   e.preventDefault();
 
   const taskType = document.getElementById('scheduledTaskType').value;
+  const maxRetries = parseInt(document.getElementById('scheduledTaskMaxRetries').value, 10);
   const notifications = {
     contact_name: document.getElementById('scheduledTaskNotifyContact').value.trim(),
     webhook_name: document.getElementById('scheduledTaskNotifyWebhook').value.trim(),
@@ -1824,14 +1868,20 @@ async function handleScheduledTaskSubmit(e) {
     when: document.getElementById('scheduledTaskWhen').value.trim(),
     timezone: document.getElementById('scheduledTaskTimezone').value.trim() || null,
     execution_mode: document.getElementById('scheduledTaskExecutionMode').value,
-    max_retries: parseInt(document.getElementById('scheduledTaskMaxRetries').value, 10) || 1,
+    max_retries: Number.isNaN(maxRetries) ? 1 : maxRetries,
     timeout_seconds: parseInt(document.getElementById('scheduledTaskTimeout').value, 10) || 300,
     enabled: document.getElementById('scheduledTaskEnabled').checked,
     allow_overlap: document.getElementById('scheduledTaskAllowOverlap').checked,
     metadata: {
+      ...(parseJsonSafe(editingScheduledTask?.metadata) || {}),
       notifications
     }
   };
+
+  if (taskType === 'workflow' && !canSaveScheduledTaskWorkflow()) {
+    showToast('Load available workflows before choosing a new workflow.', 'error');
+    return;
+  }
 
   if (!data.name || !data.when) {
     showToast('Task name and schedule are required', 'error');
@@ -1957,7 +2007,7 @@ async function viewScheduledTask(id) {
         `}
       </div>
       <div class="form-group" style="margin-top: var(--space-lg); display: flex; flex-wrap: wrap; gap: var(--space-sm);">
-        <button class="btn btn-primary" onclick="editScheduledTask(${task.id}); closeAllModals();">✏️ Edit</button>
+        <button class="btn btn-primary" onclick="editScheduledTask(${task.id}, this);">✏️ Edit</button>
         <button class="btn btn-secondary" onclick="runScheduledTaskNow(${task.id});">▶️ Run Now</button>
         <button class="btn btn-secondary" onclick="cancelScheduledTask(${task.id}); closeAllModals();">⏸️ Cancel</button>
         <button class="btn btn-danger" onclick="confirmDeleteScheduledTask(${task.id}); closeAllModals();">🗑️ Delete</button>
@@ -2017,13 +2067,28 @@ function renderScheduledRunNotifications(run) {
   `;
 }
 
-async function editScheduledTask(id) {
+async function editScheduledTask(id, trigger = null) {
+  const generation = ++scheduledTaskModalGeneration;
+  const label = trigger?.textContent;
+  if (trigger) {
+    trigger.disabled = true;
+    trigger.textContent = 'Loading…';
+  }
+  let task;
   try {
     const result = await api.getScheduledTask(id);
-    openScheduledTaskModal(result.task);
+    task = result.task;
   } catch (error) {
-    showToast(`Error: ${error.message}`, 'error');
+    if (generation === scheduledTaskModalGeneration) showToast(`Error: ${error.message}`, 'error');
+    return;
+  } finally {
+    if (trigger) {
+      trigger.disabled = false;
+      trigger.textContent = label;
+    }
   }
+  if (generation !== scheduledTaskModalGeneration) return;
+  await openScheduledTaskModal(task);
 }
 
 async function runScheduledTaskNow(id) {
@@ -2346,6 +2411,8 @@ function viewConversation(index) {
 // =========================================================================
 
 function closeAllModals() {
+  scheduledTaskModalGeneration++;
+  scheduledTaskWorkflowsLoading = false;
   document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
   closeSidebar();
   setModalOpenState(false);

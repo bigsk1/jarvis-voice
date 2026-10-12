@@ -37,6 +37,11 @@ What works now:
 - run history records the provider and provider-specific model resolved from
   the task's mode rather than the runner process environment
 - scheduled tasks and run history remain independent across cloud/local memory DBs
+- notification and other edits preserve the stored next run when the submitted
+  schedule phrase and timezone are unchanged; changing either recalculates it
+- re-enabling a normally cancelled recurring task retains its stored next run,
+  including the runner's usual overdue/missed handling; a manual run-once
+  transition or recurring task without a stored next run calculates a fresh time
 - occurrences older than the configured grace window are marked missed; one-time
   tasks are disabled and recurring tasks advance directly to their next future slot
 - Jarvis Memory UI tab for:

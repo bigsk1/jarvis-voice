@@ -326,6 +326,7 @@
         </div>
         <form id="scheduledTaskForm">
           <div class="modal-body">
+            <div id="scheduledTaskWorkflowLoadStatus" class="form-help" role="status" aria-live="polite" hidden></div>
             <div class="form-group">
               <label class="form-label" for="scheduledTaskName">Task Name *</label>
               <input type="text" class="form-input" id="scheduledTaskName" placeholder="e.g., Daily status at 10" required>
@@ -432,7 +433,7 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary modal-close">Cancel</button>
-            <button type="submit" class="btn btn-primary">Save Task</button>
+            <button type="submit" id="scheduledTaskSave" class="btn btn-primary">Save Task</button>
           </div>
         </form>
       </div>

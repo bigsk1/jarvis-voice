@@ -1257,6 +1257,11 @@ textarea.form-input {
   margin-bottom: var(--space-md);
 }
 
+#scheduledTaskSave:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* Loading spinner */
 .loading {
   display: flex;
