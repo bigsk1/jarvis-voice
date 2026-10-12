@@ -24,6 +24,9 @@ class FakeExecutor:
     def set_excluded_tools(self, _tools):
         pass
 
+    def set_allowed_tools(self, tools):
+        self.allowed_tools = tools
+
     def execute(self, tool_name, arguments):
         self.calls += 1
         if self.calls not in self.fail_on_calls:
@@ -83,6 +86,26 @@ class FakeStatusUpdater:
 
 
 class ToolTurnBudgetTests(unittest.TestCase):
+    def test_request_allowlist_survives_retry_and_disables_workflows_and_hosted_tools(self):
+        orchestrator = self._build_orchestrator(fail_on_calls={1}, tool_name="stock_price")
+        orchestrator.registry = SimpleNamespace(list_tools=lambda: ["stock_price", "send_email"], get_tool=lambda _name: None)
+        orchestrator._try_workflow = lambda _query: self.fail("Restricted request dispatched a workflow")
+        allowed = []
+        original_set = orchestrator.executor.set_allowed_tools
+        orchestrator.executor.set_allowed_tools = lambda tools: (allowed.append(tools), original_set(tools))
+        routes = []
+        original_route = orchestrator.router.route
+        def route(*args, **kwargs):
+            routes.append(kwargs)
+            return original_route(*args, **kwargs)
+        orchestrator.router.route = route
+        with patch("orchestrator_v2.get_int", side_effect=lambda key, default=0: 2 if key == "MAX_TOOL_TURNS" else default):
+            orchestrator.process("/some_workflow stock price", allowed_tools=["stock_price"])
+        self.assertGreaterEqual(len(allowed), 2)
+        self.assertTrue(all(names == ["stock_price"] for names in allowed))
+        self.assertTrue(all(call["disable_server_side_tools"] for call in routes))
+        self.assertTrue(all("send_email" in call["excluded_tools"] for call in routes))
+
     def test_webhook_retry_router_receives_nested_payload_contract(self):
         orchestrator = self._build_orchestrator(fail_on_calls=set(), tool_name='send_webhook')
         pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
@@ -466,3 +489,19 @@ def test_denied_then_approved_prepared_call_reaches_real_tool_subprocess(tmp_pat
     ordinary_entry_point = run(None)
     assert ordinary_entry_point['tools_used'] == ['approval_probe']
     assert marker.read_text() == 'same-exact-call'
+
+
+def test_restricted_channel_has_no_operator_memory_or_learning_context():
+    from unittest.mock import Mock
+    test = ToolTurnBudgetTests()
+    orchestrator = test._build_orchestrator(fail_on_calls=set(), tool_name='get_time')
+    orchestrator.personal_context_enabled = False
+    orchestrator._get_relevant_memories_bundle = Mock(side_effect=AssertionError('operator memories read'))
+    orchestrator._get_learning_insights = Mock(side_effect=AssertionError('operator insights read'))
+    # Use the real write methods too: they must return before obtaining any DB/hooks.
+    orchestrator._log_conversation = Orchestrator._log_conversation.__get__(orchestrator)
+    assert orchestrator._record_learning_experience('private request', [], {}, {}, []) == -1
+    result = test._run_with_max_turns(orchestrator, 1)
+    assert result['ok']
+    orchestrator._get_relevant_memories_bundle.assert_not_called()
+    orchestrator._get_learning_insights.assert_not_called()

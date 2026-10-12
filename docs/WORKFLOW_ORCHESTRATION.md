@@ -2,7 +2,7 @@
 
 > **Status**: Implemented
 > **Purpose**: Deterministic multi-tool workflow execution for repeatable Jarvis tasks
-> **Last Updated**: July 28, 2026
+> **Last Updated**: October 12, 2026
 
 ---
 
@@ -21,6 +21,13 @@ normal chat or voice turn to call the `workflow` meta-tool and select a recipe.
 A scheduled workflow is automated, but it is deliberate—the user chose the
 workflow and schedule ahead of time. Explicit slash commands and workflow API
 calls are deliberate entry points too.
+
+The optional [email command inbox](tools/email-inbox-tool/README.md) is one such
+scheduled workflow: `jarvis_email_inbox` polls Gmail and dispatches authenticated
+approved-sender requests through restricted orchestration. Its published
+[request sequence](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-email-inbox-sequence.html)
+and [data-flow chart](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-email-inbox-dataflow.html)
+show the scheduler, admission, durable ledger and reply path.
 
 ## Why Workflows Matter
 

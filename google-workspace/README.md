@@ -166,6 +166,13 @@ existing profile and block-list checks; it does not enable either tool.
 
 ## Access and results
 
+For opt-in scheduled email-to-Jarvis requests, see the
+[email command inbox guide](../docs/tools/email-inbox-tool/README.md). Its
+approved senders are separate from ordinary recipient contacts.
+The published [request sequence](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-email-inbox-sequence.html)
+and [data-flow chart](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-email-inbox-dataflow.html)
+show Gmail polling, sender authentication, private state and threaded replies.
+
 For **Jarvis itself in Docker**, use the optional root overlay after preparing
 and authorizing the standalone service. Stop that standalone instance first,
 then run your normal Compose stack with `docker-compose.google.yml` added last
@@ -392,3 +399,15 @@ The downloaded `client_secret*.json` filenames are ignored by Git and excluded
 from application build archives. The entire standalone `google-workspace/`
 folder is excluded from the Jarvis application image; its own image uses the
 existing allowlist containing only Dockerfile and entrypoint.py.
+
+### Email inbox attachments
+
+The optional [email command inbox](../docs/tools/email-inbox-tool/README.md)
+uses full raw EML exports to authenticate complete messages, then the existing
+Gmail attachment download/Stash bridge for named files. No upstream container
+update is required. If you set `WORKSPACE_MCP_MAX_FILE_BYTES`, allow enough for
+the encoded complete message: the inbox caps raw downloads at 100 MiB and decoded
+attachments at 50 MiB in aggregate. Plain display previews are not used to parse
+large MIME messages. Preview does not save files; the complete EML is not copied
+to Jarvis Stash. Enable the Gmail attachment tool in the receiving mode/profile;
+its use by the dispatcher does not require granting it to the email model.

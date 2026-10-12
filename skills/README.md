@@ -81,6 +81,16 @@ CLI reference: `./bin/manage-tools.py -h` and the usage block at the top of `bin
 
 ---
 
+## Email command inbox (optional)
+
+The `email_inbox` app entry point checks the dedicated Gmail account for
+authenticated requests from operator-approved senders in `config/contacts.json`.
+It is disabled until the `jarvis_email` section opts in. A regular scheduled
+workflow drives polling; approved requests use normal Tool RAG with a restricted
+tool set and receive sender-only replies. Named attachments are saved to Stash
+before orchestration; downstream actions still require your permitted tools. See the
+[setup, permissions and recovery guide](../docs/tools/email-inbox-tool/README.md).
+
 ## Docling document conversion (optional)
 
 `docling_convert` connects to an authenticated Docling Serve deployment on a
@@ -217,6 +227,8 @@ come back automatically after configuration is added and services restart or
 {
   "availability": {
     "all_of_env": ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
+    "enabled_env": "OPTIONAL_SERVICE_ENABLED",
+    "requires_tools": ["mcp_service_required_tool"],
     "any_of_env": ["BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY"],
     "config_files": ["data/.spotify_cache"],
     "webhook_registry": ["send_email"],
@@ -233,6 +245,16 @@ come back automatically after configuration is added and services restart or
 
 Rules:
 - All keys are optional; omit the block entirely for tools with no requirements.
+- `enabled_env`: a Boolean enable flag must be true (`true`, `1`, `yes`, or `on`).
+  Having credentials does not imply that an optional service is enabled.
+- `requires_tools`: all exact tool names must exist in the callable catalog.
+  The registry checks these after local/MCP discovery and reapplies them after
+  MCP recovery; profile-disabled or globally blocked dependencies do not qualify.
+  Request exclusions and allowlists also hide dependents. Self-dependencies and
+  closed cycles cannot establish availability. Web settings inspect an existing
+  mode's live registry without starting new connections; cached Tool RAG rows
+  do not prove discovery. A check without a catalog reports unknown availability.
+  This is a hard dependency, separate from `prerequisite_tools` discovery hints.
 - `all_of_env`: every key must be set. `any_of_env`: at least one key must be set.
 - `config_files`: every listed path must be a non-empty regular file. Relative
   paths resolve from the project root; `~` and absolute paths are supported.
@@ -244,7 +266,7 @@ Rules:
   keys are configured (used by multi-provider tools like `generate_image`).
 - Only presence is checked — secret values and file contents are never read into
   logs or the UI.
-- A malformed block fails closed (that tool is treated as unavailable) and is
+- A malformed block or unknown field fails closed (that tool is treated as unavailable) and is
   reported by `./bin/manage-tools.py --mode <mode> list` and sync-tools output.
 - Availability runs AFTER profile resolution: a profile cannot force-enable a
   tool whose hard requirement is missing.

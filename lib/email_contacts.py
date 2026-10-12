@@ -7,6 +7,103 @@ from pathlib import Path
 
 CONTACTS_FILE = Path(__file__).resolve().parents[1] / "config" / "contacts.json"
 
+DEFAULT_EMAIL_TOOLS = [
+    "get_time",
+    "stash",
+    "stock_price",
+    "crypto_price",
+    "weather",
+    "calculator",
+    "mcp_brave_search_brave_web_search",
+    "brave_llm_context",
+    "tavily_search",
+    "tavily_extract",
+]
+
+
+def canonical_email(value: str) -> str:
+    """Require a single bare address, never a display name or recipient list."""
+    from email.headerregistry import Address
+
+    if not isinstance(value, str) or any(c.isspace() for c in value.strip()):
+        raise ValueError("Expected a single email address")
+    value = value.strip()
+    try:
+        address = Address(addr_spec=value)
+    except ValueError as exc:
+        raise ValueError("Invalid email address") from exc
+    if not address.username or not address.domain or address.addr_spec != value:
+        raise ValueError("Expected a single bare email address")
+    return value.casefold()
+
+
+def load_email_channel(mode: str) -> dict:
+    """Reload operator-owned inbound policy without changing outgoing contacts."""
+    try:
+        data = json.loads(CONTACTS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        # Fail closed without interpreting a partial write/outage as revocation.
+        raise ValueError("Email policy could not be read; pending requests are preserved") from exc
+    if not isinstance(data, dict):
+        raise ValueError("Email policy must be a JSON object")
+    settings = data.get("jarvis_email", {}) if isinstance(data, dict) else {}
+    if not isinstance(settings, dict) or settings.get("enabled") is not True:
+        return {"enabled": False}
+    if settings.get("mode", "cloud") not in {"cloud", "local"}:
+        raise ValueError("jarvis_email.mode must be cloud or local")
+    if settings.get("mode", "cloud") != mode:
+        return {"enabled": False}
+    contacts = data.get("contacts", {})
+    contacts = contacts if isinstance(contacts, dict) else {}
+    approved = settings.get("approved_senders", [])
+    if not isinstance(approved, list) or not approved:
+        raise ValueError("jarvis_email.approved_senders must contain addresses or contact names")
+    senders = set()
+    for value in approved:
+        if not isinstance(value, str):
+            raise ValueError("Approved senders must be addresses or contact names")
+        resolved, _ = resolve_email(value, contacts)
+        if not resolved:
+            raise ValueError("An approved sender does not resolve to a contact address")
+        senders.add(canonical_email(resolved))
+    tools = settings.get("allowed_tools", DEFAULT_EMAIL_TOOLS)
+    if not isinstance(tools, list) or any(not isinstance(t, str) or not t.strip() for t in tools):
+        raise ValueError("jarvis_email.allowed_tools must be a list of exact tool names")
+    forbidden = {
+        "email_inbox",
+        "workflow",
+        "send_email",
+        "mcp_google_workspace_send_gmail_message",
+        "mcp_google_workspace_draft_gmail_message",
+    }
+    if forbidden.intersection(tools):
+        raise ValueError(
+            "Email delivery and workflows belong to the dispatcher, not email requests"
+        )
+    policy = {
+        "enabled": True,
+        "senders": sorted(senders),
+        "allowed_tools": sorted(set(tools) | {"tool_search"}),
+    }
+    attachments = settings.get("attachments_enabled", True)
+    if type(attachments) is not bool:
+        raise ValueError("jarvis_email.attachments_enabled must be true or false")
+    policy["attachments_enabled"] = attachments
+    for name, default, maximum in (
+        ("max_attachment_bytes", 50 * 1024 * 1024, 50 * 1024 * 1024),
+        ("max_attachments", 500, 500),
+    ):
+        value = settings.get(name, default)
+        if type(value) is not int or not 1 <= value <= maximum:
+            raise ValueError(f"jarvis_email.{name} must be between 1 and {maximum}")
+        policy[name] = value
+    for name, default, maximum in (("max_messages_per_poll", 1, 5), ("lookback_days", 1, 30)):
+        value = settings.get(name, default)
+        if type(value) is not int or not 1 <= value <= maximum:
+            raise ValueError(f"jarvis_email.{name} must be between 1 and {maximum}")
+        policy[name] = value
+    return policy
+
 
 def load_contacts() -> dict:
     """Read the optional contacts map; malformed or unreadable files add no contacts."""

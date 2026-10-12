@@ -1395,6 +1395,71 @@ Optional: Phase 3B tool recall filter only if search_memory noise returns
 
 ---
 
+## Email inbox: workflow ideas and possible enhancements
+
+The current [email command inbox](tools/email-inbox-tool/README.md) supports
+approved authenticated senders, named PDF/image/file attachments saved to Stash,
+normal orchestration within the operator's allowlist, and sender-only threaded
+text replies. Attachment support does not automatically enable downstream tools.
+These are ideas to try with existing tools, followed by capabilities still to build.
+
+| Request idea | Tools to enable in the email allowlist | Outcome / boundary |
+|---|---|---|
+| “Print the attached receipt PDF” | `printer` | Print the original Stash file through configured CUPS; no OCR required. |
+| “Convert this manual to Markdown and summarize it” | `docling_convert`, optionally `stash` | Conversion artifacts in Stash; summary in the reply. Long-running completion needs the enhancement below. |
+| “Extract the tables from this invoice” | `docling_convert`, `stash` | Structured document outputs; business-field extraction still needs explicit instructions/validation. |
+| “Caption this photo” | `craft_image` | Edited image and editable project in Stash; gateway and credentials required. |
+| “Make a Canvas page summarizing this report” | `canvas`, a document reading tool | Persistent report page; access follows normal Canvas permissions. |
+| “Organize the attached documents into a project” | `stash` | File organization using existing Stash operations and references. |
+
+Possible future work:
+
+- **Sender-specific permissions and quotas:** separate read-only senders from
+  senders permitted to print, edit or write; per-sender size/count/rate limits.
+- **Attachment selection and follow-ups:** support for unnamed CID images,
+  explicit named-file selection and clearer multiple-file replies. Named inline
+  files and durable inbound attachment references for same-thread follow-ups
+  already work; extending that durable index to generated outputs is future work.
+- **Long-running task completion:** associate background Docling/media jobs with
+  the email thread and send a later completion/failure reply, without replaying
+  the initial action when observation times out.
+- **Outgoing file attachments:** attach selected generated files to the reply
+  with size limits; current replies are text and can report Stash references.
+- **Drive-link handoff:** explicitly requested downloads of files Gmail replaced
+  with Drive links, with the same authenticated-origin and Stash checks.
+- **Audio/video workflows:** transcription, clips, captions or summaries using
+  enabled tools with compatible Stash inputs; file ingestion alone does not
+  make every multimedia operation available.
+- **Review and recipient policies:** optional approval for costly/physical actions
+  and an explicit policy before CC/reply-all is supported. Current replies go
+  only to the authenticated approved sender.
+- **Operations and retention:** review/retry controls, per-message receipts and
+  coordinated cleanup of private ledger metadata and ordinary Stash artifacts.
+
+No automatic tool preference is intended: explicit user hints and normal Tool RAG
+continue to select tools. A sender's attachment is data, not an extension of the
+operator's permission configuration.
+
+---
+
+## Scheduled Tasks UI: deferred follow-ups
+
+Reported October 12, 2026; investigation and fixes are deferred.
+
+- **Alert-on-failure state mismatch:** the Jarvis Email Inbox task's detail view
+  shows “Alert on failure: No,” while its edit form opens with “Create alert on
+  failure” checked. Other existing workflows display the enabled state correctly.
+  Check the persisted notification value, API serialization, and edit-form
+  initialization/defaults. It is not yet known whether this relates to the
+  programmatically created schedule or is a broader UI regression. Do not assume
+  the checkbox reflects saved state, or change the schedule while investigating.
+- **Edit-modal delay:** clicking Edit closes the task details, followed by about
+  ten seconds with no visible feedback before the edit form opens. Identify the
+  awaited request(s) and consider a loading indicator or keeping the details
+  visible until the form is ready, with a visible error if loading fails.
+
+---
+
 ## 📝 Notes
 
 - Focus on voice-first experience
@@ -1417,5 +1482,5 @@ Optional: Phase 3B tool recall filter only if search_memory noise returns
 
 ---
 
-**Last Updated:** October 9, 2026
-**Version:** 2.12 (Added deferred Calendar reminder lifecycle sync proposal)
+**Last Updated:** October 12, 2026
+**Version:** 2.14 (Added deferred Scheduled Tasks UI follow-ups)

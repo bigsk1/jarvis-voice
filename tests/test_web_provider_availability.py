@@ -675,6 +675,30 @@ class SettingsRouteValidationTests(unittest.TestCase):
 
 
 class ToolDiscoveryAvailabilityTests(unittest.TestCase):
+    def test_dependent_tool_hidden_when_flag_off_despite_stale_mcp_rows(self):
+        with TemporaryDirectory() as tmp, patch.dict(os.environ, {"TEST_DEPENDENCY_ENABLED": "false"}):
+            skills = Path(tmp)
+            self._write_manifest(skills, "dependent", {"availability": {
+                "enabled_env": "TEST_DEPENDENCY_ENABLED", "requires_tools": ["mcp_mail_read"]}})
+            service = self._service(skills, ["dependent", "mcp_mail_read"])
+            self.assertFalse(service.get_tool("dependent")["enabled"])
+            self.assertIn("enabled: TEST_DEPENDENCY_ENABLED", service.get_tool("dependent")["missing"])
+
+    def test_dependent_tool_tracks_profile_filtered_mcp_catalog(self):
+        with TemporaryDirectory() as tmp, patch.dict(os.environ, {"TEST_DEPENDENCY_ENABLED": "true"}):
+            skills = Path(tmp)
+            self._write_manifest(skills, "dependent", {"availability": {
+                "enabled_env": "TEST_DEPENDENCY_ENABLED", "requires_tools": ["mcp_mail_read"]}})
+            import tool_schema
+            registry = MagicMock()
+            registry.list_tools.return_value = ["dependent", "mcp_mail_read"]
+            with patch.object(tool_schema, "peek_tool_registry", return_value=registry):
+                self.assertTrue(self._service(skills, ["mcp_mail_read"]).get_tool("dependent")["enabled"])
+                with patch.object(self.tool_discovery, "_tool_profile_overrides", return_value={"mcp_mail_read": False}):
+                    tool = self._service(skills, ["dependent", "mcp_mail_read"]).get_tool("dependent")
+            self.assertFalse(tool["enabled"])
+            self.assertEqual(tool["missing"], ["tool: mcp_mail_read"])
+
     @classmethod
     def setUpClass(cls):
         _purge_server_modules()
@@ -776,6 +800,32 @@ class ToolDiscoveryAvailabilityTests(unittest.TestCase):
             # (include_blocked) still contains it for diagnostics.
             self.assertEqual(service.get_tool_count(), 1)
             self.assertEqual(service.get_tool_count(include_blocked=True), 2)
+
+    def test_stale_db_dependencies_are_unknown_without_registry(self):
+        import tool_schema
+        with TemporaryDirectory() as tmp, patch.object(tool_schema, "peek_tool_registry", return_value=None):
+            skills = Path(tmp)
+            self._write_manifest(skills, "dependent", {"availability": {"requires_tools": ["mcp_mail_read"]}})
+            tool = self._service(skills, ["dependent", "mcp_mail_read"]).get_tool("dependent")
+            self.assertFalse(tool["enabled"])
+            self.assertEqual(tool["availability_status"], "unknown")
+
+    def test_dependency_metadata_tracks_registry_recovery_without_mcp_startup(self):
+        import tool_schema
+        with TemporaryDirectory() as tmp:
+            skills = Path(tmp)
+            self._write_manifest(skills, "dependent", {"availability": {"requires_tools": ["mcp_mail_read"]}})
+            registry = MagicMock()
+            registry.list_tools.return_value = ["unrelated"]
+            with patch.object(tool_schema, "peek_tool_registry", return_value=registry):
+                service = self._service(skills, ["dependent", "mcp_mail_read"])
+                self.assertFalse(service.get_tool("dependent")["enabled"])
+                self.assertEqual(service.get_tool("dependent")["missing"], ["tool: mcp_mail_read"])
+                registry.list_tools.return_value = ["dependent", "mcp_mail_read"]
+                self.assertTrue(service.get_tool("dependent")["enabled"])
+                registry.list_tools.return_value = ["unrelated"]
+                self.assertFalse(service.get_tool("dependent")["enabled"])
+            registry.recover_unavailable_mcp.assert_not_called()
 
 
 if __name__ == "__main__":

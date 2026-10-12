@@ -57,6 +57,7 @@ class ToolDiscoveryService:
 
         # 1. Use the runtime's supported folders and duplicate-name ownership.
         local_names = set()
+        dependent_manifests = {}
         if self.skills_path.exists():
             for tool_file, tool in iter_tool_manifests(self.skills_path):
                 try:
@@ -70,7 +71,7 @@ class ToolDiscoveryService:
                     # ToolRegistry). Unavailable tools MUST stay in this map
                     # (as enabled=False) so a stale enabled Tool RAG row can't
                     # resurrect them via the DB fallback in step 2 below.
-                    availability = check_tool_availability(tool)
+                    availability = check_tool_availability(tool, check_dependencies=False)
 
                     # Include all tools (effective enabled or blocked for visibility)
                     if effective or is_blocked:
@@ -87,6 +88,8 @@ class ToolDiscoveryService:
                             'script': tool.get('script', ''),
                             'file': str(tool_file)
                         }
+                        if effective and not is_blocked and (tool.get('availability') or {}).get('requires_tools'):
+                            dependent_manifests[name] = tool
                 except Exception as e:
                     print(f"[ToolDiscovery] Error loading tool {tool_file}: {e}")
         
@@ -143,10 +146,44 @@ class ToolDiscoveryService:
                     }
         except Exception as e:
             print(f"[ToolDiscovery] Error loading MCP tools from db: {e}")
+
+        self._dependent_manifests = dependent_manifests
+        self._refresh_dependencies()
+
+    def _refresh_dependencies(self):
+        """Refresh dependency diagnostics without starting/recovering MCP clients."""
+        from config_loader import get_config_value
+        from tool_availability import check_tool_availability, resolve_tool_dependencies
+        from tool_schema import peek_tool_registry
+
+        manifests = getattr(self, '_dependent_manifests', {})
+        if not manifests:
+            return
+        with self._run_in_mode_scope():
+            blocked = {name.strip() for name in get_config_value('BLOCKED_TOOLS', '').split(',')}
+            blocked |= set(get_web_setting('tools.blocked', []))
+            profile_overrides = _tool_profile_overrides()
+            registry = peek_tool_registry(self.mode)
+            if registry is None:
+                results = {name: check_tool_availability(manifest) for name, manifest in manifests.items()}
+            else:
+                names = set(registry.list_tools()) - blocked
+                names -= {name for name in names if profile_overrides.get(name) is False}
+                results = resolve_tool_dependencies(manifests, names)
+                # Config-ready dependencies alone do not prove the parent was discovered.
+                for name, result in results.items():
+                    if result.available and name not in names:
+                        result.status = 'unavailable'
+                        result.missing = ['tool not registered']
+            for name, availability in results.items():
+                self.tools[name].update(enabled=availability.available, available=availability.available,
+                    missing=list(availability.missing), setup_hint=availability.setup_hint,
+                    availability_status=availability.status)
     
     def get_tools(self, include_blocked: bool = True) -> list[dict]:
         """Return all tools as a list"""
         with self._lock:
+            self._refresh_dependencies()
             if include_blocked:
                 return list(self.tools.values())
             return [t for t in self.tools.values() if not t.get('blocked')]
@@ -154,6 +191,7 @@ class ToolDiscoveryService:
     def get_tool(self, name: str) -> dict | None:
         """Get a specific tool by name"""
         with self._lock:
+            self._refresh_dependencies()
             return self.tools.get(name)
     
     def get_tool_count(self, include_blocked: bool = False) -> int:
@@ -165,6 +203,7 @@ class ToolDiscoveryService:
         what the LLM can actually use.
         """
         with self._lock:
+            self._refresh_dependencies()
             if include_blocked:
                 return len(self.tools)
             return len([
@@ -175,16 +214,19 @@ class ToolDiscoveryService:
     def get_mcp_tools(self) -> list[dict]:
         """Return only MCP tools"""
         with self._lock:
+            self._refresh_dependencies()
             return [t for t in self.tools.values() if t.get('source') == 'mcp']
     
     def get_local_tools(self) -> list[dict]:
         """Return only local tools"""
         with self._lock:
+            self._refresh_dependencies()
             return [t for t in self.tools.values() if t.get('source') == 'local']
     
     def get_blocked_tools(self) -> list[dict]:
         """Return only blocked tools"""
         with self._lock:
+            self._refresh_dependencies()
             return [t for t in self.tools.values() if t.get('blocked')]
     
     def refresh(self):
@@ -195,6 +237,7 @@ class ToolDiscoveryService:
     def get_tools_summary(self) -> list[dict]:
         """Return simplified tool list for UI (full descriptions for sidebar tooltip)"""
         with self._lock:
+            self._refresh_dependencies()
             return [
                 {
                     'name': t['name'],
@@ -203,6 +246,7 @@ class ToolDiscoveryService:
                     'enabled': t.get('enabled', True),
                     'blocked': t.get('blocked', False),
                     'available': t.get('available', True),
+                    'availability_status': t.get('availability_status', 'available' if t.get('available', True) else 'unavailable'),
                     'missing': t.get('missing', []),
                     'setup_hint': t.get('setup_hint')
                 }
@@ -212,6 +256,7 @@ class ToolDiscoveryService:
     def get_stats(self) -> dict:
         """Return tool statistics"""
         with self._lock:
+            self._refresh_dependencies()
             tools = list(self.tools.values())
         return {
             'total': len(tools),

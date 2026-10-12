@@ -164,6 +164,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 - **OpenCode Integration**: Autonomous coding agent for building projects
 - **MCP Support**: Extensible via Model Context Protocol servers
   - Optional [Google Workspace Docker service](google-workspace/README.md) for a dedicated account, with headless OAuth setup and Gmail/Drive/Docs/Sheets tools.
+  - Optional [email command inbox](docs/tools/email-inbox-tool/README.md) for approved senders and threaded replies through a scheduled workflow. See the published [sequence](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-email-inbox-sequence.html) and [data-flow](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-email-inbox-dataflow.html) charts.
 
 ### Proactive System
 - **Event-Driven API**: Receive webhooks from external systems (port 8880)

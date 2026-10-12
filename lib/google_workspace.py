@@ -21,7 +21,7 @@ _REQUEST_KEYS = frozenset({
     "file_id", "file_name", "folder_id", "document_id", "spreadsheet_id", "presentation_id",
     "form_id", "message_id", "thread_id", "draft_id", "calendar_id", "event_id",
     "task_id", "task_list_id", "tasklist_id", "resource_name", "range_name",
-    "page_token", "sheet_name", "to", "start_time", "end_time", "script_id",
+    "page_token", "full", "attachment_id", "attachment_index", "sheet_name", "to", "start_time", "end_time", "script_id",
     "deployment_id", "version_number", "response_id", "permission_id", "role",
     "email_address", "body_format", "time_min", "time_max", "stash", "stash_space_id", "stash_ref",
 })
@@ -95,6 +95,27 @@ def workspace_links(text: str, *, content_links_untrusted: bool = True, auth_req
     return links
 
 
+def gmail_attachment_metadata(text: str, message_id: str) -> list[dict]:
+    """Read the pinned server's attachment footer, separately from truncated body.
+
+    These remain untrusted descriptors. The inbox checks downloaded bytes against
+    its authenticated raw MIME before making them available to a request.
+    """
+    if "\n--- ATTACHMENTS ---" not in text:
+        return []
+    footer = text.rsplit("\n--- ATTACHMENTS ---", 1)[1]
+    pattern = re.compile(
+        r"(?m)^(\d+)\. (.+) \(([^,\s]+), [\d.]+ KB\)(?: \[in attached message\])?\r?\n"
+        r"[ \t]+Attachment ID: ([A-Za-z0-9_+=/-]{1,4096})\r?\n"
+        r"[ \t]+Use get_gmail_attachment_content\(message_id='([a-f0-9]+)', "
+        r"attachment_id='([A-Za-z0-9_+=/-]{1,4096})', attachment_index=(\d+)\) to download"
+    )
+    return [{"name": match[2], "mime_type": match[3], "attachment_id": match[4],
+             "attachment_index": int(match[7])}
+            for match in islice(pattern.finditer(footer), 500)
+            if match[5] == message_id and match[4] == match[6] and int(match[1]) == int(match[7]) + 1]
+
+
 def normalize_workspace_result(tool_name: str, result: dict, arguments: dict | None = None) -> dict:
     content = result.get("content") or []
     text = "\n".join(
@@ -125,6 +146,8 @@ def normalize_workspace_result(tool_name: str, result: dict, arguments: dict | N
                        for m in islice(_HANDLE.finditer(text), 30)],
         "external_content_trust": "untrusted",
     }
+    if tool_name == "get_gmail_message_content" and (arguments or {}).get("body_format", "text") == "text":
+        data["gmail_attachments"] = gmail_attachment_metadata(text, (arguments or {}).get("message_id", ""))
     if structured is not None:
         compact = _bounded(structured)
         if len(json.dumps(compact, default=str)) <= 12000:
@@ -425,49 +448,63 @@ def cleanup_workspace_transfer(client, staged_id):
         _remote_call_budget.reset(token)
 
 
+def download_workspace_file(client, result: dict, *, max_bytes=None) -> dict:
+    """Bounded download from the configured authenticated origin; no Stash write."""
+    from email.message import Message
+    from mcp_client import _check_remote_call_budget
+    from stash_helper import sanitize_filename
+
+    if not result.get("ok"):
+        raise ValueError("Google file export failed")
+    data = result.get("data") or {}
+    max_bytes = _MAX_BRIDGE_BYTES if max_bytes is None else max_bytes
+    # Only the labeled download in known file-producing tools is eligible.
+    # Ignore its advertised hostname: Docker and native have different
+    # origins. Bearer credentials go exclusively to the configured service.
+    match = re.search(r"Download URL:\s*(https?://[^\s<>]+)", data.get("response_text", ""))
+    if not match:
+        raise ValueError("Google did not return a downloadable attachment")
+    parsed = urlsplit(match[1].rstrip(".,;)"))
+    if parsed.query or parsed.fragment or not re.fullmatch(r"/attachments/" + _UUID, parsed.path):
+        raise ValueError("Invalid Google attachment download path")
+    response = client._http_request("GET", _service_url(client, parsed.path),
+        headers=client.headers, allow_redirects=False, timeout=30, stream=True)
+    try:
+        if response.status_code != 200:
+            raise ValueError("Google attachment is unavailable or expired")
+        declared = response.headers.get("Content-Length")
+        if declared and int(declared) > max_bytes:
+            raise ValueError(f"Google download exceeds {max_bytes} bytes")
+        body = bytearray()
+        for chunk in response.iter_content(chunk_size=65536):
+            _check_remote_call_budget()
+            if len(body) + len(chunk) > max_bytes:
+                raise ValueError(f"Google download exceeds {max_bytes} bytes")
+            body.extend(chunk)
+        _check_remote_call_budget()
+        disposition = Message()
+        disposition["content-disposition"] = response.headers.get("Content-Disposition", "")
+        name = sanitize_filename(disposition.get_filename() or "google_attachment")
+        mime = response.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0]
+    finally:
+        response.close()
+    return {"body": bytes(body), "name": name, "mime_type": mime}
+
+
 def stash_workspace_download(client, result: dict, space_id=None) -> dict:
     """Copy one explicit download through the canonical Stash helper."""
     import hashlib
-    from email.message import Message
     from pathlib import Path
 
     from mcp_client import _check_remote_call_budget
-    from stash_helper import StashFile, open_space, sanitize_filename
+    from stash_helper import StashFile, open_space
 
     if not result.get("ok"):
         return result
     data = result["data"]
     try:
-        # Only the labeled download in known file-producing tools is eligible.
-        # Ignore its advertised hostname: Docker and native have different
-        # origins. Bearer credentials go exclusively to the configured service.
-        match = re.search(r"Download URL:\s*(https?://[^\s<>]+)", data.get("response_text", ""))
-        if not match:
-            raise ValueError("Google did not return a downloadable attachment")
-        parsed = urlsplit(match[1].rstrip(".,;)"))
-        if parsed.query or parsed.fragment or not re.fullmatch(r"/attachments/" + _UUID, parsed.path):
-            raise ValueError("Invalid Google attachment download path")
-        response = client._http_request("GET", _service_url(client, parsed.path),
-            headers=client.headers, allow_redirects=False, timeout=30, stream=True)
-        try:
-            if response.status_code != 200:
-                raise ValueError("Google attachment is unavailable or expired")
-            declared = response.headers.get("Content-Length")
-            if declared and int(declared) > _MAX_BRIDGE_BYTES:
-                raise ValueError("Google attachment exceeds 50 MiB")
-            body = bytearray()
-            for chunk in response.iter_content(chunk_size=65536):
-                _check_remote_call_budget()
-                if len(body) + len(chunk) > _MAX_BRIDGE_BYTES:
-                    raise ValueError("Google attachment exceeds 50 MiB")
-                body.extend(chunk)
-            _check_remote_call_budget()
-            disposition = Message()
-            disposition["content-disposition"] = response.headers.get("Content-Disposition", "")
-            name = sanitize_filename(disposition.get_filename() or "google_attachment")
-            mime = response.headers.get("Content-Type", "application/octet-stream").split(";", 1)[0]
-        finally:
-            response.close()
+        downloaded = download_workspace_file(client, result)
+        body, name, mime = downloaded["body"], downloaded["name"], downloaded["mime_type"]
         import time
         budget = _check_remote_call_budget()
         lock_timeout = min(5, max(0, budget.deadline - time.monotonic())) if budget else 5
@@ -492,7 +529,8 @@ def stash_workspace_download(client, result: dict, space_id=None) -> dict:
         artifact["download_url"] = f"/api/stash/{space.space_id}/{saved['file_id']}?mode={artifact['mode']}"
         data["artifacts"] = [artifact]
         # The authenticated temporary link is not a usable browser download.
-        data["links"] = [link for link in data.get("links", []) if urlsplit(link["url"]).path != parsed.path]
+        data["links"] = [link for link in data.get("links", [])
+                         if not re.fullmatch(r"/attachments/" + _UUID, urlsplit(link["url"]).path)]
         data["response_text"] += f"\nStashed file: {artifact['ref']}"
         result["speech"] = "Google file downloaded and saved to Jarvis Stash."
     except Exception as exc:

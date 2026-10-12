@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Operator entry point using Jarvis's production runtime.
+set -euo pipefail
+EMAIL_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+EMAIL_VENV=${JARVIS_VENV:-$HOME/jarvis-venv}
+if [[ ! -f "$EMAIL_VENV/bin/activate" || ! -x "$EMAIL_VENV/bin/python" ]]; then
+    echo "Jarvis production environment missing. Run ./install.sh or set JARVIS_VENV." >&2
+    exit 2
+fi
+EMAIL_VENV=$(cd "$EMAIL_VENV" && pwd -P)
+if [[ -d "$EMAIL_ROOT/.venv" && "$EMAIL_VENV" == "$(cd "$EMAIL_ROOT/.venv" && pwd -P)" ]]; then
+    echo "Use the production environment, not the repo .venv, for live email operations." >&2
+    exit 2
+fi
+source "$EMAIL_VENV/bin/activate"
+cd "$EMAIL_ROOT"
+exec "$EMAIL_VENV/bin/python" "$EMAIL_ROOT/lib/email_inbox_cli.py" "$@"

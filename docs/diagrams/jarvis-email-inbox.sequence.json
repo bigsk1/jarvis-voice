@@ -1,0 +1,376 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Jarvis Email Inbox \u2014 Request Sequence",
+    "subtitle": "Approved email to a threaded answer \u00b7 existing workflow scheduler, registry and orchestrator",
+    "output": "jarvis-email-inbox-sequence.html",
+    "viewBox": [
+      1080,
+      1640
+    ]
+  },
+  "participants": [
+    {
+      "id": "sender",
+      "type": "external",
+      "label": "Sender",
+      "sublabel": "approved address"
+    },
+    {
+      "id": "gmail",
+      "type": "cloud",
+      "label": "Gmail",
+      "sublabel": "via Workspace MCP"
+    },
+    {
+      "id": "scheduler",
+      "type": "messagebus",
+      "label": "Scheduler",
+      "sublabel": "workflow worker"
+    },
+    {
+      "id": "inbox",
+      "type": "backend",
+      "label": "Inbox",
+      "sublabel": "email_inbox"
+    },
+    {
+      "id": "checks",
+      "type": "security",
+      "label": "Checks",
+      "sublabel": "policy + admission"
+    },
+    {
+      "id": "ledger",
+      "type": "database",
+      "label": "Ledger",
+      "sublabel": "private SQLite"
+    },
+    {
+      "id": "stash",
+      "type": "database",
+      "label": "Stash",
+      "sublabel": "verified files"
+    },
+    {
+      "id": "jarvis",
+      "type": "backend",
+      "label": "Jarvis",
+      "sublabel": "Tool RAG + LLM"
+    },
+    {
+      "id": "tools",
+      "type": "backend",
+      "label": "Tools",
+      "sublabel": "request allowlist"
+    }
+  ],
+  "segments": [
+    {
+      "from": 160,
+      "to": 210,
+      "label": "01 / EMAIL"
+    },
+    {
+      "from": 220,
+      "to": 435,
+      "label": "02 / OPT-IN + LOCK"
+    },
+    {
+      "from": 440,
+      "to": 915,
+      "label": "03 / SCAN + ADMIT"
+    },
+    {
+      "from": 935,
+      "to": 1205,
+      "label": "04 / EXECUTE"
+    },
+    {
+      "from": 1210,
+      "to": 1495,
+      "label": "05 / REPLY"
+    }
+  ],
+  "messages": [
+    {
+      "from": "sender",
+      "to": "gmail",
+      "y": 205,
+      "label": "Email request",
+      "variant": "emphasis"
+    },
+    {
+      "from": "scheduler",
+      "to": "inbox",
+      "y": 235,
+      "label": "Poll inbox",
+      "variant": "emphasis",
+      "note": "jarvis_email_inbox; default schedule every 30 minutes after setup"
+    },
+    {
+      "from": "inbox",
+      "to": "checks",
+      "y": 280,
+      "label": "Load policy",
+      "variant": "security",
+      "note": "Channel enabled; Workspace enabled; required Gmail tools available"
+    },
+    {
+      "from": "checks",
+      "to": "inbox",
+      "y": 325,
+      "label": "Allowed senders",
+      "variant": "return"
+    },
+    {
+      "from": "inbox",
+      "to": "ledger",
+      "y": 370,
+      "label": "Lock + cursors",
+      "variant": "emphasis"
+    },
+    {
+      "from": "ledger",
+      "to": "inbox",
+      "y": 410,
+      "label": "Saved scans",
+      "variant": "return"
+    },
+    {
+      "from": "inbox",
+      "to": "gmail",
+      "y": 460,
+      "label": "Find mail",
+      "variant": "emphasis",
+      "note": "Recent head + independent backlog and arrivals windows; up to 25 IDs per page"
+    },
+    {
+      "from": "gmail",
+      "to": "inbox",
+      "y": 500,
+      "label": "Message IDs",
+      "variant": "return"
+    },
+    {
+      "from": "inbox",
+      "to": "gmail",
+      "y": 540,
+      "label": "Read complete EML",
+      "variant": "emphasis"
+    },
+    {
+      "from": "gmail",
+      "to": "inbox",
+      "y": 580,
+      "label": "MIME + auth",
+      "variant": "return"
+    },
+    {
+      "from": "inbox",
+      "to": "checks",
+      "y": 620,
+      "label": "Admit request",
+      "variant": "security",
+      "note": "Approved From + Gmail authentication; remove quoted text"
+    },
+    {
+      "from": "checks",
+      "to": "inbox",
+      "y": 660,
+      "label": "Latest request",
+      "variant": "return"
+    },
+    {
+      "from": "inbox",
+      "to": "ledger",
+      "y": 700,
+      "label": "Save pending",
+      "variant": "emphasis",
+      "note": "Persist admitted IDs before advancing scan checkpoints"
+    },
+    {
+      "from": "inbox",
+      "to": "gmail",
+      "y": 740,
+      "label": "Download files",
+      "variant": "emphasis",
+      "note": "Authenticated message only; limits before downloads"
+    },
+    {
+      "from": "gmail",
+      "to": "inbox",
+      "y": 780,
+      "label": "Attachment bytes",
+      "variant": "return"
+    },
+    {
+      "from": "inbox",
+      "to": "stash",
+      "y": 820,
+      "label": "Verify + save files",
+      "variant": "security",
+      "note": "Size / SHA-256 match complete MIME; ordinary project retention"
+    },
+    {
+      "from": "stash",
+      "to": "inbox",
+      "y": 860,
+      "label": "Stash references",
+      "variant": "return"
+    },
+    {
+      "from": "inbox",
+      "to": "ledger",
+      "y": 900,
+      "label": "Save running",
+      "variant": "emphasis"
+    },
+    {
+      "from": "inbox",
+      "to": "checks",
+      "y": 950,
+      "label": "Reload policy",
+      "variant": "security"
+    },
+    {
+      "from": "inbox",
+      "to": "jarvis",
+      "y": 1000,
+      "label": "Request + file refs",
+      "variant": "emphasis",
+      "note": "Sender history only; no operator memories or shared learning writes"
+    },
+    {
+      "from": "jarvis",
+      "to": "tools",
+      "y": 1050,
+      "label": "Allowed tools",
+      "variant": "emphasis"
+    },
+    {
+      "from": "tools",
+      "to": "jarvis",
+      "y": 1090,
+      "label": "Tool results",
+      "variant": "return"
+    },
+    {
+      "from": "jarvis",
+      "to": "inbox",
+      "y": 1130,
+      "label": "Full answer",
+      "variant": "return"
+    },
+    {
+      "from": "inbox",
+      "to": "ledger",
+      "y": 1170,
+      "label": "Save reply_ready",
+      "variant": "emphasis",
+      "note": "Answer survives interruption before sending"
+    },
+    {
+      "from": "inbox",
+      "to": "checks",
+      "y": 1220,
+      "label": "Recheck sender",
+      "variant": "security"
+    },
+    {
+      "from": "inbox",
+      "to": "ledger",
+      "y": 1260,
+      "label": "Save sending",
+      "variant": "emphasis"
+    },
+    {
+      "from": "inbox",
+      "to": "gmail",
+      "y": 1300,
+      "label": "Threaded reply",
+      "variant": "emphasis",
+      "note": "Fixed From recipient; original thread / Message-ID; no CC, BCC or reply-all"
+    },
+    {
+      "from": "gmail",
+      "to": "inbox",
+      "y": 1340,
+      "label": "Send receipt",
+      "variant": "return"
+    },
+    {
+      "from": "inbox",
+      "to": "ledger",
+      "y": 1380,
+      "label": "Save completed",
+      "variant": "emphasis"
+    },
+    {
+      "from": "inbox",
+      "to": "scheduler",
+      "y": 1420,
+      "label": "Poll summary",
+      "variant": "return",
+      "note": "Per-message read warnings do not fail the workflow; scan / send failures do"
+    },
+    {
+      "from": "gmail",
+      "to": "sender",
+      "y": 1465,
+      "label": "Reply in thread",
+      "variant": "return",
+      "note": "Gmail acceptance is separate from the sender opening the reply"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "inbox",
+      "from": 230,
+      "to": 1430,
+      "type": "backend"
+    },
+    {
+      "participant": "jarvis",
+      "from": 1000,
+      "to": 1135,
+      "type": "backend"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Approval and routing",
+      "items": [
+        "contacts.json supplies opt-in, approved senders and the request tool allowlist.",
+        "Workspace flag and Gmail search/read/send dependencies must be available.",
+        "Admission requires aligned DKIM + DMARC, a direct plain-text request and a valid envelope.",
+        "Sender approval is reloaded before execution and again before delivery."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Personal context stays isolated",
+      "items": [
+        "The model receives the latest body request, verified attachment Stash refs and this sender\u2019s last three completed exchanges.",
+        "Operator memories, shared conversation context, Intelligence insights and learning writes are disabled.",
+        "Provider-hosted tools and explicit workflows are disabled inside the email request.",
+        "The allowlist filters discovery and execution without stopping shared Gmail clients. Normal private logs remain."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Durable recovery",
+      "items": [
+        "Each poll owns an OS lock; the ledger prevents replay of recorded message IDs.",
+        "Failed reads stop after three failures: read_retry \u2192 read_failed. These are poll warnings.",
+        "Attachment transfers resume saved files across polls; three failed preparations produce a failure reply before business tools run.",
+        "Malformed or unauthorized mail is ignored before tools run.",
+        "Interrupted execution produces a saved interruption reply; it never automatically reruns.",
+        "A saved reply can send despite discovery failure. Unconfirmed delivery \u2192 needs_attention; inspect Gmail Sent.",
+        "completed means a Gmail receipt was obtained; request_ok separately records whether the requested action succeeded."
+      ]
+    }
+  ]
+}

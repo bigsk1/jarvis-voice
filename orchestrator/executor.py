@@ -75,6 +75,7 @@ class ToolExecutor:
         self.jarvis_session_id = None
         self.web_conversation_id = None
         self.excluded_tools: set[str] = set()
+        self.allowed_tools: set[str] | None = None
         self.workflow_loader = None
         self.pipeline_executor = None
         self.workflow_status_callback = None
@@ -172,8 +173,22 @@ class ToolExecutor:
         """Set request-scoped tools that must remain hidden from discovery."""
         self.excluded_tools = {str(name).strip() for name in (excluded_tools or []) if str(name).strip()}
         stop_disallowed = getattr(self.registry, "stop_disallowed_mcp", None)
-        if callable(stop_disallowed):
+        # Restricted nested requests share clients with their dispatcher.
+        # Visibility is request-scoped; client lifetime belongs to the registry.
+        if callable(stop_disallowed) and getattr(self, 'allowed_tools', None) is None:
             stop_disallowed(self.excluded_tools)
+
+    def set_allowed_tools(self, allowed_tools: list[str] | None = None):
+        """Enforce an optional request allowlist even after MCP catalog recovery."""
+        self.allowed_tools = None if allowed_tools is None else set(allowed_tools)
+
+    def _effective_exclusions(self):
+        allowed = getattr(self, 'allowed_tools', None)
+        exclusions = getattr(self, 'excluded_tools', set()) | (
+            set(self.registry.list_tools()) - allowed if allowed is not None else set()
+        )
+        resolve = getattr(type(self.registry), 'dependency_exclusions', None)
+        return resolve(self.registry, exclusions) if callable(resolve) else exclusions
 
     def set_workflow_runtime(
         self,
@@ -369,6 +384,12 @@ class ToolExecutor:
     
     def execute(self, tool_name: str, args: dict[str, Any], skip_permission_check: bool = False,
                 *, background_context=None, invocation_id=None) -> dict[str, Any]:
+        if getattr(self, 'allowed_tools', None) is not None and tool_name not in self.allowed_tools:
+            return {'ok': False, 'error': 'Tool outside this request allowlist',
+                    'speech': 'That action is not enabled for this request.'}
+        if tool_name in self._effective_exclusions():
+            return {'ok': False, 'error': 'Tool blocked for this request',
+                    'speech': f'Tool {tool_name} is blocked for this request'}
         from lib.background_tasks import TaskError
         from lib.background_tasks.admission import WebTaskContext, reject_background_result
 
@@ -423,7 +444,7 @@ class ToolExecutor:
         """
         # Request/surface exclusions are an execution boundary, not just a
         # discovery hint. Workflows bypass normal LLM schema selection.
-        if tool_name in self.excluded_tools:
+        if tool_name in self._effective_exclusions():
             return {
                 "ok": False,
                 "speech": f"Tool {tool_name} is blocked for this request",
@@ -476,6 +497,13 @@ class ToolExecutor:
             return self._execute_tool_search(tool_name, args)
         if tool_name == "workflow":
             return self._execute_workflow(tool_name, args)
+        if tool_name == "email_inbox":
+            from lib.email_inbox import execute_inbox
+            start_time = time.time()
+            result = execute_inbox(self.mode, args, self)
+            self.logger.log_tool_call(tool_name=tool_name, arguments=args, result=result,
+                                      duration_ms=(time.time() - start_time) * 1000, mode=self.mode)
+            return result
         
         # Check permissions (unless explicitly skipped)
         if not skip_permission_check and tool_schema.requires_confirmation():
@@ -711,7 +739,7 @@ class ToolExecutor:
             registry=self.registry,
             query=args.get("query", ""),
             limit=args.get("limit", 6),
-            excluded_tools=self.excluded_tools,
+            excluded_tools=self._effective_exclusions(),
             background_context=getattr(self, 'background_context', None),
             tool_names=args.get("tool_names"),
             include_schema=bool(args.get("include_schema")),
@@ -734,7 +762,7 @@ class ToolExecutor:
                 registry=self.registry,
                 args=args,
                 mode=self.mode,
-                excluded_tools=self.excluded_tools,
+                excluded_tools=self._effective_exclusions(),
                 loader=self.workflow_loader,
                 pipeline_executor=self.pipeline_executor,
                 tool_executor=self,

@@ -14,6 +14,7 @@
 config/*.env
 config/*.env.craft-new
 config/contacts.json
+data/email-inbox/
 config/ntfy.json
 config/webhook_registry.json
 config/webhook_registry.json.template

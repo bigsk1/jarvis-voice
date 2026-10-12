@@ -1,0 +1,341 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Jarvis Email Inbox \u2014 Data Flow",
+    "subtitle": "Latest request \u2192 authenticated admission \u2192 private ledger \u2192 restricted tools \u2192 sender-only reply",
+    "output": "jarvis-email-inbox-dataflow.html",
+    "viewBox": [
+      1080,
+      750
+    ]
+  },
+  "stages": [
+    {
+      "label": "Mailbox"
+    },
+    {
+      "label": "Discovery"
+    },
+    {
+      "label": "Admission"
+    },
+    {
+      "label": "Private state"
+    },
+    {
+      "label": "Execute / reply"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "mail",
+      "type": "cloud",
+      "label": "Gmail inbox",
+      "sublabel": "approved-sender search",
+      "stage": 0,
+      "row": 2,
+      "width": 124
+    },
+    {
+      "id": "scan",
+      "type": "backend",
+      "label": "Scan + read",
+      "sublabel": "Workspace MCP tools",
+      "stage": 1,
+      "row": 2,
+      "width": 124
+    },
+    {
+      "id": "cursors",
+      "type": "database",
+      "label": "Scan state",
+      "sublabel": "ledger settings",
+      "tag": "backlog / arrivals",
+      "stage": 1,
+      "row": 0,
+      "width": 124
+    },
+    {
+      "id": "contacts",
+      "type": "security",
+      "label": "Contacts policy",
+      "sublabel": "config/contacts.json",
+      "tag": "opt-in + allowlist",
+      "stage": 2,
+      "row": 0,
+      "width": 136
+    },
+    {
+      "id": "admit",
+      "type": "security",
+      "label": "Admission",
+      "sublabel": "sender + DKIM + DMARC",
+      "stage": 2,
+      "row": 2,
+      "width": 124
+    },
+    {
+      "id": "ledger",
+      "type": "database",
+      "label": "Inbox ledger",
+      "sublabel": "request + refs + answer",
+      "tag": "durable message ID",
+      "stage": 3,
+      "row": 2,
+      "width": 124
+    },
+    {
+      "id": "jarvis",
+      "type": "backend",
+      "label": "Jarvis",
+      "sublabel": "Tool RAG + LLM",
+      "tag": "allowed tools only",
+      "stage": 4,
+      "row": 2,
+      "width": 124
+    },
+    {
+      "id": "readerrors",
+      "type": "security",
+      "label": "Read failures",
+      "sublabel": "read_retry / read_failed",
+      "tag": "3 failures \u2192 stop",
+      "stage": 1,
+      "row": 4,
+      "width": 140
+    },
+    {
+      "id": "ignored",
+      "type": "security",
+      "label": "Rejected mail",
+      "sublabel": "ignored",
+      "tag": "no execution",
+      "stage": 2,
+      "row": 4,
+      "width": 124
+    },
+    {
+      "id": "delivery",
+      "type": "backend",
+      "label": "Reply dispatcher",
+      "sublabel": "Gmail send tool",
+      "tag": "saved reply + policy",
+      "stage": 3,
+      "row": 4,
+      "width": 142
+    },
+    {
+      "id": "reply",
+      "type": "external",
+      "label": "Thread reply",
+      "sublabel": "approved From address",
+      "tag": "no CC / BCC",
+      "stage": 4,
+      "row": 4,
+      "width": 136
+    },
+    {
+      "id": "stash",
+      "type": "database",
+      "label": "Attachment Stash",
+      "sublabel": "verified original files",
+      "tag": "Jarvis host",
+      "stage": 3,
+      "row": 0,
+      "width": 142
+    }
+  ],
+  "flows": [
+    {
+      "from": "mail",
+      "to": "scan",
+      "label": "Mail + IDs",
+      "classification": "private",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "from": "scan",
+      "to": "admit",
+      "label": "Raw MIME",
+      "classification": "untrusted input",
+      "variant": "security",
+      "route": "straight"
+    },
+    {
+      "from": "admit",
+      "to": "ledger",
+      "label": "Latest text",
+      "classification": "approved only",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "from": "ledger",
+      "to": "jarvis",
+      "label": "Request + refs",
+      "classification": "sender history",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "from": "cursors",
+      "to": "scan",
+      "label": "Cursors",
+      "classification": "two scans",
+      "variant": "dashed",
+      "route": "straight",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        375,
+        272
+      ]
+    },
+    {
+      "from": "contacts",
+      "to": "admit",
+      "label": "Sender policy",
+      "classification": "operator owned",
+      "variant": "security",
+      "route": "straight",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        592,
+        272
+      ]
+    },
+    {
+      "from": "scan",
+      "to": "readerrors",
+      "label": "Read issue",
+      "classification": "bounded retry",
+      "variant": "security",
+      "route": "straight",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        375,
+        515
+      ]
+    },
+    {
+      "from": "admit",
+      "to": "ignored",
+      "label": "Rejected",
+      "classification": "invalid envelope",
+      "variant": "security",
+      "route": "straight",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        592,
+        515
+      ]
+    },
+    {
+      "from": "jarvis",
+      "to": "ledger",
+      "label": "Answer",
+      "classification": "reply_ready",
+      "variant": "emphasis",
+      "route": "bottom-channel",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "channelY": 450,
+      "labelAt": [
+        853,
+        450
+      ]
+    },
+    {
+      "from": "ledger",
+      "to": "delivery",
+      "label": "Saved reply",
+      "classification": "approval recheck",
+      "variant": "emphasis",
+      "route": "straight",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        818,
+        515
+      ]
+    },
+    {
+      "from": "delivery",
+      "to": "reply",
+      "label": "Reply",
+      "classification": "same thread",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "from": "ledger",
+      "to": "stash",
+      "label": "Prepare files",
+      "classification": "before execution",
+      "variant": "security",
+      "route": "straight",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [
+        804,
+        272
+      ]
+    },
+    {
+      "from": "stash",
+      "to": "jarvis",
+      "label": "Verified inputs",
+      "classification": "stash:// refs",
+      "variant": "emphasis",
+      "route": "top-channel",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "channelY": 242,
+      "labelAt": [
+        960,
+        225
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Two scans; recent head for latency",
+      "items": [
+        "The first scan covers the configured lookback and fixes its cutoff.",
+        "Arrivals have their own frozen interval, cursor and completed-through watermark.",
+        "A newer head page cannot overwrite either scan\u2019s continuation. All candidate IDs are recorded before checkpoints advance.",
+        "Per poll: at most one head page, one backlog page, one arrivals page; 25 IDs per page.",
+        "Up to 25 queued read retries and 1\u20135 admitted executions per poll; defaults execute one request."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "What reaches the model",
+      "items": [
+        "Latest plain-text body request, exact verified attachment Stash references, enabled tool results and this sender\u2019s last three completed exchanges.",
+        "Attachments are data, not action permissions. Filenames/types/sizes are context; binary contents are not injected into the prompt.",
+        "Operator memories, auto-context, shared Intelligence reads/writes and conversation logging are disabled.",
+        "Model/provider choice still follows the configured mode. Tool RAG ranking and normal private diagnostic logs remain."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Persistence and failure boundaries",
+      "items": [
+        "Ledger and settings live on the Jarvis host: data/email-inbox/<account-hash>/ledger.sqlite3. No Memory DB migration.",
+        "Private contacts and ledger are Git-ignored and excluded from image builds.",
+        "Named files use the existing Workspace/Stash bridge after admission. Raw EML remains temporary; Stash uses normal project retention.",
+        "read_failed records IDs, reasons and attempt counts after three failed reads; other requests continue.",
+        "Malformed / unauthorized MIME \u2192 ignored. A saved answer can send even when scanning fails.",
+        "Unconfirmed send \u2192 needs_attention, no automatic resend. Completed requests never automatically rerun.",
+        "The status command reads local policy and ledger without starting Gmail or checking remote health."
+      ]
+    }
+  ]
+}

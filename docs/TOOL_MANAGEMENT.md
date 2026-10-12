@@ -1,806 +1,303 @@
-# Tool Management System
+# Tool management
 
-## Overview
+Jarvis combines local tool manifests, discovered MCP tools, and Tool RAG ranking.
+Use manifests and profiles to choose the tool catalog, availability requirements
+to hide integrations that are not configured, and request restrictions to control
+what a particular surface can use. Tool RAG ranks only eligible tools; it does not
+supply credentials or bypass these gates.
 
-Jarvis now supports enabling/disabling tools dynamically, similar to MCP servers. This allows you to:
+## Inspect and change tools
 
-- **Reduce token count** for local models (important for Ollama)
-- **Improve response speed** by loading fewer tools
-- **Create focused profiles** (coding tools only, home automation only, etc.)
-- **Easier testing** by temporarily disabling tools
-
-## Quick Start
+Run these commands from the checkout root:
 
 ```bash
-# List all tools
-./bin/manage-tools.py list
-
-# List with descriptions
-./bin/manage-tools.py list -v
-
-# Disable a tool
-./bin/manage-tools.py disable network_tools
-
-# Enable a tool
-./bin/manage-tools.py enable network_tools
-
-# Enable all tools
-./bin/manage-tools.py enable-all
-
-# Inspect credential availability for a specific mode (cloud vs local env)
 ./bin/manage-tools.py --mode cloud list
 ./bin/manage-tools.py --mode local list -v
+./bin/manage-tools.py disable network_tools
+./bin/manage-tools.py enable network_tools
+./bin/manage-tools.py profile list
+./bin/manage-tools.py --mode cloud profile show
+./bin/manage-tools.py --mode cloud profile export > /tmp/tool-state.json
 ```
 
-## Enabled vs available
+`enable` and `disable` edit the matching local manifest, including supported
+`skills/auto-tools/` and `skills/personal/` folders. An active profile override
+still wins over that manifest default. `enable-all` edits all local manifests;
+inspect integrations before using it. MCP tool names are managed through server
+configuration and profile overrides rather than local manifest edits.
 
-Several ordered gates control whether a tool reaches the LLM:
+After changing manifests, profiles, or integration settings, restart Jarvis and
+sync the modes you use. Registry/profile configuration is loaded at construction;
+editing a file does not update every existing process automatically.
 
-| State | Meaning |
-|-------|---------|
-| **Manifest default** | The tool's `*.tool.json` `enabled` value; missing means `true` |
-| **Profile enabled** | `JARVIS_TOOL_PROFILE` override, when present; the profile value wins over the manifest |
-| **Available** | Hard requirements in the manifest `availability` block are satisfied in the active mode |
-| **Surface allowed** | The tool is not in the current Web/request exclusion list |
+Tool RAG sync uses the **production environment**, even when development tests
+use the checkout's `.venv`:
 
-The effective order is:
-
-```text
-manifest enabled value
-        ↓
-active profile override wins
-        ↓
-mode/config/credential availability
-        ↓
-effective ToolRegistry
-        ↓
-Web or request exclusions
-        ↓
-Tool RAG discovery candidates
+```bash
+source "$HOME/jarvis-venv/bin/activate"
+./bin/sync-tools.py cloud
+./bin/sync-tools.py local
 ```
 
-`ToolRegistry.list_tools()` is deliberately simple because `self.tools` has
-already passed the registry gates. Callers subtract Web/request exclusions
-afterward. The Tool RAG database supplies semantic ranking; a stale enabled row
-cannot resurrect a name absent from the live effective registry.
+The sync needs access to the configured embedding service. It deliberately
+refuses the repo `.venv` to prevent fallback embeddings from entering Tool RAG.
+Do not treat a blocked network connection as proof that the embedding host is
+unhealthy. Run only the modes configured on your installation.
 
-A tool can be enabled in git but **unavailable** (missing API key, OAuth cache,
-`config/ssh.json`, webhook registry entry, etc.). Unavailable tools are skipped
-at registry load — they do not appear in Tool RAG or the LLM tool list. Adding
-the missing configuration and restarting (or running `./bin/sync-tools.py <mode>`)
-restores them without editing the manifest.
+## Enabled, available, and selected
 
-Inspect with `./bin/manage-tools.py --mode <mode> list` (🔒 unavailable) or
-`./bin/sync-tools.py <mode>` (prints excluded tools at startup). See
-`skills/README.md` → **Availability** and `docs/FUTURE_ENHANCEMENTS.md`
-section 9 for the full schema.
+| Gate | Meaning |
+| --- | --- |
+| Manifest default | Local `enabled` value; omission means `true`. |
+| Profile override | The active profile's Boolean value wins over the default. |
+| Configuration availability | Required keys, enable flags, files, commands, or provider configuration exist in the active mode. |
+| Tool dependencies | Every tool in `availability.requires_tools` is in the effective discovered catalog. |
+| Request permissions | Global blocks, Web/request exclusions and any request allowlist also apply to dependencies. |
+| Selection | Tool RAG, explicit hints and workflow routing choose from the remaining catalog. |
 
-**Note:** `availability` metadata is **not** sent to the LLM and does **not**
-change `embedding_input_hash`; only name, description, and parameter schema
-affect Tool RAG embeddings. Sync still disables stale DB rows when a previously
-synced tool becomes unavailable.
+An enabled tool can still be unavailable. A profile setting of `true` cannot
+supply a missing credential, discover a disabled MCP service, or override a
+request restriction. Conversely, being available does not mean that a tool will
+be selected for every relevant question.
 
-Registry/profile state is loaded when the shared registry is constructed.
-Restart Jarvis after changing a manifest or profile (a mode change also rebuilds
-the registry), then run the mode's Tool RAG sync. Web blocked tools are read for
-each request and do not require a Tool RAG resync.
+The live registry is the execution catalog. Persisted Tool RAG rows provide
+ranking and metadata; an old enabled database row cannot resurrect a tool that
+is absent from the registry. Sync disables stale rows when an integration is
+removed or becomes unavailable. Cloud and local checks use their own config
+scope and profile settings.
 
-### Mandatory discovery tools are still disableable
+Availability diagnostics contain requirement names and safe file paths, never
+credential values. Availability metadata is not sent to the model and does not
+change the Tool RAG embedding hash. Tool name, description and parameter schema
+changes can require new embeddings.
 
-`tool_search` and `workflow` are appended and prioritized as mandatory
-discovery candidates only when they exist in the effective registry and are not
-request-blocked. They are not force-registered:
+## Local manifest schema
 
-- Manifest `"enabled": false` removes either tool unless a profile overrides it with `true`.
-- Profile `"tool_search": false` or `"workflow": false` removes it after registry reload.
-- Jarvis Web's blocked-tools list excludes it for Web orchestration, and `ToolExecutor` enforces that request boundary.
-- Very small one-request schema caps still prioritize explicit positive hints before mandatory discovery candidates.
-
-The `workflow` tool controls autonomous workflow discovery and foreground
-execution. Explicit slash workflows and scheduled workflow tasks are separate
-entry points; disabling the meta-tool does not disable that broader workflow
-subsystem. Every direct/scheduled workflow still fails closed when any component
-tool is absent, unavailable, profile-disabled, or excluded for its execution
-surface.
-
-## How It Works
-
-### Tool Schema Format
-
-Each `*.tool.json` file now has an `enabled` field:
+A minimal manifest is:
 
 ```json
 {
   "enabled": true,
-  "name": "crypto_price",
-  "description": "Get cryptocurrency prices",
-  "script": "crypto_price.py",
-  "proxy_policy": "prefer",
-  "parameters": { ... },
-  "permissions": { ... }
-}
-```
-
-- **`enabled: true`** → Tool loads normally
-- **`enabled: false`** → Tool skipped at startup (no memory/token usage)
-- **`proxy_policy`** → Optional runtime-only network policy: `inherit`, `off`,
-  `prefer`, or fail-closed `require`; see
-  [`NETWORK_PROXY.md`](NETWORK_PROXY.md)
-
-### Backward Compatibility
-
-- Tools without `enabled` field default to `true`
-- Tools without `proxy_policy` preserve their existing proxy behavior
-- All existing tools have been migrated automatically
-- No breaking changes to existing code
-
-## Use Cases
-
-### 1. Reduce Token Count for Local Models
-
-Ollama models have limited context windows. Disable unnecessary tools:
-
-```bash
-# Keep only essential tools for conversation
-./bin/manage-tools.py disable send_webhook
-./bin/manage-tools.py disable api_call
-./bin/manage-tools.py disable network_tools
-./bin/manage-tools.py disable opencode
-
-# Result: ~6k tokens → ~3k tokens (50% reduction!)
-```
-
-### 2. Create Focused Profiles
-
-**Coding Profile** (disable non-coding tools):
-```bash
-./bin/manage-tools.py disable crypto_price
-./bin/manage-tools.py disable send_webhook
-# Keep: opencode and memory tools
-```
-
-**Home Automation Profile**:
-```bash
-./bin/manage-tools.py disable opencode
-./bin/manage-tools.py disable crypto_price
-# Keep: api_call and send_webhook
-```
-
-### 3. Testing & Development
-
-```bash
-# Disable tools you're not testing
-./bin/manage-tools.py disable opencode  # Save 2+ minutes startup time
-
-# Focus on specific tool
-./bin/manage-tools.py disable api_call
-# ... test other tools ...
-./bin/manage-tools.py enable api_call
-```
-
-### 4. Security Hardening
-
-```bash
-# Disable dangerous tools in production
-./bin/manage-tools.py disable ssh_remote
-./bin/manage-tools.py disable opencode
-```
-
-## Implementation Details
-
-### Code Changes
-
-**1. `lib/tool_schema.py`** — Discovery applies three gates in order:
-profile resolution → credential availability → `ToolSchema` load:
-
-```python
-availability = check_tool_availability(tool_config)
-if not availability.available:
-    self.unavailable_tools[name] = availability
-    continue
-
-schema = ToolSchema.from_json_file(str(tool_file))
-self.tools[schema.name] = schema
-```
-
-**2. `bin/manage-tools.py`** — Management utility:
-- List tools with effective enabled **and** available status
-- `--mode cloud|local` to evaluate availability against that mode's env file
-- Enable/disable individual tools, profiles, bulk operations
-
-**3. All `skills/*.tool.json`** — Optional `enabled` and `availability` fields
-
-### Discovery dependencies
-
-Most tools are dynamically discovered. `tool_search` and `workflow` are named
-discovery escape hatches, but only promoted when present in the effective
-registry.
-
-✅ No broken imports if tool disabled
-✅ System prompts mention tools as examples only
-✅ Safe to add/remove tools anytime
-
-## Token Count Impact
-
-In current Tool RAG runtime, token impact is best measured from the final tool list rather than from all enabled tools. Enable `TOOL_RAG_TRACE_ENABLED=true` and inspect `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl`; each trace includes `final_tool_count`, `tool_schema_chars`, `tool_schema_est_tokens`, and `tool_schema_top` so you can see which schemas actually reached the LLM.
-
-### Example Reduction (illustrative Tool RAG shortlist)
-
-**Large tool catalog exposed to the LLM (see Current Coverage below for live counts):**
-- Baseline tokens: ~6,200
-- With system prompt: ~7,500
-
-**Essential ~10 tools only:**
-- Baseline tokens: ~3,800 (-39%)
-- With system prompt: ~5,100 (-32%)
-
-**Impact:**
-- Faster responses (less context to process)
-- More room for conversation history
-- Less likely to hit context limit
-
-## Best Practices
-
-### 1. Start with Everything Enabled
-
-Get familiar with all tools first:
-```bash
-./bin/manage-tools.py enable-all
-```
-
-### 2. Profile Your Usage
-
-Track which tools you actually use:
-```bash
-# Check tool usage logs
-cat logs/tools/tool-calls-*.jsonl | jq -r '.tool_name' | sort | uniq -c | sort -nr
-```
-
-### 3. Disable Rarely Used Tools
-
-```bash
-# If you never use crypto prices
-./bin/manage-tools.py disable crypto_price
-
-# If you don't use webhooks
-./bin/manage-tools.py disable send_webhook
-```
-
-### 4. Keep Core Tools Enabled
-
-Usually keep these enabled for basic functionality:
-- `get_time` - Time/date queries
-- `remember` / `recall` / `search_memory` - Memory system
-- `get_recent_conversations` - Context awareness
-- `tool_search` - Compact discovery when initial Tool RAG retrieval misses
-- `workflow` - Autonomous deterministic workflow selection; optional if you only use slash/scheduled workflows
-
-### 5. Document Your Profile
-
-```bash
-# Save your enabled tools
-./bin/manage-tools.py list > ~/jarvis-voice/skills/profiles/jarvis-tools-profile.txt
-```
-
-## Migration (Already Done)
-
-All existing tools have been migrated automatically:
-
-```bash
-./bin/manage-tools.py init  # Adds 'enabled': true to all tools
-```
-
-Output:
-```
-✓ Added 'enabled' field to semantic_recall
-✓ Added 'enabled' field to search_memory
-...
-✓ Updated 17 tool(s)
-```
-
-## Comparison with MCP Servers
-
-### MCP Servers (`config/mcp-servers.json`)
-```json
-{
-  "mcpServers": {
-    "duckduckgo": {
-      "command": "docker",
-      "enabled": true
-    }
+  "name": "example_lookup",
+  "description": "Look up a record. Examples: 'find a record', 'show record details'.",
+  "script": "example_lookup.py",
+  "parameters": {
+    "type": "object",
+    "properties": {"query": {"type": "string"}},
+    "required": ["query"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "network": true,
+    "filesystem": false,
+    "bash": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "enabled_env": "EXAMPLE_SERVICE_ENABLED",
+    "all_of_env": ["EXAMPLE_API_KEY"],
+    "setup_hint": "Enable the service and set its key in config/<mode>.env."
   }
 }
 ```
 
-### Local Tools (`skills/*.tool.json`)
+Permissions describe execution behavior; they are separate from availability.
+For a complete tool, also review child-process environment, timeout, output,
+follow-up context, and any background adapter. See [tool authoring](../skills/README.md)
+and [background tasks](BACKGROUND-TASKS.md).
+
+### Availability fields
+
+Omit `availability` entirely for tools with no hard requirements. When present,
+all declared requirements must pass, except for the alternatives described below.
+
+| Field | Requirement |
+| --- | --- |
+| `enabled_env` | One config-variable name whose value must be `true`, `1`, `yes`, or `on`, ignoring case and surrounding whitespace. Credentials alone do not enable a service. |
+| `all_of_env` | Non-empty list of variable names; every value must be non-blank. |
+| `any_of_env` | Non-empty list of variable names; at least one value must be non-blank. |
+| `config_files` | Non-empty list of non-empty regular files. Relative paths resolve from the project root; absolute and `~` paths are supported. Contents are not validated by discovery. |
+| `all_of_commands` | Non-empty list of executable names that must exist on `PATH`; discovery does not execute them. |
+| `webhook_registry` | Non-empty list of entries in `config/webhook_registry.json`, each with a non-blank URL after environment substitution and without `enabled: false`. |
+| `requires_tools` | Non-empty list of exact registered tool names; every dependency must be callable in the relevant catalog. |
+| `provider_requirements` | Map of provider names to credential requirements. At least one provider must be configured. This does not authorize switching providers automatically. |
+| `provider_setting` | Optional config key identifying the selected provider for diagnostics. |
+| `provider_default` | Optional fallback provider name for those diagnostics. |
+| `setup_hint` | Optional operator-facing setup text; keep it free of secrets and private host details. |
+
+Malformed requirements and unknown field names fail closed for the affected
+tool, including a typo alongside otherwise valid fields. The result has
+`status: unavailable` and `<invalid availability metadata>` in its diagnostics.
+Independent tools continue loading. Presence checks cannot prove that an API
+key is valid or that a remote service will stay healthy; execution still needs
+its own preflight and error handling.
+
+### Hard tool dependencies: `requires_tools`
+
+Use `requires_tools` when a tool cannot work without other registered tools.
+For example, the command inbox needs Gmail search, raw message reads, and sending:
+
 ```json
 {
-  "enabled": true,
-  "name": "crypto_price",
-  "script": "crypto_price.py"
+  "availability": {
+    "enabled_env": "GOOGLE_WORKSPACE_MCP_ENABLED",
+    "all_of_env": ["GOOGLE_ACCOUNT", "GOOGLE_WORKSPACE_MCP_TOKEN"],
+    "config_files": ["config/contacts.json"],
+    "requires_tools": [
+      "mcp_google_workspace_search_gmail_messages",
+      "mcp_google_workspace_get_gmail_message_content",
+      "mcp_google_workspace_send_gmail_message"
+    ]
+  }
 }
 ```
 
-Both appear in Jarvis's tool list, but they launch differently. A local MCP
-server receives the variables explicitly named in `config/mcp-servers.json`
-(plus configured proxy settings). A local Python tool receives the selected
-mode's full environment unless its manifest opts into a restricted child
-environment. Background skills use a separate trusted policy. See
-[the local tool environment guide](../skills/README.md#local-tool-child-environment).
+This uses the same mechanism as other local tools. Workspace off, a missing
+Gmail tool, a profile-disabled dependency, or a blocked dependency makes
+`email_inbox` unavailable. The private `jarvis_email` policy inside contacts is
+an additional runtime opt-in; discovery checks file presence, not its contents.
+See the [email inbox guide](tools/email-inbox-tool/README.md).
+Its published [request sequence](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-email-inbox-sequence.html)
+and [data-flow chart](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-email-inbox-dataflow.html)
+show how dependency checks, sender policy and restricted execution fit together.
+
+Registry loading first checks configuration, discovers local/MCP candidates,
+then resolves dependencies against the effective catalog. Dependency chains
+are supported. A self-dependency or a closed dependency cycle cannot establish
+availability and stays unavailable. MCP recovery reapplies dependency checks,
+so a recovered service can restore its dependents without forcing tools on.
+
+Request restrictions use the same dependency closure. If a request excludes
+Gmail send, it also excludes the command inbox. Discovery and direct execution
+both enforce this boundary. A request allowlist must include any dependencies
+needed by the allowed tool; adding only the parent name is insufficient.
+These checks restrict visibility and execution without removing tools from the
+shared registry. A restricted nested request does not stop its dispatcher's
+shared MCP clients.
+
+`requires_tools` is different from top-level `prerequisite_tools`:
+
+- `requires_tools` is a hard availability requirement.
+- `prerequisite_tools` is a discovery hint for tools that help obtain inputs,
+  such as finding an ID before looking up an entity. It does not enforce access
+  or guarantee that the prerequisite is available.
+
+### Static and Web diagnostics
+
+`manage-tools.py list` and `profile export` do not start MCP connections. Without
+a live catalog, a config-ready `requires_tools` check returns **unknown** with
+`tool catalog required`; the list displays it as unverified. Missing config can
+still produce a definite unavailable result. Unknown does not mean the server
+is down and does not authorize execution.
+
+Web dependency metadata inspects an existing registry for that mode, filtered
+by profile and surface blocks. It does not open another MCP connection or use
+cached Tool RAG rows as proof of discovery. Before a registry exists, dependency
+availability is unknown and the dependent is not offered as enabled. Subsequent
+metadata reads update this state after registry creation or recovery. This is
+a discovery snapshot, not a continuous remote health probe.
+
+## Profiles and MCP configuration
+
+Profiles are JSON overlays in `skills/profiles/<name>.json`:
+
+```json
+{
+  "description": "Keep normal tools, disable autonomous workflow selection.",
+  "overrides": {
+    "workflow": false,
+    "ssh_remote": false
+  }
+}
+```
+
+Select the stem in the mode's environment file:
+
+```dotenv
+JARVIS_TOOL_PROFILE=my_profile
+```
+
+Omitted tools retain their manifest defaults. Unknown names do not create tools.
+Copy a template from `skills/profiles/examples/`, edit the destination overlay,
+restart services, and sync that mode. `profile export` is a diagnostic report,
+not a ready-to-load profile file. See the [profile templates](../skills/profiles/examples/README.md).
+
+MCP servers live in `config/mcp-servers.json`. Their enable flags and transport
+configuration determine discovery; profiles can then disable individual
+`mcp_<server>_<tool>` names. Enabling a local manifest does not start a disabled
+MCP integration. See [MCP setup](mcp/MCP_QUICKSTART.md),
+[remote transports](mcp/MCP_REMOTE_TRANSPORT.md), and the relevant integration's
+own setup guide. Optional local tools use reviewed `child_environment` policies;
+MCP services use their server configuration instead.
+
+The optional manifest `proxy_policy` controls networking at runtime:
+`inherit`, `off`, `prefer`, or fail-closed `require`. It is not an availability
+requirement. See [network proxy configuration](NETWORK_PROXY.md).
+
+## Discovery, hints, workflows, and background tasks
+
+`tool_search` and `workflow` are promoted as discovery candidates only while
+present in the effective registry and permitted for the request. A manifest,
+profile, or request exclusion can disable either one normally.
+
+Disabling the `workflow` meta-tool stops autonomous discovery/execution through
+that tool. It does not disable explicit slash workflows or scheduled workflow
+tasks. Those entry points still check component-tool availability and their
+execution surface's restrictions.
+
+Tool descriptions should include a few representative user phrases to help
+semantic ranking. A selected tool hint expresses user intent; adding an
+integration should not silently inject preference hints for generic requests.
+Intentional attachment actions can have their own narrowly defined tool policy.
+Intelligence insights can inform selection within the permitted catalog.
+
+Selecting a tool for Web background execution is another layer, separate from
+availability. Only reviewed adapters can be admitted, and admission validates
+arguments and background constraints before creating a job. Provider-hosted
+search tools are also separate from the local/MCP catalog. A restricted request
+allowlist disables provider-hosted tools and explicit workflow routing so they
+cannot bypass that boundary. See [background tasks](BACKGROUND-TASKS.md).
+
+## Measure Tool RAG behavior
+
+The total enabled catalog is not the number of schemas sent to the model.
+Inspect the final shortlist before attributing context size or latency to a tool:
+
+```dotenv
+TOOL_RAG_TRACE_ENABLED=true
+```
+
+Traces are written to `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl`. Useful fields
+include `final_tool_count`, `tool_schema_chars`, `tool_schema_est_tokens`,
+`tool_schema_top`, `ranked_tools`, and `excluded_tools`. Compare representative
+queries in the same mode/model. Character-based token estimates are approximate;
+there is no fixed percentage saving from disabling a particular tool.
+
+Execution logs in `logs/tools/` record calls under the `tool` key. For example:
+
+```bash
+jq -r '.tool' logs/tools/*.jsonl | sort | uniq -c | sort -rn
+```
+
+Treat logs as private: they may contain requests, file references and results.
+See [Tool RAG strategy](TOOL_RAG_STRATEGY.md) and
+[the tool calling system](TOOL_CALLING_SYSTEM.md).
 
 ## Troubleshooting
 
-### Tool Not Loading
-
-```bash
-# Check if it's disabled
-./bin/manage-tools.py list | grep my_tool
-
-# Enable it
-./bin/manage-tools.py enable my_tool
-```
-
-### "Tool not found" Error
-
-```bash
-# List available tools
-./bin/manage-tools.py list
-
-# Check tool file exists
-ls -la skills/my_tool.tool.json
-```
-
-### Performance Issues with Local Models
-
-```bash
-# Check baseline token count
-cat logs/baseline-tokens-local.json
-
-# Disable heavy tools
-./bin/manage-tools.py disable opencode     # -500 tokens
-./bin/manage-tools.py disable network_tools # token savings depend on active schema
-./bin/manage-tools.py disable api_call     # -300 tokens
-```
-
-## Profiles
-
-Profiles are implemented as overlays under `skills/profiles/<name>.json`:
-
-```json
-{
-  "description": "Default tools without autonomous workflow selection.",
-  "overrides": {
-    "workflow": false
-  }
-}
-```
-
-Select one with `JARVIS_TOOL_PROFILE=<name>`, restart services, and run
-`./bin/sync-tools.py <cloud|local>`. Use
-`./bin/manage-tools.py profile show` and `profile export` to inspect the active
-overlay. See `skills/README.md`.
-
-## Future Enhancements
-
-### Auto-Detection (Not Yet Implemented)
-
-Automatically disable unused tools after 7 days:
-```bash
-./bin/manage-tools.py auto-disable --unused-days 7
-```
-
-## Summary
-
-✅ **Implemented:**
-- Enable/disable field in tool.json
-- Tool discovery respects enabled flag
-- Management utility (`manage-tools.py`)
-- Documentation updated
-- All tools migrated
-
-✅ **No Breaking Changes:**
-- Backward compatible (defaults to true)
-- No hardcoded tool dependencies
-- Safe to enable/disable anytime
-
-✅ **Benefits:**
-- 30-50% token reduction possible
-- Faster responses
-- Easier testing
-- Better organized tool library
-
-## See Also
-
-- `docs/TOOL_CALLING_SYSTEM.md` - Tool system overview
-- `skills/README.md` - Creating custom tools
-- `config/mcp-servers.json` - MCP server configuration
-
----
-
-## Tool Roadmap & Brainstorm
-
-### Current Coverage (Tool Manifests)
-
-#### Local Tools by Category
-
-| Category | Tools | Count |
-|----------|-------|-------|
-| **Memory** | remember, recall, search_memory, semantic_recall, deep_memory_search, forget, update_memory | 7 |
-| **Conversations** | get_recent_conversations, search_conversations | 2 |
-| **Intelligence** | manage_intel, ingest_intel | 2 |
-| **Reminders/Alerts** | create_reminder, list_reminders, acknowledge_reminders, list_alerts, acknowledge_alerts, price_alert | 6 |
-| **Development** | opencode, check_opencode_sessions, check_tool_logs, query_service_logs | 4 |
-| **Communication** | send_email, send_webhook, phone_call, openclaw | 4 |
-| **External APIs** | api_call, crypto_price, stock_price, weather, get_time | 5 |
-| **Media & Content** | spotify, generate_music, youtube_transcript, crawl_url, screenshot_url | 5 |
-| **Image & Vision** | generate_image, analyze_image, upload_cloudflare | 3 |
-| **Artifacts** | stash, canvas, pdf_create, pdf_read, printer | 5 |
-| **System** | speaker_volume, ssh_remote | 2 |
-| **Auto-Tools** | network_tools, system_monitor, text_summarizer, status_recap, generate_password | 5 |
-| **Utility** | calculator | 1 |
-
-**Recount live manifests (do not trust a stale hard-coded total):**
-
-```bash
-find skills -name '*.tool.json' | wc -l
-```
-
-At last check this tree had **69** `*.tool.json` manifests. Profile overlays and
-per-mode availability can reduce the active set.
-#### MCP Servers (4 configured)
-
-| Server | Capability | Status | Notes |
-|--------|------------|--------|-------|
-| `brave_search` | Web search | ✅ Enabled | Primary search, Pro AI API |
-| `fetch` | HTTP GET/POST | ✅ Enabled | URL content retrieval (static HTML) |
-| `sequentialthinking` | Deep reasoning | ❌ Disabled | For complex reflection |
-| `playwright` | Browser automation | ❌ Disabled | JS-heavy sites, forms, screenshots, PDFs |
-
----
-
-### Completed Tools (Previously on Roadmap)
-
-These tools from the original roadmap have been implemented:
-
-| Tool | Status | Implementation |
-|------|--------|----------------|
-| ✅ **weather** | Done 11-29-2025 | Local tool (OpenWeatherMap API) |
-| ✅ **calendar** | Done 11-26-2025 | n8n workflows (Google Calendar sync) |
-| ✅ **spotify** | Done | Local tool (Spotify Web API) |
-| ✅ **stock_price** | Done | Local tool (yfinance - stocks, futures, forex) |
-| ✅ **screenshot** | Done | `screenshot_url` - Full page capture with AI vision |
-| ✅ **image_generate** | Done | `generate_image` - Gemini 3 Pro with Search Grounding |
-| ✅ **pdf_extract** | Done | `pdf_read` - Text extraction, merge, split, search |
-| ✅ **youtube_transcript** | Done | `youtube_transcript` - Download video transcripts |
-
----
-
-### Missing Tools - Priority List
-
-#### 🔴 HIGH PRIORITY (Most Useful)
-
-| Tool | Description | Implementation |
-|------|-------------|----------------|
-| **slack_message** | Send Slack messages, read channels | n8n workflow (Slack node) |
-| **file_search** | Search files by name/content in workspace | Local tool (Python subprocess) |
-| **clipboard** | Read/write system clipboard | Local tool (pyperclip) |
-
-#### 🟡 MEDIUM PRIORITY (Nice to Have)
-
-| Tool | Description | Implementation |
-|------|-------------|----------------|
-| **todoist** | Task management (add, complete, list) | MCP or n8n |
-| **youtube_search** | Search YouTube videos | MCP or n8n |
-| **github_issues** | Create/list GitHub issues & PRs | MCP: `@modelcontextprotocol/github` |
-| **translate** | Language translation | Local tool (googletrans) |
-| **rss_feed** | Read RSS/Atom feeds | Local tool (feedparser) |
-| **qr_code** | Generate/read QR codes | Local tool (qrcode/pyzbar) |
-
-#### 🟢 LOW PRIORITY (Future Ideas)
-
-| Tool | Description | Implementation |
-|------|-------------|----------------|
-| **home_assistant** | Smart home control (lights, locks, etc.) | n8n or direct API |
-| **mqtt_publish** | IoT device messaging | Local tool (paho-mqtt) |
-| **sms_send** | Send SMS via Twilio | n8n workflow |
-| **discord_message** | Post to Discord channels | n8n workflow |
-| **maps_directions** | Get directions, travel time | n8n (Google Maps node) |
-| **linear_issues** | Linear.app issue tracking | MCP: `@anthropics/linear-mcp` |
-| **notion** | Notion page read/write | MCP or n8n |
-
-> **Note:** OCR is handled by `analyze_image` tool which can extract text from images via vision models.
-
----
-
-### Implementation Guide
-
-#### Option 1: Local Tool (Python Script)
-Best for: Simple, fast, no external dependencies
-
-```bash
-# Create tool files
-touch skills/weather.py skills/weather.tool.json
-
-# Not yet implemented: ./bin/manage-tools.py template weather
-# Use `init` or copy an existing tool as a starting point instead.
-```
-
-**Pros:** Fast, no network latency, full control
-**Cons:** Must implement yourself, maintain code
-
-#### Option 2: MCP Server (Docker/npx)
-Best for: Complex tools, community-maintained
-
-```json
-// config/mcp-servers.json
-{
-  "mcpServers": {
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": { "GITHUB_TOKEN": "..." }
-    }
-  }
-}
-```
-
-**Available MCP Servers:**
-- `@modelcontextprotocol/server-github` - GitHub integration
-- `@modelcontextprotocol/server-slack` - Slack integration
-- `@modelcontextprotocol/server-google-maps` - Maps/directions
-- `@modelcontextprotocol/server-puppeteer` - Browser automation
-- See: https://github.com/modelcontextprotocol/servers
-
-**Pros:** Pre-built, tested, community support
-**Cons:** Docker/npx overhead, external dependency
-
-#### Option 3: n8n Workflow
-Best for: Complex integrations, visual design, auth handling
-
-```bash
-# n8n exposes workflows as webhooks
-# Create workflow in n8n UI, then call via send_webhook
-
-# Example: Slack message via n8n
-./orchestrator/orchestrator_v2.py cloud "Send a Slack message to #general: Hello team!"
-# → Uses send_webhook to trigger n8n workflow
-```
-
-**n8n Advantages:**
-- 400+ pre-built integrations (Slack, Google, Notion, etc.)
-- OAuth handling built-in
-- Visual workflow debugging
-- Can combine multiple services in one call
-
-**Recommended n8n Workflows:**
-| Workflow | Triggers | Actions |
-|----------|----------|---------|
-| `slack-message` | Webhook | Slack: Post Message |
-| `calendar-events` | Webhook | Google Calendar: Get Events |
-| `spotify-control` | Webhook | Spotify: Play/Pause/Search |
-| `todoist-tasks` | Webhook | Todoist: Create/List Tasks |
-| `sms-alert` | Webhook | Twilio: Send SMS |
-
----
-
-### Quick Win Tools (Easy to Add)
-
-These remaining tools can be implemented in < 1 hour:
-
-#### 1. File Search Tool
-```python
-# skills/file_search.py
-import subprocess
-result = subprocess.run(['find', path, '-name', pattern], capture_output=True)
-# Or use ripgrep for content search:
-result = subprocess.run(['rg', '-l', pattern, path], capture_output=True)
-```
-
-#### 2. Clipboard Tool
-```python
-# skills/clipboard.py
-import pyperclip
-content = pyperclip.paste()  # Read
-pyperclip.copy(text)         # Write
-```
-
-#### 3. Translate Tool
-```python
-# skills/translate.py
-from googletrans import Translator
-translator = Translator()
-result = translator.translate(text, dest=target_lang)
-```
-
-#### 4. RSS Feed Tool
-```python
-# skills/rss_feed.py
-import feedparser
-feed = feedparser.parse(url)
-entries = [{'title': e.title, 'link': e.link} for e in feed.entries[:10]]
-```
-
----
-
-### Tool Categories - Current Status
-
-| Category | Rating | Tools | Notes |
-|----------|--------|-------|-------|
-| **Memory & Context** | ⭐⭐⭐⭐⭐ | 7 tools + deep_memory_search | Excellent - FTS5, semantic, cross-source |
-| **Development/Coding** | ⭐⭐⭐⭐⭐ | opencode, ssh_remote | OpenCode handles coding, SSH handles configured remote hosts |
-| **Web Search & Scraping** | ⭐⭐⭐⭐⭐ | brave_search, crawl_url, screenshot_url, fetch | Stealth scraping, vision analysis |
-| **Communication** | ⭐⭐⭐⭐ | send_email, phone_call, send_webhook, openclaw | Missing: Slack, Discord |
-| **Productivity** | ⭐⭐⭐⭐ | calendar (n8n), reminders, alerts, canvas, stash | Missing: Todoist, Notion |
-| **Media** | ⭐⭐⭐⭐⭐ | spotify, generate_music, youtube_transcript | Full Spotify control, AI music |
-| **Finance** | ⭐⭐⭐⭐⭐ | crypto_price, stock_price, price_alert | Crypto, stocks, futures, forex, alerts |
-| **Image & Vision** | ⭐⭐⭐⭐⭐ | generate_image, analyze_image, upload_cloudflare | AI gen, vision, CDN upload |
-| **Documents** | ⭐⭐⭐⭐ | pdf_create, pdf_read, printer | Create, read, merge, split, print |
-| **System/Local** | ⭐⭐⭐ | speaker_volume, system_monitor, network_tools | Missing: clipboard |
-| **Smart Home** | ⭐ | (none) | Future: Home Assistant, MQTT |
-
----
-
-### Recommended Next Steps
-
-1. ✅ ~~**Add Weather**~~ - Done 11-29-2025
-2. ✅ ~~**Add Calendar Integration**~~ - Done 11-26-2025
-3. ✅ ~~**Add Spotify**~~ - Done
-4. ✅ ~~**Add Stock Prices**~~ - Done
-5. **Add Slack Integration** - n8n workflow for team comms
-6. **Add File Search** - Local tool for workspace search
-7. **Add Clipboard** - Quick data transfer
-
-### MCP Servers to Consider
-
-```bash
-# GitHub (issues, PRs, repos)
-npx -y @modelcontextprotocol/server-github
-
-# Slack (messages, channels)
-npx -y @modelcontextprotocol/server-slack
-
-# Google Maps (directions, places)
-npx -y @modelcontextprotocol/server-google-maps
-
-```
-
----
-
-## Playwright MCP Server (Browser Automation)
-
-[Playwright MCP Server](https://github.com/microsoft/playwright-mcp)
-
-### Why Playwright?
-
-| Scenario | `fetch` MCP | `playwright` MCP |
-|----------|-------------|------------------|
-| Static HTML pages | ✅ Fast, lightweight | ⚠️ Overkill |
-| JavaScript SPAs (React, Vue) | ❌ Returns empty HTML | ✅ Renders JS first |
-| Login/authentication flows | ❌ No session handling | ✅ Full browser state |
-| Form filling & submission | ❌ No interaction | ✅ Click, type, submit |
-| Screenshots & PDFs | ❌ Not supported | ✅ Built-in |
-| CAPTCHA handling | ❌ No | ⚠️ Basic (vision mode) |
-
-**Rule of thumb:** Try `fetch` first. If page is blank/broken, switch to `playwright`.
-
-### Configuration (Headless Ubuntu)
-
-```json
-"playwright": {
-  "command": "docker",
-  "args": [
-    "run", "-i", "--rm", "--init",
-    "--network", "host",
-    "-v", "/tmp/playwright-output:/output",
-    "mcr.microsoft.com/playwright/mcp",
-    "--headless",
-    "--no-sandbox",
-    "--browser", "chromium",
-    "--caps", "pdf",
-    "--timeout-action", "30000",
-    "--timeout-navigation", "60000",
-    "--viewport-size", "1920x1080"
-  ],
-  "description": "Browser automation for JS-heavy sites",
-  "enabled": true
-}
-```
-
-### Key Options Explained
-
-| Flag | Purpose | Home Lab Recommendation |
-|------|---------|------------------------|
-| `--headless` | No display required | ✅ Required for Ubuntu server |
-| `--no-sandbox` | Docker compatibility | ✅ Required in containers |
-| `--browser chromium` | Browser engine | Chromium (default, fastest) |
-| `--caps pdf` | Enable PDF generation | Optional, adds `browser_pdf_save` |
-| `--caps vision` | Coordinate-based clicks | For complex UI automation |
-| `--timeout-action 30000` | 30s per action (click, type) | Increase for slow sites |
-| `--timeout-navigation 60000` | 60s for page loads | Increase for heavy pages |
-| `--viewport-size 1920x1080` | Screen size | Standard desktop |
-| `--isolated` | Memory-only, no disk | Security for untrusted sites |
-
-### Advanced Options
-
-```json
-// Add to args array as needed:
-"--allowed-origins", "https://trusted.com",     // Restrict navigation
-"--blocked-origins", "https://ads.com",         // Block domains
-"--proxy-server", "http://yourproxy:3128",      // Route through proxy currently does not support http://user:pass@host:port
-"--user-agent", "Mozilla/5.0...",               // Custom UA
-"--storage-state", "/state/state.json",         // Persist cookies/auth
-"--save-trace"                                   // Debug traces to /output
-```
-
-### Playwright Tools Available
-
-| Tool | Description | Example Use |
-|------|-------------|-------------|
-| `browser_navigate` | Go to URL | Navigate to login page |
-| `browser_click` | Click element | Click "Submit" button |
-| `browser_type` | Type into field | Fill username/password |
-| `browser_snapshot` | Get page accessibility tree | Better than screenshot for LLM |
-| `browser_take_screenshot` | Capture image | Visual verification |
-| `browser_pdf_save` | Save page as PDF | Generate reports |
-| `browser_evaluate` | Run JavaScript | Extract dynamic data |
-| `browser_select_option` | Dropdown selection | Choose from menus |
-| `browser_wait_for` | Wait for element/text | Handle loading states |
-| `browser_tabs` | Manage tabs | Multi-tab workflows |
-
-### Example Workflows
-
-**1. Scrape JS-heavy dashboard:**
-```
-User: "Get my server stats from the Proxmox dashboard"
-→ browser_navigate(url="https://proxmox:8006")
-→ browser_type(ref="#username", text="root")
-→ browser_type(ref="#password", text="***")
-→ browser_click(ref="#login-btn")
-→ browser_snapshot() → Extract stats from accessibility tree
-```
-
-**2. Generate PDF report:**
-```
-User: "Save this webpage as PDF"
-→ browser_navigate(url="https://example.com/report")
-→ browser_pdf_save(filename="report.pdf")
-```
-
-**3. Fill web form:**
-```
-User: "Submit a support ticket on the portal"
-→ browser_navigate(url="https://support.example.com")
-→ browser_type(ref="#subject", text="Server issue")
-→ browser_type(ref="#description", text="...")
-→ browser_click(ref="#submit")
-```
-
-### When NOT to Use Playwright
-
-- Simple API calls → Use `api_call` tool
-- Static HTML pages → Use `fetch` MCP (10x faster)
-- File downloads → Use `fetch` or `api_call`
-- Frequent polling → Too slow, use dedicated monitoring
-
-### Troubleshooting
-
-```bash
-# Test Playwright MCP manually
-docker run -it --rm mcr.microsoft.com/playwright/mcp --help
-
-# Check if running
-docker ps | grep playwright
-
-# View screenshots/PDFs
-ls -la /tmp/playwright-output/
-
-# Increase timeout for slow sites
-# Add: "--timeout", "120000" (2 minutes)
-```
-
-### Security Notes
-
-- **Headless Ubuntu:** `--no-sandbox` is safe inside Docker
-- **Allowed origins:** Restrict to trusted domains in production
-- **Storage state:** Mount read-only (`/host/state:/state:ro`)
-- **Isolated mode:** Use `--isolated` for untrusted URLs
+| Symptom | Check |
+| --- | --- |
+| Enabled but unavailable | Read `missing` and `setup_hint`; verify config in the selected mode, then restart/sync. |
+| Dependent marked unverified | A static inspector has no live catalog. Check runtime discovery; do not bypass `requires_tools`. |
+| Dependent missing despite credentials | Check its enable flag and every exact dependency name, MCP discovery, profile, global blocks, and Web/request restrictions. |
+| Tool remains disabled after `enable` | Check the active profile; its override wins. |
+| Old DB row still visible | Restart the relevant runtime and sync that mode. Persisted metadata is not execution authority. |
+| Available but never chosen | Inspect Tool RAG traces, user phrases, description and final schema cap; availability does not force ranking. |
+| Tool found but request denied | Check surface exclusions, the request allowlist and dependency closure; do not force-register it. |
+| Workflow cannot run | Check each step against the execution catalog and surface, even when the workflow itself is enabled. |
+| Configured service fails during execution | Availability is not a health monitor. Inspect bounded tool errors, service logs and runtime timeout/recovery behavior. |
+
+For a new first-class tool, use [the authoring guide](../skills/README.md) and
+its own `docs/tools/<tool>/README.md` for prerequisites, mode settings, examples,
+outputs, and troubleshooting. Tool ideas belong in [TOOL_IDEAS.md](TOOL_IDEAS.md)
+rather than this operational guide.

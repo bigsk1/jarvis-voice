@@ -1,0 +1,24 @@
+{
+  "enabled": true,
+  "name": "email_inbox",
+  "description": "Check Jarvis's opt-in Gmail command inbox using the approved senders in config/contacts.json. Examples: 'check Jarvis email requests', 'show email inbox command status', 'preview requests without replying'. status reports durable processing state; preview reads/authenticates candidates without executing or sending; poll executes admitted requests and sends sender-only threaded replies. Named attachments are verified and saved to Stash before the approved request runs; downstream actions require the configured tool allowlist. Configuration cannot be changed through this tool. Use Google Workspace Gmail tools for ordinary mailbox reads or outgoing messages.",
+  "script": "email_inbox.py",
+  "parameters": {
+    "type": "object",
+    "properties": {"action": {"type": "string", "enum": ["status", "preview", "poll"]}},
+    "required": ["action"],
+    "additionalProperties": false
+  },
+  "permissions": {"dangerous": false, "network": true, "filesystem": true, "bash": false, "auto_approve": false},
+  "availability": {
+    "enabled_env": "GOOGLE_WORKSPACE_MCP_ENABLED",
+    "requires_tools": [
+      "mcp_google_workspace_search_gmail_messages",
+      "mcp_google_workspace_get_gmail_message_content",
+      "mcp_google_workspace_send_gmail_message"
+    ],
+    "all_of_env": ["GOOGLE_ACCOUNT", "GOOGLE_WORKSPACE_MCP_TOKEN"],
+    "config_files": ["config/contacts.json"],
+    "setup_hint": "Enable Google Workspace and its Gmail search, message-read and send tools, then configure the opt-in jarvis_email section in config/contacts.json."
+  }
+}

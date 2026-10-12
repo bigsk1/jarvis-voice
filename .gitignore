@@ -10,6 +10,7 @@ config/*.env.craft-new
 *.key
 *.pem
 config/contacts.json
+data/email-inbox/
 config/ntfy.json
 config/webhook_registry.json
 config/elevenlabs_voices.json

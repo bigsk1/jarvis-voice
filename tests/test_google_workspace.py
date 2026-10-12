@@ -521,6 +521,7 @@ def test_stash_bridge_uses_configured_origin_and_canonical_root_and_preserves_fo
     result = connection.call_tool('get_drive_file_download_url', {'file_id': 'drive-id', 'stash': True})
     assert result['ok']
     artifact = result['data']['artifacts'][0]
+    assert result['data']['links'] == []  # Temporary authenticated URL is replaced by Stash.
     assert artifact['ref'].startswith('stash://')
     assert artifact['download_url'].endswith('?mode=cloud')
     assert list(root.glob('*/test.pdf'))[0].read_bytes() == b'%PDF-test'
@@ -1041,3 +1042,27 @@ def test_google_effect_classification_keeps_operator_selected_autonomy():
     assert schema.permissions['dangerous'] is True
     assert schema.permissions['auto_approve'] is True
     assert not schema.requires_confirmation()
+
+
+@pytest.mark.parametrize('message_id, attachment_id, index, expected', [
+    ('abc1', 'att_0', 0, True),
+    ('def2', 'att_0', 0, False),
+    ('abc1', 'different', 0, False),
+    ('abc1', 'att_0', 1, False),
+])
+def test_gmail_attachment_footer_preserves_complete_identifiers_only(message_id, attachment_id, index, expected):
+    text = '--- BODY ---\n' + 'body\n' * 5000 + (
+        '\n--- ATTACHMENTS ---\n1. invoice.pdf (application/pdf, 20.0 KB)\n'
+        '   Attachment ID: att_0\n'
+        f"   Use get_gmail_attachment_content(message_id='{message_id}', "
+        f"attachment_id='{attachment_id}', attachment_index={index}) to download\n"
+    )
+    result = normalize_workspace_result('get_gmail_message_content',
+        {'content': [{'type': 'text', 'text': text}]}, {'message_id': 'abc1', 'body_format': 'text'})
+    assert result['data']['response_truncated']
+    assert bool(result['data']['gmail_attachments']) is expected
+    if expected:
+        assert result['data']['gmail_attachments'] == [{
+            'name': 'invoice.pdf', 'mime_type': 'application/pdf',
+            'attachment_id': 'att_0', 'attachment_index': 0,
+        }]

@@ -513,6 +513,9 @@ class Orchestrator:
         self._previous_experience_id_for_correction = None
         # Internal repair/meta passes can disable learning to avoid polluting experiences.
         self.learning_enabled = True
+        # Restricted channels can keep their own history without reading or
+        # writing the operator's shared personal context.
+        self.personal_context_enabled = True
         # Web chat can skip reflection_queue inserts without stopping experience recording.
         self.reflection_queue_enabled = True
     
@@ -1349,6 +1352,7 @@ Mode: {self.mode}
                 request_kind: str = '',
                 tool_rag_limit: int | None = None,
                 tool_policy: str = 'auto',
+                allowed_tools: list[str] | None = None,
                 _retry_state: TurnState | None = None) -> dict[str, Any]:
         """
         Process user transcript and execute tools or respond.
@@ -1375,6 +1379,8 @@ Mode: {self.mode}
             tool_rag_limit: Optional one-request cap for final Tool RAG schemas.
             tool_policy: ``none`` disables Tool RAG, client tools, workflows,
                          and provider-hosted tools for a direct chat response.
+            allowed_tools: Optional exact client-tool allowlist. Restricted
+                           requests disable workflows and provider-hosted tools.
             _retry_state: Internal only. Carries in-flight orchestrator state across
                          recursive tool-failure retries so UI events and accumulated
                          results stay consistent within one user request.
@@ -1403,6 +1409,8 @@ Mode: {self.mode}
 
         tool_policy = 'none' if tool_policy == 'none' else 'auto'
         chat_only_mode = tool_policy == 'none'
+        if allowed_tools is not None or getattr(self.executor, 'allowed_tools', None) is not None:
+            self.executor.set_allowed_tools(allowed_tools)
         
         # Store tool overrides for this request
         self._tool_overrides = tool_overrides or {}
@@ -1411,8 +1419,12 @@ Mode: {self.mode}
         required_exclusions = set() if chat_only_mode else background_only_exclusions(
             getattr(self, 'registry', None), background_context)
         excluded_tools = sorted(set(excluded_tools or []) | required_exclusions)
+        if allowed_tools is not None:
+            excluded_tools = sorted(set(excluded_tools) | (set(self.registry.list_tools()) - set(allowed_tools)))
         self.executor.background_context = background_context
         self.executor.set_excluded_tools(excluded_tools)
+        if callable(getattr(type(self.executor), '_effective_exclusions', None)):
+            excluded_tools = sorted(self.executor._effective_exclusions())
         
         # Reset status updater for new task
         self.status_updater.reset()
@@ -1420,7 +1432,7 @@ Mode: {self.mode}
         # Check for explicit workflow commands (e.g., /research, /note, /health)
         # These bypass normal LLM routing and execute a predefined pipeline
         workflow_query = extract_current_user_request(transcript) if getattr(self, 'background_context', None) else transcript
-        workflow_result = None if chat_only_mode else self._try_workflow(workflow_query)
+        workflow_result = None if chat_only_mode or allowed_tools is not None else self._try_workflow(workflow_query)
         if workflow_result:
             return workflow_result
         
@@ -1470,14 +1482,15 @@ Mode: {self.mode}
 
         # Auto-inject relevant memories (semantic search + recency weighting)
         # Works for CLI, WebUI, wake word - all go through orchestrator.process()
-        memory_bundle = self._get_relevant_memories_bundle(retrieval_query)
+        memory_bundle = self._get_relevant_memories_bundle(retrieval_query) if getattr(
+            self, 'personal_context_enabled', True) else {"context": "", "meta": {}}
         memory_context = memory_bundle.get("context", "")
         memory_meta = memory_bundle.get("meta", {})
         if memory_context:
             enhanced_transcript = f"{memory_context}\n\n{enhanced_transcript}"
         
         # Inject learned insights from self-learning intelligence
-        if chat_only_mode:
+        if chat_only_mode or not getattr(self, 'personal_context_enabled', True):
             learning_context, applied_insights = "", []
         else:
             learning_context, applied_insights = self._get_learning_insights(
@@ -1620,6 +1633,7 @@ Mode: {self.mode}
             )
             disable_server_side_tools = (
                 chat_only_mode
+                or allowed_tools is not None
                 or client_search_hint_active
                 or (native_search_remaining is not None and native_search_remaining <= 0)
                 or (
@@ -2425,6 +2439,7 @@ Mode: {self.mode}
                             request_kind=request_kind,
                             tool_rag_limit=tool_rag_limit,
                             tool_policy=tool_policy,
+                            allowed_tools=allowed_tools,
                             _retry_state=state.for_retry(turn_num),
                         )
                     
@@ -4238,6 +4253,8 @@ Your synthesized response:"""
                           execution_time_ms: float = None, token_info: dict = None,
                           experience_id: int | None = None):
         """Auto-log conversation to memory database with metadata."""
+        if not getattr(self, 'personal_context_enabled', True):
+            return
         if getattr(getattr(self, 'background_context', None), 'receipts', None):
             # The durable Web receipt is pending work, not a graded outcome.
             return

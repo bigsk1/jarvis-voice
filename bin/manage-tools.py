@@ -114,6 +114,8 @@ def list_tools(verbose: bool = False) -> None:
             availability = check_tool_availability(config)
             if not eff:
                 status = f"{RED}⊝ disabled{RESET}"
+            elif availability.status == "unknown":
+                status = f"{YELLOW}? unverified{RESET}"
             elif not availability.available:
                 status = f"{YELLOW}🔒 unavailable{RESET}"
             else:
@@ -328,6 +330,7 @@ def cmd_profile_export() -> None:
                 "base_enabled": base,
                 "effective_enabled": effective_enabled(name, base, overrides),
                 "available": availability.available,
+                "availability_status": availability.status,
             }
             if not availability.available:
                 entry["missing_requirements"] = list(availability.missing)

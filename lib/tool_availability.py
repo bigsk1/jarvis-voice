@@ -12,6 +12,8 @@ requirement names or safe config-file paths only.
 Manifest schema (all keys optional; no "availability" block = always available):
 
   "availability": {
+    "enabled_env": "OPTIONAL_SERVICE_ENABLED",
+    "requires_tools": ["mcp_service_required_tool"],
     "all_of_env": ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
     "any_of_env": ["BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY"],
     "config_files": ["data/.spotify_cache"],
@@ -27,6 +29,9 @@ Manifest schema (all keys optional; no "availability" block = always available):
   }
 
 Semantics:
+  - enabled_env: the named Boolean enable flag must be true
+  - requires_tools: all named tools must be callable in the supplied catalog;
+    without a catalog, status is unknown and availability fails closed
   - all_of_env: every named key must be present and non-blank
   - any_of_env: at least one named key must be present and non-blank
   - config_files: every project-relative (or absolute/~) path must be a
@@ -213,7 +218,7 @@ def _malformed(setup_hint: str | None = None) -> AvailabilityResult:
     )
 
 
-def check_availability_block(block: Any) -> AvailabilityResult:
+def check_availability_block(block: Any, *, available_tools=None, check_dependencies=True) -> AvailabilityResult:
     """Evaluate a single `availability` block against the active config scope."""
     if block is None:
         return AvailabilityResult(status="available")
@@ -228,21 +233,41 @@ def check_availability_block(block: Any) -> AvailabilityResult:
         "all_of_env", "any_of_env", "config_files", "webhook_registry", "all_of_commands",
         "provider_setting", "provider_default", "provider_requirements",
         "setup_hint",
+        "enabled_env", "requires_tools",
     }
     requirement_keys = {
         "all_of_env", "any_of_env", "config_files", "webhook_registry", "all_of_commands",
         "provider_requirements",
+        "enabled_env", "requires_tools",
     }
     present = set(block.keys())
+    if present - known_keys:
+        return _malformed(setup_hint)
     if not (present & requirement_keys):
-        # setup_hint-only or unknown-only blocks: nothing enforceable.
-        # Unknown keys alone are treated as malformed (fail closed) so typos
-        # like "allof_env" don't silently make a tool unconditionally available.
-        if present - known_keys:
-            return _malformed(setup_hint)
+        # A setup hint without requirements does not restrict availability.
         return AvailabilityResult(status="available", setup_hint=setup_hint)
 
     missing: list[str] = []
+    dependency_pending = False
+
+    enabled_env = block.get("enabled_env")
+    if enabled_env is not None:
+        if not isinstance(enabled_env, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", enabled_env):
+            return _malformed(setup_hint)
+        if str(get_config_value(enabled_env, "false")).strip().lower() not in {"1", "true", "yes", "on"}:
+            missing.append(f"enabled: {enabled_env}")
+
+    required_tools = block.get("requires_tools")
+    if required_tools is not None:
+        names = _validate_env_names(required_tools)
+        if names is None:
+            return _malformed(setup_hint)
+        if check_dependencies:
+            if available_tools is None:
+                dependency_pending = True
+            else:
+                callable_names = set(available_tools)
+                missing.extend(f"tool: {name}" for name in names if name not in callable_names)
 
     commands = block.get("all_of_commands")
     if commands is not None:
@@ -323,16 +348,40 @@ def check_availability_block(block: Any) -> AvailabilityResult:
 
     if missing:
         result.status = "unavailable"
+    elif dependency_pending:
+        result.status = "unknown"
+        result.missing = ["tool catalog required"]
     return result
 
 
-def check_tool_availability(manifest: dict[str, Any]) -> AvailabilityResult:
+def check_tool_availability(manifest: dict[str, Any], *, available_tools=None, check_dependencies=True) -> AvailabilityResult:
     """Evaluate a tool manifest's availability block. Never raises."""
     try:
-        return check_availability_block(manifest.get("availability"))
+        return check_availability_block(manifest.get("availability"), available_tools=available_tools,
+                                        check_dependencies=check_dependencies)
     except Exception:
         # Fail closed for this tool only; never crash registry construction.
         return _malformed()
+
+
+def resolve_tool_dependencies(manifests: dict[str, dict], available_tools) -> dict[str, AvailabilityResult]:
+    """Resolve dependency chains against a supplied catalog, without discovery.
+
+    Callers supply config-ready local candidates alongside discovered MCP tools.
+    Build dependency chains from independent tools until the catalog is stable.
+    """
+    # Build from independent tools. A self-dependency or a closed cycle cannot
+    # prove its own prerequisites by simply being present in the candidate set.
+    candidates = set(available_tools)
+    names = candidates - set(manifests)
+    while True:
+        results = {name: check_tool_availability(manifest, available_tools=names)
+                   for name, manifest in manifests.items()}
+        next_names = names | {name for name, result in results.items()
+                              if name in candidates and result.available}
+        if names == next_names:
+            return results
+        names = next_names
 
 
 # Shared provider -> required env keys map for the media generation tools.

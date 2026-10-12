@@ -479,6 +479,7 @@ class ToolRegistry:
         # active mode: name -> AvailabilityResult (diagnostics for sync,
         # manage-tools, and web discovery; never contains secret values).
         self.unavailable_tools: dict[str, Any] = {}
+        self._dependent_tools = {}
         self._registry_verbose = sys.stdout.isatty() and not os.environ.get("JARVIS_JSON_MODE")
         self._profile_name = get_active_profile_name()
         self._profile_overrides = load_active_profile_overrides()
@@ -495,6 +496,28 @@ class ToolRegistry:
 
         # Profile can disable MCP tools (always registered with implicit base enabled)
         self._remove_tools_disabled_by_profile()
+        self._refresh_tool_dependencies()
+
+    def _refresh_tool_dependencies(self):
+        """Hide hard dependents until their actual tools are callable."""
+        from config_loader import get_config_value
+        from tool_availability import resolve_tool_dependencies
+
+        candidates = getattr(self, '_dependent_tools', {})
+        if not candidates:
+            return
+        pool = {**self.tools, **{name: pair[1] for name, pair in candidates.items()
+                                if self._profile_overrides.get(name) is not False}}
+        blocked = {name.strip() for name in get_config_value('BLOCKED_TOOLS', '').split(',')}
+        results = resolve_tool_dependencies(
+            {name: pair[0] for name, pair in candidates.items()}, set(pool) - blocked)
+        for name, availability in results.items():
+            if availability.available and self._profile_overrides.get(name) is not False:
+                self.unavailable_tools.pop(name, None)
+            else:
+                pool.pop(name, None)
+                self.unavailable_tools[name] = availability
+        self.tools = pool
     
     def _remove_tools_disabled_by_profile(self) -> None:
         """Drop tools explicitly set to false in the active profile (e.g. MCP tools)."""
@@ -506,6 +529,16 @@ class ToolRegistry:
         if removed and self._registry_verbose:
             for name in sorted(removed):
                 print(f"⊝ Skipping {name} (disabled by tool profile '{self._profile_name}')")
+
+    def dependency_exclusions(self, excluded_tools=()):
+        """Apply hard dependencies to a request without mutating shared state."""
+        from tool_availability import resolve_tool_dependencies
+
+        excluded = set(excluded_tools)
+        manifests = {name: pair[0] for name, pair in getattr(self, '_dependent_tools', {}).items()
+                     if name in self.tools}
+        results = resolve_tool_dependencies(manifests, set(self.tools) - excluded)
+        return excluded | {name for name, result in results.items() if not result.available}
 
     def _discover_tools(self):
         """Auto-discover tools by finding .tool.json files."""
@@ -542,7 +575,9 @@ class ToolRegistry:
                 # Credential-aware availability: runs AFTER profile resolution
                 # so a profile force-enable cannot bypass a missing hard
                 # requirement. Only requirement NAMES are ever logged.
-                availability = check_tool_availability(tool_config)
+                # MCP discovery has run; local dependencies are finalized after
+                # all local manifests load, so file order cannot affect them.
+                availability = check_tool_availability(tool_config, check_dependencies=False)
                 if not availability.available:
                     self.unavailable_tools[name] = availability
                     if verbose:
@@ -551,6 +586,8 @@ class ToolRegistry:
 
                 schema = ToolSchema.from_json_file(str(tool_file))
                 self.tools[schema.name] = schema
+                if (tool_config.get('availability') or {}).get('requires_tools'):
+                    self._dependent_tools[schema.name] = (tool_config, schema)
                 if verbose:
                     print(f"✓ Registered tool: {schema.name}")
             except Exception as e:
@@ -798,6 +835,7 @@ class ToolRegistry:
                 registered_count += 1
         # Publish together; existing readers can finish iterating their snapshot.
         self.tools = {**self.tools, **pending}
+        self._refresh_tool_dependencies()
         return registered_count
 
     def _mcp_has_permitted_tools(self, server_name: str, excluded_tools: set[str] | tuple[str, ...] = ()) -> bool:
@@ -867,12 +905,15 @@ class ToolRegistry:
                         tools = probe_remote_tools(client, timeout_seconds=3)
                     if not tools:
                         continue
+                    previous_names = set(self.tools)
                     self._register_mcp_tools(name, client, server_config, tools)
                     self.mcp_manager.servers[name] = client
                     self.mcp_unavailable.pop(name, None)
                     if not self._mcp_has_permitted_tools(name):
                         client.stop()
                     recovered.extend(t for t in self.tools.values() if t.name.startswith(f"mcp_{name}_"))
+                    recovered.extend(t for key, t in self.tools.items()
+                                     if key not in previous_names and not key.startswith(f"mcp_{name}_"))
                 except Exception:
                     if docker:
                         client.stop()
@@ -1102,6 +1143,14 @@ class ToolRegistry:
 _tool_registry_instance: ToolRegistry | None = None
 _tool_registry_mode: str | None = None
 _tool_registry_lock = RLock()
+
+
+def peek_tool_registry(mode: str):
+    """Return an existing mode's registry without discovery, startup or recovery."""
+    with _tool_registry_lock:
+        if _tool_registry_mode == mode:
+            return _tool_registry_instance
+        return None
 
 
 def get_tool_registry(skills_dir: str = None, mcp_config_path: str = None, mode: str = None) -> ToolRegistry:

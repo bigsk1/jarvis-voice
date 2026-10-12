@@ -1,0 +1,12 @@
+{
+  "id": "jarvis_email_inbox",
+  "name": "Jarvis Email Inbox",
+  "description": "Poll the opted-in Gmail command inbox, run authenticated approved-sender requests, and reply in their original threads. Schedule every 30 minutes in the configured email mode.",
+  "enabled": true,
+  "allow_workflow_tool": false,
+  "version": "1.0",
+  "triggers": {"explicit": ["/email_inbox"], "patterns": [], "keywords": []},
+  "steps": [{"step": 1, "tool": "email_inbox", "params": {"action": "poll"}, "required": true}],
+  "success_speech": "Jarvis email inbox check finished. Inspect the step result for completed replies and processing state.",
+  "abort_speech": "The Jarvis email inbox check needs attention. Inspect its result before retrying."
+}

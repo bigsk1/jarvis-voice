@@ -48,6 +48,7 @@
 - **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system + `tool_search` and autonomous `workflow` discovery flows ⭐ ENHANCED
 - **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - 🔄 **Multi-tool workflow system** (slash/API/scheduled plus autonomous foreground execution, required-tool availability with explicit optional degradation, follow-up context) ⭐ IMPLEMENTED
 - **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Manifest/profile/mode/Web precedence; enabled vs credential **available** status (`--mode`)
+- **[Email command inbox](tools/email-inbox-tool/README.md)** - Opt-in Gmail requests from approved senders, scheduled polling and threaded replies; published [sequence](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-email-inbox-sequence.html) and [data-flow](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-email-inbox-dataflow.html) charts.
 - **[../skills/README.md](../skills/README.md)** - **Tool profile overlays** (`JARVIS_TOOL_PROFILE`, `skills/profiles/<name>.json`, `bin/manage-tools.py profile …`); git tracks `default.json` and `skills/profiles/examples/*.json` (copy to `profiles/<name>.json` for use). After changing profile: restart services, then `./bin/sync-tools.py local` or `cloud`
 - **[tools/status-tool/README.md](tools/status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
 - **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** - 🔎 **SerpApi Tools** (Amazon, Google Shopping, Search Index, images, news, trends, marketplaces, local places/services, travel, and YouTube; includes mode availability, quota, proxy, cache, and request-cost behavior)
@@ -164,6 +165,7 @@
 | **[archive/TEST_SCRIPT_TOOL_RAG_FIX.md](archive/TEST_SCRIPT_TOOL_RAG_FIX.md)** | Test script integration fixes (historical)  |
 | **TOOL_CALLING_SYSTEM.md** | Tool orchestration and routing |
 | **TOOL_MANAGEMENT.md** | Manifest/profile/mode/Web precedence; enabled vs credential **available** (`--mode`) |
+| **[tools/email-inbox-tool/README.md](tools/email-inbox-tool/README.md)** | Approved-sender Gmail commands, scheduled polling, private processing state, threaded replies and published diagrams |
 | **[../skills/README.md](../skills/README.md)** (section *Tool profiles*) | Optional overlay JSON per profile; `JARVIS_TOOL_PROFILE`; `bin/manage-tools.py profile`; re-sync tools DB after changes |
 | **[tools/external-network-intel-tool/README.md](tools/external-network-intel-tool/README.md)** | Passive public IP/domain ownership, routing, DNS, and reputation lookup |
 | **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** | SerpApi search tool guide (setup, params, examples, troubleshooting) |
