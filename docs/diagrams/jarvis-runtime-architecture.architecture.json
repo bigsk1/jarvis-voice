@@ -3,321 +3,539 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "Jarvis Voice Runtime Architecture",
-    "subtitle": "Live repository map: entrypoints, orchestration core, tools, providers, state, and artifacts",
-    "output": "jarvis-runtime-architecture.html",
-    "viewBox": [1120, 760]
+    "output": "docs/diagrams/jarvis-runtime-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/bigsk1/jarvis-voice.git",
+      "revision": "8474d5c5d4ba32b485561390dc23f182a39dadf5",
+      "provider": "github",
+      "link_mode": "web"
+    },
+    "views": [
+      {
+        "id": "request-path",
+        "label": "Request path",
+        "focus": [
+          "requesters",
+          "surfaces",
+          "orchestration",
+          "execution",
+          "integrations"
+        ]
+      },
+      {
+        "id": "scheduled-email",
+        "label": "Schedules and email",
+        "focus": [
+          "scheduled",
+          "recipes",
+          "orchestration",
+          "execution"
+        ]
+      },
+      {
+        "id": "jobs-and-files",
+        "label": "Background work and files",
+        "focus": [
+          "execution",
+          "jobs",
+          "artifacts",
+          "integrations"
+        ]
+      },
+      {
+        "id": "mode-and-mcp",
+        "label": "Modes and MCP ownership",
+        "focus": [
+          "surfaces",
+          "catalog",
+          "mode_state",
+          "orchestration"
+        ]
+      }
+    ]
   },
   "components": [
     {
-      "id": "clients",
+      "id": "requesters",
       "type": "external",
-      "label": "Users + Integrations",
-      "sublabel": "browser, CLI, voice, webhooks",
-      "pos": [35, 300],
-      "size": [145, 72]
+      "label": "People + agents",
+      "sublabel": "browser, voice, API, CLI",
+      "pos": [
+        20,
+        300
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "bin/jarvis-cli",
+          "line": 1,
+          "end_line": 17
+        },
+        {
+          "path": "api/routes/query.py",
+          "line": 18,
+          "end_line": 98
+        }
+      ]
     },
     {
-      "id": "launchers",
-      "type": "cloud",
-      "label": "Launchers",
-      "sublabel": "bin/start, Docker Compose",
-      "pos": [245, 80],
-      "size": [150, 64]
-    },
-    {
-      "id": "web",
+      "id": "surfaces",
       "type": "frontend",
-      "label": "Web Surfaces",
-      "sublabel": "chat, canvas, memory, docs",
-      "pos": [245, 265],
-      "size": [150, 72],
-      "tag": ":5001/:8890/:5002+"
+      "label": "Entry processes",
+      "sublabel": "Web / API / CLI / voice",
+      "pos": [
+        270,
+        300
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "jarvis-web/server/sockets/chat.py",
+          "line": 2009,
+          "end_line": 2019
+        },
+        {
+          "path": "api/routes/query.py",
+          "line": 53,
+          "end_line": 82
+        },
+        {
+          "path": "lib/jarvis_cli.py",
+          "line": 239,
+          "end_line": 257
+        }
+      ],
+      "tag": "mode-scoped requests"
     },
     {
-      "id": "api",
+      "id": "orchestration",
       "type": "backend",
-      "label": "Jarvis API",
-      "sublabel": "FastAPI, proactive, query",
-      "pos": [245, 430],
-      "size": [150, 72],
-      "tag": ":8880"
+      "label": "Orchestrator",
+      "sublabel": "context, route, response",
+      "pos": [
+        520,
+        300
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "orchestrator/orchestrator_v2.py",
+          "line": 447,
+          "end_line": 488
+        },
+        {
+          "path": "orchestrator/orchestrator_v2.py",
+          "line": 3562,
+          "end_line": 3610
+        }
+      ]
     },
     {
-      "id": "services",
+      "id": "execution",
       "type": "backend",
-      "label": "Background Services",
-      "sublabel": "followups, reminders, tasks",
-      "pos": [245, 585],
-      "size": [150, 72]
-    },
-    {
-      "id": "core",
-      "type": "backend",
-      "label": "Orchestrator Core",
-      "sublabel": "route, context, response",
-      "pos": [475, 265],
-      "size": [155, 80]
-    },
-    {
-      "id": "workflows",
-      "type": "messagebus",
-      "label": "Workflow Engine",
-      "sublabel": "data/workflows/*.json",
-      "pos": [475, 110],
-      "size": [155, 72]
-    },
-    {
-      "id": "tools",
-      "type": "backend",
-      "label": "Tool Runtime",
-      "sublabel": "executor, skills, MCP",
-      "pos": [710, 265],
-      "size": [150, 80]
-    },
-    {
-      "id": "providers",
-      "type": "cloud",
-      "label": "AI Providers",
-      "sublabel": "xAI, Anthropic, OpenAI, Ollama",
-      "pos": [925, 95],
-      "size": [155, 72]
+      "label": "Tool execution",
+      "sublabel": "skills, MCP, inbox actions",
+      "pos": [
+        770,
+        300
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "orchestrator/executor.py",
+          "line": 487,
+          "end_line": 522
+        },
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 898,
+          "end_line": 944
+        },
+        {
+          "path": "lib/craft_tools.py",
+          "line": 33,
+          "end_line": 65
+        }
+      ],
+      "tag": "foreground by default"
     },
     {
       "id": "integrations",
-      "type": "external",
-      "label": "External Services",
-      "sublabel": "search, media, phone, agents",
-      "pos": [925, 265],
-      "size": [155, 72]
+      "type": "cloud",
+      "label": "Opt-in services",
+      "sublabel": "Workspace, Craft, Docling",
+      "pos": [
+        1020,
+        300
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "config/mcp-servers.json",
+          "line": 1,
+          "end_line": 45
+        },
+        {
+          "path": "lib/craft_client.py",
+          "line": 26,
+          "end_line": 62
+        },
+        {
+          "path": "skills/docling_convert.py",
+          "line": 71,
+          "end_line": 100
+        }
+      ],
+      "tag": "configured endpoints"
     },
     {
-      "id": "state",
+      "id": "models",
+      "type": "cloud",
+      "label": "Model providers",
+      "sublabel": "OpenAI, xAI, Claude, Ollama",
+      "pos": [
+        270,
+        70
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "lib/llm_provider.py",
+          "line": 2762,
+          "end_line": 2888
+        }
+      ],
+      "tag": "LLM_PROVIDER + model"
+    },
+    {
+      "id": "catalog",
+      "type": "security",
+      "label": "Tool eligibility",
+      "sublabel": "mode, profile, config, deps",
+      "pos": [
+        770,
+        70
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "lib/tool_schema.py",
+          "line": 486,
+          "end_line": 517
+        },
+        {
+          "path": "lib/tool_schema.py",
+          "line": 1156,
+          "end_line": 1195
+        },
+        {
+          "path": "jarvis-memory/server/routes/scheduled_tasks.py",
+          "line": 63,
+          "end_line": 77
+        }
+      ],
+      "tag": "MCP clients per process"
+    },
+    {
+      "id": "scheduled",
+      "type": "backend",
+      "label": "Schedules + email",
+      "sublabel": "isolated scheduled workers",
+      "pos": [
+        520,
+        550
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "services/scheduled_task_runner.py",
+          "line": 88,
+          "end_line": 168
+        },
+        {
+          "path": "lib/email_inbox.py",
+          "line": 551,
+          "end_line": 604
+        },
+        {
+          "path": "data/workflows/jarvis_email_inbox.json",
+          "line": 1,
+          "end_line": 12
+        }
+      ],
+      "tag": "mail: approved sender"
+    },
+    {
+      "id": "recipes",
+      "type": "messagebus",
+      "label": "Workflow pipeline",
+      "sublabel": "explicit ids, fixed steps",
+      "pos": [
+        770,
+        550
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "orchestrator/workflow_loader.py",
+          "line": 44,
+          "end_line": 105
+        },
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 620,
+          "end_line": 645
+        },
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 898,
+          "end_line": 943
+        }
+      ],
+      "tag": "required tools checked"
+    },
+    {
+      "id": "jobs",
+      "type": "backend",
+      "label": "Durable Web jobs",
+      "sublabel": "queue, leases, worker, reply",
+      "pos": [
+        1020,
+        550
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "lib/background_tasks/admission.py",
+          "line": 243,
+          "end_line": 275
+        },
+        {
+          "path": "lib/background_tasks/store.py",
+          "line": 32,
+          "end_line": 54
+        },
+        {
+          "path": "lib/background_tasks/delivery.py",
+          "line": 1,
+          "end_line": 100
+        }
+      ],
+      "tag": "selected reviewed tools"
+    },
+    {
+      "id": "mode_state",
       "type": "database",
-      "label": "Memory + Intel DBs",
-      "sublabel": "SQLite cloud/local, insights",
-      "pos": [925, 455],
-      "size": [155, 72]
+      "label": "Mode databases",
+      "sublabel": "memory, Tool RAG, insight",
+      "pos": [
+        520,
+        70
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "lib/memory_db.py",
+          "line": 2248,
+          "end_line": 2256
+        },
+        {
+          "path": "orchestrator/orchestrator_v2.py",
+          "line": 469,
+          "end_line": 485
+        }
+      ],
+      "tag": "cloud / local SQLite"
     },
     {
       "id": "artifacts",
       "type": "database",
-      "label": "Artifacts + Logs",
-      "sublabel": "canvas, stash, media, audio",
-      "pos": [710, 585],
-      "size": [150, 72]
+      "label": "Files + references",
+      "sublabel": "Stash, Canvas, media, logs",
+      "pos": [
+        1020,
+        70
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "lib/craft_tools.py",
+          "line": 33,
+          "end_line": 65
+        },
+        {
+          "path": "skills/docling_convert.py",
+          "line": 225,
+          "end_line": 277
+        },
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 866,
+          "end_line": 896
+        }
+      ],
+      "tag": "stash:// and craft://"
     }
   ],
-  "boundaries": [
-    {
-      "kind": "region",
-      "label": "Entrypoint processes",
-      "wraps": ["launchers", "web", "api", "services"]
-    },
-    {
-      "kind": "region",
-      "label": "Core orchestration",
-      "wraps": ["core", "workflows", "tools"]
-    },
-    {
-      "kind": "region",
-      "label": "Provider and integration edge",
-      "wraps": ["providers", "integrations"]
-    },
-    {
-      "kind": "security-group",
-      "label": "Repo-local durable state",
-      "wraps": ["state", "artifacts"]
-    }
-  ],
+  "boundaries": [],
   "connections": [
     {
-      "from": "clients",
-      "to": "web",
-      "label": "HTTP + WebSocket",
-      "variant": "emphasis",
-      "fromSide": "right",
-      "toSide": "left",
-      "labelAt": [213, 386]
+      "id": "submit-request",
+      "from": "requesters",
+      "to": "surfaces",
+      "label": "request",
+      "variant": "emphasis"
     },
     {
-      "from": "clients",
-      "to": "api",
-      "label": "webhooks / REST",
-      "variant": "security",
-      "fromSide": "right",
-      "toSide": "left",
-      "route": "orthogonal-h",
-      "labelDy": 22
+      "id": "dispatch-turn",
+      "from": "surfaces",
+      "to": "orchestration",
+      "label": "query / turn",
+      "variant": "emphasis"
     },
     {
-      "from": "clients",
-      "to": "launchers",
-      "label": "CLI / voice / TUI",
-      "variant": "dashed",
-      "fromSide": "top",
-      "toSide": "left",
-      "route": "orthogonal-h",
-      "labelDy": -18
+      "id": "route-tool",
+      "from": "orchestration",
+      "to": "execution",
+      "label": "tool call",
+      "variant": "emphasis"
     },
     {
-      "from": "launchers",
-      "to": "web",
-      "variant": "dashed",
-      "fromSide": "bottom",
-      "toSide": "top"
-    },
-    {
-      "from": "launchers",
-      "to": "api",
-      "variant": "dashed",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "route": "orthogonal-v"
-    },
-    {
-      "from": "launchers",
-      "to": "services",
-      "variant": "dashed",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "route": "orthogonal-v"
-    },
-    {
-      "from": "web",
-      "to": "core",
-      "label": "chat turn",
-      "variant": "emphasis",
-      "fromSide": "right",
-      "toSide": "left"
-    },
-    {
-      "from": "api",
-      "to": "core",
-      "label": "/api/query",
-      "variant": "emphasis",
-      "fromSide": "right",
-      "toSide": "left",
-      "route": "orthogonal-h",
-      "labelDy": 22
-    },
-    {
-      "from": "services",
-      "to": "core",
-      "label": "scheduled queries",
-      "variant": "dashed",
-      "fromSide": "right",
-      "toSide": "bottom",
-      "route": "orthogonal-h",
-      "labelDy": 24
-    },
-    {
-      "from": "core",
-      "to": "workflows",
-      "label": "explicit /cmd",
-      "variant": "dashed",
-      "fromSide": "top",
-      "toSide": "bottom",
-      "labelDy": -24
-    },
-    {
-      "from": "core",
-      "to": "tools",
-      "label": "tool call loop",
-      "variant": "emphasis",
-      "fromSide": "right",
-      "toSide": "left"
-    },
-    {
-      "from": "workflows",
-      "to": "tools",
-      "label": "fixed steps",
-      "variant": "dashed",
-      "fromSide": "right",
-      "toSide": "top",
-      "route": "orthogonal-h",
-      "labelDy": -18
-    },
-    {
-      "from": "core",
-      "to": "providers",
-      "label": "router + QA",
-      "variant": "security",
-      "fromSide": "right",
-      "toSide": "left",
-      "route": "orthogonal-h",
-      "labelDy": -26
-    },
-    {
-      "from": "tools",
+      "id": "call-service",
+      "from": "execution",
       "to": "integrations",
-      "label": "tool APIs",
-      "variant": "default",
-      "fromSide": "right",
-      "toSide": "left"
+      "label": "MCP / HTTP"
     },
     {
-      "from": "tools",
-      "to": "state",
-      "label": "memory + insight writes",
-      "variant": "default",
-      "fromSide": "right",
-      "toSide": "left",
-      "route": "orthogonal-h",
-      "labelDy": 22
+      "id": "call-model",
+      "from": "orchestration",
+      "to": "models",
+      "label": "route / answer"
     },
     {
-      "from": "tools",
+      "id": "tool-policy",
+      "from": "catalog",
+      "to": "execution",
+      "label": "permitted tools",
+      "variant": "security"
+    },
+    {
+      "id": "slash-recipe",
+      "from": "orchestration",
+      "to": "recipes",
+      "label": "explicit recipe",
+      "variant": "dashed"
+    },
+    {
+      "id": "recipe-steps",
+      "from": "recipes",
+      "to": "execution",
+      "label": "fixed steps"
+    },
+    {
+      "id": "schedule-recipe",
+      "from": "scheduled",
+      "to": "recipes",
+      "label": "stored id",
+      "variant": "dashed"
+    },
+    {
+      "id": "email-query",
+      "from": "scheduled",
+      "to": "orchestration",
+      "label": "query / approved mail",
+      "variant": "security"
+    },
+    {
+      "id": "admit-job",
+      "from": "execution",
+      "to": "jobs",
+      "label": "Web opt-in",
+      "variant": "security"
+    },
+    {
+      "id": "read-context",
+      "from": "orchestration",
+      "to": "mode_state",
+      "label": "context / Tool RAG",
+      "variant": "dashed"
+    },
+    {
+      "id": "save-artifacts",
+      "from": "execution",
       "to": "artifacts",
-      "label": "files, media, logs",
-      "variant": "dashed",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "labelDy": 36
-    },
-    {
-      "from": "api",
-      "to": "state",
-      "label": "alerts, tasks, config",
-      "variant": "default",
-      "fromSide": "right",
-      "toSide": "left",
-      "route": "orthogonal-h",
-      "labelDy": -24
-    },
-    {
-      "from": "web",
-      "to": "artifacts",
-      "label": "uploads, views, logs",
-      "variant": "dashed",
-      "fromSide": "bottom",
-      "toSide": "left",
-      "route": "orthogonal-h",
-      "labelDy": 34
+      "label": "save files",
+      "variant": "dashed"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Request path",
+      "title": "Requests and execution",
       "items": [
-        "WebSocket chat and /api/query both instantiate Orchestrator inside a mode-scoped config context.",
-        "The core branches to explicit workflow pipelines before falling back to LLM routing and tool execution."
+        "Jarvis CLI uses the production environment: concise answers, JSON results and optional verbose diagnostics. Web, API, voice and CLI share orchestration logic.",
+        "Explicit and scheduled recipes use ordered foreground steps. The workflow meta-tool may discover and run a recipe; its switch does not disable explicit or scheduled workflows."
       ]
     },
     {
       "dot": "emerald",
-      "title": "Runtime modes",
+      "title": "Email and reusable files",
       "items": [
-        "Native startup uses tmux sessions and ~/jarvis-venv; Docker uses docker/entrypoint.sh, /opt/venv, and bind-mounted config/data/logs/audio.",
-        "JARVIS_MODE selects config and data boundaries; LLM_PROVIDER selects the chat backend."
+        "The opt-in Gmail inbox authenticates approved senders, verifies attachments into Stash, limits available actions and sends a reply only to the sender in the original thread.",
+        "Craft edits images/video/PDFs through its configured gateway. Exports are copied into Jarvis Stash; editable_project_ref and document layer/clip IDs support revisions. Docling converts existing documents and preserves remote task receipts."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Durable background work",
+      "items": [
+        "Only selected, reviewed Web tools enter the background queue. The separate worker uses leases and writes completion or attention deliveries back to the original conversation. Local observers and reviewed remote callbacks share this job contract.",
+        "The job ledger is one control database for both modes, separate from MemoryDB. API, CLI and nested workflow steps reject queued receipts as completed work."
       ]
     },
     {
       "dot": "rose",
-      "title": "Persistence",
+      "title": "Modes and process ownership",
       "items": [
-        "SQLite memory/intelligence databases are split by cloud/local mode and synced by startup/service paths.",
-        "Canvas pages, stash artifacts, generated media, uploads, audio, and JSONL logs stay repo-local under data/, jarvis-web/data/, audio/, and logs/."
+        "JARVIS_MODE chooses configuration and data; LLM_PROVIDER chooses the backend. Native launchers use the production environment; Docker uses its own runtime and mounted config/data.",
+        "The ToolRegistry singleton is shared within a process. Stdio MCP containers belong to that process; remote HTTP/SSE services are connections. Memory currently starts its own registry when loading the workflow catalog or validating a workflow schedule."
       ]
     }
   ]

@@ -1,208 +1,645 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "diagram_type": "workflow",
   "meta": {
     "title": "Jarvis Workflow Execution Lifecycle",
-    "subtitle": "Everything workflow-related: definitions, entrypoints, deterministic step execution, helper LLM calls, validation, artifacts, and abort paths",
-    "output": "jarvis-workflow-execution-lifecycle.html",
-    "viewBox": [720, 920]
+    "output": "docs/diagrams/jarvis-workflow-execution-lifecycle.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/bigsk1/jarvis-voice.git",
+      "revision": "8474d5c5d4ba32b485561390dc23f182a39dadf5",
+      "provider": "github",
+      "link_mode": "web"
+    },
+    "views": [
+      {
+        "id": "entry-and-admission",
+        "label": "Invocation and eligibility",
+        "focus": [
+          "invocation",
+          "recipe_files",
+          "select",
+          "eligible"
+        ]
+      },
+      {
+        "id": "step-cycle",
+        "label": "Ordered step cycle",
+        "focus": [
+          "variables",
+          "gate",
+          "parameters",
+          "tool",
+          "validate",
+          "bind"
+        ]
+      },
+      {
+        "id": "failure-paths",
+        "label": "Skip, retry and stop",
+        "focus": [
+          "eligible",
+          "gate",
+          "validate",
+          "stop",
+          "reject",
+          "cancel"
+        ]
+      }
+    ]
   },
   "lanes": [
-    { "id": "entry", "label": "Invocation surfaces" },
-    { "id": "catalog", "label": "Workflow catalog + APIs" },
-    { "id": "state", "label": "Pipeline executor state" },
-    { "id": "work", "label": "Tool and helper LLM work" },
-    { "id": "outputs", "label": "Artifacts + responses" },
-    { "id": "exceptions", "label": "Skip, retry, abort", "variant": "exception" }
+    {
+      "id": "entry",
+      "label": "Invocation"
+    },
+    {
+      "id": "catalog",
+      "label": "Recipe admission"
+    },
+    {
+      "id": "runtime",
+      "label": "Ordered foreground work"
+    },
+    {
+      "id": "evidence",
+      "label": "Validation and skip"
+    },
+    {
+      "id": "state",
+      "label": "Accumulated pipeline state"
+    },
+    {
+      "id": "output",
+      "label": "Final response"
+    }
   ],
   "phases": [
-    { "id": "select", "label": "Select recipe", "fromCol": 0, "toCol": 1 },
-    { "id": "prepare", "label": "Prepare state", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
-    { "id": "execute", "label": "Execute + report", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+    {
+      "id": "select-phase",
+      "label": "Select recipe",
+      "fromCol": 0,
+      "toCol": 0
+    },
+    {
+      "id": "prepare-phase",
+      "label": "Prepare and control",
+      "fromCol": 1,
+      "toCol": 2,
+      "variant": "emphasis"
+    },
+    {
+      "id": "execute-phase",
+      "label": "Execute and report",
+      "fromCol": 3,
+      "toCol": 4,
+      "variant": "dashed"
+    }
   ],
-  "groups": [
-    { "id": "loaded_scope", "label": "Loaded scope", "lane": "catalog", "fromCol": 0, "toCol": 1, "variant": "dashed" },
-    { "id": "step_loop", "label": "Deterministic step loop", "lane": "state", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
-    { "id": "helper_calls", "label": "Tools plus optional helper LLM", "lane": "work", "fromCol": 2, "toCol": 4, "variant": "security" },
-    { "id": "failure_paths", "label": "Non-happy paths", "lane": "exceptions", "fromCol": 2, "toCol": 5, "variant": "security" }
+  "mainPath": [
+    "invocation",
+    "select",
+    "eligible",
+    "variables",
+    "gate",
+    "parameters",
+    "tool",
+    "validate",
+    "bind",
+    "report"
   ],
-  "mainPath": ["request", "loader", "variables", "gate", "tool_exec", "return_payload"],
   "nodes": [
     {
-      "id": "request",
+      "id": "invocation",
       "lane": "entry",
       "col": 0,
       "type": "external",
-      "label": "Request",
-      "sublabel": "slash, REST, schedule",
-      "width": 92
+      "label": "Invoke recipe",
+      "sublabel": "slash/API/meta/schedule",
+      "width": 136,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/orchestrator_v2.py",
+          "line": 3562,
+          "end_line": 3610
+        },
+        {
+          "path": "orchestrator/executor.py",
+          "line": 757,
+          "end_line": 787
+        },
+        {
+          "path": "services/scheduled_task_runner.py",
+          "line": 98,
+          "end_line": 168
+        }
+      ],
+      "tag": "schedule: isolated worker"
     },
     {
-      "id": "web_api",
-      "lane": "entry",
-      "col": 1,
-      "type": "frontend",
-      "label": "UI Metadata",
-      "sublabel": "tooltips + inputs",
-      "width": 100
-    },
-    {
-      "id": "json_scope",
+      "id": "recipe_files",
       "lane": "catalog",
       "col": 0,
       "type": "database",
-      "label": "Workflow JSON",
-      "sublabel": "shared + personal",
-      "width": 92
+      "label": "Recipe files",
+      "sublabel": "shared + personal JSON",
+      "width": 136,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/workflow_loader.py",
+          "line": 44,
+          "end_line": 85
+        }
+      ],
+      "yOffset": 160
     },
     {
-      "id": "loader",
+      "id": "select",
+      "lane": "catalog",
+      "col": 0,
+      "type": "backend",
+      "label": "Load + select",
+      "sublabel": "enabled definition / id",
+      "width": 136,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/workflow_loader.py",
+          "line": 44,
+          "end_line": 105
+        }
+      ]
+    },
+    {
+      "id": "eligible",
       "lane": "catalog",
       "col": 1,
-      "type": "backend",
-      "label": "WorkflowLoader",
-      "sublabel": "enabled files",
-      "width": 104
-    },
-    {
-      "id": "match",
-      "lane": "catalog",
-      "col": 3,
       "type": "security",
-      "label": "Explicit Match",
-      "sublabel": "slash or id",
-      "width": 96
+      "label": "Tool eligibility",
+      "sublabel": "required tools + exclusions",
+      "width": 136,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/workflow_availability.py",
+          "line": 49,
+          "end_line": 122
+        },
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 620,
+          "end_line": 645
+        }
+      ]
     },
     {
       "id": "variables",
-      "lane": "state",
-      "col": 2,
+      "lane": "runtime",
+      "col": 1,
       "type": "messagebus",
-      "label": "Variables",
-      "sublabel": "query/env/static",
-      "width": 96
+      "label": "Pipeline state",
+      "sublabel": "query / env / static vars",
+      "width": 140,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 685,
+          "end_line": 704
+        }
+      ],
+      "yOffset": -160
     },
     {
       "id": "gate",
-      "lane": "state",
-      "col": 3,
+      "lane": "runtime",
+      "col": 1,
       "type": "backend",
-      "label": "Step Gate",
-      "sublabel": "condition / skip",
-      "width": 96
+      "label": "Loop step gate",
+      "sublabel": "condition, optional, cancel",
+      "width": 136,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 699,
+          "end_line": 753
+        }
+      ],
+      "yOffset": 0,
+      "tag": "skip vars; advance"
     },
     {
-      "id": "params",
-      "lane": "work",
+      "id": "parameters",
+      "lane": "runtime",
+      "col": 1,
+      "type": "backend",
+      "label": "Resolve inputs",
+      "sublabel": "defaults, vars, helper LLM",
+      "width": 136,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 898,
+          "end_line": 929
+        }
+      ],
+      "yOffset": 160
+    },
+    {
+      "id": "tool",
+      "lane": "runtime",
       "col": 2,
       "type": "backend",
-      "label": "Resolve Params",
-      "sublabel": "${...} + defaults",
-      "width": 104
+      "label": "Run tool",
+      "sublabel": "local / MCP / HTTP",
+      "width": 136,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 931,
+          "end_line": 943
+        },
+        {
+          "path": "orchestrator/executor.py",
+          "line": 497,
+          "end_line": 522
+        }
+      ],
+      "tag": "foreground step",
+      "yOffset": 160
     },
     {
-      "id": "tool_exec",
-      "lane": "work",
+      "id": "validate",
+      "lane": "evidence",
+      "col": 3,
+      "type": "security",
+      "label": "Validate + policy",
+      "sublabel": "checks and retry budget",
+      "width": 136,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 939,
+          "end_line": 943
+        },
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 1819,
+          "end_line": 1882
+        },
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 1171,
+          "end_line": 1228
+        }
+      ],
+      "tag": "retry / continue / abort"
+    },
+    {
+      "id": "bind",
+      "lane": "state",
+      "col": 3,
+      "type": "messagebus",
+      "label": "Bind + track",
+      "sublabel": "refs, state, usage",
+      "width": 128,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 866,
+          "end_line": 896
+        },
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 985,
+          "end_line": 1018
+        },
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 1419,
+          "end_line": 1470
+        }
+      ]
+    },
+    {
+      "id": "stop",
+      "lane": "evidence",
       "col": 4,
-      "type": "backend",
-      "label": "ToolExecutor",
-      "sublabel": "skills + MCP",
-      "width": 96
+      "type": "security",
+      "label": "Return failure",
+      "sublabel": "partial failure result",
+      "width": 128,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 699,
+          "end_line": 709
+        },
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 847,
+          "end_line": 864
+        }
+      ],
+      "yOffset": 0
     },
     {
       "id": "artifacts",
-      "lane": "outputs",
+      "lane": "runtime",
       "col": 3,
       "type": "database",
-      "label": "Artifacts",
-      "sublabel": "Canvas, stash, DB",
-      "width": 88
+      "label": "Artifact steps",
+      "sublabel": "Canvas / Stash / file refs",
+      "width": 136,
+      "height": 78,
+      "sources": [
+        {
+          "path": "lib/craft_tools.py",
+          "line": 33,
+          "end_line": 65
+        },
+        {
+          "path": "skills/docling_convert.py",
+          "line": 255,
+          "end_line": 277
+        },
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 946,
+          "end_line": 973
+        }
+      ],
+      "tag": "only when authored",
+      "yOffset": 160
     },
     {
-      "id": "return_payload",
-      "lane": "outputs",
-      "col": 5,
+      "id": "report",
+      "lane": "output",
+      "col": 3,
       "type": "frontend",
-      "label": "Return",
-      "sublabel": "cards, status, JSON",
-      "width": 88
+      "label": "Return success",
+      "sublabel": "steps, refs, mode, usage",
+      "width": 136,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 881,
+          "end_line": 896
+        },
+        {
+          "path": "docs/WORKFLOW_ORCHESTRATION.md",
+          "line": 77,
+          "end_line": 90
+        }
+      ]
     },
     {
-      "id": "skipped",
-      "lane": "exceptions",
+      "id": "reject",
+      "lane": "catalog",
       "col": 2,
-      "type": "messagebus",
-      "label": "Skipped Step",
-      "sublabel": "set vars on skip",
-      "width": 96
+      "yOffset": 160,
+      "type": "security",
+      "label": "Return rejection",
+      "sublabel": "required tool unavailable",
+      "width": 136,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 620,
+          "end_line": 645
+        }
+      ]
     },
     {
-      "id": "invalid",
-      "lane": "exceptions",
-      "col": 4,
+      "id": "cancel",
+      "lane": "runtime",
+      "col": 2,
+      "yOffset": 0,
       "type": "security",
-      "label": "Invalid",
-      "sublabel": "retry or continue",
-      "width": 88
-    },
-    {
-      "id": "abort",
-      "lane": "exceptions",
-      "col": 5,
-      "type": "security",
-      "label": "Abort",
-      "sublabel": "required failure",
-      "width": 88
+      "label": "Return cancellation",
+      "sublabel": "completed steps retained",
+      "width": 140,
+      "height": 78,
+      "sources": [
+        {
+          "path": "orchestrator/pipeline_executor.py",
+          "line": 699,
+          "end_line": 709
+        }
+      ]
     }
   ],
   "edges": [
-    { "from": "json_scope", "to": "loader" },
-    { "from": "request", "to": "loader", "label": "trigger/id", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
-    { "from": "web_api", "to": "loader", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "route": "drop" },
-    { "from": "loader", "to": "match" },
-    { "from": "loader", "to": "variables", "label": "matched workflow", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
-    { "from": "variables", "to": "gate" },
-    { "from": "variables", "to": "params", "label": "substitute", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
-    { "from": "gate", "to": "tool_exec", "label": "execute step", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
-    { "from": "params", "to": "tool_exec" },
-    { "from": "tool_exec", "to": "artifacts", "label": "writes", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
-    { "from": "tool_exec", "to": "return_payload", "label": "step results", "variant": "emphasis", "role": "return", "fromSide": "right", "toSide": "right", "route": "outside-right", "width": 1.2 },
-    { "from": "artifacts", "to": "return_payload" },
-    { "from": "tool_exec", "to": "invalid", "variant": "security", "role": "error", "fromSide": "bottom", "toSide": "top", "route": "drop" },
-    { "from": "invalid", "to": "abort", "variant": "security", "role": "error" },
-    { "from": "abort", "to": "return_payload", "variant": "security", "role": "return", "fromSide": "right", "toSide": "right", "route": "outside-right", "width": 1.2 }
+    {
+      "id": "request-select",
+      "from": "invocation",
+      "to": "select",
+      "label": "trigger / id",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "files-select",
+      "from": "recipe_files",
+      "to": "select",
+      "label": "read definitions",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "route": "straight"
+    },
+    {
+      "id": "select-check",
+      "from": "select",
+      "to": "eligible",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight",
+      "label": "check tools"
+    },
+    {
+      "id": "check-pass",
+      "from": "eligible",
+      "to": "variables",
+      "label": "available",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "check-reject",
+      "from": "eligible",
+      "to": "reject",
+      "label": "required missing",
+      "variant": "security",
+      "role": "error",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "initialize-loop",
+      "from": "variables",
+      "to": "gate",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "gate-run",
+      "from": "gate",
+      "to": "parameters",
+      "label": "execute",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "resolve-run",
+      "from": "parameters",
+      "to": "tool",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight"
+    },
+    {
+      "id": "tool-validate",
+      "from": "tool",
+      "to": "validate",
+      "label": "result",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 20,
+      "bias": 0.75
+    },
+    {
+      "id": "tool-artifact",
+      "from": "tool",
+      "to": "artifacts",
+      "label": "save step",
+      "variant": "dashed",
+      "role": "branch",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "validate-bind",
+      "from": "validate",
+      "to": "bind",
+      "label": "success / continued",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "retry-inputs",
+      "from": "validate",
+      "to": "parameters",
+      "label": "retry",
+      "variant": "dashed",
+      "role": "return",
+      "fromSide": "left",
+      "toSide": "bottom"
+    },
+    {
+      "id": "policy-stop",
+      "from": "validate",
+      "to": "stop",
+      "label": "required failure",
+      "variant": "security",
+      "role": "error",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight"
+    },
+    {
+      "id": "next-step",
+      "from": "bind",
+      "to": "gate",
+      "label": "next step",
+      "variant": "dashed",
+      "role": "return",
+      "fromSide": "left",
+      "toSide": "left",
+      "route": "return-left"
+    },
+    {
+      "id": "complete-report",
+      "from": "bind",
+      "to": "report",
+      "label": "done",
+      "variant": "emphasis",
+      "role": "return",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "artifact-result",
+      "from": "artifacts",
+      "to": "tool",
+      "label": "file refs",
+      "variant": "dashed",
+      "role": "return",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "gate-cancel",
+      "from": "gate",
+      "to": "cancel",
+      "label": "cancel",
+      "variant": "security",
+      "role": "error",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight"
+    }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Loaded recipes",
+      "title": "One pipeline, several entrances",
       "items": [
-        "WorkflowLoader reads enabled data/workflows/*.json plus gitignored data/workflows/personal/*.json overrides.",
-        "Normal matching is explicit-only: slash triggers or workflow ids, not broad keyword hijacks."
+        "Slash/CLI/API calls, stored schedules and the workflow meta-tool resolve enabled shared/personal recipe definitions. Personal same-id files override shared files.",
+        "Required tools must be available in the selected mode and execution surface. Optional unavailable tools are skipped; admission and execution recheck the recipe."
       ]
     },
     {
       "dot": "emerald",
-      "title": "Execution contract",
+      "title": "Ordered work and source identity",
       "items": [
-        "PipelineExecutor extracts variables, resolves ${...}, runs ordered tool steps, and stores output_var/extract values for later steps.",
-        "for_each producers should own validated_output_var; process_all is opt-in for consumer loops."
+        "The recipe chooses tools; optional parameter filling, conditions, validation and final summaries can call an LLM. Explicit tools still run when provider-native helper tools are disabled.",
+        "for_each loops retain named validated_output_var outputs. search_output_var isolates provider URL lists; source arguments and stash:// references accompany results for follow-up. Authored Stash filenames stay intact and on_conflict controls repeat saves."
       ]
     },
     {
       "dot": "rose",
-      "title": "LLM and safety",
+      "title": "Truthful completion",
       "items": [
-        "Only llm_prompt, LLM validation, llm_decides, or generated success speech use model tokens.",
-        "disable_server_side_tools suppresses provider-native helper tools only; explicit workflow tools still run."
+        "Workflow component calls stay foreground. A queued background receipt is rejected rather than reported as successful workflow work. Long external operations retain their task IDs and uncertain outcomes.",
+        "Required failures abort unless explicitly continued; optional work may degrade the result. Cancellation returns partial evidence. Success and failure include step results, tools, mode, timing and usage."
       ]
     },
     {
       "dot": "amber",
-      "title": "Outputs",
+      "title": "Email and scheduled tasks",
       "items": [
-        "Success and abort paths both log workflow execution with duration, tools, mode, and step results.",
-        "Canvas create/append/update semantics stay distinct: update replaces page content unless the workflow builds the full desired page."
+        "jarvis_email_inbox is a normal scheduled recipe whose in-process tool polls Gmail, verifies approved-sender requests and attachments, runs restricted orchestration and sends a threaded sender-only reply.",
+        "Notification-only schedule edits keep the stored next run. Re-enabling a normal cancellation resumes its stored slot; the runner applies its missed-run policy. Manual run-once or an empty recurring slot still calculates a new time."
       ]
     }
   ]

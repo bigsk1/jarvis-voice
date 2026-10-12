@@ -1,0 +1,10 @@
+# Archify's local provenance and browser evidence contain machine-specific paths.
+*.delivery.json
+*.delivery-pending.json
+*.delivery-lock.json
+*.finalize.json
+*.finalize-summary.json
+*.browser-check.json
+*.visual-check.json
+.archify-delivery-lock.json
+.archify-remove-*/
