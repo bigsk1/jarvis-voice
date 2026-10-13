@@ -1989,6 +1989,24 @@ def test_every_enabled_local_tool_has_an_audited_payload_sample():
     assert set(LOCAL_TOOL_SAMPLES) == _enabled_local_tool_names()
 
 
+def test_bookmark_plus_followup_keeps_ids_and_partial_judging_without_notes():
+    payload = {
+        'backend': 'bookmark_plus', 'action': 'search', 'query': 'phone notifications',
+        'status': 'candidates', 'total': 200, 'total_kind': 'retrieval_candidates',
+        'warning': 'Ranking budget ended', 'diagnostics': {'judged_count': 3, 'rerank_truncated': True},
+        'results': [
+            {'id': 17, 'title': 'NTFY', 'url': 'http://192.168.1.50/', 'folder_path': 'Services',
+             'description': 'Push notifications', 'notes': 'PRIVATE_NOTES_SENTINEL', 'score': .88},
+            {'id': 18, 'title': 'Other', 'url': 'https://example.test/'},
+        ],
+    }
+    result = followup.extract_followup_data({'bookmark_search': payload}, max_candidates=1)['bookmark_search']
+    assert result['backend'] == 'bookmark_plus' and result['total_kind'] == 'retrieval_candidates'
+    assert result['candidates'][0]['id'] == 17 and result['candidates'][0]['url'] == 'http://192.168.1.50/'
+    assert result['candidates_truncated'] and result['diagnostics']['rerank_truncated']
+    assert result['warning'] == 'Ranking budget ended' and 'PRIVATE_NOTES_SENTINEL' not in json.dumps(result)
+
+
 def test_generated_password_is_excluded_from_followup_context():
     payload, arguments = LOCAL_TOOL_SAMPLES["generate_password"]
     result = followup.extract_followup_data({

@@ -11,6 +11,14 @@ ROOT = Path(__file__).resolve().parents[1]
 SKILL_HELPER = ROOT / "data" / "workflows" / "skill" / "skill.py"
 
 
+def test_workflow_skill_accepts_existing_bookmark_asterisk_trigger():
+    result = subprocess.run(
+        [sys.executable, str(SKILL_HELPER), "validate", str(ROOT / "data/workflows/bookmark_search.json")],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_workflow_skill_template_outputs_valid_workflow_json():
     result = subprocess.run(
         [

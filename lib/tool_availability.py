@@ -231,7 +231,7 @@ def check_availability_block(block: Any, *, available_tools=None, check_dependen
 
     known_keys = {
         "all_of_env", "any_of_env", "config_files", "webhook_registry", "all_of_commands",
-        "provider_setting", "provider_default", "provider_requirements",
+        "provider_setting", "provider_default", "provider_requirements", "require_selected_provider",
         "setup_hint",
         "enabled_env", "requires_tools",
     }
@@ -242,6 +242,15 @@ def check_availability_block(block: Any, *, available_tools=None, check_dependen
     }
     present = set(block.keys())
     if present - known_keys:
+        return _malformed(setup_hint)
+    strict_provider = block.get("require_selected_provider", False)
+    if not isinstance(strict_provider, bool):
+        return _malformed(setup_hint)
+    if strict_provider and (
+        not block.get("provider_requirements")
+        or not isinstance(block.get("provider_setting"), str)
+        or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", block["provider_setting"])
+    ):
         return _malformed(setup_hint)
     if not (present & requirement_keys):
         # A setup hint without requirements does not restrict availability.
@@ -319,13 +328,25 @@ def check_availability_block(block: Any, *, available_tools=None, check_dependen
             return _malformed(setup_hint)
 
         provider_ok: dict[str, bool] = {}
+        provider_missing: dict[str, list[str]] = {}
         for provider, reqs in provider_reqs.items():
             if not isinstance(provider, str) or not isinstance(reqs, dict):
                 return _malformed(setup_hint)
-            names = _validate_env_names(reqs.get("all_of_env"))
-            if names is None:
-                return _malformed(setup_hint)
-            provider_ok[provider] = all(is_env_configured(name) for name in names)
+            if strict_provider:
+                # Selected backends can have different prerequisites, including
+                # none. Keep the legacy any-provider credential rule unchanged.
+                if set(reqs) - {"all_of_env", "any_of_env", "config_files", "all_of_commands"}:
+                    return _malformed(setup_hint)
+                checked = check_availability_block(reqs)
+                if MALFORMED_MARKER in checked.missing:
+                    return _malformed(setup_hint)
+                provider_ok[provider] = checked.available
+                provider_missing[provider] = checked.missing
+            else:
+                names = _validate_env_names(reqs.get("all_of_env"))
+                if names is None:
+                    return _malformed(setup_hint)
+                provider_ok[provider] = all(is_env_configured(name) for name in names)
 
         configured = sorted(p for p, ok in provider_ok.items() if ok)
         result.provider_availability = provider_ok
@@ -338,10 +359,18 @@ def check_availability_block(block: Any, *, available_tools=None, check_dependen
                 provider_setting,
                 provider_default if isinstance(provider_default, str) else None,
             )
+            if strict_provider and not str(selected or "").strip():
+                selected = provider_default
             if selected:
                 result.selected_provider = str(selected).strip().lower()
 
-        if not configured:
+        if strict_provider:
+            selected = result.selected_provider
+            if selected not in provider_ok:
+                missing.append(f"selected provider: {provider_setting}")
+            elif not provider_ok[selected]:
+                missing.extend(provider_missing[selected])
+        elif not configured:
             missing.append(
                 "any provider of: " + ", ".join(sorted(provider_reqs.keys()))
             )

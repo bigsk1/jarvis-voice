@@ -8,6 +8,37 @@ Shared truncation and bounding policy remains in the public facade.
 from collections.abc import Callable
 
 
+def project_bookmark_runs(value, max_candidates: int, *, truncate_text: Callable[[str, int], str]) -> dict:
+    """Retain exact saved IDs and honest search semantics for follow-up reads."""
+    runs = value if isinstance(value, list) else [value]
+    projected = []
+    for run in runs[-3:]:
+        if not isinstance(run, dict):
+            continue
+        data = run.get('data') if isinstance(run.get('data'), dict) else run
+        result = {key: data[key] for key in (
+            'backend', 'action', 'status', 'query', 'search_mode', 'total', 'total_kind',
+            'count_label', 'matched_count', 'returned_count', 'offset', 'limit', 'warning', 'diagnostics',
+        ) if key in data}
+        candidates = []
+        for row in (data.get('results') or [])[:max_candidates]:
+            if not isinstance(row, dict):
+                continue
+            record = {key: row[key] for key in ('id', 'url', 'score', 'favorite', 'unread') if key in row}
+            for key in ('title', 'folder_path', 'description'):
+                if row.get(key):
+                    record[key] = truncate_text(str(row[key]), 500)
+            if row.get('tags'):
+                record['tags'] = row['tags'][:15]
+            candidates.append(record)
+        if candidates:
+            result['candidates'] = candidates
+            result['candidates_truncated'] = len(data.get('results') or []) > len(candidates)
+        if result:
+            projected.append(result)
+    return projected[-1] if len(projected) == 1 else {'runs': projected}
+
+
 def extend_crawl_url(value: dict, extracted: dict, max_candidates: int) -> None:
     """Keep deduplicated crawl URLs, without carrying page markdown forward."""
     runs = value.get('results') or []

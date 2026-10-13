@@ -2,11 +2,14 @@
 """
 Bookmark Search Tool
 
-Parses Firefox/Netscape bookmark export HTML and supports:
+Uses the selected BOOKMARK_BACKEND (builtin by default). Built-in mode parses
+Firefox/Netscape bookmark export HTML and supports:
 - Full-text search with keyword/phrase matching
 - Tag filtering (Firefox TAGS + folder-derived labels)
 - Folder and domain filters
 - Bookmark stats, folder listing, and tag listing
+
+Bookmark Plus mode uses the read-only REST adapter in lib/bookmark_plus.py.
 """
 
 from __future__ import annotations
@@ -22,8 +25,8 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
+from config_loader import get_config_value, load_config
 from paths import assert_not_restricted_read_path
-
 
 MAX_RESULTS = 200
 DEFAULT_LIMIT = 20
@@ -651,6 +654,20 @@ def main() -> None:
         else:
             args = json.load(sys.stdin)
 
+        if not isinstance(args, dict):
+            raise ValueError("Bookmark arguments must be an object")
+        load_config()
+        backend = str(get_config_value("BOOKMARK_BACKEND", "builtin") or "builtin").strip().lower() or "builtin"
+        if backend == "bookmark_plus":
+            from bookmark_plus import run_bookmark_plus
+            print(json.dumps(run_bookmark_plus(args)))
+            return
+        if backend != "builtin":
+            raise ValueError("BOOKMARK_BACKEND must be builtin or bookmark_plus")
+        for field in ("collection", "tag", "favorite", "unread", "search_mode", "bookmark_id", "bookmark_ids"):
+            if field in args:
+                raise ValueError(f"{field} requires BOOKMARK_BACKEND=bookmark_plus")
+
         project_root = Path(__file__).parent.parent.resolve()
         bookmark_file = resolve_bookmark_path(project_root, args.get("file_path"))
 
@@ -709,10 +726,17 @@ def main() -> None:
             "ok": True,
             "speech": payload["speech"],
             "data": {
+                "backend": "builtin",
+                "action": action,
                 "bookmark_file": str(bookmark_file),
                 **payload["data"],
             },
         }
+        if action == "search":
+            data = result["data"]
+            data.update(status="matches" if data["matched_count"] else "no_matches",
+                        total=data["matched_count"], total_kind="lexical_matches",
+                        count_label="keyword matches", warning=None, search_mode="text")
         print(json.dumps(result))
 
     except Exception as error:

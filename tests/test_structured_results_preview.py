@@ -64,6 +64,7 @@ const expectedTools = [
   'searxng_search',
   'tavily_search',
   'tavily_extract',
+  'bookmark_search',
   'serpapi_google_images_light',
   'serpapi_google_news_light',
   'serpapi_google_immersive_product',

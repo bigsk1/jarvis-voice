@@ -249,6 +249,32 @@ def _effective_elevenlabs_models(get_setting):
     return final_model, status_model
 
 
+@api_bp.route('/bookmarks/plus/<int:bookmark_id>/icon', methods=['GET'])
+@require_auth
+@_scoped_request_config
+def get_bookmark_plus_icon(bookmark_id):
+    """Proxy a fixed authenticated icon route, never a caller-supplied URL."""
+    from bookmark_plus import BookmarkPlusClient, BookmarkPlusError, selected_backend
+    from config_loader import get_config_value
+    from flask import Response
+
+    try:
+        blocked = {name.strip() for name in str(get_config_value('BLOCKED_TOOLS', '')).split(',')}
+        tool = get_tool_service().get_tool('bookmark_search') or {}
+        if (bookmark_id < 1 or not tool.get('enabled') or 'bookmark_search' in blocked
+                or selected_backend() != 'bookmark_plus'):
+            return jsonify({'ok': False, 'error': 'Bookmark icons unavailable'}), 404
+        with BookmarkPlusClient(icon_request=True) as client:
+            png = client.icon(bookmark_id)
+        return Response(png, mimetype='image/png', headers={
+            'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
+        })
+    except BookmarkPlusError:
+        # Optional display failure: the browser shows a placeholder. Never
+        # expose endpoint credentials or return upstream HTML to the browser.
+        return jsonify({'ok': False, 'error': 'Bookmark icon unavailable'}), 404
+
+
 def _status_tts_cache_settings(provider, get_setting):
     """Return only settings that affect the selected provider's status audio."""
     if provider == 'elevenlabs':

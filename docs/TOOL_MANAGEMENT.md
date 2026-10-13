@@ -123,6 +123,7 @@ all declared requirements must pass, except for the alternatives described below
 | `provider_requirements` | Map of provider names to credential requirements. At least one provider must be configured. This does not authorize switching providers automatically. |
 | `provider_setting` | Optional config key identifying the selected provider for diagnostics. |
 | `provider_default` | Optional fallback provider name for those diagnostics. |
+| `require_selected_provider` | Optional boolean, default false. When true, the selected provider must meet its own prerequisites; another configured provider cannot satisfy availability. |
 | `setup_hint` | Optional operator-facing setup text; keep it free of secrets and private host details. |
 
 Malformed requirements and unknown field names fail closed for the affected
@@ -131,6 +132,15 @@ tool, including a typo alongside otherwise valid fields. The result has
 Independent tools continue loading. Presence checks cannot prove that an API
 key is valid or that a remote service will stay healthy; execution still needs
 its own preflight and error handling.
+
+For a selectable backend such as `bookmark_search`, set
+`require_selected_provider: true` with `provider_setting` and
+`provider_requirements`. Each provider may declare `all_of_env`, `any_of_env`,
+`config_files`, or `all_of_commands`; `{}` means no discovery prerequisites.
+Unknown selections and malformed requirements fail closed. Existing manifests
+retain the default “any provider configured” rule. Availability itself does not
+select a backend or authorize fallback. See [Bookmark Plus](tools/bookmark-plus/README.md)
+for mode-specific configuration.
 
 ### Hard tool dependencies: `requires_tools`
 

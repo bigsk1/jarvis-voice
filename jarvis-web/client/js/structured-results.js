@@ -366,6 +366,7 @@ class StructuredResultsRenderer {
     this.register('searxng_search', search.adaptSearxngSearch);
     this.register('tavily_search', search.adaptTavilySearch);
     this.register('tavily_extract', search.adaptTavilyExtract);
+    this.register('bookmark_search', search.adaptBookmarks);
     this.register('serpapi_google_images_light', search.adaptGoogleImagesLight);
     this.register('serpapi_google_news_light', search.adaptGoogleNewsLight);
     this.register('serpapi_google_immersive_product', shopping.adaptGoogleImmersiveProduct);
@@ -565,6 +566,9 @@ class StructuredResultsRenderer {
     ) return;
 
     this._scrollControlsBound = true;
+    document.addEventListener('error', event => {
+      if (event.target?.matches?.('.structured-bookmark-icon img')) event.target.hidden = true;
+    }, true);
     document.addEventListener('click', event => {
       const expandableCard = event.target?.closest?.('.structured-result-card-expandable');
       if (expandableCard && !event.target?.closest?.('a')) {
@@ -1344,7 +1348,7 @@ class StructuredResultsRenderer {
   }
 
   _renderCollection(collection, options = {}) {
-    const kind = ['product', 'hotel', 'local', 'flight', 'video', 'weather', 'image', 'sport'].includes(collection.kind)
+    const kind = ['product', 'hotel', 'local', 'flight', 'video', 'weather', 'image', 'sport', 'bookmark'].includes(collection.kind)
       ? collection.kind
       : 'generic';
     const layout = ['rail', 'list', 'metrics', 'gallery'].includes(collection.layout)
@@ -1379,8 +1383,21 @@ class StructuredResultsRenderer {
         ? ` structured-result-image-${item.imageVariant}`
         : '';
       const featured = item.featured === true ? ' structured-result-card-featured' : '';
+      let bookmarkIcon = '';
+      if (kind === 'bookmark') {
+        let icon = '';
+        // Only our authenticated proxy may auto-load a bookmark icon. Saved
+        // website URLs and arbitrary provider image URLs remain click-only.
+        const path = String(item.bookmarkIcon || '');
+        if (/^\/api\/bookmarks\/plus\/[1-9][0-9]*\/icon\?mode=(cloud|local)$/.test(path)
+            && window.location?.origin) {
+          icon = this._safeUrl(new URL(path, window.location.origin).href);
+        }
+        bookmarkIcon = `<div class="structured-bookmark-icon" aria-hidden="true"><span>🔖</span>${icon ? `<img src="${icon}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</div>`;
+      }
       return `
         <article class="structured-result-card structured-result-card-${kind}${imageVariant}${featured}${expandable ? ' structured-result-card-expandable' : ''}">
+          ${bookmarkIcon}
           ${image ? `<a class="structured-result-image" href="${imageUrl || url || image}" target="_blank" rel="noopener noreferrer"><img src="${image}" alt="${title}" loading="lazy" referrerpolicy="no-referrer"></a>` : ''}
           <div class="structured-result-body">
             ${titleHtml}
@@ -1429,7 +1446,7 @@ class StructuredResultsRenderer {
           </div>
           <div class="structured-results-header-meta">
             <div class="structured-results-meta-row">
-              <span>${collection.items.length} shown</span>
+              <span>${collection.shownCount ?? collection.items.length} shown</span>
               ${scrollControls}
             </div>
             ${collectionAction}

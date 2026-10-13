@@ -7158,3 +7158,19 @@ body.log-panel-open .main-content {
   .talk-panel { right: 1rem; bottom: 8rem; padding: .85rem; }
   .talk-actions button { flex: 1 1 auto; }
 }
+
+/* Saved bookmark rows: clickable LAN URLs with optional authenticated icons. */
+.structured-result-card-bookmark { flex-direction: row; align-items: flex-start; }
+.structured-bookmark-icon {
+    flex: 0 0 38px; width: 38px; height: 38px; margin: 14px 0 0 14px;
+    position: relative; border-radius: 8px; background: var(--bg-tertiary, #242433);
+    display: grid; place-items: center; overflow: hidden;
+}
+.structured-bookmark-icon img {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
+    background: var(--bg-tertiary, #242433);
+}
+.structured-bookmark-icon img[hidden] { display: none; }
+.structured-result-card-bookmark .structured-result-body { min-width: 0; flex: 1; }
+.structured-result-card-bookmark .structured-result-primary,
+.structured-result-card-bookmark .structured-result-title { overflow-wrap: anywhere; word-break: break-word; }

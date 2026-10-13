@@ -442,7 +442,50 @@ window.createSearchResultAdapters = function createSearchResultAdapters({
     };
   }
 
+  function adaptBookmarks(payload) {
+    const rows = Array.isArray(payload.results) ? payload.results : [];
+    const diagnostics = payload.diagnostics || {};
+    const labels = {
+      library_records: 'saved bookmarks', lexical_matches: 'keyword matches',
+      retrieval_candidates: 'retrieved candidates', judged_matches: 'judged matches',
+    };
+    const subtitle = [
+      `${payload.total ?? payload.matched_count ?? rows.length} ${labels[payload.total_kind] || 'results'}`,
+      payload.search_mode,
+      diagnostics.rerank_truncated ? 'Only part of the candidate set was judged' : '',
+      list(diagnostics.corrections).map(c => `${c.from} → ${c.to}`).join(', '),
+      payload.warning,
+    ].filter(Boolean).join(' · ');
+    const items = rows.map(row => ({
+      title: row.title || row.url || 'Saved bookmark', url: row.url,
+      bookmarkIcon: row.icon_url,
+      primary: row.url,
+      chips: [row.folder_path || 'Unsorted', ...list(row.tags),
+        ...(payload.backend === 'bookmark_plus' && typeof row.score === 'number'
+          ? [`Relevance ${Math.round(row.score * 100)}%`] : []),
+      ],
+      details: [compactText(row.description, 350),
+        row.id != null ? `Bookmark ID: ${row.id}` : '',
+        row.metadata_truncated ? 'Saved metadata excerpt; some content was omitted' : '',
+      ].filter(Boolean),
+      actionLabel: 'Open bookmark',
+    }));
+    if (!items.length && payload.action === 'search') {
+      const messages = {
+        empty_scope: 'No saved bookmarks in this filter.',
+        no_confident_matches: 'No judged candidates met the relevance cutoff.',
+        no_matches: 'No keyword matches. Try different keywords or hybrid search.',
+      };
+      items.push({title: messages[payload.status] || 'No bookmarks returned.',
+        details: payload.warning ? [payload.warning] : []});
+    }
+    return {kind: 'bookmark', layout: 'list', eyebrow: 'Saved bookmarks',
+      heading: payload.query || 'Bookmarks', subtitle, items,
+      shownCount: rows.length};
+  }
+
   return {
+    adaptBookmarks,
     adaptSearxngSearch,
     adaptTavilySearch,
     adaptTavilyExtract,

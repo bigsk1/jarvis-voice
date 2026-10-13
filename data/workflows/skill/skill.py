@@ -93,7 +93,7 @@ def _check_workflow(
         warnings.append("Add triggers.explicit so the workflow can be invoked predictably")
     else:
         for trigger in explicit:
-            if not isinstance(trigger, str) or not trigger.startswith("/") or " " in trigger:
+            if not isinstance(trigger, str) or (not trigger.startswith("/") and trigger != "*") or " " in trigger:
                 errors.append(f"Invalid explicit trigger: {trigger!r}")
         if len(explicit) > 1 and not is_personal:
             warnings.append(

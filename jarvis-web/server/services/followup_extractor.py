@@ -2924,6 +2924,15 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         extracted['source_stash_ref'] = source_ref
                 followup[key] = extracted
             continue
+        if key == 'bookmark_search':
+            extracted = _search_followup.project_bookmark_runs(
+                value, max_candidates, truncate_text=_truncate_followup_text,
+            )
+            if request_context:
+                extracted['request'] = request_context
+            if extracted:
+                followup[key] = extracted
+            continue
         if key == 'workflow':
             workflow_value = workflow_result_payload({'workflow': value})
             if workflow_value:

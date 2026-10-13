@@ -262,6 +262,10 @@ class ToolExecutor:
             return 180  # One bounded embedding batch; original saves are atomic.
         if tool_name == "project_nomad":
             return 180  # Nomad may perform KB query rewriting plus local model inference.
+        if tool_name == "bookmark_search":
+            from bookmark_plus import selected_backend, timeout_seconds
+            if selected_backend() == "bookmark_plus":
+                return timeout_seconds() + 30  # Cold embedding/ranking models plus process cleanup.
         if tool_name == "create_social_clip":
             return 1200  # 20 minutes — MoneyPrinterTurbo script + stock + TTS + render + download
         if tool_name == "weather":
