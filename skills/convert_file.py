@@ -7,18 +7,21 @@ Output: { "ok": bool, "speech": str, "data": { "stash_ref": "...", "output_path"
 
 Supported conversions:
 - Image formats: jpg, png, webp, gif, tiff, bmp (via ImageMagick)
+- Solid edge-connected background removal to transparent PNG/WebP
 - Raster to vector: jpg/png → svg (via Potrace - best for high-contrast images)
 - Video formats: mp4, webm, mov, avi, mkv (via FFmpeg)
 - Audio formats: mp3, wav, flac, ogg, aac, m4a (via FFmpeg)
 - Video/Audio extraction: video → audio (via FFmpeg)
 """
 
-import sys
-import os
 import json
 import math
-import subprocess
+import os
+import re
 import shutil
+import statistics
+import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -27,7 +30,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config
 from paths import assert_not_restricted_read_path
-from stash_helper import open_space, StashFile, parse_stash_ref, get_space
+from stash_helper import StashFile, get_space, open_space, parse_stash_ref
+from tool_child_environment import RESTRICTED_ENV_MARKER
 
 # Format categories
 IMAGE_FORMATS = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'tiff', 'tif', 'bmp', 'ico'}
@@ -36,6 +40,98 @@ AUDIO_FORMATS = {'mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a', 'wma', 'opus'}
 
 # Tool availability cache
 _tool_cache = {}
+MAX_BACKGROUND_PIXELS = 32_000_000
+
+
+def background_removal_options(options: object, target_format: str) -> dict | None:
+    """Validate removal settings before launching a converter or creating Stash."""
+    if not isinstance(options, dict):
+        raise ValueError('options must be an object')
+    enabled = options.get('remove_background', False)
+    if not isinstance(enabled, bool):
+        raise ValueError('remove_background must be true or false')
+    if not enabled:
+        if any(key in options for key in ('background_color', 'background_tolerance')):
+            raise ValueError('background_color/tolerance require remove_background=true')
+        return None
+    if target_format not in {'png', 'webp'}:
+        raise ValueError('Background removal requires target_format png or webp; JPEG cannot store transparency')
+    color = options.get('background_color', 'auto')
+    if not isinstance(color, str) or (color.lower() != 'auto' and not re.fullmatch(r'#[0-9a-fA-F]{6}', color)):
+        raise ValueError('background_color must be auto or a #RRGGBB color')
+    tolerance = options.get('background_tolerance', 5)
+    if isinstance(tolerance, bool) or not isinstance(tolerance, (int, float)) or not math.isfinite(tolerance) or not 0 <= tolerance <= 25:
+        raise ValueError('background_tolerance must be a finite percentage from 0 to 25')
+    return {'color': color.lower(), 'tolerance': float(tolerance)}
+
+
+def solid_background_color(input_path: str, settings: dict, resize=None) -> str:
+    """Bound the decoded image and infer a consistent color from corner patches."""
+    from PIL import Image
+
+    with Image.open(input_path) as img:
+        if img.width * img.height > MAX_BACKGROUND_PIXELS:
+            raise ValueError('Background removal is limited to 32 megapixels; resize the source first')
+        if getattr(img, 'n_frames', 1) != 1:
+            raise ValueError('Background removal supports single-frame images only')
+        if resize:
+            # Keep the removal path bounded before ImageMagick allocates an
+            # enlarged image. Ordinary conversions retain their existing syntax.
+            geometry = re.fullmatch(r'(\d+)x(\d+)([!<>^]?)|(\d+(?:\.\d+)?)%', str(resize))
+            if not geometry:
+                raise ValueError('Background removal resize must be WIDTHxHEIGHT or PERCENT%')
+            if geometry.group(4):
+                scale = float(geometry.group(4)) / 100
+                width, height = img.width * scale, img.height * scale
+            else:
+                requested_width, requested_height = int(geometry.group(1)), int(geometry.group(2))
+                if geometry.group(3) == '!':
+                    width, height = requested_width, requested_height
+                else:
+                    factor = (max if geometry.group(3) == '^' else min)(requested_width / img.width, requested_height / img.height)
+                    if geometry.group(3) == '>':
+                        factor = min(1, factor)
+                    if geometry.group(3) == '<':
+                        factor = max(1, factor)
+                    width, height = img.width * factor, img.height * factor
+            if not math.isfinite(width * height) or min(width, height) < 1 or width * height > MAX_BACKGROUND_PIXELS:
+                raise ValueError('Background removal resized output must be within 1–32 million pixels')
+        if settings['color'] != 'auto':
+            return settings['color']
+        size = min(5, img.width, img.height)
+        colors = []
+        for x, y in ((0, 0), (img.width - size, 0), (0, img.height - size), (img.width - size, img.height - size)):
+            patch = img.crop((x, y, x + size, y + size)).convert('RGBA')
+            pixels = [patch.getpixel((col, row)) for row in range(size) for col in range(size)]
+            pixels = [pixel for pixel in pixels if pixel[3] == 255]
+            if pixels:
+                colors.append(tuple(round(statistics.median(p[c] for p in pixels)) for c in range(3)))
+        if not colors:
+            raise ValueError('Corners are already transparent; use ordinary conversion to retain transparency or specify background_color')
+        color = tuple(round(statistics.median(p[c] for p in colors)) for c in range(3))
+        agreement = max(3, settings['tolerance'] * 2.55)
+        if any(max(abs(pixel[c] - color[c]) for c in range(3)) > agreement for pixel in colors):
+            raise ValueError('Corner colors differ: automatic removal needs a solid background. Specify background_color for an edge-connected color, or use a subject-mask editor')
+        return '#{:02x}{:02x}{:02x}'.format(*color)
+
+
+def transparency_info(output_path: str) -> dict:
+    """Check the actual delivered alpha, rather than assuming PNG means cutout."""
+    from PIL import Image
+
+    with Image.open(output_path) as img:
+        if img.width * img.height > MAX_BACKGROUND_PIXELS:
+            raise ValueError('Background removal output exceeds 32 megapixels; choose a smaller resize')
+        if 'A' not in img.getbands() and 'transparency' not in img.info:
+            raise RuntimeError('Background removal produced no alpha channel')
+        alpha = img.convert('RGBA').getchannel('A')
+        histogram = alpha.histogram()
+        if not histogram[0]:
+            raise RuntimeError('No matching edge-connected background was removed; check background_color/tolerance')
+        if not sum(histogram[1:]):
+            raise RuntimeError('Background removal erased the entire image; lower background_tolerance or choose another color')
+        return {'width': img.width, 'height': img.height, 'has_alpha': True,
+                'transparent_pixels': histogram[0], 'visible_pixels': sum(histogram[1:])}
 
 
 def conversion_timeout(foreground_seconds: float) -> float:
@@ -99,6 +195,17 @@ def resolve_source(source: str) -> tuple[str, dict]:
             raise ValueError(f"Could not resolve stash reference: {source} - {e}")
     
     # Handle local file paths
+    # Restricted children have a scratch HOME. Resolve explicit ~/ inputs
+    # against the operator account, without restoring HOME for subprocesses.
+    if os.environ.get(RESTRICTED_ENV_MARKER) == '1' and (source == '~' or source.startswith('~/')):
+        if os.name == 'posix':
+            import pwd
+            home = pwd.getpwuid(os.getuid()).pw_dir
+        else:
+            home = os.environ.get('USERPROFILE')
+            if not home:
+                raise ValueError('Use an absolute source path on this installation')
+        source = str(Path(home) / source[2:]) if source != '~' else home
     path = Path(source).expanduser().resolve()
     assert_not_restricted_read_path(path, label="Source file")
     if path.exists():
@@ -109,11 +216,24 @@ def resolve_source(source: str) -> tuple[str, dict]:
 
 def convert_image_to_image(input_path: str, output_path: str, options: dict = None) -> dict:
     """Convert between image formats using ImageMagick."""
-    if not check_tool('convert'):
+    executable = 'magick' if check_tool('magick') else 'convert'
+    if not check_tool(executable):
         raise RuntimeError("ImageMagick not installed. Run: sudo apt install imagemagick")
     
     options = options or {}
-    cmd = ['convert', input_path]
+    settings = background_removal_options(options, get_format(output_path))
+    cmd = [executable, input_path]
+    color = None
+    if settings:
+        color = solid_background_color(input_path, settings, options.get('resize'))
+        # A one-pixel border connects ALL matching edge regions. Copy keeps
+        # existing alpha; Over here would flatten transparent source pixels.
+        # Only connected background is removed: enclosed white fur stays.
+        cmd.extend(['-alpha', 'set', '-precision', '16', '-format', 'alpha_info:%[fx:mean.a]\n', '-write', 'info:',
+                    '-compose', 'Copy', '-bordercolor', color,
+                    '-border', '1x1', '-compose', 'Over', '-fuzz', f"{settings['tolerance']:g}%",
+                    '-fill', 'none', '-draw', 'matte 0,0 floodfill' if executable == 'convert' else 'alpha 0,0 floodfill',
+                    '-shave', '1x1', '+repage', '-format', 'alpha_info:%[fx:mean.a]\n', '-write', 'info:'])
     
     # Quality setting (for lossy formats)
     if 'quality' in options:
@@ -127,13 +247,23 @@ def convert_image_to_image(input_path: str, output_path: str, options: dict = No
     if options.get('strip_metadata', False):
         cmd.append('-strip')
     
-    cmd.append(output_path)
+    cmd.append('PNG32:' + output_path if settings and get_format(output_path) == 'png' else output_path)
     
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=conversion_timeout(120))
     if result.returncode != 0:
         raise RuntimeError(f"ImageMagick failed: {result.stderr}")
     
-    return {'tool': 'imagemagick', 'command': ' '.join(cmd)}
+    result_data = {'tool': 'imagemagick', 'command': ' '.join(cmd)}
+    if settings:
+        opacity = [float(value) for value in re.findall(r'alpha_info:([0-9.eE+-]+)', result.stdout)]
+        if len(opacity) != 2 or not all(math.isfinite(value) and 0 <= value <= 1 for value in opacity):
+            raise RuntimeError('ImageMagick did not return valid background removal evidence')
+        if opacity[1] >= opacity[0]:
+            raise RuntimeError('No new edge-connected background was removed; check background_color/tolerance')
+        result_data.update(background_removed=True, method='edge_connected_color',
+                           background_color=color, background_tolerance=settings['tolerance'],
+                           **transparency_info(output_path))
+    return result_data
 
 
 def convert_raster_to_svg(input_path: str, output_path: str, options: dict = None) -> dict:
@@ -312,7 +442,7 @@ def get_media_info(input_path: str) -> dict:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=conversion_timeout(30))
         if result.returncode == 0:
             return json.loads(result.stdout)
-    except:
+    except Exception:
         pass
     return {}
 
@@ -341,6 +471,8 @@ def main():
         # Normalize format
         if target_format == 'jpeg':
             target_format = 'jpg'
+
+        removal = background_removal_options(options, target_format)
         
         # Resolve source to local file
         input_path, source_meta = resolve_source(source)
@@ -357,11 +489,13 @@ def main():
         target_is_image = target_format in IMAGE_FORMATS
         target_is_video = target_format in VIDEO_FORMATS
         target_is_audio = target_format in AUDIO_FORMATS
+        if removal and not source_is_image:
+            raise ValueError('Background removal requires a raster image source')
         
         # Create output filename
         original_name = source_meta.get('original_name', 'converted')
         base_name = Path(original_name).stem
-        output_filename = f"{base_name}.{target_format}"
+        output_filename = f"{base_name}{'_transparent' if removal else ''}.{target_format}"
         
         # Create temp output file
         with tempfile.NamedTemporaryFile(suffix=f'.{target_format}', delete=False) as tmp:
@@ -436,6 +570,11 @@ def main():
                 'output_size_bytes': output_size,
                 'conversion_info': conversion_info
             }
+            if removal:
+                result_data.update(background_removed=True, transparent=True,
+                    width=conversion_info['width'], height=conversion_info['height'],
+                    background_removal_method=conversion_info['method'],
+                    background_removal_note='Removed an edge-connected solid color; complex backgrounds and fine hair may need a subject mask.')
             
             # Calculate size change
             if input_size > 0:
@@ -447,7 +586,8 @@ def main():
             
             print(json.dumps({
                 "ok": True,
-                "speech": f"Converted {source_format.upper()} to {target_format.upper()}. Saved to stash.",
+                "speech": (f"Removed the solid background and saved a transparent {target_format.upper()} to Stash."
+                           if removal else f"Converted {source_format.upper()} to {target_format.upper()}. Saved to stash."),
                 "data": result_data
             }))
             

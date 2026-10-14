@@ -122,6 +122,51 @@ def test_direct_request_reconnect_is_idempotent_and_changed_arguments_conflict(d
     assert h.instances == []
 
 
+def test_background_cutout_saves_alpha_and_delivers_media_metadata(direct, monkeypatch):
+    from types import SimpleNamespace
+
+    import llm_provider
+    from PIL import Image, ImageDraw
+
+    if not (shutil.which('convert') or shutil.which('magick')):
+        pytest.skip('ImageMagick is optional')
+    h = direct
+    # Use the real completion projection with only its summary model stubbed.
+    h.background.synthesize = h.background._synthesize
+    monkeypatch.setattr(llm_provider, 'create_configured_provider', lambda **_kw:
+        ('test', 'test-model', SimpleNamespace(chat=lambda *_a, **_k: 'Background removed.')))
+    image = Image.new('RGB', (64, 48), 'white')
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((12, 8, 51, 39), fill='black')
+    draw.rectangle((22, 18, 35, 29), fill='white')
+    image.save(h.source)
+    before = hashlib.sha256(h.source.read_bytes()).hexdigest()
+    h.payload['message'] = 'Remove the white background and save a transparent PNG.'
+    h.payload['tool_action']['arguments'].update(target_format='png', options={'remove_background': True})
+    h.client.emit('chat:send', h.payload)
+    job = eventually(lambda: next(iter(h.tasks.conversation_jobs()), None))
+    eventually(lambda: h.tasks.get(job['id'])['dispatch_state'] == 'ready')
+    worker = TaskWorker(h.tasks, production.worker_adapters(), deployment_overrides={
+        'STASH_DIR': str(h.tmp / 'conversion-stash'), 'JARVIS_TOOL_PROFILE': 'default'})
+    worker.run_once()
+    completed = h.tasks.get(job['id'])
+    assert completed['state'] == 'succeeded', completed
+    eventually(lambda: h.tasks.get(job['id'])['delivery_state'] == 'delivered')
+    answer = h.store.get_conversation(job['conversation_id'])['messages'][-1]
+    assert answer['data']['_kind'] == 'continuation' and answer['tools_used'] == []
+    output = answer['data']['convert_file']['data']
+    assert output['transparent'] and output['background_removed']
+    assert output['target_format'] == 'png' and output['stash_ref'].startswith('stash://')
+    images = list((h.tmp / 'conversion-stash').rglob('*.png'))
+    assert len(images) == 1
+    with Image.open(images[0]) as result:
+        assert result.mode == 'RGBA' and result.size == (64, 48)
+        assert result.getpixel((0, 0))[3] == 0
+        assert result.getpixel((28, 23))[3] == 255
+    assert hashlib.sha256(h.source.read_bytes()).hexdigest() == before
+    assert h.instances == []
+
+
 @pytest.mark.parametrize('failure', ['arguments', 'worker_offline', 'save_receipt'])
 def test_direct_admission_failures_do_not_execute_or_fall_back_to_model(direct, monkeypatch, failure):
     h = direct

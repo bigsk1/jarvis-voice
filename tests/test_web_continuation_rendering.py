@@ -278,6 +278,29 @@ assert.ok(!descendants(message(ui)).some(el=>['img','video','audio'].includes(el
 """)
 
 
+@pytest.mark.parametrize('form', ['live', 'saved'])
+@pytest.mark.parametrize('mode', ['cloud', 'local'])
+def test_completed_transparent_conversion_previews_without_using_foreground_tool_state(form, mode):
+    run_message_browser(DOM + f"\nconst form={json.dumps(form)}, mode={json.dumps(mode)};\n" + r"""
+const ui = chat();
+ui.pendingTools = {get_time:{status:'running'}};
+ui.currentMessageId = 'foreground'; ui.isProcessing = true;
+const payload = {_background_mode:mode,convert_file:{ok:true,data:{
+  stash_ref:'stash://cutout_space/f_output',filename:'dog_transparent.png',
+  target_format:'png',transparent:true}}};
+ui.addAssistantMessage('Background removed.', [], lateData(payload, form), form === 'live' ? {late:true} : {});
+const all = descendants(message(ui));
+const image = all.find(el => el.tag === 'img');
+assert.equal(image.src, '/api/stash/cutout_space/f_output?mode='+mode);
+assert.ok(image.parentElement.classList.contains('transparent-image'));
+assert.equal(all.filter(el => el.tag === 'a').length, 2);
+assert.equal(all.find(el => el.download).download, 'dog_transparent.png');
+assert.equal(ui.pendingTools.get_time.status, 'running');
+assert.equal(ui.currentMessageId, 'foreground'); assert.equal(ui.isProcessing, true);
+assert.ok(!effects.some(e => e === 'clear-actions' || e === 'hydrate' || Array.isArray(e)));
+""")
+
+
 def test_media_deduplicates_and_keeps_unknown_files_as_links_with_literal_metadata():
     run_message_browser(DOM + r"""
 const ui=chat();

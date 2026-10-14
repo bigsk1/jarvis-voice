@@ -15,7 +15,7 @@ The easiest way to convert files is using the **🔄 Convert button** in the web
 3. **Choose target format** from the dropdown
 4. **Click "Convert"**
 
-The file uploads directly to stash (bypassing vision analysis) and converts immediately. Results display inline with a **⬇️ Download** button.
+The file uploads directly to Stash (bypassing vision analysis). Foreground conversions return inline with a **⬇️ Download** button. If `convert_file` is selected in Background Tasks, the queued card appears first and the completed media preview returns to the same conversation.
 
 ### Why use the 🔄 button?
 - **Bypasses vision analysis** - no "I can't convert" responses
@@ -31,6 +31,7 @@ Click "⚙️ Advanced Options" in the modal to reveal format-specific settings:
 | Source Type | Available Options |
 |-------------|-------------------|
 | **Images** | Resize (e.g., "800x600" or "50%"), Quality (1-100), Strip metadata, Grayscale |
+| **PNG/WebP images** | Remove solid background, optional background color and tolerance |
 | **SVG conversion** | Threshold (black/white cutoff), Speckle size (suppress small dots) |
 | **Videos** | Resolution, CRF quality (0-51, lower=better), FPS, Max duration |
 | **Audio** | Bitrate (128k-320k), Sample rate (44.1kHz-96kHz), Channels (mono/stereo) |
@@ -109,7 +110,9 @@ When using voice or typing directly, provide the stash reference:
 "Extract audio from stash://space_xxx/f_video as MP3"
 ```
 
-**Note:** Uploading via the 🖼️ button triggers vision analysis first, which may give unhelpful responses before converting. Use the 🔄 button instead.
+You can also attach an image with the 🖼️ button and choose **Save to Stash**, then ask to convert it or remove its background. This preserves the full-size source and supplies its Stash reference. Simply changing JPEG to PNG does not make the background transparent.
+
+For example: “Remove the white background from this image and save a transparent PNG using convert_file.”
 
 ### Via API
 
@@ -156,7 +159,7 @@ curl -O http://localhost:8880/api/stash/space/{space_id}/file/{file_id}/download
 ### Direct Tool Call
 
 ```bash
-python3 skills/convert_file.py '{
+.venv/bin/python skills/convert_file.py '{
   "source": "stash://space_xxx/f_yyy",
   "target_format": "png",
   "options": {"quality": 90}
@@ -172,6 +175,19 @@ python3 skills/convert_file.py '{
 | `quality` | int (1-100) | JPEG/WebP quality | `90` |
 | `resize` | string | Resize dimensions | `"800x600"` or `"50%"` |
 | `strip_metadata` | bool | Remove EXIF data | `true` |
+| `remove_background` | bool | Remove an edge-connected solid color; requires PNG/WebP output | `true` |
+| `background_color` | string | Corner-based detection by default, or an explicit RGB color; requires removal enabled | `"auto"` or `"#FFFFFF"` |
+| `background_tolerance` | number (0–25) | Color tolerance percentage, default 5; requires removal enabled | `5` |
+
+### Solid-background removal
+
+This local ImageMagick operation is intended for logos, illustrations and objects on a plain background. It removes matching color connected to the image edges, while keeping enclosed matching colors such as white fur inside a dark outline. It preserves existing alpha and creates a new Stash file; the source stays unchanged.
+
+Automatic color selection checks the image corners. Different corner colors cause an error rather than a guessed cutout. An explicit `background_color` can target a known edge-connected color when automatic detection is unsuitable. Reduce tolerance if subject details disappear; increase it cautiously for slightly off-white or JPEG-compressed backgrounds.
+
+Removal accepts single-frame raster images up to 32 megapixels and outputs PNG or WebP with actual transparency. With removal enabled, resize accepts `WIDTHxHEIGHT` (optionally ending in `!`, `<`, `>` or `^`) or `PERCENT%`; the resized output must also stay within 32 megapixels. A no-match result or an entirely erased image is reported as a failure before saving to Stash.
+
+This is color removal, not AI subject segmentation. Scenery, similar-colored subjects, fine hair, shadows and anti-aliased edges may need a mask editor. Thin fringes can remain. No model, GPU, API key or model download is required.
 
 ### SVG (Potrace) Options
 
@@ -218,6 +234,21 @@ python3 skills/convert_file.py '{
 }
 ```
 
+### Remove a white background and save a transparent PNG
+```json
+{
+  "source": "stash://space_xxx/f_image",
+  "target_format": "png",
+  "options": {
+    "remove_background": true,
+    "background_color": "#FFFFFF",
+    "background_tolerance": 5
+  }
+}
+```
+
+Omit `background_color` to detect a consistent corner color. Choose `webp` for a transparent WebP export; JPEG cannot store alpha.
+
 ### Convert video to WebM
 ```json
 {
@@ -250,6 +281,10 @@ Converted files display **inline** in the chat:
 
 All formats show a **⬇️ Download** button for direct download.
 
+Background-removal images use a checkerboard preview in foreground and completed background messages. The checkerboard is only a display aid and is not part of the downloaded image. The result includes `transparent: true`, dimensions, the removal method and a limitation note; `conversion_info` includes the detected color, tolerance and transparent/visible pixel counts.
+
+A queued background receipt has no media yet. Completed PNG/WebP conversions render through the same existing background media path used for generated images, with Open and Download controls. A Stash reference is also retained for follow-up work.
+
 ### Via API
 
 Access converted files:
@@ -264,7 +299,9 @@ System packages (Ubuntu/Debian):
 sudo apt install imagemagick potrace ffmpeg
 ```
 
-These are listed in `system-packages.txt`.
+These are listed in `system-packages.txt`. The native `./install-system-deps.sh` installer reads that file directly, including ImageMagick and Potrace. Run `./install-system-deps.sh --list` to inspect the package list without installing anything.
+
+Solid-background removal works with ImageMagick 6 (`convert`) or 7 (`magick`). Pillow, already included in Jarvis's Python dependencies, validates the source and delivered alpha. Docker builds need the same ImageMagick package in the container.
 
 ## Troubleshooting
 
@@ -277,6 +314,14 @@ sudo apt install imagemagick
 ```bash
 sudo apt install potrace
 ```
+
+### Background removal fails or looks incomplete
+- Choose PNG or WebP and enable `remove_background`; format conversion alone retains the background.
+- For “Corner colors differ,” use a known `#RRGGBB` background color or a mask editor for complex scenes.
+- For “No matching/new edge-connected background,” check the color and tolerance. If the source is already a cutout, use ordinary conversion to keep its alpha.
+- For an entirely erased image, lower tolerance or choose a different color.
+- Resize sources above 32 megapixels first. Animated or multipage images need a single-frame export before removal.
+- If a downloaded file appears white in another viewer, check it on a colored or checkerboard background; that viewer may be displaying transparent pixels as white.
 
 ### SVG conversion looks blocky
 - Use higher contrast source image

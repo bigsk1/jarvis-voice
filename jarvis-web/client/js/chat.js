@@ -2816,6 +2816,8 @@ class ChatUI {
     const imageFormats = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'ico', 'tiff'];
     const videoFormats = ['mp4', 'webm', 'mov', 'avi', 'mkv'];
     const audioFormats = ['mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a', 'extract_mp3', 'extract_wav'];
+    const backgroundOptions = document.getElementById('convertBackgroundOptions');
+    if (backgroundOptions) backgroundOptions.hidden = !['png', 'webp'].includes(targetFormat);
     
     if (targetFormat === 'svg') {
       // SVG has special potrace options
@@ -2846,6 +2848,14 @@ class ChatUI {
     if (quality) options.quality = parseInt(quality);
     if (stripMetadata) options.strip_metadata = true;
     if (grayscale) options.grayscale = true;
+    if (['png', 'webp'].includes(targetFormat)
+        && document.getElementById('convertRemoveBackground')?.checked) {
+      options.remove_background = true;
+      const color = document.getElementById('convertBackgroundColor')?.value?.trim();
+      const tolerance = document.getElementById('convertBackgroundTolerance')?.value?.trim();
+      if (color) options.background_color = color;
+      if (tolerance) options.background_tolerance = Number(tolerance);
+    }
     
     // SVG options
     const threshold = document.getElementById('convertThreshold')?.value?.trim();
@@ -2883,14 +2893,15 @@ class ChatUI {
   _resetConvertOptions() {
     // Reset all input fields
     const inputs = ['convertResize', 'convertQuality', 'convertThreshold', 'convertTurdsize',
-                    'convertResolution', 'convertCrf', 'convertFps', 'convertDuration'];
+                    'convertResolution', 'convertCrf', 'convertFps', 'convertDuration',
+                    'convertBackgroundColor', 'convertBackgroundTolerance'];
     inputs.forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
     
     // Reset checkboxes
-    const checkboxes = ['convertStripMetadata', 'convertGrayscale'];
+    const checkboxes = ['convertStripMetadata', 'convertGrayscale', 'convertRemoveBackground'];
     checkboxes.forEach(id => {
       const el = document.getElementById(id);
       if (el) el.checked = false;
@@ -3628,14 +3639,13 @@ class ChatUI {
   }
 
   /**
-   * Skip assistant-side inline rendering for source uploads that were only analyzed.
+   * Source upload previews already belong to the user message, for every image action.
    * Keep the stash metadata intact so follow-up turns can still re-use the image.
    */
   _shouldSkipAssistantInlineImage(item) {
     return Boolean(
       item
       && item.tool_origin === 'web_upload'
-      && item.action === 'analyze'
     );
   }
 
@@ -3810,6 +3820,7 @@ class ChatUI {
           ? toolResult.outputs.filter(output => output?.role === 'preview') : [])];
         for (const candidate of candidates) {
           if (!candidate || typeof candidate !== 'object') continue;
+          if (this._shouldSkipAssistantInlineImage(candidate)) continue;
           const ref = candidate.stash_ref || candidate.ref;
           if (!ref) continue;
           const fn = candidate.filename || candidate.name || '';

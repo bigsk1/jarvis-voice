@@ -1232,6 +1232,22 @@
                   <input type="checkbox" id="convertGrayscale"> Convert to grayscale
                 </label>
               </div>
+              <div id="convertBackgroundOptions" hidden>
+                <div class="setting-group">
+                  <label class="setting-label"><input type="checkbox" id="convertRemoveBackground"> Remove solid background</label>
+                  <span class="setting-desc">For plain backgrounds. Keeps matching colors enclosed inside the subject. Output must be PNG or WebP.</span>
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label" for="convertBackgroundColor">Background color</label>
+                  <input type="text" class="setting-input" id="convertBackgroundColor" placeholder="auto or #FFFFFF">
+                  <span class="setting-desc">Auto detects a consistent color at the corners.</span>
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label" for="convertBackgroundTolerance">Color tolerance (%)</label>
+                  <input type="number" class="setting-input" id="convertBackgroundTolerance" min="0" max="25" step="0.5" placeholder="5">
+                  <span class="setting-desc">Higher removes more similar edge colors; lower preserves more detail.</span>
+                </div>
+              </div>
             </div>
             
             <!-- SVG Options -->

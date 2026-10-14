@@ -1,6 +1,7 @@
 # System-Level Dependencies for Jarvis Voice Assistant
 # Ubuntu/Debian APT packages required for full functionality
 # Install with: sudo apt install <package>
+# Or run ./install-system-deps.sh; --list shows the packages without installing.
 
 # Core Audio (Required for voice mode)
 sox                    # Audio processing and conversion
@@ -19,11 +20,11 @@ python3-venv           # Python virtual environment support
 # Network Tools (Required for network_tools skill)
 traceroute             # Network path tracing
 inetutils-traceroute   # Alternative traceroute implementation
-ping                   # Network connectivity testing (usually pre-installed)
+iputils-ping            # Network connectivity testing (provides ping)
 dnsutils               # DNS lookup tools (dig, nslookup) - optional but recommended
 
 # Media Conversion (Required for convert_file tool)
-imagemagick            # Image format conversion (jpg, png, webp, gif, etc.)
+imagemagick            # Image conversion and solid-background removal (PNG/WebP transparency)
 potrace                # Raster to vector conversion (jpg/png → svg)
 
 # Optional (Recommended)
@@ -34,5 +35,6 @@ build-essential        # C/C++ compilers (needed for some Python packages)
 libportaudio2          # PortAudio library (for sounddevice)
 libsndfile1            # Audio file reading/writing library
 cups                   # printer tool
+sqlite3                # SQLite command-line utilities
 libsqlite3-dev         # db search
 ripgrep                # search

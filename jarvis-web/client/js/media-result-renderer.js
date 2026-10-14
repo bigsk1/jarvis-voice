@@ -58,6 +58,7 @@ window.mediaResultRenderer = (() => {
         const frame = node(kind === 'image' ? 'button' : 'div', undefined, `message-${kind}`);
         const media = node(kind === 'image' ? 'img' : kind);
         if (kind === 'image') {
+          if (body.transparent === true) frame.classList.add('transparent-image');
           frame.type = 'button';
           frame.setAttribute('aria-label', `Expand ${title}`);
           media.alt = title; media.loading = 'lazy';

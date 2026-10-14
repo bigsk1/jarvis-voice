@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "convert_file",
-  "description": "Convert media files between formats using local tools. Supports: IMAGE formats (jpg, png, webp, gif, tiff, bmp), RASTER to VECTOR (jpg/png → svg via Potrace), VIDEO formats (mp4, webm, mov, avi, mkv), AUDIO formats (mp3, wav, flac, ogg, aac), and VIDEO to AUDIO extraction. Input can be a stash reference (stash://space_xxx/file_id) or file path. Output is saved to stash for download. Example: convert my uploaded image to SVG, convert video to mp3.",
+  "description": "Convert media files locally, or remove a solid background from an existing image without regenerating its subject. Examples: \"make this image background transparent\", \"remove the white background from my uploaded image\", \"convert my image to PNG\", \"convert video to MP3\". Background removal uses options.remove_background=true and target_format png/webp; removes only edge-connected color and keeps enclosed matching colors. Best for plain backgrounds, not scenery or fine-hair matting. Supports image formats (jpg/png/webp/gif/tiff/bmp), raster-to-SVG tracing, video/audio conversion and video-to-audio extraction. Accepts stash:// references or local files; outputs save to Stash for inline preview and download.",
   "script": "convert_file.py",
   "execution": {
     "background": {
@@ -18,8 +18,13 @@
       },
       "argument_constraints": {
         "properties": {
-          "source": {"minLength": 1, "maxLength": 4096},
-          "target_format": {"pattern": "^[.]*[a-zA-Z0-9]+$"}
+          "source": {
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "target_format": {
+            "pattern": "^[.]*[a-zA-Z0-9]+$"
+          }
         }
       }
     }
@@ -37,10 +42,30 @@
       },
       "options": {
         "type": "object",
-        "description": "Optional conversion settings. Image: quality (1-100), resize ('800x600' or '50%'), strip_metadata (bool). Video: crf (quality 0-51), resolution ('1920x1080'), fps, duration (seconds). Audio: bitrate ('192k'), sample_rate (44100), channels (1 or 2). SVG: threshold ('50%' for tracing)"
+        "description": "Optional conversion settings. Image: quality (1-100), resize ('800x600' or '50%'), strip_metadata (bool). Video: crf (quality 0-51), resolution ('1920x1080'), fps, duration (seconds). Audio: bitrate ('192k'), sample_rate (44100), channels (1 or 2). SVG: threshold ('50%' for tracing) Solid-background removal: remove_background (bool), background_color (auto or #RRGGBB), background_tolerance (0-25 percent, default 5). Requires PNG/WebP output and a single-frame raster input. Changing JPEG to PNG alone does not remove a background.",
+        "properties": {
+          "remove_background": {
+            "type": "boolean",
+            "description": "Remove a solid edge-connected background while preserving enclosed matching colors. Default false. Use target_format png or webp. Not semantic subject segmentation."
+          },
+          "background_color": {
+            "type": "string",
+            "pattern": "^(?:auto|#[0-9a-fA-F]{6})$",
+            "description": "With remove_background: auto (default) checks corner colors; or explicit #RRGGBB such as #FFFFFF."
+          },
+          "background_tolerance": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 25,
+            "description": "With remove_background: color tolerance percentage, default 5. Lower retains more detail; higher removes more similar edge-connected colors. Do not use high tolerance on white subjects."
+          }
+        }
       }
     },
-    "required": ["source", "target_format"]
+    "required": [
+      "source",
+      "target_format"
+    ]
   },
   "permissions": {
     "dangerous": false,
@@ -48,5 +73,28 @@
     "network": false,
     "filesystem": true,
     "auto_approve": true
+  },
+  "proxy_policy": "off",
+  "child_environment": {
+    "mode": "restricted",
+    "allow": [
+      "STASH_DIR",
+      "STASH_DEFAULT_TTL_DAYS",
+      "STASH_SOURCE_ARTIFACT_TTL_DAYS",
+      "STASH_GENERATED_MEDIA_TTL_DAYS",
+      "STASH_MAX_SPACE_SIZE_MB",
+      "STASH_MAX_TOTAL_SIZE_GB",
+      "STASH_CLEANUP_MAX_SPACES",
+      "STASH_CLEANUP_MAX_BYTES_MB",
+      "USERPROFILE",
+      "OMP_NUM_THREADS",
+      "OPENBLAS_NUM_THREADS",
+      "MAGICK_MEMORY_LIMIT",
+      "MAGICK_MAP_LIMIT",
+      "MAGICK_DISK_LIMIT",
+      "MAGICK_THREAD_LIMIT",
+      "MAGICK_CONFIGURE_PATH",
+      "MAGICK_TEMPORARY_PATH"
+    ]
   }
 }

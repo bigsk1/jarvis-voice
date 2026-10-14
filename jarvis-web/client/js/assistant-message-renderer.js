@@ -107,7 +107,7 @@ window.assistantMessageRenderer = {
           // Display image inline with download button
           convertedFileHtml = `
               <div class="converted-media-container">
-                <div class="message-image converted-file" data-converted-image-url="${stashUrlAttr}">
+                <div class="message-image converted-file${convertResult.transparent === true ? ' transparent-image' : ''}" data-converted-image-url="${stashUrlAttr}">
                   <img src="${stashUrlAttr}" alt="Converted ${formatLabel}" loading="lazy">
                   <div class="image-overlay">
                     <span>🔍 Click to expand</span>

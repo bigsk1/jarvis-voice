@@ -279,7 +279,8 @@ for (const [metadata, expected] of [
   [{filename:'drawing', mime_type:'image/svg+xml'}, true],
   [{filename:'screenshot.jpg', mime_type:'text/plain'}, false],
   [{filename:'result.json', mime_type:'application/json'}, false],
-  [{filename:'source.png', tool_origin:'web_upload', action:'analyze'}, false]
+  ...['analyze','stash','craft','image','video'].map(action =>
+    [{filename:'source.png',tool_origin:'web_upload',action},false])
 ]) {
   const html = render(chat(), 'Saved.', ['stash'], {
     stash:{stash_ref:'stash://space_test/f_artifact', ...metadata}
@@ -288,6 +289,40 @@ for (const [metadata, expected] of [
     JSON.stringify(metadata));
   assert.equal(html.includes('showImageLightbox'), expected);
 }
+""")
+
+
+@pytest.mark.parametrize('live', [True, False])
+@pytest.mark.parametrize('action', ['analyze', 'stash', 'craft', 'image', 'video'])
+def test_image_edits_show_only_output_and_keep_upload_context(live, action):
+    run_message_browser(f"const live={json.dumps(live)}, action={json.dumps(action)};\n" + r"""
+const source = {stash_ref:'stash://source_space/f_original',filename:'original.png',
+  tool_origin:'web_upload',action,uploaded_images:[{stash_ref:'stash://source_space/f_original'}]};
+const payload = {_web_upload_stash:source,stash:source,convert_file:{
+  stash_ref:'stash://output_space/f_transparent',filename:'cutout.png',target_format:'png',transparent:true}};
+const before = JSON.stringify(payload);
+const ui = chat();
+ui.addUserMessage('Remove the background.', {url:'/api/uploads/original.jpg'});
+assert.ok(message(ui).innerHTML.includes('<img src="/api/uploads/original.jpg"'));
+const html = render(ui, 'Finished.', ['convert_file'], payload, live);
+assert.equal((html.match(/<img\b/g) || []).length, 1);
+assert.ok(html.includes('src="/api/stash/output_space/f_transparent"'));
+assert.ok(!html.includes('src="/api/stash/source_space/f_original"'));
+assert.ok(html.includes('download="cutout.png"'));
+assert.equal(JSON.stringify(payload), before);
+""")
+
+
+@pytest.mark.parametrize('live', [True, False])
+def test_skipped_upload_does_not_hide_a_separate_tool_image(live):
+    run_message_browser(f"const live={json.dumps(live)};\n" + r"""
+const html = render(chat(), 'The screenshot is ready.', ['screenshot_url'], {
+  stash:{stash_ref:'stash://source_space/f_original',filename:'original.png',tool_origin:'web_upload',action:'stash'},
+  screenshot_url:{stash_ref:'stash://output_space/f_screenshot',filename:'screenshot.png',tool_origin:'screenshot_url'}
+}, live);
+assert.equal((html.match(/<img\b/g) || []).length, 1);
+assert.ok(html.includes('src="/api/stash/output_space/f_screenshot"'));
+assert.ok(!html.includes('src="/api/stash/source_space/f_original"'));
 """)
 
 
@@ -346,6 +381,56 @@ images[0].events.click();
 assert.deepEqual(opened, ["/api/stash/Custom%20space/image')%3Bwindow.__injected%3D1%3B('.png"]);
 assert.equal(sandbox.window.__injected, undefined);
 assert.equal(ui.pendingToolsByMessage.has('answer'), false);
+""")
+
+
+@pytest.mark.parametrize('live', [True, False])
+def test_transparent_conversion_preview_and_download_use_the_new_stash_file(live):
+    run_message_browser(f"const live = {json.dumps(live)};\n" + r"""
+const payload = {convert_file:{stash_ref:'stash://cutout_space/f_cutout',
+  filename:'dog_transparent.png',target_format:'png',transparent:true}};
+const html = render(chat(), 'Background removed.', ['convert_file'], payload, live);
+assert.ok(html.includes('converted-file transparent-image'));
+assert.ok(html.includes('src="/api/stash/cutout_space/f_cutout"'));
+assert.ok(html.includes('download="dog_transparent.png"'));
+payload.convert_file.transparent = false;
+assert.ok(!render(chat(), 'Converted.', ['convert_file'], payload, live).includes('transparent-image'));
+""")
+
+
+def test_background_removal_form_defaults_format_switches_and_reset():
+    run_message_browser(r"""
+const ui = chat();
+const fields = {};
+for (const id of ['convertImageOptions','convertSvgOptions','convertVideoOptions','convertAudioOptions',
+  'convertBackgroundOptions','convertRemoveBackground','convertBackgroundColor','convertBackgroundTolerance']) {
+  fields[id] = {style:{},value:'',checked:false};
+}
+sandbox.document.getElementById = id => fields[id] || null;
+ui.convertTargetFormat = {value:'png'};
+ui._updateConvertOptions();
+assert.equal(fields.convertBackgroundOptions.hidden, false);
+assert.deepEqual(JSON.parse(JSON.stringify(ui._collectConvertOptions())), {});
+fields.convertRemoveBackground.checked = true;
+assert.deepEqual(JSON.parse(JSON.stringify(ui._collectConvertOptions())), {remove_background:true});
+fields.convertBackgroundColor.value = ' #FFFFFF ';
+fields.convertBackgroundTolerance.value = '0';
+assert.deepEqual(JSON.parse(JSON.stringify(ui._collectConvertOptions())), {
+  remove_background:true,background_color:'#FFFFFF',background_tolerance:0});
+for (const format of ['jpg','svg','mp4']) {
+  ui.convertTargetFormat.value = format;
+  ui._updateConvertOptions();
+  assert.equal(fields.convertBackgroundOptions.hidden, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(ui._collectConvertOptions())), {});
+}
+ui.convertTargetFormat.value = 'webp';
+ui._updateConvertOptions();
+assert.equal(fields.convertBackgroundOptions.hidden, false);
+ui._resetConvertOptions();
+assert.equal(fields.convertRemoveBackground.checked, false);
+assert.equal(fields.convertBackgroundColor.value, '');
+assert.equal(fields.convertBackgroundTolerance.value, '');
+assert.deepEqual(JSON.parse(JSON.stringify(ui._collectConvertOptions())), {});
 """)
 
 

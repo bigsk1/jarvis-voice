@@ -34,6 +34,18 @@ TRUSTED_BINDINGS = {
 # credential and the runtime paths needed for Stash/HTTPS, not the entire mode
 # file (which can contain unrelated provider and Jarvis API credentials).
 CHILD_ENVIRONMENT_POLICIES = {
+    'convert_file': {
+        'always': frozenset({
+            'PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'JARVIS_MODE',
+            'STASH_DIR', 'JARVIS_OVERRIDE_STASH_DIR',
+            'STASH_DEFAULT_TTL_DAYS', 'STASH_SOURCE_ARTIFACT_TTL_DAYS', 'STASH_GENERATED_MEDIA_TTL_DAYS',
+            'STASH_MAX_SPACE_SIZE_MB', 'STASH_MAX_TOTAL_SIZE_GB',
+            'STASH_CLEANUP_MAX_SPACES', 'STASH_CLEANUP_MAX_BYTES_MB',
+            'MAGICK_MEMORY_LIMIT', 'MAGICK_MAP_LIMIT', 'MAGICK_DISK_LIMIT', 'MAGICK_THREAD_LIMIT',
+            'MAGICK_CONFIGURE_PATH', 'MAGICK_TEMPORARY_PATH',
+        }),
+        'if_true': {},
+    },
     'docling_convert': {
         'always': frozenset({
             'PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'JARVIS_MODE',
@@ -88,7 +100,8 @@ def authorize_tools(selected):
     if 'browser_use' in selected and 'browser_use' in bindings():
         from lib.webhook_integrations.browser import policy
         result['browser_use'] = policy()[1]
-    from lib.webhook_integrations.private_bindings import bindings as private_bindings, policy as private_policy
+    from lib.webhook_integrations.private_bindings import bindings as private_bindings
+    from lib.webhook_integrations.private_bindings import policy as private_policy
 
     for name in set(selected) & private_bindings().keys():
         result[name] = private_policy(name)[1]
@@ -117,7 +130,8 @@ def worker_adapters(store=None):
         import json
 
         from lib.webhook_integrations.browser import prepare as browser_prepare
-        from lib.webhook_integrations.private_bindings import parameters as private_parameters, prepare as private_prepare
+        from lib.webhook_integrations.private_bindings import parameters as private_parameters
+        from lib.webhook_integrations.private_bindings import prepare as private_prepare
         from lib.webhook_integrations.runner import LocalCallbackRunner
         from lib.webhook_integrations.service import IntegrationService
 
