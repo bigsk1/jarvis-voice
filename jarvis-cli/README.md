@@ -59,6 +59,25 @@ configuration, network and tool profile still apply. See the
 [Docker CLI guide](../docs/docker/README.md#shell-and-cli-commands-inside-docker).
 Native launchers and container launchers use their own production environments.
 
+## Dashboard TUI
+
+The dashboard's **CLI** tab uses these production launchers and displays answers
+in its right-hand **System Output** pane. **Ask Jarvis** shows a question input
+inside that pane; type your request and press Enter, or Escape to cancel.
+**User Context** asks the model what it knows about you and your preferences;
+**Personalization Check** asks how it would approach a code change for you.
+Each entry has Cloud and Local versions. **CLI Help** displays flags in the
+dashboard output pane without making a model call.
+
+These are ordinary live requests. They use the selected mode's configured
+profile, memory, recent context, tools and learning settings. The dashboard
+does not enable those features or change their settings. The model's response
+shows its behavior with that runtime; it is not a separate configuration audit.
+
+Each selection runs once, with ordinary CLI conversation logging and automatic
+context behavior. CLI requests do not open tmux sessions or require leaving the
+dashboard. The existing tmux behavior for voice and service commands is unchanged.
+
 ## Options
 
 Options can precede or follow a quoted request. Use `--` before a request that

@@ -5,14 +5,14 @@ Powered by Textual & Rich
 """
 
 import os
-import sys
 import asyncio
 import psutil
 import socket
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 from dataclasses import dataclass
 
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
 from textual.widgets import (
@@ -27,7 +27,7 @@ from textual.binding import Binding
 # ============================================================================
 
 PROJECT_ROOT = Path(__file__).parent.parent
-VENV_PATH = Path.home() / "jarvis-venv"
+VENV_PATH = Path(os.environ.get("JARVIS_VENV") or Path.home() / "jarvis-venv").expanduser()
 
 # Read Jarvis version
 try:
@@ -53,6 +53,8 @@ class Command:
     category: str
     dangerous: bool = False
     interactive: bool = False  # Commands that need a real terminal (audio, long-running)
+    literal_output: bool = False  # CLI answers/JSON/help must not become Rich markup
+    prompt_for_request: bool = False
 
 # ============================================================================
 # CUSTOM WIDGETS
@@ -106,8 +108,17 @@ COMMANDS: List[Command] = [
     # === 🎙️ JARVIS CORE ===
     Command("Start Jarvis (Cloud)", "./bin/wake-jarvis.py", "Voice assistant - cloud mode", "🎙️ Core", interactive=True),
     Command("Start Jarvis (Local)", "./bin/wake-jarvis-local.py", "Voice assistant - local mode", "🎙️ Core", interactive=True),
-    Command("CLI Query (Cloud)", './orchestrator/orchestrator_v2.py cloud "What time is it?"', "Single query - cloud", "🎙️ Core"),
-    Command("CLI Query (Local)", './orchestrator/orchestrator_v2.py local "What time is it?"', "Single query - local", "🎙️ Core"),
+
+    # === 💬 CLI ===
+    # Use the production launchers in the existing System Output pane.
+    # Questions use ordinary runtime settings, without context/tool overrides.
+    Command("Ask Jarvis (Cloud)", './bin/jarvis-cli --stdin', "Enter a question here; answer appears in System Output", "💬 CLI", literal_output=True, prompt_for_request=True),
+    Command("Ask Jarvis (Local)", './bin/jarvis-local-cli --stdin', "Ask the live local runtime in System Output", "💬 CLI", literal_output=True, prompt_for_request=True),
+    Command("User Context (Cloud)", './bin/jarvis-cli "What do you know about me, and what preferences should guide your responses? If you do not know something, say so."', "Ask the cloud runtime about you and your preferences", "💬 CLI", literal_output=True),
+    Command("User Context (Local)", './bin/jarvis-local-cli "What do you know about me, and what preferences should guide your responses? If you do not know something, say so."', "Ask the local runtime about you and your preferences", "💬 CLI", literal_output=True),
+    Command("Personalization Check (Cloud)", './bin/jarvis-cli "How would you approach a code change I ask you to make? Tailor your answer to what you know about me."', "See how Jarvis applies your preferences to an answer", "💬 CLI", literal_output=True),
+    Command("Personalization Check (Local)", './bin/jarvis-local-cli "How would you approach a code change I ask you to make? Tailor your answer to what you know about me."', "See the local runtime apply your preferences", "💬 CLI", literal_output=True),
+    Command("CLI Help", './bin/jarvis-cli --help', "Options and flags; guide: jarvis-cli/README.md", "💬 CLI", literal_output=True),
     
     # === 🔧 SERVICES ===
     Command("🚀 Start All Services", "./bin/start", "API→wait→services+UIs+task worker+configured Browser Use", "🔧 Services", interactive=True),
@@ -264,7 +275,23 @@ COMMANDS: List[Command] = [
     Command("Service JSONL (Today)", "tail -20 logs/services/*-$(date +%Y-%m-%d).jsonl 2>/dev/null | jq -c '{daemon:.daemon,event:.event,ts:.timestamp}' 2>/dev/null || echo 'No JSONL logs today'", "Today's structured service logs", "📋 Logs"),
     
     # === 📊 MONITORING ===
-    Command("Port Check", "echo '=== Jarvis Services ===' && for p in 8880 5001 5002 5003 5004 8890 4096 3000; do ss -tlnp 2>/dev/null | grep -q \":$p \" && echo \"✅ :$p listening\" || echo \"❌ :$p not listening\"; done", "Check key ports (API/Web/Memory/Intel/Docs/Canvas/OpenCode/Grafana)", "📊 Monitor"),
+    Command(
+        "Port Check",
+        "listeners=$(ss -tlnH) && echo '=== Core Jarvis Ports (defaults) ===' && "
+        "for service in API:8880 Web:5001 Memory:5002 Intelligence:5003 Docs:5004 Canvas:8890; do "
+        "port=${service##*:}; name=${service%:*}; "
+        "if printf '%s\\n' \"$listeners\" | grep -q \":$port \"; then "
+        "printf '✅ %s (:%s) listening\\n' \"$name\" \"$port\"; else "
+        "printf '❌ %s (:%s) not listening\\n' \"$name\" \"$port\"; fi; done && "
+        "echo '=== Optional Local Integrations (defaults) ===' && "
+        "for service in OpenCode:4096 'Browser Use:8790' 'Google Workspace MCP:8765' 'UniFi Webhook:5050'; do "
+        "port=${service##*:}; name=${service%:*}; "
+        "if printf '%s\\n' \"$listeners\" | grep -q \":$port \"; then "
+        "printf '✅ %s (:%s) listening\\n' \"$name\" \"$port\"; else "
+        "printf '○ %s (:%s) not listening (optional)\\n' \"$name\" \"$port\"; fi; done",
+        "Default local ports for services and optional integrations",
+        "📊 Monitor",
+    ),
     Command("API Metrics", "curl -s http://localhost:8880/metrics 2>/dev/null | head -50 || echo 'API not running'", "Prometheus metrics", "📊 Monitor"),
     Command("Open Grafana", "echo '🌐 Open http://localhost:3000 in browser'", "Grafana dashboard URL", "📊 Monitor"),
     Command("Monitor Status", "cd monitoring && ./manage.sh status", "Show running services", "📊 Monitor"),
@@ -438,6 +465,7 @@ class CommandRunner(App):
         Binding("ctrl+c", "quit", "Quit"),
         Binding("c", "clear_log", "Clear Log"),
         Binding("/", "focus_search", "Search"),
+        Binding("escape", "cancel_cli_question", "Cancel question", show=False),
     ]
 
     def compose(self) -> ComposeResult:
@@ -472,6 +500,9 @@ class CommandRunner(App):
         with Vertical(id="right-pane"):
             yield Label("[bold cyan]System Output[/bold cyan]")
             yield RichLog(id="output-log", markup=True, wrap=True)
+            question = Input(placeholder="Type a question; Enter to send, Escape to cancel", id="cli-question")
+            question.display = False
+            yield question
 
         yield SystemStatus(id="status-bar")
         yield Footer()
@@ -481,7 +512,27 @@ class CommandRunner(App):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle search filtering."""
-        self.populate_lists(event.value)
+        if event.input.id == 'search-box':
+            self.populate_lists(event.value)
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != 'cli-question':
+            return
+        command = getattr(self, '_pending_cli_command', None)
+        if command is None or not event.value.strip():
+            return
+        request = event.value
+        self.action_cancel_cli_question()
+        await self.run_command(command, request=request)
+
+    def action_cancel_cli_question(self) -> None:
+        if getattr(self, '_pending_cli_command', None) is None:
+            return
+        self._pending_cli_command = None
+        question = self.query_one('#cli-question', Input)
+        question.value = ''
+        question.display = False
+        self.query_one('#search-box', Input).focus()
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         """Refresh list when changing tabs."""
@@ -538,12 +589,22 @@ class CommandRunner(App):
             cmd = command_item.command_obj
             await self.run_command(cmd)
 
-    async def run_command(self, cmd: Command) -> None:
+    async def run_command(self, cmd: Command, *, request: str | None = None) -> None:
         """Execute command asynchronously."""
         log = self.query_one("#output-log", RichLog)
+        self.action_cancel_cli_question()
+        if cmd.prompt_for_request and request is None:
+            self._pending_cli_command = cmd
+            question = self.query_one('#cli-question', Input)
+            question.placeholder = f'{cmd.name}: Enter to send, Escape to cancel'
+            question.display = True
+            question.focus()
+            return
         
         log.write(f"\n[bold green]🚀 EXEC:[/bold green] {cmd.name}")
-        log.write(f"[dim]{cmd.command}[/dim]\n")
+        log.write(Text(cmd.command + '\n', style='dim') if cmd.literal_output else f"[dim]{cmd.command}[/dim]\n")
+        if request is not None:
+            log.write(Text(request, style='cyan'))
         
         # Interactive commands need a real terminal - use tmux
         if cmd.interactive:
@@ -558,6 +619,7 @@ class CommandRunner(App):
                 full_command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.PIPE if request is not None else None,
                 env=get_env(),  # Use venv environment
                 cwd=str(PROJECT_ROOT)
             )
@@ -567,9 +629,21 @@ class CommandRunner(App):
                     line = await stream.readline()
                     if not line: break
                     text = line.decode().strip()
-                    if text: log.write(f"[{color}]{text}[/{color}]")
+                    if text:
+                        log.write(Text(text, style=color) if cmd.literal_output else f"[{color}]{text}[/{color}]")
+
+            async def send_request():
+                if request is not None and process.stdin is not None:
+                    try:
+                        process.stdin.write(request.encode('utf-8'))
+                        await process.stdin.drain()
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass
+                    finally:
+                        process.stdin.close()
 
             await asyncio.gather(
+                send_request(),
                 read_stream(process.stdout, "white"),
                 read_stream(process.stderr, "red")
             )
