@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import unittest
 from pathlib import Path
-
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SOCKET_JS = PROJECT_ROOT / "jarvis-web" / "client" / "js" / "socket.js"
@@ -16,6 +16,81 @@ CHAT_SOCKET_PY = PROJECT_ROOT / "jarvis-web" / "server" / "sockets" / "chat.py"
 
 
 class WebProactiveSocketTests(unittest.TestCase):
+    def test_reminder_panel_displays_stored_utc_in_browser_local_time(self) -> None:
+        script = r"""
+const fs = require('fs');
+const vm = require('vm');
+const assert = require('assert');
+const lists = {
+  '.alerts-list': { items: [], replaceChildren() { this.items = []; },
+    appendChild(item) { this.items.push(item); } },
+  '.reminders-list': { items: [], replaceChildren() { this.items = []; },
+    appendChild(item) { this.items.push(item); } }
+};
+const sandbox = {
+  window: {}, console,
+  document: { createElement: () => ({ dataset: {},
+    querySelector: () => ({ addEventListener() {} }) }) },
+  Utils: { escapeHtml: value => String(value) }
+};
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), sandbox);
+const manager = Object.create(sandbox.window.ProactiveManager.prototype);
+manager.panel = { querySelector: selector => lists[selector] };
+manager.alerts = [];
+manager.reminders = [];
+manager.counts = { alerts: 0, reminders: 0 };
+manager._updateBadge = () => {};
+manager._showBrowserNotification = () => {};
+manager._shouldPlayBrowserTTS = () => false;
+manager._flashBadge = () => {};
+const cases = [
+  ['2026-10-16T19:00:00', '2026-10-16T19:00:00Z'],
+  ['2026-10-16 19:00:00', '2026-10-16T19:00:00Z'],
+  ['2026-10-16T19:00:00.123456', '2026-10-16T19:00:00.123Z'],
+  ['2026-10-16T19:00:00Z', '2026-10-16T19:00:00Z'],
+  ['2026-10-16T19:00:00+00:00', '2026-10-16T19:00:00Z'],
+  ['2026-10-16T19:00:00+0000', '2026-10-16T19:00:00Z'],
+  ['2026-10-16T12:00:00-07:00', '2026-10-16T19:00:00Z'],
+  ['2026-01-16T20:00:00', '2026-01-16T20:00:00Z'],
+  ['', null], [null, null], ['not-a-timestamp', null]
+];
+for (const [index, [trigger_time, expectedUtc]] of cases.entries()) {
+  const reminder = { id: index + 1, title: 'Review checklist',
+    description: 'The planning session starts at 2pm.', trigger_time,
+    triggered_at: '2026-10-16T19:00:31+00:00',
+    created_at: '2026-10-15T19:00:00+00:00' };
+  for (const route of ['new event', 'saved snapshot']) {
+    manager.alerts = [];
+    manager.reminders = [];
+    lists['.reminders-list'].replaceChildren();
+    if (route === 'new event') manager._handleNewReminder(reminder);
+    else manager._applySnapshot({ alerts: [], reminders: [reminder] });
+    assert.strictEqual(lists['.reminders-list'].items.length, 1);
+    const html = lists['.reminders-list'].items.at(-1).innerHTML;
+    const time = html.match(/<span class="time"[^>]*>([^<]*)<\/span>/)?.[1];
+    const expected = expectedUtc ? new Date(expectedUtc).toLocaleString() : undefined;
+    assert.strictEqual(time, expected, `${route}: ${trigger_time}`);
+    assert(html.includes(reminder.title));
+    assert(html.includes(reminder.description));
+    assert(!html.includes('Invalid Date'));
+  }
+}
+const localNoon = new Date('2026-10-16T19:00:00Z');
+assert.strictEqual(localNoon.getHours(), process.argv[2] === 'America/Los_Angeles' ? 12 : 15);
+"""
+        for timezone in ("America/Los_Angeles", "America/New_York"):
+            with self.subTest(timezone=timezone):
+                result = subprocess.run(
+                    ["node", "-e", script, str(PROACTIVE_JS), timezone],
+                    cwd=PROJECT_ROOT,
+                    env={"PATH": os.environ.get("PATH", os.defpath), "TZ": timezone},
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_proactive_events_reach_wrapper_listeners(self) -> None:
         script = r"""
 const fs = require('fs');

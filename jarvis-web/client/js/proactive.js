@@ -346,6 +346,16 @@ class ProactiveManager {
     const severity = ['low', 'medium', 'high', 'critical'].includes(item.severity)
       ? item.severity : '';
     const severityClass = severity ? `severity-${severity}` : '';
+
+    // Stored reminder times are UTC even when the database string has no offset.
+    // Match the Memory UI before formatting in the browser's local timezone.
+    let triggerTime = '';
+    if (item.trigger_time) {
+      const value = String(item.trigger_time).trim().replace(' ', 'T');
+      const iso = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`;
+      const date = new Date(iso);
+      if (!Number.isNaN(date.getTime())) triggerTime = date.toLocaleString();
+    }
     
     itemEl.innerHTML = `
       <div class="notification-item-content ${severityClass}">
@@ -354,7 +364,7 @@ class ProactiveManager {
         <div class="notification-item-meta">
           ${item.source ? `<span class="source">${Utils.escapeHtml(String(item.source))}</span>` : ''}
           ${severity ? `<span class="severity ${severity}">${severity}</span>` : ''}
-          ${item.trigger_time ? `<span class="time">${new Date(item.trigger_time).toLocaleString()}</span>` : ''}
+          ${triggerTime ? `<span class="time" title="Scheduled notification time">${triggerTime}</span>` : ''}
         </div>
       </div>
       <button class="ack-btn" title="Acknowledge">✓</button>

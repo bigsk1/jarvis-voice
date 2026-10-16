@@ -1311,6 +1311,7 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 **Notification Panel:**
 - 🔔 Badge in header shows pending count
 - Click badge to open notification panel
+- Reminder timestamps show the scheduled notification time in your browser's local timezone; an appointment time stays in the title or description.
 - Click ✓ to acknowledge items
 - Items are removed from both jarvis-api and UI
 
