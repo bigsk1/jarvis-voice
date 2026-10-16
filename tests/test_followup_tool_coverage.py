@@ -29,6 +29,14 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "email_inbox": _case({
+        "enabled": True, "approved_sender_count": 2,
+        "allowed_tools": ["get_time", "create_reminder"],
+        "attachments_enabled": False, "max_attachment_bytes": 1048576,
+        "max_attachments": 2, "counts": {"replied": 3, "needs_attention": 1},
+        "needs_attention": [{"message_id": "message-7", "reason": "Reply delivery uncertain"}],
+        "read_failed": [], "attachment_retries": [],
+    }, {"action": "status"}),
     "docling_convert": _case({
         "task_id": "00000000-0000-4000-8000-000000000001", "state": "success", "partial": False,
         "source_stash_ref": "stash://uploads/document", "markdown_excerpt": "# Invoice\nTotal 42.75",

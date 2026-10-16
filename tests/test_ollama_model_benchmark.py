@@ -73,6 +73,40 @@ class _ResidencyClient:
         self.retry_events.append(event)
 
 
+class _PreflightClient(_ResidencyClient):
+    def get_version(self):
+        return "fixture-version"
+
+    def get_tags(self):
+        return [{"name": "gemma4:latest", "size": 10_000}]
+
+    def get_show(self):
+        return {"capabilities": ["completion"]}
+
+
+@pytest.fixture
+def runner_prompt_fixture(monkeypatch):
+    """Keep runner control-flow tests independent of a historical prompt snapshot.
+
+    Frozen replay/schema validation is tested separately below. These tests need
+    a matched prompt and replay so they reach preflight, interruption, or cleanup.
+    """
+    prompt = "Synthetic routing policy for runner control-flow tests."
+    digest = hashlib.sha256(prompt.encode()).hexdigest()
+    metadata = {
+        "version": "v4", "prompt": prompt,
+        "base_prompt_sha256": digest, "prompt_sha256": digest,
+    }
+    replay = {
+        "fixture_id": "runner-control-flow",
+        "router_prompt_version": "v4", "router_base_sha256": digest, "packets": [],
+    }
+    monkeypatch.setattr("ollama_model_benchmark.build_routing_system_prompt",
+                        lambda *args, **kwargs: metadata)
+    monkeypatch.setattr("ollama_model_benchmark.load_tool_rag_replay_fixture", lambda: replay)
+    return replay
+
+
 def test_canonical_model_name_adds_latest_only_when_tag_is_absent():
     assert canonical_model_name("Gemma4") == "gemma4:latest"
     assert canonical_model_name("orcarouter/model:q3_K_S") == "orcarouter/model:q3_k_s"
@@ -646,18 +680,8 @@ def test_runner_aborts_on_provider_timeout_instead_of_failing_the_case():
         runner._run_functional_case(FUNCTIONAL_CASES[0], 1)
 
 
-def test_dry_run_preflight_reports_other_models_without_refusing_busy_host():
-    class _Client(_ResidencyClient):
-        def get_version(self):
-            return "0.32.15"
-
-        def get_tags(self):
-            return [{"name": "gemma4:latest", "size": 10_000}]
-
-        def get_show(self):
-            return {"capabilities": ["completion"]}
-
-    client = _Client([{"name": "embeddinggemma:latest", "size": 1_000, "size_vram": 1_000}])
+def test_dry_run_preflight_reports_other_models_without_refusing_busy_host(runner_prompt_fixture):
+    client = _PreflightClient([{"name": "embeddinggemma:latest", "size": 1_000, "size_vram": 1_000}])
     runner = BenchmarkRunner(client, contexts=[8192, 16384], dry_run=True)
 
     report = runner.run()
@@ -665,6 +689,22 @@ def test_dry_run_preflight_reports_other_models_without_refusing_busy_host():
     assert report["status"] == "dry_run"
     assert report["configuration"]["contexts"] == [8192, 16384]
     assert report["safety"]["other_models_loaded"] == ["embeddinggemma:latest"]
+
+
+@pytest.mark.parametrize("field,value,error", [
+    ("router_prompt_version", "other-version", "router version does not match"),
+    ("router_base_sha256", "0" * 64, "router prompt drifted"),
+])
+def test_runner_refuses_replay_for_a_different_prompt(runner_prompt_fixture, field, value, error):
+    runner_prompt_fixture[field] = value
+    runner = BenchmarkRunner(_PreflightClient([]), contexts=[8192], dry_run=True)
+
+    report = runner.run()
+
+    assert report["status"] == "error"
+    assert error in report["error"]
+    assert report["progress"]["completed_steps"] == 0
+    assert report["functional_results"] == []
 
 
 def test_error_report_never_promotes_partial_results_to_top_level_grade():
@@ -753,20 +793,11 @@ def test_keyboard_interrupt_writes_an_inconclusive_interrupted_report():
     assert report["progress"]["completed_steps"] == 0
 
 
-def test_keyboard_interrupt_before_residency_check_skips_unsafe_release():
-    class _Client(_ResidencyClient):
+def test_keyboard_interrupt_before_residency_check_skips_unsafe_release(runner_prompt_fixture):
+    class _Client(_PreflightClient):
         def __init__(self):
             super().__init__([])
             self.unloaded = False
-
-        def get_version(self):
-            return "0.32.15"
-
-        def get_tags(self):
-            return [{"name": "gemma4:latest", "size": 10_000}]
-
-        def get_show(self):
-            return {"capabilities": ["completion"]}
 
         def chat(self, *args, **kwargs):
             raise KeyboardInterrupt

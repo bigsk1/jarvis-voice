@@ -345,6 +345,7 @@ def test_real_non_web_callers_fail_closed_on_injected_receipt(journey, monkeypat
         from executor import ToolExecutor
 
         executor = ToolExecutor.__new__(ToolExecutor)
+        executor.registry = SimpleNamespace(list_tools=lambda: ["fixture"])
         executor._execute_foreground = lambda *a, **kw: receipt
         result = executor.execute("fixture", {})
         assert not executor.execute("fixture", {}, background_context={"source": "web"})["ok"]

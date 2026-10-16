@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""Run the deterministic full suite with a bounded local-fixture preflight."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import signal
+import subprocess
+import sys
+import threading
+import time
+import uuid
+from datetime import UTC, datetime
+from pathlib import Path
+from xml.etree import ElementTree
+
+ROOT = Path(__file__).resolve().parents[1]
+ENVIRONMENT_BLOCKED = 3
+PREFLIGHT_TIMEOUT = 4
+PREFLIGHT_PHASE_PREFIX = 'Preflight phase: '
+
+
+class TerminationRequested(Exception):
+    """Unwind a host termination through the same child cleanup as a timeout."""
+
+
+def request_termination(signum, frame):
+    raise TerminationRequested
+
+
+PREFLIGHT = """
+import errno
+import socket
+import sys
+
+print('Preflight phase: dependency imports', flush=True)
+try:
+    import pytest
+    import psutil
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+except ImportError as exc:
+    print(f"Missing test dependency: {exc}. Run uv sync --dev --frozen.", file=sys.stderr)
+    sys.exit(2)
+
+print('Preflight phase: local TCP socket', flush=True)
+try:
+    with socket.socket() as sock:
+        sock.bind(('127.0.0.1', 0))
+except OSError as exc:
+    print(f"Local socket fixture unavailable: {exc}", file=sys.stderr)
+    sys.exit(3 if exc.errno in (errno.EACCES, errno.EPERM) else 2)
+
+print('Preflight phase: local async HTTP fixture', flush=True)
+try:
+    with TestClient(FastAPI()) as client:
+        assert client.get('/').status_code == 404
+except OSError as exc:
+    print(f"Local async HTTP fixture unavailable: {exc}", file=sys.stderr)
+    sys.exit(3 if exc.errno in (errno.EACCES, errno.EPERM) else 2)
+print('Local socket and async HTTP fixtures are available.')
+"""
+
+
+def child_environment(python: Path, inherited=None) -> dict[str, str]:
+    env = dict(os.environ if inherited is None else inherited)
+    for key in (
+        'JARVIS_LIVE_BROWSER_TEST', 'JARVIS_TEST_LONG_ENCODE',
+        'JARVIS_TEST_VIDEO', 'JARVIS_TEST_IMAGE',
+        'PYTEST_ADDOPTS', 'PYTEST_PLUGINS', 'PYTHONPATH', 'PYTHONHOME',
+    ):
+        env.pop(key, None)
+    env['PATH'] = str(python.parent) + os.pathsep + env.get('PATH', '')
+    env['PYTHONUNBUFFERED'] = '1'
+    env['PYTHONIOENCODING'] = 'utf-8'
+    return env
+
+
+def preflight(python: Path, env: dict[str, str], root: Path) -> int:
+    try:
+        result = subprocess.run(
+            [str(python), '-c', PREFLIGHT], cwd=root, env=env,
+            capture_output=True, text=True, timeout=10,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # TimeoutExpired may retain bytes even with text=True. Preserve the
+        # phase evidence, without treating a slow import as a permission denial.
+        stdout = exc.stdout or ''
+        stderr = exc.stderr or ''
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode('utf-8', errors='replace')
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode('utf-8', errors='replace')
+        if stdout:
+            print(stdout.rstrip(), flush=True)
+        if stderr:
+            print(stderr.rstrip(), file=sys.stderr, flush=True)
+        phases = [line.removeprefix(PREFLIGHT_PHASE_PREFIX) for line in stdout.splitlines()
+                  if line.startswith(PREFLIGHT_PHASE_PREFIX)]
+        phase = phases[-1] if phases else 'unknown startup phase'
+        print(f'PREFLIGHT TIMEOUT: exceeded 10 seconds during {phase}.', flush=True)
+        print('No tests ran. Investigate slow imports or stalled local fixture startup. '
+              'A timeout alone does not establish a sandbox restriction.', flush=True)
+        return PREFLIGHT_TIMEOUT
+    except OSError as exc:
+        print(f'Test environment could not start: {exc}', flush=True)
+        return 2
+    if result.stdout:
+        print(result.stdout.rstrip(), flush=True)
+    if result.stderr:
+        print(result.stderr.rstrip(), file=sys.stderr, flush=True)
+    if result.returncode == ENVIRONMENT_BLOCKED:
+        print('ENVIRONMENT BLOCKED: local test fixtures reported EPERM or EACCES.', flush=True)
+    elif result.returncode:
+        print('Preflight failed. Inspect the diagnostic above; no tests ran.', flush=True)
+    return result.returncode
+
+
+def junit_evidence(path: Path) -> dict:
+    """Record XML cases and skip reasons without inflating pytest9 subtests.
+
+    JUnit's testsuite tests attribute includes successful subtest reports that
+    do not have their own testcase elements. Element counts remain directly
+    auditable; pytest.log retains pytest's authoritative terminal totals.
+    """
+    try:
+        document = ElementTree.parse(path)
+    except (OSError, ElementTree.ParseError) as exc:
+        return {'available': False, 'error': str(exc)}
+    counts = {'total': 0, 'passed': 0, 'failures': 0, 'errors': 0, 'skipped': 0}
+    skips = []
+    for case in document.iterfind('.//testcase'):
+        counts['total'] += 1
+        skip = case.find('skipped')
+        if case.find('error') is not None:
+            counts['errors'] += 1
+        elif case.find('failure') is not None:
+            counts['failures'] += 1
+        elif skip is not None:
+            counts['skipped'] += 1
+        else:
+            counts['passed'] += 1
+        if skip is not None:
+            skips.append({
+                'classname': case.get('classname', ''), 'name': case.get('name', ''),
+                'type': skip.get('type', ''), 'reason': skip.get('message', ''),
+            })
+    return {
+        'available': True,
+        'count_basis': 'JUnit testcase elements; passing subtests are not separate cases',
+        'testcase_counts': counts, 'skips': skips,
+    }
+
+
+def stop_process_group(process: subprocess.Popen) -> None:
+    """Clean up pytest and fixture children on cancellation or timeout."""
+    import psutil
+
+    # Tool-supervision fixtures create their own sessions. Snapshot descendants
+    # before pytest exits, while their ownership can still be established.
+    try:
+        descendants = psutil.Process(process.pid).children(recursive=True)
+    except psutil.NoSuchProcess:
+        descendants = []
+    for child in reversed(descendants):
+        try:
+            child.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        pass
+    # A parent may exit before its children; finish the whole isolated group.
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    _, alive = psutil.wait_procs(descendants, timeout=3)
+    for child in alive:
+        try:
+            child.kill()
+        except psutil.NoSuchProcess:
+            pass
+    process.wait()
+
+
+def run_tests(command: list[str], env: dict[str, str], root: Path,
+              log_path: Path, timeout: float) -> int:
+    with log_path.open('w', encoding='utf-8') as log:
+        process = None
+        copier = None
+        previous_sigterm = signal.signal(signal.SIGTERM, request_termination)
+
+        def copy_output():
+            assert process is not None and process.stdout is not None
+            for line in process.stdout:
+                log.write(line)
+                log.flush()
+                sys.stdout.write(line)
+                sys.stdout.flush()
+
+        try:
+            process = subprocess.Popen(
+                command, cwd=root, env=env, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, text=True, encoding='utf-8',
+                errors='replace', start_new_session=True,
+            )
+            copier = threading.Thread(target=copy_output, daemon=True)
+            copier.start()
+            result = process.wait(timeout=timeout)
+        except (subprocess.TimeoutExpired, KeyboardInterrupt, TerminationRequested) as exc:
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            if isinstance(exc, subprocess.TimeoutExpired):
+                print(f'Full suite exceeded {timeout:g} seconds; stopping test processes.', flush=True)
+                result = 124
+            else:
+                result = 143 if isinstance(exc, TerminationRequested) else 130
+            if process is not None:
+                stop_process_group(process)
+        finally:
+            if copier is not None:
+                copier.join(timeout=3)
+                if copier.is_alive():
+                    stop_process_group(process)
+                    copier.join(timeout=3)
+            if process is not None and process.stdout is not None:
+                process.stdout.close()
+            signal.signal(signal.SIGTERM, previous_sigterm)
+    return result
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--preflight-only', action='store_true', help='Check local fixture support only')
+    parser.add_argument('--report-dir', type=Path, help='New directory for log, JUnit and run summary')
+    parser.add_argument('--timeout', type=float, default=1800, help='Whole pytest timeout in seconds (default: 1800)')
+    args = parser.parse_args(argv)
+    if args.timeout <= 0:
+        parser.error('--timeout must be greater than zero')
+    python = ROOT / '.venv' / 'bin' / 'python'
+    if not python.is_file():
+        print('Missing repo .venv/bin/python. Run uv sync --dev in this checkout.', file=sys.stderr)
+        return 2
+    env = child_environment(python)
+    result = preflight(python, env, ROOT)
+    if result:
+        if result == ENVIRONMENT_BLOCKED:
+            print('No tests ran. In Codex, rerun this command outside the sandbox; do not skip tests.', flush=True)
+        return result
+    if args.preflight_only:
+        print('Preflight passed. No tests ran.', flush=True)
+        return 0
+    run_id = datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8]
+    report_dir = (args.report_dir or ROOT / 'logs' / 'tests' / run_id).resolve()
+    # Never overwrite evidence from an earlier run.
+    report_dir.mkdir(parents=True, exist_ok=False)
+    command = [
+        str(python), '-m', 'pytest', 'tests', '-q', '-ra', '--tb=short',
+        '-o', 'faulthandler_timeout=90', f'--junitxml={report_dir / "results.xml"}',
+    ]
+    print(f'Running FULL deterministic suite. Reports: {report_dir}', flush=True)
+    started = time.monotonic()
+    result = run_tests(command, env, ROOT, report_dir / 'pytest.log', args.timeout)
+    status = {0: 'passed', 124: 'timeout', 130: 'interrupted', 143: 'terminated'}.get(result, 'failed')
+    summary = {
+        'scope': 'full', 'status': status, 'exit_code': result,
+        'preflight': 'passed',
+        'duration_seconds': round(time.monotonic() - started, 2),
+        'command': command, 'report_dir': str(report_dir),
+        'junit': junit_evidence(report_dir / 'results.xml'),
+    }
+    (report_dir / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
+    print(f'Full suite {status}. Reports: {report_dir}', flush=True)
+    return result
+
+
+if __name__ == '__main__':
+    # The launcher itself uses only stdlib until choosing the locked test venv.
+    # Its cancellation path then has the same psutil dependency as the suite.
+    test_python = ROOT / '.venv' / 'bin' / 'python'
+    if test_python.is_file() and Path(sys.prefix).resolve() != test_python.parent.parent.resolve():
+        os.execv(str(test_python), [str(test_python), str(Path(__file__).resolve()), *sys.argv[1:]])
+    raise SystemExit(main())

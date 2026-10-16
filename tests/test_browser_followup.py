@@ -1,12 +1,12 @@
 """Browser follow-up references stay bound to the original Web conversation."""
 
-import pytest
 import json
 from concurrent.futures import ThreadPoolExecutor
-from types import SimpleNamespace
 
-from lib.background_tasks.browser_followup import prior_browser_job
+import pytest
+
 from lib.background_tasks.admission import BackgroundAdmissionService, WebTaskContext
+from lib.background_tasks.browser_followup import prior_browser_job
 from lib.background_tasks.local_contract import REMOTE_ADAPTER
 from lib.background_tasks.models import Admission, AdmissionDenied
 from lib.background_tasks.store import TaskStore
@@ -75,6 +75,8 @@ def test_local_followup_requires_finished_job_but_no_provider_run():
 
 
 def test_web_admission_inherits_profile_before_storing_followup_arguments():
+    from tool_schema import ToolSchema
+
     previous = prior(use_profile=True)
     stored = []
 
@@ -92,7 +94,18 @@ def test_web_admission_inherits_profile_before_storing_followup_arguments():
     service.check_ready = lambda *_: authorization
     context = WebTaskContext(service, 'auth-2', ('browser_use_cloud',),
                              authorization=authorization)
-    schema = SimpleNamespace(background_adapter=REMOTE_ADAPTER)
+    schema = ToolSchema(
+        'browser_use_cloud', 'Browser follow-up fixture',
+        {'type': 'object', 'properties': {
+            'task': {'type': 'string'}, 'continue_job_id': {'type': 'string'},
+            'use_profile': {'type': 'boolean'},
+        }, 'required': ['task'], 'additionalProperties': False},
+        'browser_use_cloud.py',
+        execution={'background': {
+            'supported': True, 'adapter': REMOTE_ADAPTER,
+            'completion_scope': 'remote_work', 'timeout_seconds': 1800,
+        }},
+    )
     receipt = service._admit(context, 'browser_use_cloud',
                              {'task': 'Proceed', 'continue_job_id': previous['id']},
                              'call-2', schema)

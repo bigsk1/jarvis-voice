@@ -241,9 +241,12 @@ def test_foreground_conversion_still_uses_original_executor_contract(conversion,
     observed = []
     run = tool_process.run_local_process
     def capture(cmd, *args, **kwargs):
-        observed.append(kwargs)
+        observed.append((cmd, kwargs))
         return run(cmd, *args, **kwargs)
     monkeypatch.setattr(tool_process, 'run_local_process', capture)
+    # Foreground tools intentionally use python3 from PATH. Running pytest via
+    # .venv/bin/python does not activate that PATH for its child processes.
+    monkeypatch.setenv('PATH', str(Path(sys.executable).parent) + os.pathsep + os.environ['PATH'])
     monkeypatch.setenv('JARVIS_BACKGROUND_DEADLINE', str(time.time() - 1))
     monkeypatch.setenv('JARVIS_OVERRIDE_JARVIS_BACKGROUND_DEADLINE', str(time.time() - 1))
     monkeypatch.setattr(executor, 'export_config_environment', lambda mode: {
@@ -253,8 +256,13 @@ def test_foreground_conversion_still_uses_original_executor_contract(conversion,
         runner = executor.ToolExecutor(mode, registry, load_runtime_config=False)
         result = runner.execute('convert_file', {'source':str(c.source), 'target_format':'flac'})
     assert result['ok'], result
-    assert observed[0]['timeout'] == 180
-    assert observed[0]['tool_env']['JARVIS_BACKGROUND_DEADLINE'] == ''
+    cmd, execution = observed[0]
+    assert cmd[0] == 'python3'
+    interpreter = shutil.which(cmd[0], path=execution['tool_env']['PATH'])
+    assert interpreter is not None
+    assert Path(interpreter).parent == Path(sys.executable).parent
+    assert execution['timeout'] == 180
+    assert execution['tool_env']['JARVIS_BACKGROUND_DEADLINE'] == ''
     assert list(c.stash.rglob('*.flac'))
     assert c.store.conversation_jobs() == []
 

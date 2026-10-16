@@ -2,11 +2,13 @@
 
 import importlib
 import json
+import subprocess
 import sys
 from copy import deepcopy
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
 from server_package_utils import load_server_package
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -172,3 +174,84 @@ def test_history_retains_unknown_delivery_without_converting_it_to_false():
     projected = json.loads(context.split('send_webhook data: ', 1)[1].splitlines()[0])
     assert 'request_sent' in projected and projected['request_sent'] is None
     assert projected['retry_safe'] is False
+
+
+@pytest.mark.parametrize('launch_path', ['web', 'package'])
+def test_webhook_followup_uses_real_helpers_without_ambient_paths(launch_path, tmp_path):
+    """Both supported imports must project receipts without pytest's lib path."""
+    failed = failed_result()
+    failed['data']['example']['api_key'] = 'WEBHOOK_SECRET_SENTINEL'
+    accepted = {
+        'webhook': 'sample_notification', 'request_sent': True,
+        'delivery_status': 'accepted', 'status_code': 202,
+    }
+    payload = {
+        'send_webhook': accepted,
+        '_tool_trace': [
+            {'tool': 'send_webhook', 'ok': False, 'error': failed['error'],
+             'result_data': failed['data']},
+            {'tool': 'send_webhook', 'ok': True},
+        ],
+    }
+    probe = r'''
+import json
+import runpy
+import sys
+from copy import deepcopy
+from pathlib import Path
+
+root = Path(sys.argv[1])
+launch_path = sys.argv[2]
+payload = json.loads(sys.argv[3])
+before = deepcopy(payload)
+assert str(root) not in sys.path
+assert str(root / "lib") not in sys.path
+if launch_path == "web":
+    # Use the real launcher's path setup without starting any server or jobs.
+    runpy.run_path(str(root / "bin/jarvis-web"), run_name="startup_probe")
+    helper_name = "webhook_context"
+    security_name = "security_utils"
+    assert str(root) not in sys.path
+else:
+    sys.path[:0] = [str(root), str(root / "jarvis-web")]
+    helper_name = "lib.webhook_context"
+    security_name = "lib.security_utils"
+    assert str(root / "lib") not in sys.path
+
+from server.services.followup_extractor import extract_followup_data
+assert "webhook_context" not in sys.modules
+assert "lib.webhook_context" not in sys.modules
+projected = extract_followup_data(payload)["send_webhook"]
+failed, accepted = projected["results"]
+assert projected["runs_count"] == 2
+assert failed["ok"] is False
+assert failed["request_sent"] is False
+assert failed["error"] == payload["_tool_trace"][0]["error"]
+assert failed["required_fields"] == ["action", "notification"]
+assert failed["validation_path"] == "notification.scheduled_at"
+assert failed["payload_schema"] == payload["_tool_trace"][0]["result_data"]["payload_schema"]
+assert failed["example"]["api_key"] == "[redacted]"
+assert "WEBHOOK_SECRET_SENTINEL" not in json.dumps(projected)
+assert accepted["request_sent"] is True
+assert accepted["delivery_status"] == "accepted"
+assert accepted["status_code"] == 202
+assert payload == before
+helper = sys.modules[helper_name]
+assert Path(helper.__file__).resolve() == root / "lib/webhook_context.py"
+assert helper.project_webhook_runs.__module__ == helper_name
+assert helper.redact_sensitive_data.__module__ == security_name
+assert helper.project_webhook_runs(projected) == projected
+assert {"webhook_context", "lib.webhook_context"}.intersection(sys.modules) == {helper_name}
+if launch_path == "package":
+    assert str(root / "lib") not in sys.path
+print("Webhook launcher imports and receipt projection passed")
+'''
+    completed = subprocess.run(
+        [sys.executable, '-I', '-c', probe, str(ROOT), launch_path, json.dumps(payload)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert 'Webhook launcher imports and receipt projection passed' in completed.stdout

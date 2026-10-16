@@ -61,7 +61,10 @@ def test_production_bindings_and_reviewed_manifest_policies(config_root, mode):
               'browser_use': 'http_callback_v1'}
     assert {name: production.bindings().get(name) for name in public} == public
     with config_scope(mode, {'JARVIS_TOOL_PROFILE': 'default',
-                            'MONEYPRINTER_API_URL': 'https://moneyprinter.invalid'}):
+                            'MONEYPRINTER_API_URL': 'https://moneyprinter.invalid',
+                            'IMAGE_TOOL_PROVIDER': 'openai', 'OPENAI_API_KEY': 'fixture-openai',
+                            'VIDEO_TOOL_PROVIDER': 'xai', 'XAI_API_KEY': 'fixture-xai',
+                            'MUSIC_TOOL_PROVIDER': 'elevenlabs', 'ELEVENLABS_API_KEY': 'fixture-elevenlabs'}):
         runner = production.runner()
         for name, budget in zip(MEDIA, (900, 1200, 2100, 2100)):
             schema, evidence = runner.policy(name)

@@ -21,8 +21,8 @@ pytestmark = pytest.mark.skipif(sys.platform != 'linux', reason='Local supervisi
 
 @pytest.fixture(params=['image', 'video', 'music'])
 def media_job(request, store, config_root, tmp_path, monkeypatch):
-    sys.path.insert(0, str(ROOT / 'lib'))
-    sys.path.insert(0, str(ROOT / 'orchestrator'))
+    monkeypatch.syspath_prepend(str(ROOT / 'lib'))
+    monkeypatch.syspath_prepend(str(ROOT / 'orchestrator'))
     import config_loader
     import executor
 
@@ -35,13 +35,15 @@ def media_job(request, store, config_root, tmp_path, monkeypatch):
     default_provider = {'image': 'openai', 'video': 'xai', 'music': 'elevenlabs'}[media_type]
     monkeypatch.setattr(config_loader, 'get_project_root', lambda: config_root)
     monkeypatch.setattr(executor, 'get_logger', lambda mode: SimpleNamespace(log_tool_call=lambda **kw: None))
-    monkeypatch.setenv('PATH', str(ROOT / '.venv/bin') + os.pathsep + os.environ['PATH'])
+    monkeypatch.setenv('PATH', str(Path(sys.executable).parent) + os.pathsep + os.environ['PATH'])
     for mode in ('cloud', 'local'):
         (config_root / 'config' / f'{mode}.env').write_text(
             'IMAGE_TOOL_PROVIDER=openai\nGEMINI_IMAGE_MODEL=gemini-3.1-flash-image\n'
             'VIDEO_TOOL_PROVIDER=xai\nGEMINI_VIDEO_MODEL=veo-3.1-generate-preview\n'
             'MUSIC_TOOL_PROVIDER=elevenlabs\n'
-            'OPENAI_API_KEY=fixture-openai\nGEMINI_API_KEY=fixture-gemini\nJARVIS_TOOL_PROFILE=default\n'
+            'OPENAI_API_KEY=fixture-openai\nGEMINI_API_KEY=fixture-gemini\n'
+            'XAI_API_KEY=fixture-xai\nELEVENLABS_API_KEY=fixture-elevenlabs\n'
+            'JARVIS_TOOL_PROFILE=default\n'
         )
 
     installation = tmp_path / 'installation'
@@ -55,10 +57,10 @@ from pathlib import Path
 from types import SimpleNamespace
 sys.path.insert(0, REPO_SKILLS)
 sys.path.insert(0, REPO_LIB)
-tool = importlib.import_module(TOOL_MODULE)
 import config_loader
 config_loader.get_project_root = lambda: Path(CONFIG_ROOT)
 config_loader.load_config()
+tool = importlib.import_module(TOOL_MODULE)
 assert os.environ['JARVIS_OVERRIDE_' + PROVIDER_KEY] == 'gemini'
 from google import genai
 from google.genai import types
@@ -119,7 +121,10 @@ print(json.dumps({'ok': True, 'data': data}))
 @pytest.mark.parametrize('selection', ['saved_web', 'modal'])
 def test_background_media_retains_per_job_choice(media_job, mode, selection):
     p = media_job
-    schema, policy = p.runner.policy(p.name)
+    # Policy reads mode-scoped credentials just like Web admission. Merely
+    # writing fixture env files does not make them active outside a scope.
+    with p.config.config_scope(mode):
+        schema, policy = p.runner.policy(p.name)
     registry = SimpleNamespace(list_tools=lambda: [p.name], get_tool=lambda _: schema)
     context = p.service.authorize({
         'operator': 'installation', 'source': 'web', 'conversation_id': 'image-conversation',
@@ -174,7 +179,8 @@ def test_background_media_retains_per_job_choice(media_job, mode, selection):
 
 
 def _context(p):
-    schema, policy = p.runner.policy(p.name)
+    with p.config.config_scope('cloud'):
+        schema, policy = p.runner.policy(p.name)
     registry = SimpleNamespace(list_tools=lambda: [p.name], get_tool=lambda _: schema)
     context = p.service.authorize({
         'operator': 'installation', 'source': 'web', 'conversation_id': 'media-conversation',

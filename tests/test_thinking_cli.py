@@ -28,9 +28,13 @@ def test_debug_thinking_flag_survives_mode_config_hydration(monkeypatch, capsys)
         def __init__(self, _mode):
             observed["debug_enabled"] = should_enable_thinking()
 
-        def process(self, _transcript, excluded_tools=None):
+        def process(self, _transcript, excluded_tools=None, *, original_query=None,
+                    request_source=None):
+            observed['original_query'] = original_query
+            observed['request_source'] = request_source
             return {"ok": True, "speech": "ok", "tools_used": []}
 
+    monkeypatch.setenv('JARVIS_OVERRIDE_FEEDBACK_RANDOM_ENABLED', 'false')
     monkeypatch.setattr(orchestrator_v2, "load_config", fake_load_config)
     monkeypatch.setattr(orchestrator_v2, "Orchestrator", FakeOrchestrator)
     monkeypatch.setattr(
@@ -44,6 +48,8 @@ def test_debug_thinking_flag_survives_mode_config_hydration(monkeypatch, capsys)
         orchestrator_v2.main()
 
     assert observed["debug_enabled"] is True
+    assert observed['original_query'] == 'hello'
+    assert observed['request_source'] == 'cli'
     assert '"speech": "ok"' in capsys.readouterr().out
 
 
@@ -62,12 +68,15 @@ def test_positional_cli_mode_controls_ollama_endpoint(monkeypatch, capsys, mode,
             provider = OllamaProvider(base_url='http://processor.example:11434', model='fixture:9b')
             observed['hosts'] = provider.base_urls
 
-        def process(self, _transcript, excluded_tools=None):
+        def process(self, _transcript, excluded_tools=None, *, original_query=None,
+                    request_source=None):
+            observed['original_query'] = original_query
+            observed['request_source'] = request_source
             return {'ok': True, 'speech': 'ok', 'tools_used': []}
 
     monkeypatch.setenv('JARVIS_MODE', inherited)
     monkeypatch.setenv('OLLAMA_API_KEY', 'fixture-key')
-    monkeypatch.setenv('FEEDBACK_RANDOM_ENABLED', 'false')
+    monkeypatch.setenv('JARVIS_OVERRIDE_FEEDBACK_RANDOM_ENABLED', 'false')
     monkeypatch.setattr(orchestrator_v2, 'load_config', lambda _mode: {})
     monkeypatch.setattr(orchestrator_v2, 'Orchestrator', FakeOrchestrator)
     monkeypatch.setattr(sys, 'argv', ['orchestrator_v2.py', mode, 'hello', '--json'])
@@ -76,6 +85,8 @@ def test_positional_cli_mode_controls_ollama_endpoint(monkeypatch, capsys, mode,
         orchestrator_v2.main()
 
     assert observed['selected'] == observed['active'] == mode
+    assert observed['original_query'] == 'hello'
+    assert observed['request_source'] == 'cli'
     if mode == 'local':
         assert observed['hosts'][0] == 'http://processor.example:11434'
         assert 'https://ollama.com' not in observed['hosts']

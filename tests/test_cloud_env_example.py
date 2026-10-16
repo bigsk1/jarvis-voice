@@ -8,13 +8,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CLOUD_TEMPLATE = ROOT / "config" / "cloud.env.example"
-ASSIGNMENT_RE = re.compile(r"(?m)^\s*#?\s*([A-Z][A-Z0-9_]*)\s*=")
+ASSIGNMENT_RE = re.compile(r"(?m)^\s*#?\s*([A-Za-z_][A-Za-z0-9_]*)\s*=")
 
 
 def _setting_names(text: str) -> set[str]:
     """Return active and commented example assignment names."""
 
     return set(ASSIGNMENT_RE.findall(text))
+
+
+def test_setting_names_preserve_case_sensitive_legacy_aliases() -> None:
+    assert _setting_names("CANONICAL_TOKEN=\n# BOOKMARK_PLUS_tOKEN=\n") == {
+        "CANONICAL_TOKEN", "BOOKMARK_PLUS_tOKEN",
+    }
 
 
 def test_cloud_template_defaults_to_openai_with_required_ollama_embeddings() -> None:

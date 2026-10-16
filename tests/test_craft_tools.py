@@ -1,5 +1,6 @@
 """Configuration, transfer and delivery tests for optional Craft clients."""
 import hashlib
+import importlib
 import json
 import sys
 import threading
@@ -7,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from server_package_utils import load_server_package
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'lib'))
@@ -14,6 +16,12 @@ from config_loader import config_scope  # noqa: E402
 from craft_client import CraftClient  # noqa: E402
 from craft_tools import save_outputs  # noqa: E402
 from tool_availability import check_availability_block  # noqa: E402
+
+
+@pytest.fixture
+def followup_extractor():
+    load_server_package('craft_followup_test_server', ROOT / 'jarvis-web/server')
+    return importlib.import_module('craft_followup_test_server.services.followup_extractor')
 
 
 @pytest.fixture
@@ -123,13 +131,11 @@ def test_reviewed_background_environment_and_schema():
 
 
 @pytest.mark.parametrize('tool', ['craft_image', 'craft_pdf', 'craft_photos', 'craft_video', 'craft_motion', 'craft_inspect'])
-def test_followup_preserves_editable_artifacts_and_editing_limits(tool):
-    sys.path.insert(0, str(ROOT / 'jarvis-web'))
-    from server.services import followup_extractor as module
+def test_followup_preserves_editable_artifacts_and_editing_limits(tool, followup_extractor):
     outputs=[{'role':'project','craft_ref':'craft://'+'a'*32+'/'+'b'*32,'stash_ref':'stash://space/file'}]
     note='Each call creates a new composition; this adapter cannot reopen a saved composition.'
     data={tool:{'ok':True,'data':{'project_id':'a'*32,'job_id':'b'*32,'state':'succeeded','outputs':outputs,'followup_note':note}}}
-    followup=module.extract_followup_data(data)[tool]
+    followup=followup_extractor.extract_followup_data(data)[tool]
     assert followup['project_id']=='a'*32 and followup['outputs']==outputs
     assert followup['followup_note']==note
 
@@ -274,7 +280,7 @@ def test_submission_rejection_reaches_tool_completion_for_background(provider,mo
     assert provider['posts']==1 and provider['gets']==0
 
 
-def test_image_metadata_and_editable_project_are_delivered_and_kept_in_followup(provider,tmp_path,monkeypatch):
+def test_image_metadata_and_editable_project_are_delivered_and_kept_in_followup(provider,tmp_path,monkeypatch,followup_extractor):
     document={'width':800,'height':450,'layers':[{'id':3,'name':'Caption','kind':'Type','text':'All words','fully_visible':True}]}
     items=[('image.png','primary',b'png','image/png'),('image.pcraft','project',b'native','application/octet-stream'),('document.json','inspection',json.dumps(document).encode(),'application/json')]
     outputs=[{'id':str(i)*32,'name':name,'role':role,'size_bytes':len(content),'sha256':hashlib.sha256(content).hexdigest(),'mime_type':mime} for i,(name,role,content,mime) in enumerate(items,1)]
@@ -287,8 +293,7 @@ def test_image_metadata_and_editable_project_are_delivered_and_kept_in_followup(
     data=result['data']
     assert data['document']==document
     assert data['editable_project_ref']=='craft://'+'a'*32+'/'+'2'*32
-    from server.services.followup_extractor import extract_followup_data
-    followup=extract_followup_data({'craft_image':result})['craft_image']
+    followup=followup_extractor.extract_followup_data({'craft_image':result})['craft_image']
     assert followup['editable_project_ref']==data['editable_project_ref']
     assert followup['document']==document
 

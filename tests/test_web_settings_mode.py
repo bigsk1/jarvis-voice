@@ -3,28 +3,21 @@
 
 import ast
 import json
-import sys
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from server_package_utils import load_server_package
 
 ROOT = Path(__file__).resolve().parent.parent
-
-
-def _purge_server_modules() -> None:
-    for key in list(sys.modules):
-        if key == "server" or key.startswith("server."):
-            del sys.modules[key]
 
 
 class WebSettingsModeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        _purge_server_modules()
-        sys.path.insert(0, str(ROOT / "jarvis-web"))
-        from server.app import app
-        from server.routes import api
+        load_server_package("web_settings_mode_test_server", ROOT / "jarvis-web/server")
+        from web_settings_mode_test_server.app import app
+        from web_settings_mode_test_server.routes import api
 
         cls.app = app
         cls.api = api
@@ -49,7 +42,7 @@ class WebSettingsModeTests(unittest.TestCase):
 
     def test_api_key_status_is_mode_scoped_grouped_and_secret_free(self):
         import config_loader
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         secrets = {
             "cloud-serp-secret",
@@ -164,8 +157,8 @@ class WebSettingsModeTests(unittest.TestCase):
         with (
             self.app.test_request_context("/api/settings/models/openai?mode=cloud"),
             patch.object(self.api, "get_settings_manager", return_value=settings),
-            patch("server.config.load_jarvis_config"),
-            patch("server.config.get_jarvis_setting", return_value="gpt-provider-default"),
+            patch("web_settings_mode_test_server.config.load_jarvis_config"),
+            patch("web_settings_mode_test_server.config.get_jarvis_setting", return_value="gpt-provider-default"),
         ):
             response = self.api.get_provider_models.__wrapped__("openai")
 
@@ -174,8 +167,8 @@ class WebSettingsModeTests(unittest.TestCase):
         settings._get_env_provider_model.assert_called_once_with("openai")
 
     def test_tts_provider_metadata_matches_runtime_models_and_voices(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         configured = {
             "TTS_MODEL": "gpt-4o-mini-tts-custom",
@@ -386,7 +379,7 @@ class WebSettingsModeTests(unittest.TestCase):
         get_default.assert_not_called()
 
     def test_set_mode_reports_web_config_write_failure(self):
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         settings = SettingsManager("local")
         with (
@@ -438,8 +431,8 @@ class WebSettingsModeTests(unittest.TestCase):
                 self.assertEqual(example[section], section_defaults)
 
     def test_web_config_example_mode_keys_match_reset_defaults(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         example_path = ROOT / "jarvis-web" / "config" / "web_config.json.example"
         example = json.loads(example_path.read_text())
@@ -465,8 +458,8 @@ class WebSettingsModeTests(unittest.TestCase):
             ))
 
     def test_ollama_default_follows_effective_provider_not_env_provider(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         web_config = {
             "cloud": {
@@ -509,7 +502,7 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(result["completion_guard"]["eval_model"]["default"], "minimax-m3:cloud")
 
     def test_direct_ollama_discovery_keeps_canonical_cloud_ids(self):
-        from server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services import settings_manager as settings_module
 
         response = MagicMock(status_code=200)
         response.json.return_value = {
@@ -538,7 +531,7 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertTrue(request_ollama.call_args.kwargs["cloud_access"])
 
     def test_ollama_show_metadata_distinguishes_vision_and_context(self):
-        from server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services import settings_manager as settings_module
 
         glm = settings_module._parse_ollama_show_metadata({
             "capabilities": ["thinking", "completion", "tools"],
@@ -558,7 +551,7 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertIn("vision", minimax["capabilities"])
 
     def test_direct_ollama_discovery_pins_saved_alias_without_stale_selected_label(self):
-        from server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services import settings_manager as settings_module
 
         response = MagicMock(status_code=200)
         response.json.return_value = {
@@ -588,7 +581,7 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertIn("env default", models[1]["name"])
 
     def test_local_ollama_discovery_cloud_cards_require_opt_in(self):
-        from server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services import settings_manager as settings_module
 
         response = MagicMock(status_code=200)
         response.json.return_value = {
@@ -613,8 +606,8 @@ class WebSettingsModeTests(unittest.TestCase):
         )
 
     def test_stale_cloud_catalog_model_is_ignored_for_local_ollama(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         web_config = {
             "local": {"llm_provider": "ollama", "llm_model": "grok-build-0.1"},
@@ -645,7 +638,7 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertFalse(result["llm"]["model"]["is_override"])
 
     def test_catalog_alias_replaces_canonical_option_without_custom_duplicate(self):
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         settings = SettingsManager("cloud")
         with patch.object(settings, "_xai_uses_oauth", return_value=False):
@@ -663,7 +656,7 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertIn("configured alias", matching[0]["name"])
 
     def test_grok_build_latest_alias_uses_grok_45_dropdown_capabilities(self):
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         settings = SettingsManager("cloud")
         with patch.object(settings, "_xai_uses_oauth", return_value=False):
@@ -679,8 +672,8 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertIn("thinking", matching[0]["capabilities"])
 
     def test_save_rejects_cross_mode_ollama_model(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         web_config = {"local": {}}
         settings = SettingsManager("local")
@@ -699,8 +692,8 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertIsNone(web_config["local"]["llm_model"])
 
     def test_save_intelligence_reflections_toggle(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         web_config = {"cloud": {}, "ui": {"progress_events": True}}
         settings = SettingsManager("cloud")
@@ -723,8 +716,8 @@ class WebSettingsModeTests(unittest.TestCase):
         save_config.assert_called_once_with(web_config)
 
     def test_save_allows_local_cloud_model_when_opted_in(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         web_config = {"local": {}}
         env = {
@@ -748,8 +741,8 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(web_config["local"]["llm_model"], "minimax-m3:cloud")
 
     def test_numeric_override_false_when_web_value_matches_env(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         web_config = {
             "cloud": {
@@ -791,8 +784,8 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(result["completion_guard"]["auto_threshold"]["value"], 0.89)
 
     def test_save_clears_numeric_override_when_matching_env(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         web_config = {"cloud": {"qa_word_limit": 150}}
         env = {
@@ -826,8 +819,11 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertIsNone(web_config["cloud"]["completion_guard_auto_threshold"])
 
     def test_tool_rag_limit_override_is_validated_and_saved_per_mode(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager, SettingsValidationError
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import (
+            SettingsManager,
+            SettingsValidationError,
+        )
 
         web_config = {"cloud": {}}
         settings = SettingsManager("cloud")
@@ -848,8 +844,11 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(web_config["cloud"]["tool_rag_limit"], 9)
 
     def test_router_prompt_override_is_allowlisted_and_saved_per_mode(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager, SettingsValidationError
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import (
+            SettingsManager,
+            SettingsValidationError,
+        )
 
         web_config = {"cloud": {}}
         settings = SettingsManager("cloud")
@@ -874,8 +873,11 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(web_config["cloud"]["router_prompt_version"], "v4")
 
     def test_status_update_overrides_are_validated_and_saved_per_mode(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager, SettingsValidationError
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import (
+            SettingsManager,
+            SettingsValidationError,
+        )
 
         web_config = {"cloud": {}}
         settings = SettingsManager("cloud")
@@ -901,8 +903,8 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(web_config["cloud"]["status_phrase_mode"], "unhinged")
 
     def test_settings_payload_describes_status_defaults_and_overrides(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         web_config = {
             "cloud": {
@@ -958,8 +960,8 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertNotIn("${Utils.escapeHtml(effectiveStatusPhraseMode)} static phrases", app_js)
 
     def test_settings_payload_describes_router_prompt_default_and_override(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         web_config = {
             "cloud": {"router_prompt_version": "v1"},
@@ -998,8 +1000,8 @@ class WebSettingsModeTests(unittest.TestCase):
         })
 
     def test_settings_payload_describes_thinking_effort_default_and_override(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         web_config = {
             "cloud": {"thinking_effort": "low"},
@@ -1032,7 +1034,10 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertTrue(payload["llm"]["thinking_effort"]["profiled"])
 
     def test_thinking_effort_validation_rejects_unknown_value(self):
-        from server.services.settings_manager import SettingsManager, SettingsValidationError
+        from web_settings_mode_test_server.services.settings_manager import (
+            SettingsManager,
+            SettingsValidationError,
+        )
 
         settings = SettingsManager("cloud")
         with patch.object(settings, "_ensure_jarvis_config"):
@@ -1042,7 +1047,9 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(context.exception.field, "thinking_effort")
 
     def test_glm_web_effort_options_come_from_model_profile(self):
-        from server.services.settings_manager import _model_thinking_effort_options
+        from web_settings_mode_test_server.services.settings_manager import (
+            _model_thinking_effort_options,
+        )
 
         options, profiled = _model_thinking_effort_options(
             "ollama",
@@ -1055,7 +1062,9 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertNotIn("medium", options)
 
     def test_xai_web_effort_options_distinguish_none_from_provider_default(self):
-        from server.services.settings_manager import _model_thinking_effort_options
+        from web_settings_mode_test_server.services.settings_manager import (
+            _model_thinking_effort_options,
+        )
 
         grok_46, profiled_46 = _model_thinking_effort_options(
             "xai", "grok-4.6", "cloud"
@@ -1072,7 +1081,9 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertNotIn("off", grok_43)
 
     def test_unprofiled_model_has_no_web_effort_options(self):
-        from server.services.settings_manager import _model_thinking_effort_options
+        from web_settings_mode_test_server.services.settings_manager import (
+            _model_thinking_effort_options,
+        )
 
         options, profiled = _model_thinking_effort_options(
             "openai", "gpt-4o-mini", "cloud"
@@ -1082,7 +1093,9 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(options, [])
 
     def test_openai_web_effort_options_follow_selected_model_profile(self):
-        from server.services.settings_manager import _model_thinking_effort_options
+        from web_settings_mode_test_server.services.settings_manager import (
+            _model_thinking_effort_options,
+        )
 
         gpt_56, profiled_56 = _model_thinking_effort_options(
             "openai", "gpt-5.6-sol", "cloud"
@@ -1098,7 +1111,9 @@ class WebSettingsModeTests(unittest.TestCase):
 
     def test_openai_yaml_thinking_profile_wins_in_web_options(self):
         from model_prompt_overrides import ModelThinkingOverride
-        from server.services.settings_manager import _model_thinking_effort_options
+        from web_settings_mode_test_server.services.settings_manager import (
+            _model_thinking_effort_options,
+        )
 
         yaml_profile = ModelThinkingOverride(
             supported=True,
@@ -1119,7 +1134,10 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(options, ["low", "high"])
 
     def test_thinking_effort_validation_uses_effective_model_levels(self):
-        from server.services.settings_manager import SettingsManager, SettingsValidationError
+        from web_settings_mode_test_server.services.settings_manager import (
+            SettingsManager,
+            SettingsValidationError,
+        )
 
         settings = SettingsManager("cloud")
         with (
@@ -1139,7 +1157,10 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertIn("glm-5.3:cloud", context.exception.reason)
 
     def test_thinking_effort_validation_rejects_unprofiled_model(self):
-        from server.services.settings_manager import SettingsManager, SettingsValidationError
+        from web_settings_mode_test_server.services.settings_manager import (
+            SettingsManager,
+            SettingsValidationError,
+        )
 
         settings = SettingsManager("cloud")
         with (
@@ -1157,8 +1178,8 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertIn("unprofiled model", context.exception.reason)
 
     def test_provider_only_save_clears_stale_incompatible_thinking_effort(self):
-        from server.services import settings_manager as settings_module
-        from server.services.settings_manager import SettingsManager
+        from web_settings_mode_test_server.services import settings_manager as settings_module
+        from web_settings_mode_test_server.services.settings_manager import SettingsManager
 
         web_config = {
             "cloud": {

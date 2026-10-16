@@ -1,46 +1,64 @@
 # Jarvis Tests
 
-Jarvis primarily uses deterministic pytest coverage. Tests should use temporary databases, mocked provider responses, and request-local configuration rather than backing up, deleting, or restoring a user's active databases.
+Jarvis uses deterministic pytest coverage with temporary data and mocked external
+services. The maintained execution and test-authoring rules live in
+[the testing guide](../docs/TESTING.md).
 
 ## Python environment
 
-Use the external Jarvis environment. The repository intentionally does not use a project-level `.venv`.
-
-Run focused modules in a fresh pytest process:
+Use the repo `.venv` for development (`uv sync --dev --frozen` if needed):
 
 ```bash
-~/jarvis-venv/bin/python -m pytest -q \
+# Canonical full core suite (Python and core UI Node tests)
+./bin/test-suite
+
+# Check sandbox/local HTTP support without running tests
+./bin/test-suite --preflight-only
+
+# Focused checks while developing
+.venv/bin/python -m pytest -q \
   tests/test_docs_integrity.py \
   tests/test_mode_plumbing_scripts.py
 ```
 
-Set `JARVIS_VENV` when the environment lives somewhere else.
+The full runner executes the collected suite in one process, isolates operator
+configuration, and leaves a unique report folder under ignored `logs/tests/`.
+Use `--report-dir` to choose another report location. A preflight exit of **3**
+means a required local fixture reported an explicit EPERM or EACCES permission
+denial before pytest ran. If the sandbox blocked it, rerun the same command
+outside the sandbox with the required permission. Exit
+**4** is a preflight timeout, not proof of a sandbox denial; investigate the
+reported phase before choosing a retry. Pytest failures remain failures. See the
+[execution boundaries and reports](../docs/TESTING.md#full-suite-execution-and-sandbox-boundaries).
 
-Do not currently use an unqualified `pytest` command as the release signal. Jarvis Web, Memory, Intelligence, and Canvas still contain generic top-level package names such as `server` and `services`; collecting every application test in one Python process can resolve a later test against an earlier application's imported package. Run the relevant application/topic group in a fresh process until those package namespaces are consolidated.
+The Firefox extension's `npm test` in `jarvis-firefox-extension/` is separate.
+Report it as unrun when only the core suite ran, and give its result separately
+when run. If a shell exports `UV_PROJECT_ENVIRONMENT` for production, prepare
+the dev environment with `UV_PROJECT_ENVIRONMENT=.venv uv sync --dev --frozen`.
 
 ## Focused checks
 
 ```bash
 # Model catalogs and provider audits
-~/jarvis-venv/bin/python -m pytest -q \
+.venv/bin/python -m pytest -q \
   tests/test_model_catalog.py \
   tests/test_anthropic_model_audit.py \
   tests/test_xai_model_audit.py \
   tests/test_openai_model_audit.py
 
 # Memory and mode isolation
-~/jarvis-venv/bin/python -m pytest -q \
+.venv/bin/python -m pytest -q \
   tests/test_memory_db_update_sync.py \
   tests/test_memory_sync_health.py \
   tests/test_mode_plumbing_scripts.py
 
 # Tool RAG
-~/jarvis-venv/bin/python -m pytest -q \
+.venv/bin/python -m pytest -q \
   tests/test_tool_rag_signals.py \
   tests/test_tool_rag_typo_hints.py
 
 # Intelligence
-~/jarvis-venv/bin/python -m pytest -q \
+.venv/bin/python -m pytest -q \
   tests/test_intelligence_maintenance.py \
   tests/test_intelligence_provenance.py \
   tests/test_intelligence_redaction.py \
@@ -49,7 +67,9 @@ Do not currently use an unqualified `pytest` command as the release signal. Jarv
 
 ## Maintained integration scripts
 
-Only two shell integration entry points remain. Their default behavior is deterministic and does not call paid provider APIs.
+The two maintained shell wrappers retain
+`${JARVIS_VENV:-$HOME/jarvis-venv}`. Their default behavior is deterministic; real
+provider/server checks require the explicit options below.
 
 | Script | Default | Explicit external checks |
 |---|---|---|
@@ -89,12 +109,11 @@ These are diagnostics rather than pass/fail integration suites:
 
 Diagnostics can read or initialize mode-specific databases and may call the configured embedding provider. They do not delete and restore active databases.
 
-## Safety rules for new tests
+## Writing tests
 
-- Put deterministic regression coverage in pytest.
-- Use `tmp_path`, temporary SQLite files, mocks, and `config_scope()` overrides.
-- Never rewrite `config/cloud.env` or `config/local.env` to select a test model.
-- Never delete, rename, back up, or restore active databases from a test.
-- Gate paid APIs, external services, workspace writes, and persistent sessions behind an explicit `--live` or similarly clear flag.
-- Invoke Python through `${JARVIS_VENV:-$HOME/jarvis-venv}/bin/python`.
-- State external side effects and costs in the script's usage text.
+Follow the [test authoring contract](../docs/TESTING.md#test-authoring-contract):
+controlled clocks and explicit configuration, complete fixtures, cleaned-up
+state, distinct application imports, and the selected Python for child commands.
+Keep real providers and private databases out of deterministic tests. Do not
+hide failures with skips or xfails. Run focused regressions first and the full
+suite after changes to shared behavior.

@@ -3,33 +3,26 @@
 
 from __future__ import annotations
 
+import importlib
 import io
-import sys
 from pathlib import Path
 from unittest.mock import patch
 
+from server_package_utils import load_server_package
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _load_web_app():
-    for key in list(sys.modules):
-        if key == "server" or key.startswith("server."):
-            del sys.modules[key]
-    web_root = str(PROJECT_ROOT / "jarvis-web")
-    if web_root in sys.path:
-        sys.path.remove(web_root)
-    sys.path.insert(0, web_root)
-    from server.app import app
-
-    return app
+    load_server_package("intel_filename_web_test_server", PROJECT_ROOT / "jarvis-web/server")
+    return importlib.import_module("intel_filename_web_test_server.app").app
 
 
 def test_new_web_upload_requires_lowercase_kebab_case(tmp_path):
     app = _load_web_app()
     with (
-        patch("server.app.is_auth_enabled", return_value=False),
-        patch("server.routes.api.INTEL_DIR", tmp_path),
+        patch("intel_filename_web_test_server.app.is_auth_enabled", return_value=False),
+        patch("intel_filename_web_test_server.routes.api.INTEL_DIR", tmp_path),
     ):
         with app.test_client() as client:
             response = client.post(
@@ -52,9 +45,9 @@ def test_web_upload_can_replace_existing_legacy_file(tmp_path):
     legacy.write_text("# Old\n", encoding="utf-8")
     app = _load_web_app()
     with (
-        patch("server.app.is_auth_enabled", return_value=False),
-        patch("server.routes.api.INTEL_DIR", tmp_path),
-        patch("server.routes.api.SKILLS_DIR", tmp_path / "missing-skills"),
+        patch("intel_filename_web_test_server.app.is_auth_enabled", return_value=False),
+        patch("intel_filename_web_test_server.routes.api.INTEL_DIR", tmp_path),
+        patch("intel_filename_web_test_server.routes.api.SKILLS_DIR", tmp_path / "missing-skills"),
     ):
         with app.test_client() as client:
             response = client.post(

@@ -1,6 +1,5 @@
 import ast
 import json
-import time
 from pathlib import Path
 
 import pytest
@@ -54,6 +53,7 @@ def client(isolated, monkeypatch):
 
 
 LOGIN = {'Authorization': 'Bearer test-login'}
+NOW = 1_900_000_000.0
 
 
 def test_fresh_clone_and_disabled_configuration_never_connect(isolated, monkeypatch):
@@ -85,13 +85,16 @@ def test_configuration_and_heartbeat_are_sanitized(isolated, monkeypatch):
 
 
 @pytest.mark.parametrize('heartbeat,expected', [
-    ({'mode': 'cloud', 'state': 'ready', 'updated_at': 1, 'poll_seconds': 15}, 'stale'),
-    ({'mode': 'cloud', 'state': 'stopped', 'updated_at': time.time(), 'poll_seconds': 15}, 'stopped'),
-    ({'mode': 'cloud', 'state': 'degraded', 'updated_at': time.time(), 'poll_seconds': 15}, 'degraded'),
-    ({'mode': 'secret-value', 'state': 'ready', 'updated_at': time.time(), 'poll_seconds': 15}, 'unknown'),
+    ({'mode': 'cloud', 'state': 'ready', 'updated_at': NOW - 46, 'poll_seconds': 15}, 'stale'),
+    ({'mode': 'cloud', 'state': 'ready', 'updated_at': NOW - 45, 'poll_seconds': 15}, 'ready'),
+    ({'mode': 'cloud', 'state': 'ready', 'updated_at': NOW + 1, 'poll_seconds': 15}, 'stale'),
+    ({'mode': 'cloud', 'state': 'stopped', 'updated_at': NOW, 'poll_seconds': 15}, 'stopped'),
+    ({'mode': 'cloud', 'state': 'degraded', 'updated_at': NOW, 'poll_seconds': 15}, 'degraded'),
+    ({'mode': 'secret-value', 'state': 'ready', 'updated_at': NOW, 'poll_seconds': 15}, 'unknown'),
     ({'state': '<private error>'}, 'unknown'),
 ])
-def test_stale_or_invalid_heartbeat_never_claims_running(isolated, heartbeat, expected):
+def test_stale_or_invalid_heartbeat_never_claims_running(isolated, monkeypatch, heartbeat, expected):
+    monkeypatch.setattr(service.time, 'time', lambda: NOW)
     folder = isolated / 'logs'
     folder.mkdir()
     (folder / 'ntfy_notifications.status.json').write_text(json.dumps(heartbeat))

@@ -28,6 +28,16 @@ def test_media_settings_admit_chat_then_late_artifact(web_tasks, monkeypatch, na
     from config_loader import config_scope
 
     h = web_tasks
+    # Web admission and worker preflight both enforce real availability. Supply
+    # all fixture prerequisites instead of relying on operator credentials.
+    media_config = {
+        'JARVIS_TOOL_PROFILE': 'default',
+        'IMAGE_TOOL_PROVIDER': 'openai', 'OPENAI_API_KEY': 'fixture-openai',
+        'VIDEO_TOOL_PROVIDER': 'xai', 'XAI_API_KEY': 'fixture-xai',
+        'MUSIC_TOOL_PROVIDER': 'elevenlabs', 'ELEVENLABS_API_KEY': 'fixture-elevenlabs',
+        'MONEYPRINTER_API_URL': 'https://moneyprinter.invalid',
+    }
+    monkeypatch.setattr(config_loader, '_load_mode_config', lambda _: dict(media_config))
     installation = h.tmp / 'media-installation'
     skills = installation / 'skills'
     skills.mkdir(parents=True)
@@ -37,8 +47,7 @@ def test_media_settings_admit_chat_then_late_artifact(web_tasks, monkeypatch, na
     runner = LocalSkillRunner(installation, dict.fromkeys(MEDIA, REMOTE_ADAPTER))
     monkeypatch.setattr(production, 'runner', lambda: runner)
     h.background.adapters = production.bindings()
-    with config_scope(mode, {'JARVIS_TOOL_PROFILE': 'default',
-                            'MONEYPRINTER_API_URL': 'https://moneyprinter.invalid'}):
+    with config_scope(mode):
         schemas = {tool: runner.policy(tool)[0] for tool in MEDIA}
     old_get = h.background.registry.get_tool
     h.background.registry.get_tool = lambda tool: schemas.get(tool) or old_get(tool)
@@ -56,10 +65,6 @@ def test_media_settings_admit_chat_then_late_artifact(web_tasks, monkeypatch, na
     assert status['tool_details'][name] == {'remote_work': True, 'worker_ready': True}
     output, stash = h.tmp / 'media-output', h.tmp / 'media-stash'
     output.mkdir()
-    if name == 'create_social_clip':
-        # Auth is created in the chat thread's own mode scope.
-        monkeypatch.setattr(config_loader, '_load_mode_config', lambda _: {
-            'JARVIS_TOOL_PROFILE': 'default', 'MONEYPRINTER_API_URL': 'https://moneyprinter.invalid'})
     arguments = {('subject' if name == 'create_social_clip' else 'prompt'): 'Fixture media'}
     h.client.emit('chat:send', {'message': 'Generate fixture media', 'mode': mode,
         'tool_action': {'tool': name, 'arguments': arguments}})
@@ -70,6 +75,7 @@ def test_media_settings_admit_chat_then_late_artifact(web_tasks, monkeypatch, na
     assert h.store.get_conversation(cid)['run']['status'] == 'completed'
     assert not (output / 'provider.started').exists()
     worker = TaskWorker(h.tasks, {REMOTE_ADAPTER: runner}, deployment_overrides={
+        **media_config,
         'STASH_DIR': str(stash), 'JARVIS_TOOL_PROFILE': 'default',
         'MONEYPRINTER_API_URL': 'https://moneyprinter.invalid',
         'FIXTURE_JARVIS_ROOT': str(ROOT), 'FIXTURE_MEDIA_OUTPUT': str(output),

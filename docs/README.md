@@ -112,9 +112,8 @@
 # Command Dashboard TUI (all commands in one place!)
 ./bin/jarvis-dashboard   # Or: jarvis-d (if alias set)
 
-# Run deterministic core smoke tests
-~/jarvis-venv/bin/python -m pytest -q \
-  tests/test_docs_integrity.py tests/test_mode_plumbing_scripts.py
+# Run the complete deterministic core suite (repo .venv)
+./bin/test-suite
 
 # Maintained integration wrappers (no external calls by default)
 ./tests/integration/test-thinking-mode.sh
@@ -192,7 +191,7 @@
 | Document | Purpose |
 |----------|---------|
 | **COMPREHENSIVE_TESTING.md** | Burn test suite for all features  |
-| **TESTING.md** | Comprehensive testing guide |
+| **[TESTING.md](TESTING.md)** | Full-suite command, sandbox handling, and test authoring contract |
 | **BASELINE_TOKEN_USAGE.md** | Token usage tracking |
 | **../tests/README.md** | Test suite overview |
 
@@ -312,9 +311,16 @@ YOU (hear result)
 
 ## 🧪 Testing
 
+Development checks use repo `.venv`; run `uv sync --dev --frozen` to prepare it.
+Production launchers, integration wrappers, and Tool RAG sync keep their own
+environment contracts.
+
 ```bash
-# Deterministic core smoke group
-~/jarvis-venv/bin/python -m pytest -q \
+# Complete deterministic core suite (Python and core UI Node tests)
+./bin/test-suite
+
+# Focused smoke group
+.venv/bin/python -m pytest -q \
   tests/test_docs_integrity.py tests/test_mode_plumbing_scripts.py
 
 # Provider thinking integration (mocked by default)
@@ -330,6 +336,11 @@ YOU (hear result)
 ./bin/tool-logs
 ./bin/opencode-logs
 ```
+
+See the [testing guide and authoring contract](TESTING.md) for saved reports and
+sandbox preflight handling. The Firefox extension's `npm test` in
+`jarvis-firefox-extension/` is separate; a core-suite result does not establish
+that extension suite passed.
 
 ## 🐛 Troubleshooting
 

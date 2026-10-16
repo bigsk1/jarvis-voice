@@ -7,18 +7,34 @@ import re
 from datetime import datetime
 
 # Compatibility exports; the canonical definitions live in tts_style_tags.
-from tts_style_tags import ELEVENLABS_AUDIO_TAG_MODELS as ELEVENLABS_AUDIO_TAG_MODELS
-from tts_style_tags import ELEVENLABS_INLINE_SPEECH_TAGS as ELEVENLABS_INLINE_SPEECH_TAGS
-from tts_style_tags import ELEVENLABS_V4_MODELS as ELEVENLABS_V4_MODELS
-from tts_style_tags import XAI_INLINE_SPEECH_TAGS as XAI_INLINE_SPEECH_TAGS
-from tts_style_tags import XAI_WRAPPING_SPEECH_TAGS as XAI_WRAPPING_SPEECH_TAGS
-from tts_style_tags import (
-    SpeechTagPolicy,
-    all_inline_speech_tags,
-    all_wrapping_speech_tags,
-    get_speech_tag_policy,
-)
-from tts_style_tags import speech_tag_options as speech_tag_options
+try:
+    from tts_style_tags import ELEVENLABS_AUDIO_TAG_MODELS as ELEVENLABS_AUDIO_TAG_MODELS
+    from tts_style_tags import ELEVENLABS_INLINE_SPEECH_TAGS as ELEVENLABS_INLINE_SPEECH_TAGS
+    from tts_style_tags import ELEVENLABS_V4_MODELS as ELEVENLABS_V4_MODELS
+    from tts_style_tags import XAI_INLINE_SPEECH_TAGS as XAI_INLINE_SPEECH_TAGS
+    from tts_style_tags import XAI_WRAPPING_SPEECH_TAGS as XAI_WRAPPING_SPEECH_TAGS
+    from tts_style_tags import (
+        SpeechTagPolicy,
+        all_inline_speech_tags,
+        all_wrapping_speech_tags,
+        get_speech_tag_policy,
+    )
+    from tts_style_tags import speech_tag_options as speech_tag_options
+except ModuleNotFoundError as exc:
+    if exc.name != "tts_style_tags":
+        raise
+    from lib.tts_style_tags import ELEVENLABS_AUDIO_TAG_MODELS as ELEVENLABS_AUDIO_TAG_MODELS
+    from lib.tts_style_tags import ELEVENLABS_INLINE_SPEECH_TAGS as ELEVENLABS_INLINE_SPEECH_TAGS
+    from lib.tts_style_tags import ELEVENLABS_V4_MODELS as ELEVENLABS_V4_MODELS
+    from lib.tts_style_tags import XAI_INLINE_SPEECH_TAGS as XAI_INLINE_SPEECH_TAGS
+    from lib.tts_style_tags import XAI_WRAPPING_SPEECH_TAGS as XAI_WRAPPING_SPEECH_TAGS
+    from lib.tts_style_tags import (
+        SpeechTagPolicy,
+        all_inline_speech_tags,
+        all_wrapping_speech_tags,
+        get_speech_tag_policy,
+    )
+    from lib.tts_style_tags import speech_tag_options as speech_tag_options
 
 ALLOWED_TTS_PROFILES = {
     "weather_watch",

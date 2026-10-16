@@ -2812,8 +2812,6 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
 
     # Failed webhook contracts live in the trace; successful runs are accumulated
     # separately. Retain both so a later correction has the same destination body.
-    from lib.webhook_context import project_webhook_runs
-
     successful = data.get('send_webhook', [])
     successful = list(successful) if isinstance(successful, list) else [successful]
     pending_successes = iter(successful)
@@ -2829,6 +2827,15 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             webhook_runs.append({'ok': False, 'error': row.get('error'), 'data': row['result_data']})
     webhook_runs.extend(pending_successes)
     if webhook_runs:
+        # Other tools do not need the webhook adapter's security dependencies.
+        # Launchers expose repo/lib; direct package consumers use lib.* instead.
+        try:
+            from webhook_context import project_webhook_runs
+        except ModuleNotFoundError as exc:
+            if exc.name != 'webhook_context':
+                raise
+            from lib.webhook_context import project_webhook_runs
+
         projected = project_webhook_runs(webhook_runs)
         if projected:
             followup['send_webhook'] = projected

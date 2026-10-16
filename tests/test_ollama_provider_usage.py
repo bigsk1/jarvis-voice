@@ -308,10 +308,14 @@ def test_required_glm_thinking_uses_default_and_returns_trace_when_enabled(monke
 
 
 def test_required_glm_simple_chat_and_structured_fallback_use_low(monkeypatch):
+    from config_loader import config_scope
+
     provider = _provider("glm-5.3-flash:cloud", monkeypatch, mode="cloud")
     response = _ThinkingChatResponse("Hello!")
 
-    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")) as mocked:
+    with config_scope("cloud", overrides={
+        "JARVIS_DEBUG_THINKING": "false", "JARVIS_THINKING_EFFORT": "auto",
+    }), patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")) as mocked:
         assert provider.chat("Hello") == "Hello!"
         simple_request = mocked.call_args.kwargs["json"]
         _, _, usage, thinking = provider._chat_with_tools_structured(
@@ -330,6 +334,8 @@ def test_json_mode_never_promotes_or_logs_reasoning_only_fallback(
     monkeypatch,
     capsys,
 ):
+    from config_loader import config_scope
+
     provider = _provider("glm-5.3:cloud", monkeypatch, mode="cloud")
     monkeypatch.setenv("JARVIS_DEBUG", "false")
     private_trace = (
@@ -339,7 +345,9 @@ def test_json_mode_never_promotes_or_logs_reasoning_only_fallback(
     response = _ThinkingOnlyChatResponse(private_trace)
     capsys.readouterr()
 
-    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")):
+    with config_scope("cloud", overrides={"JARVIS_DEBUG": "false"}), patch(
+        "llm_provider.request_ollama", return_value=(response, "https://ollama.com")
+    ):
         text = provider.chat(
             "Evaluate this result.",
             system_prompt="Return JSON only.",
@@ -356,13 +364,17 @@ def test_json_mode_failed_recovery_debug_log_contains_metadata_only(
     monkeypatch,
     capsys,
 ):
+    from config_loader import config_scope
+
     provider = _provider("glm-5.3:cloud", monkeypatch, mode="cloud")
     monkeypatch.setenv("JARVIS_DEBUG", "true")
     private_trace = "SENSITIVE_PRIVATE_TRACE: internal analysis without JSON"
     response = _ThinkingOnlyChatResponse(private_trace)
     capsys.readouterr()
 
-    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")):
+    with config_scope("cloud", overrides={"JARVIS_DEBUG": "true"}), patch(
+        "llm_provider.request_ollama", return_value=(response, "https://ollama.com")
+    ):
         text = provider.chat(
             "Evaluate this result.",
             system_prompt="Return JSON only.",

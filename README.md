@@ -1489,9 +1489,16 @@ Install the managed Bash/Zsh command set with `./update-aliases.sh`. Useful oper
 
 ### Testing
 
+Use the repository `.venv` for development tests. Prepare it with
+`uv sync --dev --frozen` if needed; production launchers and Tool RAG sync retain
+their external `~/jarvis-venv` environment.
+
 ```bash
-# Deterministic core smoke group (no paid provider calls)
-~/jarvis-venv/bin/python -m pytest -q \
+# Complete deterministic core suite (Python and core UI Node tests)
+./bin/test-suite
+
+# Focused smoke group while developing
+.venv/bin/python -m pytest -q \
   tests/test_docs_integrity.py tests/test_mode_plumbing_scripts.py
 
 # Maintained integration wrappers are also no-cost by default
@@ -1506,7 +1513,11 @@ Install the managed Bash/Zsh command set with `./update-aliases.sh`. Useful oper
 ./orchestrator/orchestrator_v2.py cloud "remember test fact"
 ```
 
-See [`docs/TESTING.md`](docs/TESTING.md) for focused suites and the live-test safety boundary. Tests do not rotate or restore active databases.
+See the [testing guide and authoring contract](docs/TESTING.md) for sandbox
+preflight handling, saved reports, focused checks, and live-test boundaries.
+The separately packaged Firefox extension has its own `npm test` command in
+`jarvis-firefox-extension/`; report it separately from the core suite. Tests do
+not rotate or restore active databases.
 
 
 ---

@@ -14,7 +14,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from config_loader import get_project_root
+try:
+    from config_loader import get_project_root
+except ModuleNotFoundError as exc:
+    if exc.name != "config_loader":
+        raise
+    from lib.config_loader import get_project_root
 
 __all__ = [
     "get_user_home",

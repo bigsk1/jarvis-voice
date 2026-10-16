@@ -946,14 +946,29 @@ curl http://localhost:8880/api/reminders | jq
 
 ### Step 7: Run Deterministic Tests
 
+Development tests use a separate repository `.venv`. The external
+`~/jarvis-venv` used above remains the production environment for launchers and
+Tool RAG sync.
+
 ```bash
-# No provider calls or active-database replacement
-~/jarvis-venv/bin/python -m pytest -q \
+cd ~/jarvis-voice
+UV_PROJECT_ENVIRONMENT=.venv uv sync --dev --frozen
+
+# Complete deterministic core suite (Python and core UI Node tests)
+./bin/test-suite
+
+# Focused checks while developing; no provider calls or active-database changes
+.venv/bin/python -m pytest -q \
   tests/test_docs_integrity.py tests/test_mode_plumbing_scripts.py
 
 # Optional read-only OpenCode health check
 ./tests/integration/test-opencode-integration.sh --health cloud
 ```
+
+The [testing guide and authoring contract](TESTING.md) describe environment
+preflight, saved reports, and deterministic fixtures. The Firefox extension's
+`npm test` in `jarvis-firefox-extension/` is a separate component check and should
+be reported separately.
 
 ---
 

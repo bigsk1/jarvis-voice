@@ -23,6 +23,94 @@ from lib.webhook_integrations.browser_service import BrowserService
 from lib.webhook_integrations.service import IntegrationService
 
 
+def browser_runtime_configuration(live, monkeypatch, stash_dir):
+    """Opt only this live journey into configured credentials, never process env."""
+    deployment = {'STASH_DIR': str(stash_dir)}
+    if not live:
+        return 'ollama', 'test:cloud', deployment
+
+    import config_loader
+    from llm_provider import create_configured_provider
+    from suite_isolation import load_live_mode_config
+
+    settings = {**load_live_mode_config('cloud'), **deployment}
+    real_scope = config_loader.config_scope
+
+    def configured_scope(mode, overrides=None):
+        # BrowserService enters a new scope in its own thread and limits its
+        # deployment overrides to output settings. Supply the selected live
+        # configuration at that existing scope seam; runtime model overrides
+        # still take precedence. No other test opts into these values.
+        selected = settings if mode == 'cloud' else {}
+        return real_scope(mode, overrides={**selected, **dict(overrides or {})})
+
+    monkeypatch.setattr(config_loader, 'config_scope', configured_scope)
+    with configured_scope('cloud'):
+        provider, model, _ = create_configured_provider(
+            mode='cloud', disable_server_side_tools=True,
+        )
+    return provider, model, settings
+
+
+def test_scripted_browser_configuration_never_reads_live_settings(monkeypatch, tmp_path):
+    import suite_isolation
+
+    monkeypatch.setattr(suite_isolation, 'load_live_mode_config',
+                        lambda mode: pytest.fail('Scripted journey read operator configuration'))
+    assert browser_runtime_configuration(False, monkeypatch, tmp_path) == (
+        'ollama', 'test:cloud', {'STASH_DIR': str(tmp_path)},
+    )
+
+
+def test_live_browser_configuration_reaches_real_child_scope_without_global_leaks(monkeypatch, tmp_path):
+    import config_loader
+    import llm_provider
+    import suite_isolation
+
+    from lib.webhook_integrations.browser_service import child_environment
+
+    original_environment = os.environ.copy()
+    reads = []
+    settings = {
+        'LLM_PROVIDER': 'ollama', 'OLLAMA_CLOUD_MODEL': 'fixture-live:cloud',
+        'OLLAMA_API_KEY': 'fixture-browser-token', 'STASH_DIR': '/unused/private/stash',
+    }
+
+    def read_selected(mode):
+        reads.append(mode)
+        return settings
+
+    def create_provider(**kwargs):
+        assert kwargs == {'mode': 'cloud', 'disable_server_side_tools': True}
+        assert config_loader.get_config_value('OLLAMA_API_KEY') == 'fixture-browser-token'
+        assert config_loader.get_config_value('OLLAMA_CLOUD_MODEL') == 'fixture-live:cloud'
+        assert config_loader.get_config_value('STASH_DIR') == str(tmp_path)
+        return 'ollama', 'fixture-live:cloud', object()
+
+    monkeypatch.setattr(suite_isolation, 'load_live_mode_config', read_selected)
+    monkeypatch.setattr(llm_provider, 'create_configured_provider', create_provider)
+    provider, model, deployment = browser_runtime_configuration(True, monkeypatch, tmp_path)
+    assert reads == ['cloud']
+    assert (provider, model) == ('ollama', 'fixture-live:cloud')
+
+    # Exercise BrowserService's real scope and environment builder in the
+    # separate-thread shape used by the journey, without starting a browser.
+    environments = []
+    thread = threading.Thread(target=lambda: environments.append(child_environment({
+        'mode': 'cloud', 'provider': provider, 'model': 'authorized-runtime:cloud',
+        'deadline': 1234, 'proxy_policy': 'off',
+    }, deployment)))
+    thread.start()
+    thread.join(5)
+    assert not thread.is_alive()
+    assert len(environments) == 1
+    assert environments[0]['OLLAMA_API_KEY'] == 'fixture-browser-token'
+    assert environments[0]['OLLAMA_CLOUD_MODEL'] == 'authorized-runtime:cloud'
+    assert environments[0]['STASH_DIR'] == str(tmp_path)
+    assert os.environ == original_environment
+    assert config_loader.get_scoped_config() is None
+
+
 @pytest.mark.parametrize('caller', ['disabled', 'unselected', 'talk', 'firefox'])
 def test_browser_web_denial_never_starts_foreground_or_callback(web_tasks, monkeypatch, caller):
     import executor
@@ -76,14 +164,13 @@ def test_browser_callback_after_intervening_web_tool(web_tasks, monkeypatch, liv
     import orchestrator_v2
     import tool_process
     import tool_profiles
-    from config_loader import config_scope
-    from llm_provider import create_configured_provider
     from tool_schema import ToolSchema
 
     from lib.background_tasks.production import worker_adapters
     from lib.webhook_integrations import browser
 
     h = web_tasks
+    provider_name, model_name, deployment = browser_runtime_configuration(live, monkeypatch, h.tmp / 'stash')
     h.worker.terminate()
     h.worker.communicate(timeout=6)
     api_socket = socket.socket()
@@ -120,12 +207,6 @@ def test_browser_callback_after_intervening_web_tool(web_tasks, monkeypatch, liv
     schemas['browser_use'] = ToolSchema.from_json_file(str(root / 'skills/browser_use.tool.json'))
     h.background.adapters = {'browser_use': 'http_callback_v1'}
 
-    model_name = 'test:cloud'
-    if live:
-        with config_scope('cloud'):
-            provider_name, model_name, _ = create_configured_provider(mode='cloud', disable_server_side_tools=True)
-    else:
-        provider_name = 'ollama'
     arguments = {'task': 'Read this page and report its title and what these domains are for. Cite the URL.',
                  'url': 'https://example.com/', 'max_steps': 3}
     force_followup = [False]
@@ -165,7 +246,7 @@ def test_browser_callback_after_intervening_web_tool(web_tasks, monkeypatch, liv
         return original_process(command, *args, **kwargs)
     monkeypatch.setattr(tool_process, 'run_local_process', browser_process)
     h.background.synthesize = h.background._synthesize
-    service = BrowserService(h.tmp / 'browser.db', config, deployment_overrides={'STASH_DIR': str(h.tmp / 'stash')})
+    service = BrowserService(h.tmp / 'browser.db', config, deployment_overrides=deployment)
     service_thread = threading.Thread(target=service.run, daemon=True)
     app = callback_app(integration, h.tmp, monkeypatch)
     server = uvicorn.Server(uvicorn.Config(app, log_level='error', access_log=False, lifespan='off'))
@@ -184,7 +265,8 @@ def test_browser_callback_after_intervening_web_tool(web_tasks, monkeypatch, liv
                 return False
         eventually(health)
         assert integration.test_source(source['id'])['ok']
-        worker = TaskWorker(h.tasks, worker_adapters(h.tasks), poll_seconds=.05)
+        worker = TaskWorker(h.tasks, worker_adapters(h.tasks), poll_seconds=.05,
+                            deployment_overrides=deployment)
         worker_thread = threading.Thread(target=worker.run_forever, args=(stop,), daemon=True)
         worker_thread.start()
         eventually(lambda: any('http_callback_v1' in item['adapters'] for item in h.tasks.healthy_workers()))

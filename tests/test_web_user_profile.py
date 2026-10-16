@@ -14,10 +14,11 @@ from unittest.mock import call, patch
 import pytest
 import requests
 import yaml
-
+from server_package_utils import load_server_package
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB_ROOT = ROOT / "jarvis-web"
+SERVER_PACKAGE = "web_user_profile_test_server"
 CLIENT_HTML = (WEB_ROOT / "client" / "index.html").read_text(encoding="utf-8")
 CLIENT_JS = (WEB_ROOT / "client" / "js" / "app.js").read_text(encoding="utf-8")
 MEMORY_JS = (ROOT / "jarvis-memory" / "client" / "js" / "app.js").read_text(
@@ -40,16 +41,8 @@ def _load_service():
 
 
 def _load_web_app():
-    for key in list(sys.modules):
-        if key == "server" or key.startswith("server."):
-            del sys.modules[key]
-    web_root = str(WEB_ROOT)
-    if web_root in sys.path:
-        sys.path.remove(web_root)
-    sys.path.insert(0, web_root)
-    from server.app import app
-
-    return app
+    load_server_package(SERVER_PACKAGE, WEB_ROOT / "server")
+    return importlib.import_module(f"{SERVER_PACKAGE}.app").app
 
 
 class _Response:
@@ -287,8 +280,8 @@ def test_web_route_keeps_fixed_profile_contract_and_warms_ingest_modes():
         "ingest_warning": None,
     }
     with (
-        patch("server.app.is_auth_enabled", return_value=False),
-        patch("server.routes.api.save_user_profile", return_value=saved) as save_mock,
+        patch(f"{SERVER_PACKAGE}.app.is_auth_enabled", return_value=False),
+        patch(f"{SERVER_PACKAGE}.routes.api.save_user_profile", return_value=saved) as save_mock,
         patch("config_loader.config_scope", side_effect=lambda mode: nullcontext()) as scope_mock,
         patch("user_profile.get_cached_profile_card") as cache_mock,
     ):

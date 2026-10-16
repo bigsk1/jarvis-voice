@@ -31,7 +31,10 @@ def _isolated_status_script(
 
     shutil.copy2(ROOT / "bin" / "say-status.sh", bin_dir / "say-status.sh")
     shutil.copy2(ROOT / "bin" / "tts-common.sh", bin_dir / "tts-common.sh")
+    shutil.copy2(ROOT / "bin" / "tts-normalize.py", bin_dir / "tts-normalize.py")
     shutil.copy2(ROOT / "lib" / "config_loader.sh", lib_dir / "config_loader.sh")
+    for name in ("tts_normalizer.py", "tts_style_tags.py"):
+        shutil.copy2(ROOT / "lib" / name, lib_dir / name)
     (config_dir / "cloud.env").write_text(
         f"""TTS_PROVIDER={provider}
 OPENAI_API_KEY=test-key

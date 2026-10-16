@@ -3,11 +3,12 @@
 
 from __future__ import annotations
 
+import importlib
 import subprocess
-import sys
 import unittest
 from pathlib import Path
 
+from server_package_utils import load_server_package
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MONITOR_JS = PROJECT_ROOT / "jarvis-memory" / "client" / "js" / "alert-tab-monitor.js"
@@ -306,12 +307,10 @@ assert.deepStrictEqual(
         )
 
     def test_alert_route_reports_next_page_without_hiding_filtered_records(self) -> None:
-        memory_root = str(PROJECT_ROOT / "jarvis-memory")
-        if memory_root not in sys.path:
-            sys.path.insert(0, memory_root)
+        load_server_package("memory_alert_tab_test_server", PROJECT_ROOT / "jarvis-memory/server")
+        alerts_route = importlib.import_module("memory_alert_tab_test_server.routes.alerts")
 
         from flask import Flask
-        from server.routes import alerts as alerts_route
 
         captured: dict[str, object] = {}
 

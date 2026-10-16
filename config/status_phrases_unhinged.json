@@ -185,6 +185,14 @@
       "check_opencode_sessions": "opencode",
       "check_tool_logs": "_family_developer_ops",
       "convert_file": "_family_files",
+      "craft_image": "_family_files",
+      "craft_inspect": "_family_developer_ops",
+      "craft_motion": "_family_video",
+      "craft_pdf": "_family_files",
+      "craft_photos": "_family_files",
+      "craft_video": "_family_video",
+      "docling_convert": "_family_files",
+      "email_inbox": "_family_inbox",
       "transcribe_audio": "_family_files",
       "source_library": "_family_files",
       "project_nomad": "_family_files",
@@ -267,6 +275,11 @@
       "_family_developer_ops": {
         "start": ["POKING THE MACHINERY WITH A SHARP STICK", "INITIATING QUESTIONABLE TECHNICAL OPERATIONS"],
         "progress": ["THE MACHINES HAVE CONFESSED", "OPERATION COMPLETE, NOTHING EXPLODED MUCH"]
+      },
+
+      "_family_inbox": {
+        "start": ["INSPECTING THE COMMAND INBOX", "INTERROGATING THE EMAIL REQUEST LEDGER"],
+        "progress": ["CHECKING WHO HAS SUMMONED JARVIS", "THE INBOX IS UNDER INVESTIGATION"]
       },
 
       "_family_files": {

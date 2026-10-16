@@ -308,12 +308,19 @@ db.close()
 
 ### Regression Tests
 
+Use repo `.venv` for development checks (`uv sync --dev --frozen` if needed).
+See the [testing guide and authoring contract](TESTING.md) for isolation and
+sandbox handling.
+
 ```bash
 # Deterministic memory/search coverage
-~/jarvis-venv/bin/python -m pytest -q \
+.venv/bin/python -m pytest -q \
   tests/test_auto_memory_similarity.py \
   tests/test_chat_followup_memory.py \
   tests/test_memory_db_update_sync.py
+
+# Complete deterministic core suite after shared search/memory changes
+./bin/test-suite
 
 # Optional manual checks against your existing data
 ./orchestrator/orchestrator_v2.py local "find Mini-AI server"

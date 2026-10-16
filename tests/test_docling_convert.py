@@ -1,4 +1,5 @@
 """Docling async wire contract, failure evidence, opt-in and saved follow-ups."""
+import importlib
 import json
 import sys
 import threading
@@ -6,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from server_package_utils import load_server_package
 from test_background_tasks import store as store
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +18,12 @@ from config_loader import config_scope  # noqa: E402
 from tool_availability import check_tool_availability  # noqa: E402
 
 TASK = '00000000-0000-4000-8000-000000000001'
+
+
+@pytest.fixture
+def followup_extractor():
+    load_server_package('docling_followup_test_server', ROOT / 'jarvis-web/server')
+    return importlib.import_module('docling_followup_test_server.services.followup_extractor')
 
 
 @pytest.fixture
@@ -237,12 +245,10 @@ def test_restricted_background_policy_and_schema(server):
         assert 'OPENAI_API_KEY' not in clean
 
 
-def test_followup_keeps_excerpt_and_native_table_reference(server):
-    sys.path.insert(0, str(ROOT/'jarvis-web'))
-    from server.services.followup_extractor import extract_followup_data
+def test_followup_keeps_excerpt_and_native_table_reference(server, followup_extractor):
     result = convert(server)
     result['data']['markdown_excerpt'] = 'A' * 12000
-    followup = extract_followup_data({'docling_convert':result})['docling_convert']
+    followup = followup_extractor.extract_followup_data({'docling_convert':result})['docling_convert']
     assert followup['task_id'] == TASK and followup['json_stash_ref'] == result['data']['json_stash_ref']
     assert len(followup['markdown_excerpt']) <= 3100 and followup['table_count'] == 1
 

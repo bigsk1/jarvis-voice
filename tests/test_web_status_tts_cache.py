@@ -1,12 +1,12 @@
 """Web status TTS caching and final-audio priority regression coverage."""
 
-import sys
+import importlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import pytest
-
+from server_package_utils import load_server_package
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = (ROOT / "jarvis-web/client/js/app.js").read_text()
@@ -15,16 +15,12 @@ DOCKER_COMPOSE = (ROOT / "docker-compose.yml").read_text()
 WEB_CHAT_SOCKET = (ROOT / "jarvis-web/server/sockets/chat.py").read_text()
 
 
-def _purge_server_modules():
-    for key in list(sys.modules):
-        if key == "server" or key.startswith("server."):
-            del sys.modules[key]
-    flask_module = sys.modules.get("flask")
-    if flask_module is not None and not hasattr(flask_module, "Flask"):
-        del sys.modules["flask"]
-    socketio_module = sys.modules.get("flask_socketio")
-    if socketio_module is not None and not hasattr(socketio_module, "SocketIO"):
-        del sys.modules["flask_socketio"]
+SERVER_PACKAGE = "web_status_tts_cache_test_server"
+
+
+def _web_module(name):
+    load_server_package(SERVER_PACKAGE, ROOT / "jarvis-web/server")
+    return importlib.import_module(f"{SERVER_PACKAGE}.{name}")
 
 
 def test_web_client_cancels_status_tts_before_final_audio():
@@ -38,11 +34,9 @@ def test_web_client_cancels_status_tts_before_final_audio():
 
 
 def test_web_status_tts_reuses_persistent_audio_cache():
-    _purge_server_modules()
-    sys.path.insert(0, str(ROOT / "jarvis-web"))
-    from server.app import app
-    from server.routes import api
-    from server import config as server_config
+    app = _web_module("app").app
+    api = _web_module("routes.api")
+    server_config = _web_module("config")
 
     settings = {
         "TTS_PROVIDER": "openai",
@@ -68,7 +62,7 @@ def test_web_status_tts_reuses_persistent_audio_cache():
             patch.object(server_config, "get_jarvis_setting", side_effect=get_setting),
             patch.object(api, "_generate_openai_tts", side_effect=generate) as generate_tts,
             patch.object(api, "log_status_event") as log_status_event,
-            patch("server.app.is_auth_enabled", return_value=False),
+            patch(f"{SERVER_PACKAGE}.app.is_auth_enabled", return_value=False),
         ):
             with app.test_client() as client:
                 first = client.post("/api/tts", json={
@@ -101,9 +95,7 @@ def test_web_status_tts_reuses_persistent_audio_cache():
 
 
 def test_web_status_tts_cache_supports_docker_persistent_root():
-    _purge_server_modules()
-    sys.path.insert(0, str(ROOT / "jarvis-web"))
-    from server.routes import api
+    api = _web_module("routes.api")
 
     with TemporaryDirectory() as tmp:
         root = Path(tmp) / "status-tts-web"
@@ -130,11 +122,9 @@ def test_web_status_tts_cache_supports_docker_persistent_root():
 
 
 def test_elevenlabs_status_uses_flash_without_changing_final_model_or_voice():
-    _purge_server_modules()
-    sys.path.insert(0, str(ROOT / "jarvis-web"))
-    from server.app import app
-    from server.routes import api
-    from server import config as server_config
+    app = _web_module("app").app
+    api = _web_module("routes.api")
+    server_config = _web_module("config")
 
     settings = {
         "TTS_PROVIDER": "elevenlabs",
@@ -163,7 +153,7 @@ def test_elevenlabs_status_uses_flash_without_changing_final_model_or_voice():
             patch.object(server_config, "get_jarvis_setting", side_effect=get_setting),
             patch.object(api, "_generate_elevenlabs_tts", side_effect=generate),
             patch.object(api, "log_status_event") as log_status_event,
-            patch("server.app.is_auth_enabled", return_value=False),
+            patch(f"{SERVER_PACKAGE}.app.is_auth_enabled", return_value=False),
         ):
             with app.test_client() as client:
                 status = client.post("/api/tts", json={
@@ -215,9 +205,7 @@ def test_native_xai_status_cache_includes_5000_character_limit():
 
 
 def test_web_xai_status_cache_includes_character_limit():
-    _purge_server_modules()
-    sys.path.insert(0, str(ROOT / "jarvis-web"))
-    from server.routes import api
+    api = _web_module("routes.api")
 
     def settings(max_chars=None):
         values = {}
@@ -233,10 +221,8 @@ def test_web_xai_status_cache_includes_character_limit():
 
 
 def test_web_xai_tts_fallback_uses_5000_character_policy():
-    _purge_server_modules()
-    sys.path.insert(0, str(ROOT / "jarvis-web"))
-    from server.routes import api
-    from server import config as server_config
+    api = _web_module("routes.api")
+    server_config = _web_module("config")
 
     def get_setting(key, default=""):
         if key == "XAI_API_KEY":
@@ -261,9 +247,7 @@ def test_web_xai_tts_fallback_uses_5000_character_policy():
 
 
 def test_elevenlabs_cache_hashes_only_effective_model_settings():
-    _purge_server_modules()
-    sys.path.insert(0, str(ROOT / "jarvis-web"))
-    from server.routes import api
+    api = _web_module("routes.api")
 
     base = {
         "ELEVENLABS_TTS_VOICE": "custom-voice",
@@ -304,10 +288,8 @@ def test_elevenlabs_cache_hashes_only_effective_model_settings():
 
 
 def test_elevenlabs_flash_request_preserves_custom_voice_id():
-    _purge_server_modules()
-    sys.path.insert(0, str(ROOT / "jarvis-web"))
-    from server.routes import api
-    from server import config as server_config
+    api = _web_module("routes.api")
+    server_config = _web_module("config")
 
     settings = {
         "ELEVENLABS_API_KEY": "test-key",
@@ -346,11 +328,9 @@ def test_elevenlabs_flash_request_preserves_custom_voice_id():
 
 @pytest.mark.parametrize("model", ["eleven_v3", "eleven_v4", "eleven_v4_turbo"])
 def test_elevenlabs_audio_tag_payload_and_display_speech_separation(tmp_path, model):
-    _purge_server_modules()
-    sys.path.insert(0, str(ROOT / "jarvis-web"))
-    from server import config as server_config
-    from server.routes import api
-    from server.sockets.chat import ChatHandler
+    server_config = _web_module("config")
+    api = _web_module("routes.api")
+    ChatHandler = _web_module("sockets.chat").ChatHandler
 
     values = {
         "TTS_PROVIDER": "elevenlabs", "ELEVENLABS_API_KEY": "fake-key",
@@ -391,11 +371,9 @@ def test_elevenlabs_audio_tag_payload_and_display_speech_separation(tmp_path, mo
 
 
 def test_web_tts_normalizes_with_the_effective_final_or_status_model(tmp_path):
-    _purge_server_modules()
-    sys.path.insert(0, str(ROOT / "jarvis-web"))
-    from server import config as server_config
-    from server.app import app
-    from server.routes import api
+    server_config = _web_module("config")
+    app = _web_module("app").app
+    api = _web_module("routes.api")
 
     values = {
         "TTS_PROVIDER": "elevenlabs", "ELEVENLABS_TTS_MODEL": "eleven_v4",
@@ -414,7 +392,7 @@ def test_web_tts_normalizes_with_the_effective_final_or_status_model(tmp_path):
         patch.object(server_config, "load_jarvis_config"),
         patch.object(server_config, "get_jarvis_setting", side_effect=lambda k, d="": values.get(k, d)),
         patch.object(api, "_generate_elevenlabs_tts", side_effect=generate),
-        patch("server.app.is_auth_enabled", return_value=False),
+        patch(f"{SERVER_PACKAGE}.app.is_auth_enabled", return_value=False),
     ):
         with app.test_client() as client:
             for purpose in ("final", "status"):

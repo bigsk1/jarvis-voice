@@ -1,5 +1,6 @@
 """Contract tests for the Canvas gallery handoff to Jarvis Web."""
 
+import re
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -41,4 +42,7 @@ def test_web_handoff_explicitly_starts_new_chat_before_importing_attachment():
 def test_web_uses_normal_image_action_modal_with_video_preselected():
     assert "attachImportedImage(uploadData, preferredAction = 'analyze')" in WEB_CHAT_JS
     assert "_showImageActionModal(uploadData, preferredAction, context)" in WEB_CHAT_JS
-    assert "const allowedActions = new Set(['analyze', 'video', 'image'])" in WEB_CHAT_JS
+    actions = re.search(r"const allowedActions = new Set\(\[(.*?)\]\)", WEB_CHAT_JS)
+    assert actions is not None
+    # More image actions may be added without changing the gallery handoff contract.
+    assert {'analyze', 'video', 'image'} <= set(re.findall(r"'([^']+)'", actions.group(1)))

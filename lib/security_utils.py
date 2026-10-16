@@ -8,13 +8,30 @@ Provides reusable security functions for:
 - Content validation
 """
 
-import re
 import logging
+import re
 from typing import Any, Optional
 
-from tts_normalizer import normalize_tts_text
-from tts_style_tags import SpeechTagPolicy
-from paths import get_allowed_write_paths, get_protected_paths
+try:
+    from tts_normalizer import normalize_tts_text
+except ModuleNotFoundError as exc:
+    if exc.name != "tts_normalizer":
+        raise
+    from lib.tts_normalizer import normalize_tts_text
+
+try:
+    from tts_style_tags import SpeechTagPolicy
+except ModuleNotFoundError as exc:
+    if exc.name != "tts_style_tags":
+        raise
+    from lib.tts_style_tags import SpeechTagPolicy
+
+try:
+    from paths import get_allowed_write_paths, get_protected_paths
+except ModuleNotFoundError as exc:
+    if exc.name != "paths":
+        raise
+    from lib.paths import get_allowed_write_paths, get_protected_paths
 
 logger = logging.getLogger(__name__)
 

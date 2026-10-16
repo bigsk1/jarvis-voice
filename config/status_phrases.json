@@ -187,6 +187,14 @@
     "check_opencode_sessions": "opencode",
     "check_tool_logs": "_family_developer_ops",
     "convert_file": "_family_files",
+    "craft_image": "_family_files",
+    "craft_inspect": "_family_developer_ops",
+    "craft_motion": "_family_video",
+    "craft_pdf": "_family_files",
+    "craft_photos": "_family_files",
+    "craft_video": "_family_video",
+    "docling_convert": "_family_files",
+    "email_inbox": "_family_inbox",
     "transcribe_audio": "_family_files",
     "source_library": "_family_files",
     "project_nomad": "_family_files",
@@ -269,6 +277,11 @@
     "_family_developer_ops": {
       "start": ["Running the requested operation", "Checking the technical details"],
       "progress": ["Operation complete", "Technical details retrieved"]
+    },
+
+    "_family_inbox": {
+      "start": ["Checking the Jarvis command inbox", "Reviewing email request status"],
+      "progress": ["Checking authorized email requests", "Reviewing inbox processing state"]
     },
 
     "_family_files": {

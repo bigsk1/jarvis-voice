@@ -55,7 +55,7 @@ def test_generated_video_request_rejects_removed_provider():
 
 
 @pytest.fixture
-def isolated_mode_configs(monkeypatch):
+def isolated_mode_configs(monkeypatch, tmp_path):
     configs = {
         "cloud": {
             "CLOUD_ONLY_SENTINEL": "cloud-value",
@@ -66,11 +66,13 @@ def isolated_mode_configs(monkeypatch):
             "TTS_PROVIDER": "kokoro",
         },
     }
-    monkeypatch.setattr(
-        config_loader,
-        "_load_mode_config",
-        lambda mode: dict(configs[mode]),
-    )
+    config_dir = tmp_path / 'config'
+    config_dir.mkdir()
+    for mode, values in configs.items():
+        (config_dir / f'{mode}.env').write_text(''.join(
+            f'{key}={value}\n' for key, value in values.items()
+        ))
+    monkeypatch.setattr(config_loader, 'get_project_root', lambda: tmp_path)
     monkeypatch.setenv("CLOUD_ONLY_SENTINEL", "stale-cloud-value")
     monkeypatch.setenv("TTS_PROVIDER", "elevenlabs")
 

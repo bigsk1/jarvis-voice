@@ -11,6 +11,7 @@ Covers:
   - unavailable manifest tools stay in web discovery (enabled=False,
     available=False) so stale enabled Tool RAG rows cannot resurrect them
 """
+import importlib
 import json
 import os
 import sys
@@ -19,26 +20,25 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
+from server_package_utils import load_server_package
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
+SERVER_PACKAGE = "web_provider_availability_test_server"
 
 
-def _purge_server_modules() -> None:
-    for key in list(sys.modules):
-        if key == "server" or key.startswith("server."):
-            del sys.modules[key]
+def _web_module(name):
+    load_server_package(SERVER_PACKAGE, ROOT / "jarvis-web/server")
+    return importlib.import_module(f"{SERVER_PACKAGE}.{name}")
 
 
 class SettingsAvailabilityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        _purge_server_modules()
-        sys.path.insert(0, str(ROOT / "jarvis-web"))
-        from server.services import settings_manager as settings_module
-        cls.settings_module = settings_module
+        cls.settings_module = _web_module("services.settings_manager")
 
     def _manager(self, mode, env):
-        from server.services.settings_manager import SettingsManager
+        SettingsManager = self.settings_module.SettingsManager
 
         def get_setting(key, default=""):
             return env.get(key, default)
@@ -334,7 +334,7 @@ class SettingsAvailabilityTests(unittest.TestCase):
         )
 
     def test_media_model_override_rejects_provider_model_mismatch(self):
-        from server.services.settings_manager import SettingsValidationError
+        SettingsValidationError = _web_module("services.settings_manager").SettingsValidationError
 
         env = {
             "IMAGE_TOOL_PROVIDER": "gemini",
@@ -381,7 +381,7 @@ class SettingsAvailabilityTests(unittest.TestCase):
         )
 
     def test_arbitrary_uncatalogued_media_model_is_rejected(self):
-        from server.services.settings_manager import SettingsValidationError
+        SettingsValidationError = _web_module("services.settings_manager").SettingsValidationError
 
         env = {
             "IMAGE_TOOL_PROVIDER": "openai",
@@ -401,7 +401,7 @@ class SettingsAvailabilityTests(unittest.TestCase):
         save_cfg.assert_not_called()
 
     def test_save_rejects_newly_selected_unavailable_provider(self):
-        from server.services.settings_manager import SettingsValidationError
+        SettingsValidationError = _web_module("services.settings_manager").SettingsValidationError
 
         env = {"LLM_PROVIDER": "openai", "OPENAI_API_KEY": "k"}  # anthropic key absent
         manager, patches = self._manager("cloud", env)
@@ -464,7 +464,7 @@ class SettingsAvailabilityTests(unittest.TestCase):
             self.assertEqual(manager.get_settings_for_ui()["tts"]["provider"]["value"], "kokoro")
 
     def test_save_rejects_unavailable_media_and_tts_providers(self):
-        from server.services.settings_manager import SettingsValidationError
+        SettingsValidationError = _web_module("services.settings_manager").SettingsValidationError
 
         env = {"IMAGE_TOOL_PROVIDER": "openai", "OPENAI_API_KEY": "k"}
         manager, patches = self._manager("cloud", env)
@@ -494,7 +494,7 @@ class SettingsAvailabilityTests(unittest.TestCase):
         self.assertEqual(ctx.exception.field, "music_provider")
 
     def test_save_rejects_removed_video_provider(self):
-        from server.services.settings_manager import SettingsValidationError
+        SettingsValidationError = _web_module("services.settings_manager").SettingsValidationError
 
         manager, patches = self._manager("cloud", {"VIDEO_TOOL_PROVIDER": "xai"})
         web_config = {"cloud": {}}
@@ -524,15 +524,11 @@ class SettingsAvailabilityTests(unittest.TestCase):
 class SettingsRouteValidationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        _purge_server_modules()
-        sys.path.insert(0, str(ROOT / "jarvis-web"))
-        from server.app import app
-        from server.routes import api
-        cls.app = app
-        cls.api = api
+        cls.app = _web_module("app").app
+        cls.api = _web_module("routes.api")
 
     def test_validation_error_maps_to_http_400_with_typed_body(self):
-        from server.services.settings_manager import SettingsValidationError
+        SettingsValidationError = _web_module("services.settings_manager").SettingsValidationError
 
         settings = MagicMock()
         settings.validate_web_overrides.side_effect = SettingsValidationError(
@@ -559,7 +555,7 @@ class SettingsRouteValidationTests(unittest.TestCase):
         settings.save_web_overrides.assert_not_called()
 
     def test_xai_oauth_status_route_is_sanitized(self):
-        from server import config as web_config_module
+        web_config_module = _web_module("config")
 
         safe_status = {
             "connection": "oauth",
@@ -597,7 +593,7 @@ class SettingsRouteValidationTests(unittest.TestCase):
         self.assertNotIn("token", json.dumps(body).lower())
 
     def test_xai_explicit_oauth_reports_present_api_key_is_ignored_for_chat(self):
-        from server import config as web_config_module
+        web_config_module = _web_module("config")
 
         def get_setting(key, default=""):
             return {
@@ -628,7 +624,7 @@ class SettingsRouteValidationTests(unittest.TestCase):
 
     def test_rejected_save_does_not_persist_requested_mode(self):
         """Atomicity: a provider rejection must not change the stored mode."""
-        from server.services.settings_manager import SettingsValidationError
+        SettingsValidationError = _web_module("services.settings_manager").SettingsValidationError
 
         settings = MagicMock()
         settings.mode = "cloud"
@@ -701,10 +697,7 @@ class ToolDiscoveryAvailabilityTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        _purge_server_modules()
-        sys.path.insert(0, str(ROOT / "jarvis-web"))
-        from server.services import tool_discovery
-        cls.tool_discovery = tool_discovery
+        cls.tool_discovery = _web_module("services.tool_discovery")
 
     def _write_manifest(self, skills_dir: Path, name: str, extra: dict | None = None):
         manifest = {

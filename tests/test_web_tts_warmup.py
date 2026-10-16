@@ -1,32 +1,20 @@
 """Qwen3-TTS wake-up is scoped, non-blocking, and best effort."""
 
-import sys
+import importlib
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from server_package_utils import load_server_package
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def _purge_server_modules():
-    for key in list(sys.modules):
-        if key == "server" or key.startswith("server."):
-            del sys.modules[key]
-    flask_module = sys.modules.get("flask")
-    if flask_module is not None and not hasattr(flask_module, "Flask"):
-        del sys.modules["flask"]
-    socketio_module = sys.modules.get("flask_socketio")
-    if socketio_module is not None and not hasattr(socketio_module, "SocketIO"):
-        del sys.modules["flask_socketio"]
+SERVER_PACKAGE = "web_tts_warmup_test_server"
 
 
 def _load_web_server():
-    _purge_server_modules()
-    sys.path.insert(0, str(ROOT / "jarvis-web"))
-    from server import config as server_config
-    from server.app import app
-    from server.routes import api
-
+    load_server_package(SERVER_PACKAGE, ROOT / "jarvis-web/server")
+    server_config = importlib.import_module(f"{SERVER_PACKAGE}.config")
+    app = importlib.import_module(f"{SERVER_PACKAGE}.app").app
+    api = importlib.import_module(f"{SERVER_PACKAGE}.routes.api")
     return app, api, server_config
 
 
@@ -59,7 +47,7 @@ def test_qwen3_tts_warmup_route_starts_background_reload_without_exposing_url():
             side_effect=lambda key, default="": settings.get(key, default),
         ),
         patch.object(api, "_start_qwen3_tts_warmup", return_value=True) as start,
-        patch("server.app.is_auth_enabled", return_value=False),
+        patch(f"{SERVER_PACKAGE}.app.is_auth_enabled", return_value=False),
     ):
         with app.test_client() as client:
             response = client.post("/api/tts/warmup", json={"mode": "local"})
@@ -88,7 +76,7 @@ def test_qwen3_tts_warmup_route_skips_other_providers():
             ),
         ),
         patch.object(api, "_start_qwen3_tts_warmup") as start,
-        patch("server.app.is_auth_enabled", return_value=False),
+        patch(f"{SERVER_PACKAGE}.app.is_auth_enabled", return_value=False),
     ):
         with app.test_client() as client:
             response = client.post("/api/tts/warmup", json={"mode": "cloud"})

@@ -59,6 +59,8 @@ preview = json.loads(assembler.build_llm_result_context_preview(tool, result)[0]
 assert preview["data"]["answer"] == result["data"]["answer"]
 if launch_path in {"web", "package"}:
     assert extract_followup_data({tool: result})[tool]["repo_names"] == ["pallets/flask"]
+    assert "webhook_context" not in sys.modules
+    assert "lib.webhook_context" not in sys.modules
 if launch_path != "package":
     assert _normalize_call_tool_result("ask_question", raw, server_name="deepwiki", arguments=args) == result
 print("DeepWiki launcher imports and projection passed")

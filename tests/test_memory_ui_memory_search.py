@@ -3,20 +3,15 @@
 
 from __future__ import annotations
 
-import sys
+import importlib
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from server_package_utils import load_server_package
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-
-def _purge_server_modules() -> None:
-    for key in list(sys.modules.keys()):
-        if key == "server" or key.startswith("server."):
-            del sys.modules[key]
 
 
 class MemoryUiMemorySearchTests(unittest.TestCase):
@@ -25,13 +20,8 @@ class MemoryUiMemorySearchTests(unittest.TestCase):
         self.cloud_path = Path(self.temp_dir.name) / "jarvis_memory.db"
         self.local_path = Path(self.temp_dir.name) / "jarvis_memory_local.db"
 
-        _purge_server_modules()
-        web = str(PROJECT_ROOT / "jarvis-web")
-        if web in sys.path:
-            sys.path.remove(web)
-        sys.path.insert(0, str(PROJECT_ROOT / "jarvis-memory"))
-
-        from server.services import memory_service as memory_service_module
+        load_server_package("memory_search_test_server", PROJECT_ROOT / "jarvis-memory/server")
+        memory_service_module = importlib.import_module("memory_search_test_server.services.memory_service")
 
         self.memory_service_module = memory_service_module
         self.original_db_paths = dict(memory_service_module.DB_PATHS)
@@ -40,12 +30,10 @@ class MemoryUiMemorySearchTests(unittest.TestCase):
             "local": self.local_path,
         }
 
-        from server.app import app
-        from server.services.memory_service import MemoryService
-
-        self.app = app
-        self.MemoryService = MemoryService
-        self.auth_patcher = patch("server.app.is_auth_enabled", return_value=False)
+        app_module = importlib.import_module("memory_search_test_server.app")
+        self.app = app_module.app
+        self.MemoryService = memory_service_module.MemoryService
+        self.auth_patcher = patch.object(app_module, "is_auth_enabled", return_value=False)
         self.auth_patcher.start()
         self.addCleanup(self.auth_patcher.stop)
 

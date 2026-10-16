@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from flask import Flask
@@ -104,13 +105,25 @@ def test_each_event_revalidates_auth_before_entering_its_handler(authenticated, 
     assert authenticated.seen == ['connect', 'disconnect']
 
 
-def test_idle_connection_expires_without_waiting_for_a_client_event(authenticated):
-    token = webui_auth.create_token({'exp': time.time() + 0.15})
+def test_idle_connection_expires_without_waiting_for_a_client_event(authenticated, monkeypatch):
+    now = 1_900_000_000.0
+    clock = SimpleNamespace(time=lambda: now)
+    monkeypatch.setattr(webui_auth, 'time', clock)
+    monkeypatch.setattr(socket_auth, 'time', clock)
+    timers = Mock()
+    monkeypatch.setattr(socket_auth, 'threading', SimpleNamespace(Timer=timers))
+    token = webui_auth.create_token({'exp': now + 3600})
     client = authenticated.connect(auth={'token': token})
     assert client.is_connected()
-    deadline = time.monotonic() + 2
-    while client.is_connected() and time.monotonic() < deadline:
-        time.sleep(0.01)
+    timers.assert_called_once()
+    delay, expire = timers.call_args.args
+    assert delay == 3600
+    assert timers.return_value.daemon is True
+    timers.return_value.start.assert_called_once_with()
+
+    # Fire the registered timer after advancing auth time, with no client event.
+    now += 3601
+    expire(*timers.call_args.kwargs['args'])
     assert not client.is_connected()
     assert authenticated.seen == ['connect', 'disconnect']
 

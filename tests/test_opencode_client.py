@@ -121,11 +121,13 @@ class OpenCodeClientTests(unittest.TestCase):
             }
             return values.get(key, default)
 
-        with patch("config_loader.get_config_value", side_effect=fake_get_config):
+        with patch("config_loader.get_config_value", side_effect=fake_get_config), \
+             patch("opencode_client.get_provider_fallback_model", return_value="fixture-xai-model") as fallback:
             defaults = resolve_opencode_defaults("cloud")
 
         self.assertEqual(defaults["providerID"], "xai")
-        self.assertEqual(defaults["modelID"], "grok-4.7")
+        self.assertEqual(defaults["modelID"], "fixture-xai-model")
+        fallback.assert_called_once_with("xai")
 
     def test_client_uses_catalog_fallback_when_opencode_model_unset(self):
         def fake_get_config(key, default=None):
@@ -139,11 +141,13 @@ class OpenCodeClientTests(unittest.TestCase):
 
         with patch("opencode_client.requests.get", return_value=FakeResponse({"ok": True})), \
              patch("config_loader.get_config_value", side_effect=fake_get_config), \
+             patch("opencode_client.get_provider_fallback_model", return_value="fixture-anthropic-model") as fallback, \
              patch("opencode_client.OpenCodeLogger", return_value=MagicMock()):
             client = OpenCodeClient(base_url="http://opencode.test")
 
         self.assertEqual(client.default_provider_id, "anthropic")
-        self.assertEqual(client.default_model_id, "claude-sonnet-5")
+        self.assertEqual(client.default_model_id, "fixture-anthropic-model")
+        fallback.assert_called_once_with("anthropic")
 
     def test_execute_task_accepts_session_id_response_key(self):
         client = self._make_client()

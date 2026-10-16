@@ -227,8 +227,7 @@ class TestToolProfiles(unittest.TestCase):
     def test_load_profile_overrides_from_file(self):
         from tool_profiles import load_profile_overrides
 
-        with TemporaryDirectory() as tmp:
-            os.environ["JARVIS_TOOL_PROFILE"] = "testprof"
+        with TemporaryDirectory() as tmp, patch.dict(os.environ, {"JARVIS_TOOL_PROFILE": "testprof"}):
             profiles = Path(tmp)
             # Patch get_profiles_dir — use monkeypatch via module
             import tool_profiles as tp
@@ -241,7 +240,6 @@ class TestToolProfiles(unittest.TestCase):
                 self.assertEqual(load_profile_overrides("testprof"), {"a": False, "b": True})
             finally:
                 tp.get_profiles_dir = orig
-                del os.environ["JARVIS_TOOL_PROFILE"]
 
     def test_profile_can_remove_workflow_meta_tool_from_effective_registry(self):
         from tool_schema import ToolRegistry
@@ -273,6 +271,8 @@ class TestToolProfiles(unittest.TestCase):
         self.assertNotIn("workflow", registry.list_tools())
 
     def test_openai_only_profile_covers_non_openai_requirements(self):
+        from tool_availability import check_tool_availability
+
         profile_path = ROOT / "skills" / "profiles" / "openai_only.json"
         profile = json.loads(profile_path.read_text(encoding="utf-8"))
         overrides = profile["overrides"]
@@ -283,6 +283,7 @@ class TestToolProfiles(unittest.TestCase):
         # These tools remain useful with one OpenAI key or no tool-specific key.
         for tool_name in (
             "analyze_image",
+            "bookmark_search",
             "canvas",
             "generate_image",
             "pdf_create",
@@ -306,43 +307,30 @@ class TestToolProfiles(unittest.TestCase):
         ):
             self.assertIs(overrides.get(tool_name), False)
 
-        one_key_environment = {"OPENAI_API_KEY"}
-
-        def available_with_one_openai_key(availability):
-            if not availability:
-                return True
-            if not set(availability.get("all_of_env", ())) <= one_key_environment:
-                return False
-            any_of_env = set(availability.get("any_of_env", ()))
-            if any_of_env and not any_of_env & one_key_environment:
-                return False
-            if availability.get("config_files") or availability.get("webhook_registry"):
-                return False
-
-            providers = availability.get("provider_requirements") or {}
-            if providers:
-                requirements = providers.get("openai")
-                if not isinstance(requirements, dict):
-                    return False
-                if not set(requirements.get("all_of_env", ())) <= one_key_environment:
-                    return False
-                any_provider_env = set(requirements.get("any_of_env", ()))
-                if any_provider_env and not any_provider_env & one_key_environment:
-                    return False
-            return True
-
-        for manifest_path in sorted((ROOT / "skills").glob("*.tool.json")):
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if not manifest.get("enabled", True):
-                continue
-            if available_with_one_openai_key(manifest.get("availability")):
-                continue
-            tool_name = manifest.get("name", manifest_path.stem)
-            self.assertIs(
-                overrides.get(tool_name),
-                False,
-                f"{tool_name} needs non-OpenAI setup but is not disabled",
-            )
+        # Exercise the real availability rules with a reproducible starter
+        # configuration. Backends such as bookmarks are independent of the LLM
+        # provider; its built-in default needs no external service credentials.
+        starter_config = {"OPENAI_API_KEY": "test-only-key", "IMAGE_TOOL_PROVIDER": "openai"}
+        with (
+            patch("tool_availability.get_config_value", side_effect=lambda key, default=None: starter_config.get(key, default)),
+            patch("tool_availability.is_config_file_ready", return_value=False),
+            patch("tool_availability._check_webhook_registry_entries", side_effect=lambda names: [f"webhook: {name}" for name in names]),
+            # Normal local executables are installation prerequisites, separate
+            # from this profile's credential/service boundary.
+            patch("tool_availability.shutil.which", return_value="/fixture/bin/command"),
+        ):
+            for manifest_path in sorted((ROOT / "skills").glob("*.tool.json")):
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                if not manifest.get("enabled", True):
+                    continue
+                if check_tool_availability(manifest, available_tools=set()).available:
+                    continue
+                tool_name = manifest.get("name", manifest_path.stem)
+                self.assertIs(
+                    overrides.get(tool_name),
+                    False,
+                    f"{tool_name} needs non-OpenAI setup but is not disabled",
+                )
 
 
 if __name__ == "__main__":

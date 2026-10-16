@@ -3,35 +3,26 @@
 
 from __future__ import annotations
 
-import sys
+import importlib
 import io
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from server_package_utils import load_server_package
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-
-def _purge_server_modules() -> None:
-    for key in list(sys.modules.keys()):
-        if key == "server" or key.startswith("server."):
-            del sys.modules[key]
 
 
 class MemoryIntelIngestRouteTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        _purge_server_modules()
-        web = str(PROJECT_ROOT / "jarvis-web")
-        if web in sys.path:
-            sys.path.remove(web)
-        sys.path.insert(0, str(PROJECT_ROOT / "jarvis-memory"))
-        from server.app import app
-
-        cls.app = app
-        cls.auth_patcher = patch("server.app.is_auth_enabled", return_value=False)
+        load_server_package("memory_intel_ingest_test_server", PROJECT_ROOT / "jarvis-memory/server")
+        app_module = importlib.import_module("memory_intel_ingest_test_server.app")
+        cls.intel_route = importlib.import_module("memory_intel_ingest_test_server.routes.intel")
+        cls.app = app_module.app
+        cls.auth_patcher = patch.object(app_module, "is_auth_enabled", return_value=False)
         cls.auth_patcher.start()
         cls.addClassCleanup(cls.auth_patcher.stop)
 
@@ -46,7 +37,7 @@ class MemoryIntelIngestRouteTests(unittest.TestCase):
             "warning": "local ingest failed: ollama unavailable",
         }
 
-        with patch("server.routes.intel.auto_ingest", return_value=fake_result) as mock_ingest:
+        with patch.object(self.intel_route, "auto_ingest", return_value=fake_result) as mock_ingest:
             with self.app.test_client() as client:
                 response = client.post("/api/intel/ingest?mode=cloud")
 
@@ -70,7 +61,7 @@ class MemoryIntelIngestRouteTests(unittest.TestCase):
             "modes": ["cloud", "local"],
         }
 
-        with patch("server.routes.intel.auto_ingest", return_value=fake_result):
+        with patch.object(self.intel_route, "auto_ingest", return_value=fake_result):
             with self.app.test_client() as client:
                 response = client.post("/api/intel/ingest?mode=cloud")
 
@@ -93,7 +84,7 @@ class MemoryIntelIngestRouteTests(unittest.TestCase):
     def test_ingest_route_surfaces_timeout_as_504(self) -> None:
         fake_result = {"ingested": False, "error": "Ingest timeout (300s per mode)"}
 
-        with patch("server.routes.intel.auto_ingest", return_value=fake_result):
+        with patch.object(self.intel_route, "auto_ingest", return_value=fake_result):
             with self.app.test_client() as client:
                 response = client.post("/api/intel/ingest?mode=local")
 
@@ -104,7 +95,7 @@ class MemoryIntelIngestRouteTests(unittest.TestCase):
 
     def test_create_requires_lowercase_kebab_case(self) -> None:
         with TemporaryDirectory() as tmpdir:
-            with patch("server.routes.intel.INTEL_PATH", Path(tmpdir)):
+            with patch.object(self.intel_route, "INTEL_PATH", Path(tmpdir)):
                 with self.app.test_client() as client:
                     response = client.post(
                         "/api/intel/files",
@@ -119,7 +110,7 @@ class MemoryIntelIngestRouteTests(unittest.TestCase):
             intel_dir = Path(tmpdir)
             legacy = intel_dir / "legacy_notes.md"
             legacy.write_text("# Legacy\n", encoding="utf-8")
-            with patch("server.routes.intel.INTEL_PATH", intel_dir):
+            with patch.object(self.intel_route, "INTEL_PATH", intel_dir):
                 with self.app.test_client() as client:
                     updated = client.put(
                         "/api/intel/files/legacy_notes.md",
@@ -136,7 +127,7 @@ class MemoryIntelIngestRouteTests(unittest.TestCase):
 
     def test_upload_requires_kebab_case_for_new_file(self) -> None:
         with TemporaryDirectory() as tmpdir:
-            with patch("server.routes.intel.INTEL_PATH", Path(tmpdir)):
+            with patch.object(self.intel_route, "INTEL_PATH", Path(tmpdir)):
                 with self.app.test_client() as client:
                     response = client.post(
                         "/api/intel/upload",
