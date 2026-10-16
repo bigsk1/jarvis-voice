@@ -2,9 +2,10 @@
 Jarvis Canvas - Health check routes
 """
 from datetime import datetime, timezone
+
 from flask import Blueprint, current_app, jsonify
 
-from server.pages import load_pages
+from ..pages import load_pages
 
 health_bp = Blueprint('health', __name__)
 

@@ -5,20 +5,23 @@ import json
 from datetime import datetime
 from urllib.parse import quote, urlsplit
 
-from flask import Blueprint, jsonify, request, send_file, abort, render_template, make_response
-
-from config import GENERATED_IMAGES_DIR
 from catalog_lock import catalog_lock
 from config_loader import get_config_value
+from flask import Blueprint, abort, jsonify, make_response, render_template, request, send_file
+
+from ..config import GENERATED_IMAGES_DIR
+
 try:
     from stash_helper import get_stash_dir
 except ImportError:
     from lib.stash_helper import get_stash_dir
-from internal_api import get_internal_api_base_url, get_internal_api_headers
 from image_catalog import (
     load_image_catalog as _load_image_catalog,
+)
+from image_catalog import (
     save_image_catalog as _save_image_catalog,
 )
+from internal_api import get_internal_api_base_url, get_internal_api_headers
 
 gallery_bp = Blueprint('gallery', __name__)
 

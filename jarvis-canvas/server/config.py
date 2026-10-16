@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 # Project paths
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 from stash_helper import get_stash_dir

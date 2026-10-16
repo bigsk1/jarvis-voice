@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from flask import Flask
+from server_package_utils import load_canvas_server_package
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CANVAS_ROOT = PROJECT_ROOT / "jarvis-canvas"
@@ -32,12 +33,9 @@ def _load_audio_catalog():
 
 
 def _load_audio_gallery():
-    sys.path.insert(0, str(LIB_ROOT))
-    sys.path.insert(0, str(CANVAS_ROOT))
-    return _load_module(
-        "canvas_audio_gallery_test",
-        CANVAS_ROOT / "server" / "routes" / "audio_gallery.py",
-    )
+    alias = "canvas_audio_gallery_test_server"
+    load_canvas_server_package(alias)
+    return importlib.import_module(f"{alias}.routes.audio_gallery")
 
 
 def _client(audio_gallery):
@@ -157,7 +155,7 @@ def test_generate_music_persists_provider_neutral_catalog_on_stash_failure(
     tmp_path,
     monkeypatch,
 ):
-    sys.path.insert(0, str(LIB_ROOT))
+    monkeypatch.syspath_prepend(str(LIB_ROOT))
     generate_music = _load_module(
         "generate_music_audio_catalog_test",
         PROJECT_ROOT / "skills" / "generate_music.py",

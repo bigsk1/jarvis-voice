@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import importlib.util
+import importlib
 import re
-import sys
 from pathlib import Path
 
 from flask import Flask
-
+from server_package_utils import load_canvas_server_package
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CANVAS_ROOT = PROJECT_ROOT / "jarvis-canvas"
-LIB_ROOT = PROJECT_ROOT / "lib"
 VIDEO_JS = (
     CANVAS_ROOT / "client" / "static" / "js" / "video-gallery.js"
 ).read_text()
@@ -22,17 +20,9 @@ VIDEO_CSS = (
 
 
 def _load_video_gallery():
-    sys.path.insert(0, str(LIB_ROOT))
-    sys.path.insert(0, str(CANVAS_ROOT))
-    path = CANVAS_ROOT / "server" / "routes" / "video_gallery.py"
-    spec = importlib.util.spec_from_file_location(
-        "canvas_video_model_badge_test",
-        path,
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec and spec.loader
-    spec.loader.exec_module(module)
-    return module
+    alias = "canvas_video_model_badge_test_server"
+    load_canvas_server_package(alias)
+    return importlib.import_module(f"{alias}.routes.video_gallery")
 
 
 def test_video_gallery_api_forwards_catalog_model(tmp_path, monkeypatch):

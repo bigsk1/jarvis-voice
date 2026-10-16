@@ -2,26 +2,22 @@
 
 from __future__ import annotations
 
-import sys
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from server_package_utils import load_canvas_server_package
 
-ROOT = Path(__file__).resolve().parents[1]
-for path in (ROOT / "jarvis-canvas", ROOT / "lib"):
-    sys.path.insert(0, str(path))
+load_canvas_server_package("canvas_xai_pdf_shares_test_server")
 
-from server.services import xai_pdf_share  # noqa: E402
-from server.services.pdf_export import prepare_canvas_pdf  # noqa: E402
-from server.services.xai_pdf_share import (  # noqa: E402
+from canvas_xai_pdf_shares_test_server.services import xai_pdf_share  # noqa: E402
+from canvas_xai_pdf_shares_test_server.services.pdf_export import prepare_canvas_pdf  # noqa: E402
+from canvas_xai_pdf_shares_test_server.services.xai_pdf_share import (  # noqa: E402
     XaiPdfShareError,
     XaiPdfShareRegistry,
     XaiPdfShareService,
     get_xai_pdf_share_status,
 )
-
 
 SHARE_NOW = datetime(2026, 8, 8, tzinfo=timezone.utc)
 SHARE_EXPIRES_AT = SHARE_NOW + timedelta(days=7)

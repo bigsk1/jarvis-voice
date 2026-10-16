@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from flask import Flask
+from server_package_utils import load_canvas_server_package
 
 ROOT = Path(__file__).resolve().parents[1]
 CANVAS_ROOT = ROOT / "jarvis-canvas"
-for path in (CANVAS_ROOT, ROOT / "lib"):
-    sys.path.insert(0, str(path))
+load_canvas_server_package("canvas_video_shares_test_server")
 
-from server.routes import video_shares as routes  # noqa: E402
+from canvas_video_shares_test_server.routes import video_shares as routes  # noqa: E402
 
 
 def _client():

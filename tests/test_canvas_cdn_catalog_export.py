@@ -2,29 +2,24 @@
 
 from __future__ import annotations
 
-import importlib.util
+import importlib
 import json
-import sys
 from pathlib import Path
-from urllib.parse import quote
 from unittest.mock import Mock, patch
+from urllib.parse import quote
 
 import pytest
 from flask import Flask
-
+from server_package_utils import load_canvas_server_package
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CANVAS_ROOT = PROJECT_ROOT / "jarvis-canvas"
 
 
 def _load_gallery_module():
-    sys.path.insert(0, str(CANVAS_ROOT))
-    module_path = CANVAS_ROOT / "server" / "routes" / "gallery.py"
-    spec = importlib.util.spec_from_file_location("canvas_cdn_export_test", module_path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec and spec.loader
-    spec.loader.exec_module(module)
-    return module
+    alias = "canvas_cdn_export_test_server"
+    load_canvas_server_package(alias)
+    return importlib.import_module(f"{alias}.routes.gallery")
 
 
 def _client(gallery):

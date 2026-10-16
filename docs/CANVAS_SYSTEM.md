@@ -601,7 +601,6 @@ Command("Canvas Health", "curl -sf http://localhost:8890/api/health | jq", "Canv
 ```
 jarvis-canvas/
 ├── __init__.py
-├── config.py                      # Configuration (paths, ports)
 ├── client/
 │   ├── static/
 │   │   ├── css/
@@ -625,6 +624,7 @@ jarvis-canvas/
 └── server/
     ├── __init__.py
     ├── app.py                     # Flask app factory + run_server()
+    ├── config.py                  # Configuration (paths, ports)
     ├── pages.py                   # Page storage functions
     ├── utils.py                   # Utility functions
     └── routes/

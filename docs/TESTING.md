@@ -149,6 +149,13 @@ Tests importing different subapplications must use distinct package aliases via
 to another application's modules in a combined run. Do not make separate
 processes the permanent workaround for a missing import boundary.
 
+Canvas tests use `load_canvas_server_package()` from the same helper. It supplies
+package-local configuration with temporary page, media, and Stash storage before
+Canvas's eager imports. Patch the imported module objects for each test rather
+than injecting a global `config` or purging another app's `server` modules. The
+native-launcher regression uses a copied temporary checkout in a fresh interpreter
+to check the real configuration paths and import graph.
+
 ## Maintained integration entry points
 
 These shell wrappers retain their production-style

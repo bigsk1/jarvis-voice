@@ -10,21 +10,22 @@ from collections import OrderedDict
 from io import BytesIO
 
 from flask import Blueprint, current_app, jsonify, request, send_file
-from server.pages import get_page_path
-from server.services.pdf_export import (
+from werkzeug.utils import secure_filename
+
+from ..pages import get_page_path
+from ..services.pdf_export import (
     DEFAULT_PDF_THEME,
     has_blocking_findings,
     normalize_pdf_theme,
     prepare_canvas_pdf,
 )
-from server.services.xai_pdf_share import (
+from ..services.xai_pdf_share import (
     ALLOWED_TTL_DAYS,
     XaiPdfShareDisabled,
     XaiPdfShareError,
     XaiPdfShareService,
     get_xai_pdf_share_status,
 )
-from werkzeug.utils import secure_filename
 
 pdf_shares_bp = Blueprint("pdf_shares", __name__)
 _PAGE_ID_RE = re.compile(r"^page_[A-Za-z0-9_-]+$")

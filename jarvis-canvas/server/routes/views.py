@@ -5,7 +5,7 @@ from pathlib import Path
 
 from flask import Blueprint, render_template, send_from_directory
 
-from config import STATIC_DIR
+from ..config import STATIC_DIR
 
 views_bp = Blueprint('views', __name__)
 

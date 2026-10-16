@@ -2,19 +2,14 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 from flask import Flask
+from server_package_utils import load_canvas_server_package
 
+from lib.stash_helper import StashFile, open_space
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CANVAS_ROOT = PROJECT_ROOT / "jarvis-canvas"
-sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(CANVAS_ROOT))
+load_canvas_server_package("canvas_stash_config_test_server")
 
-from lib.stash_helper import StashFile, open_space  # noqa: E402
-from server.routes import stash as stash_routes  # noqa: E402
+from canvas_stash_config_test_server.routes import stash as stash_routes  # noqa: E402
 
 
 def test_canvas_stash_file_route_reads_configured_stash_dir(tmp_path, monkeypatch):

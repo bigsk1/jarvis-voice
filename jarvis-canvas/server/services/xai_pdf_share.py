@@ -13,8 +13,7 @@ from urllib.parse import urlparse
 
 from config_loader import get_config_value
 
-from config import CANVAS_DIR
-
+from ..config import CANVAS_DIR
 from .pdf_export import has_blocking_findings, normalize_pdf_theme, validate_canvas_pdf
 
 ALLOWED_TTL_DAYS = (1, 7, 30)

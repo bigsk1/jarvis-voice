@@ -6,9 +6,11 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from flask import Blueprint, jsonify, request, Response
 
-from config import CANVAS_DIR
+from flask import Blueprint, Response, jsonify, request
+
+from ..config import CANVAS_DIR
+
 try:
     from stash_helper import get_stash_dir
 except ImportError:
@@ -19,13 +21,14 @@ from canvas_content import (
     is_suspicious_content_shrink,
 )
 from canvas_page_ids import generate_canvas_page_id
-from server.pages import (
+
+from ..pages import (
     delete_page_file,
     get_page_path,
     load_pages,
     save_page,
 )
-from server.utils import sync_stash_pins
+from ..utils import sync_stash_pins
 
 pages_bp = Blueprint('pages', __name__)
 SKILLS_DIR = Path(__file__).resolve().parents[3] / "skills"

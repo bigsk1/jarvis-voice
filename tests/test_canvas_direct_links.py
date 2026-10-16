@@ -2,15 +2,15 @@
 """Regression tests for browser-facing Canvas page links."""
 
 from pathlib import Path
-import sys
 
 from flask import Flask
+from server_package_utils import load_canvas_server_package
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CANVAS_ROOT = PROJECT_ROOT / "jarvis-canvas"
-sys.path.insert(0, str(CANVAS_ROOT))
+load_canvas_server_package("canvas_direct_links_test_server")
 
-from server.routes.views import views_bp  # noqa: E402
+from canvas_direct_links_test_server.routes.views import views_bp  # noqa: E402
 
 
 def test_direct_canvas_page_link_serves_canvas_ui():

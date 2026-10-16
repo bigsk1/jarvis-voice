@@ -6,9 +6,9 @@ from pathlib import Path
 
 from flask import Flask, redirect, render_template, request, send_from_directory
 from flask_cors import CORS
-from server.pages import load_pages
 
-from config import GENERATED_AUDIO_DIR, GENERATED_IMAGES_DIR, GENERATED_VIDEOS_DIR
+from .config import GENERATED_AUDIO_DIR, GENERATED_IMAGES_DIR, GENERATED_VIDEOS_DIR
+from .pages import load_pages
 
 # Add lib to path for auth
 JARVIS_ROOT = Path(__file__).parent.parent.parent
@@ -49,7 +49,7 @@ def create_app(mode='cloud'):
     load_config(mode)
     
     # Register blueprints
-    from server.routes import (
+    from .routes import (
         audio_actions_bp,
         audio_gallery_bp,
         gallery_bp,
@@ -61,7 +61,7 @@ def create_app(mode='cloud'):
         video_shares_bp,
         views_bp,
     )
-    from server.routes.auth import auth_bp
+    from .routes.auth import auth_bp
     
     app.register_blueprint(health_bp)
     app.register_blueprint(pages_bp)

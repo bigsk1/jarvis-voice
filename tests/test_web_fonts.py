@@ -3,13 +3,11 @@
 
 import importlib
 import re
-import subprocess
-import sys
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from server_package_utils import load_server_package
+from server_package_utils import load_canvas_server_package, load_server_package
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FONTS_CSS = PROJECT_ROOT / "jarvis-web" / "client" / "css" / "fonts.css"
@@ -81,50 +79,19 @@ class WebFontsTests(unittest.TestCase):
             self.assertEqual(r.data[:4], b"wOF2", "intelligence UI must return font bytes, not HTML fallback")
 
     def test_04_canvas_static_fonts_and_vendor(self):
-        # Canvas's launcher uses absolute server/config imports. Exercise that
-        # boundary in a fresh interpreter without replacing other apps' modules.
-        script = """
-import importlib
-import sys
-import tempfile
-from pathlib import Path
-from types import ModuleType
-from unittest import TestCase, mock
+        load_canvas_server_package("fonts_canvas_test_server")
+        app_module = importlib.import_module("fonts_canvas_test_server.app")
 
-root = Path(sys.argv[1])
-sys.path.insert(0, str(root / 'tests'))
-from suite_isolation import install_default_isolation
-install_default_isolation()
-sys.path.insert(0, str(root / 'jarvis-canvas'))
-
-with tempfile.TemporaryDirectory() as directory:
-    config = ModuleType('config')
-    for name in ('CANVAS_DIR', 'STATIC_DIR', 'STASH_DIR', 'GENERATED_IMAGES_DIR',
-                 'GENERATED_VIDEOS_DIR', 'GENERATED_AUDIO_DIR'):
-        setattr(config, name, Path(directory) / name)
-    sys.modules['config'] = config
-
-    from config_loader import config_scope
-    with config_scope('cloud', overrides={'STASH_DIR': str(config.STASH_DIR)}):
-        app_module = importlib.import_module('server.app')
-        with mock.patch.object(app_module, 'is_auth_enabled', return_value=True):
-            app = app_module.create_app('cloud')
-            case = TestCase()
+        with mock.patch.object(app_module, "is_auth_enabled", return_value=True):
+            app = app_module.create_app("cloud")
             with app.test_client() as client:
-                response = client.get('/static/fonts/InterVariable.woff2')
-                case.assertEqual(response.status_code, 200)
-                case.assertEqual(response.data[:4], b'wOF2',
-                                 'Canvas must return font bytes, not a 404 or HTML fallback')
-                case.assertEqual(client.get('/static/vendor/marked.min.js').status_code, 200)
-"""
-        result = subprocess.run(
-            [sys.executable, "-I", "-c", script, str(PROJECT_ROOT)],
-            cwd=PROJECT_ROOT,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                response = client.get("/static/fonts/InterVariable.woff2")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response.data[:4], b"wOF2",
+                    "Canvas must return font bytes, not a 404 or HTML fallback",
+                )
+                self.assertEqual(client.get("/static/vendor/marked.min.js").status_code, 200)
 
 
 if __name__ == "__main__":

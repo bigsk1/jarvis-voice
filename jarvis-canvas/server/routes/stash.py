@@ -5,13 +5,13 @@ import json
 import mimetypes
 from pathlib import Path
 
-from flask import Blueprint, send_file, send_from_directory, abort, jsonify
+from flask import Blueprint, abort, jsonify, send_file, send_from_directory
 
 try:
     from stash_helper import get_stash_dir
 except ImportError:
     from lib.stash_helper import get_stash_dir
-from server.utils import normalize_space_id
+from ..utils import normalize_space_id
 
 stash_bp = Blueprint('stash', __name__)
 

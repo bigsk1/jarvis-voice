@@ -10,7 +10,7 @@ import requests
 from flask import Blueprint, jsonify, request
 from internal_api import get_internal_api_base_url, get_internal_api_headers
 
-from config import GENERATED_VIDEOS_DIR
+from ..config import GENERATED_VIDEOS_DIR
 
 video_shares_bp = Blueprint("video_shares", __name__)
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".avi", ".mkv"}

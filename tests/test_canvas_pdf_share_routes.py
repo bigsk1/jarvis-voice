@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 from flask import Flask
+from server_package_utils import load_canvas_server_package
 
 ROOT = Path(__file__).resolve().parents[1]
-for path in (ROOT / "jarvis-canvas", ROOT / "lib"):
-    sys.path.insert(0, str(path))
+load_canvas_server_package("canvas_pdf_share_routes_test_server")
 
-from server.routes import pdf_shares as routes  # noqa: E402
+from canvas_pdf_share_routes_test_server.routes import pdf_shares as routes  # noqa: E402
 
 
 def _app_with_page(tmp_path, monkeypatch, content="Harmless page"):

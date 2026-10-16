@@ -11,7 +11,7 @@ from audio_catalog import AUDIO_EXTENSIONS, save_audio_catalog, sync_audio_catal
 from catalog_lock import catalog_lock
 from flask import Blueprint, abort, jsonify, render_template, request, send_file
 
-from config import GENERATED_AUDIO_DIR
+from ..config import GENERATED_AUDIO_DIR
 
 audio_gallery_bp = Blueprint("audio_gallery", __name__)
 AUDIO_CATALOG_FILE = GENERATED_AUDIO_DIR / "audio_catalog.json"

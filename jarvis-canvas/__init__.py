@@ -4,8 +4,8 @@ Jarvis Canvas - Visual Knowledge Viewer
 A beautiful local web UI for Jarvis to display rich content.
 Includes Canvas pages and Image Gallery.
 """
-from .config import DEFAULT_PORT, DEFAULT_HOST
 from .server import create_app
+from .server.config import DEFAULT_HOST, DEFAULT_PORT
 
 try:
     from version import JARVIS_VERSION

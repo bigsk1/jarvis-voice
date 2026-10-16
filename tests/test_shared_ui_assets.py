@@ -1,54 +1,24 @@
 """Shared UI branding assets must not depend on checkout symlink support."""
 
 import importlib
-import os
-import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from PIL import Image
-
+from server_package_utils import load_canvas_server_package, load_server_package
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CANONICAL_ASSETS = PROJECT_ROOT / "jarvis-web" / "client" / "assets"
-UI_ROOTS = tuple(
-    PROJECT_ROOT / name
-    for name in (
-        "jarvis-canvas",
-        "jarvis-memory",
-        "jarvis-intelligence",
-        "jarvis-docs",
-    )
-)
-
-
-def _purge_server_modules():
-    for key in list(sys.modules):
-        if key == "server" or key.startswith("server."):
-            del sys.modules[key]
-    for root in UI_ROOTS:
-        while str(root) in sys.path:
-            sys.path.remove(str(root))
 
 
 def _load_app(ui_name):
-    _purge_server_modules()
-    ui_root = PROJECT_ROOT / ui_name
-    sys.path.insert(0, str(ui_root))
-    app_module = importlib.import_module("server.app")
-
+    alias = f"shared_assets_{ui_name.replace('-', '_')}_test_server"
     if ui_name == "jarvis-canvas":
-        return app_module.create_app("cloud")
-    return app_module.app
-
-
-@pytest.fixture(autouse=True)
-def _isolate_app_import_state():
-    """Keep app startup imports from leaking config or packages to later tests."""
-    with patch.dict(os.environ):
-        yield
-    _purge_server_modules()
+        load_canvas_server_package(alias)
+    else:
+        load_server_package(alias, PROJECT_ROOT / ui_name / "server")
+    app_module = importlib.import_module(f"{alias}.app")
+    return app_module.create_app("cloud") if ui_name == "jarvis-canvas" else app_module.app
 
 
 @pytest.mark.parametrize(

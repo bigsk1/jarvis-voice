@@ -11,32 +11,24 @@ from flask import Flask
 
 from lib.canvas_content import canvas_url_validation_error
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PAGES_ROUTE = ROOT / "jarvis-canvas" / "server" / "routes" / "pages.py"
 
 
 def _load_pages_route(tmp_path, monkeypatch):
+    alias = "canvas_stash_pin_test_server"
     sync_pins = Mock()
     saved_pages = {}
-    monkeypatch.delenv("JARVIS_OVERRIDE_STASH_DIR", raising=False)
-    monkeypatch.setenv("STASH_DIR", str(tmp_path / "stash"))
 
-    config = types.ModuleType("config")
+    config = types.ModuleType(f"{alias}.config")
     config.CANVAS_DIR = tmp_path
     config.STASH_DIR = tmp_path / "stash"
 
-    canvas_content = types.ModuleType("canvas_content")
-    canvas_content.append_content = lambda old, new: f"{old}\n\n{new}"
-    canvas_content.canvas_url_validation_error = canvas_url_validation_error
-    canvas_content.is_suspicious_content_shrink = lambda _old, _new: False
-
-    canvas_ids = types.ModuleType("canvas_page_ids")
-    canvas_ids.generate_canvas_page_id = lambda _now: "page_new"
-
-    server_package = types.ModuleType("server")
+    server_package = types.ModuleType(alias)
     server_package.__path__ = []
-    server_pages = types.ModuleType("server.pages")
+    routes_package = types.ModuleType(f"{alias}.routes")
+    routes_package.__path__ = []
+    server_pages = types.ModuleType(f"{alias}.pages")
     server_pages.get_page_path = lambda page_id: tmp_path / f"{page_id}.json"
     server_pages.load_pages = lambda: []
     server_pages.delete_page_file = lambda _page_id: False
@@ -46,23 +38,29 @@ def _load_pages_route(tmp_path, monkeypatch):
         (tmp_path / f"{page['id']}.json").write_text(json.dumps(page), encoding="utf-8")
 
     server_pages.save_page = save_page
-    server_utils = types.ModuleType("server.utils")
+    server_utils = types.ModuleType(f"{alias}.utils")
     server_utils.sync_stash_pins = sync_pins
 
     for name, module in {
-        "config": config,
-        "canvas_content": canvas_content,
-        "canvas_page_ids": canvas_ids,
-        "server": server_package,
-        "server.pages": server_pages,
-        "server.utils": server_utils,
+        alias: server_package,
+        f"{alias}.config": config,
+        f"{alias}.routes": routes_package,
+        f"{alias}.pages": server_pages,
+        f"{alias}.utils": server_utils,
     }.items():
         monkeypatch.setitem(sys.modules, name, module)
 
-    spec = importlib.util.spec_from_file_location("canvas_pages_pin_test", PAGES_ROUTE)
+    route_name = f"{alias}.routes.pages"
+    spec = importlib.util.spec_from_file_location(route_name, PAGES_ROUTE)
+    assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
+    monkeypatch.setitem(sys.modules, route_name, module)
     spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "append_content", lambda old, new: f"{old}\n\n{new}")
+    monkeypatch.setattr(module, "canvas_url_validation_error", canvas_url_validation_error)
+    monkeypatch.setattr(module, "is_suspicious_content_shrink", lambda _old, _new: False)
+    monkeypatch.setattr(module, "generate_canvas_page_id", lambda _now: "page_new")
+    monkeypatch.setattr(module, "get_stash_dir", lambda: tmp_path / "stash")
 
     app = Flask(__name__)
     app.register_blueprint(module.pages_bp)

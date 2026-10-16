@@ -3,17 +3,16 @@
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from flask import Flask
-
+from server_package_utils import load_canvas_server_package
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CANVAS_ROOT = PROJECT_ROOT / "jarvis-canvas"
-sys.path.insert(0, str(CANVAS_ROOT))
+load_canvas_server_package("canvas_video_embed_test_server")
 
-from server.routes import stash as stash_routes  # noqa: E402
+from canvas_video_embed_test_server.routes import stash as stash_routes  # noqa: E402
 
 
 def test_stash_metadata_reports_video_without_tool_specific_logic(tmp_path, monkeypatch):

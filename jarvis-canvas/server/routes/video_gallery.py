@@ -2,17 +2,25 @@
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from flask import Blueprint, jsonify, send_file, abort, render_template
 
-from config import GENERATED_VIDEOS_DIR
+from flask import Blueprint, abort, jsonify, render_template, send_file
+
+from ..config import GENERATED_VIDEOS_DIR
+
 try:
     from stash_helper import get_stash_dir
 except ImportError:
     from lib.stash_helper import get_stash_dir
 from video_catalog import (
     load_video_catalog as _load_video_catalog,
+)
+from video_catalog import (
     lookup_stash_metadata as _lookup_stash_metadata,
+)
+from video_catalog import (
     save_video_catalog as _save_video_catalog,
+)
+from video_catalog import (
     sync_video_catalog as _sync_video_catalog,
 )
 

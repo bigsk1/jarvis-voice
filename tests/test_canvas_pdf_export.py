@@ -3,20 +3,17 @@
 from __future__ import annotations
 
 import socket
-import sys
 from io import BytesIO
-from pathlib import Path
 
 import fitz
 import pytest
 from PIL import Image
+from server_package_utils import load_canvas_server_package
 
-ROOT = Path(__file__).resolve().parents[1]
-for path in (ROOT / "jarvis-canvas", ROOT / "lib"):
-    sys.path.insert(0, str(path))
+load_canvas_server_package("canvas_pdf_export_test_server")
 
-from server.services import pdf_export  # noqa: E402
-from server.services.pdf_export import (  # noqa: E402
+from canvas_pdf_export_test_server.services import pdf_export  # noqa: E402
+from canvas_pdf_export_test_server.services.pdf_export import (  # noqa: E402
     build_canvas_pdf_projection,
     has_blocking_findings,
     prepare_canvas_pdf,

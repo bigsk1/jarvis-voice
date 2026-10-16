@@ -4,7 +4,7 @@ Jarvis Canvas - Page storage functions
 import json
 import sys
 
-from config import CANVAS_DIR
+from .config import CANVAS_DIR
 
 
 def load_pages():
