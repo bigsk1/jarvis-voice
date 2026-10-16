@@ -360,4 +360,4 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-10-11 (v2.56.0)
+**Last Updated:** 2026-10-16 (v2.56.1)
