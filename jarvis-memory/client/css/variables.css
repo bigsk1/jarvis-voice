@@ -15,7 +15,8 @@
   /* Accent colors - blue-cyan */
   --accent-primary: #1a43828c;
   --accent-secondary: #06b6d4;
-  --accent-tertiary: var(--accent-primary);
+  /* Opaque accent for readable text and icons on dark surfaces. */
+  --accent-tertiary: #8baad6;
   --accent-glow: var(--accent-primary);
   
   /* Status colors */

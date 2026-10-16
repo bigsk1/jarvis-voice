@@ -597,7 +597,7 @@ body {
 }
 
 .scheduled-next-run-relative {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
   font-weight: 500;
 }
 
@@ -759,7 +759,7 @@ body {
 .stat-value {
   font-size: var(--text-2xl);
   font-weight: 700;
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
   margin-bottom: var(--space-xs);
 }
 
@@ -976,7 +976,7 @@ body {
 }
 
 .workflow-detail-grid code {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
 }
 
 .view-toggle {
@@ -1397,7 +1397,7 @@ textarea.form-input {
 }
 
 .markdown-viewer a {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
 }
 
 .markdown-viewer table {
