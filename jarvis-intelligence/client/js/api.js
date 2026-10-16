@@ -30,17 +30,18 @@ class IntelligenceAPI {
   }
   
   async fetch(endpoint, options = {}) {
+    const { mode = this.mode, ...requestOptions } = options;
     const url = `${this.baseUrl}${endpoint}`;
     const separator = endpoint.includes('?') ? '&' : '?';
-    const fullUrl = `${url}${separator}mode=${this.mode}`;
+    const fullUrl = `${url}${separator}mode=${encodeURIComponent(mode)}`;
     
     try {
       const response = await fetch(fullUrl, {
+        ...requestOptions,
         headers: {
           'Content-Type': 'application/json',
-          ...options.headers
-        },
-        ...options
+          ...requestOptions.headers
+        }
       });
       
       const data = await response.json();
@@ -51,7 +52,7 @@ class IntelligenceAPI {
       
       return data;
     } catch (error) {
-      console.error(`API Error: ${endpoint}`, error);
+      if (error.name !== 'AbortError') console.error(`API Error: ${endpoint}`, error);
       throw error;
     }
   }
@@ -86,8 +87,8 @@ class IntelligenceAPI {
     return this.fetch('/api/experiences/summary');
   }
   
-  async getExperience(id) {
-    return this.fetch(`/api/experiences/${id}`);
+  async getExperience(id, options = {}) {
+    return this.fetch(`/api/experiences/${id}`, options);
   }
   
   async searchExperiences(query, limit = 50, sort = 'date') {
@@ -101,8 +102,9 @@ class IntelligenceAPI {
     });
   }
   
-  async deleteExperience(id) {
+  async deleteExperience(id, options = {}) {
     return this.fetch(`/api/experiences/${id}`, {
+      ...options,
       method: 'DELETE'
     });
   }
@@ -173,34 +175,48 @@ class IntelligenceAPI {
     return this.fetch('/api/stats');
   }
   
-  async getReflectionQueue(limit = 50) {
-    return this.fetch(`/api/stats/reflection-queue?limit=${limit}`);
+  async getReflectionQueue(options = {}, requestOptions = {}) {
+    if (typeof options === 'number') options = { limit: options };
+    const params = new URLSearchParams({ limit: options.limit || 50, offset: options.offset || 0 });
+    if (options.q) params.set('q', options.q);
+    return this.fetch(`/api/stats/reflection-queue?${params}`, requestOptions);
   }
-  
-  async deleteReflection(id) {
+
+  async getReflectionReview(id, options = {}) {
+    return this.fetch(`/api/stats/reflection-queue/${encodeURIComponent(id)}`, options);
+  }
+
+  async deleteReflection(id, options = {}) {
     return this.fetch(`/api/stats/reflection-queue/${id}`, {
+      ...options,
       method: 'DELETE'
     });
   }
   
-  async deleteAllReflections() {
+  async deleteAllReflections(options = {}) {
     return this.fetch('/api/stats/reflection-queue', {
+      ...options,
       method: 'DELETE'
     });
   }
   
-  async getMetaKnowledge(type = null) {
+  async getMetaKnowledge(type = null, options = {}) {
     const query = type ? `?type=${encodeURIComponent(type)}` : '';
-    return this.fetch(`/api/stats/meta-knowledge${query}`);
+    return this.fetch(`/api/stats/meta-knowledge${query}`, options);
   }
   
   // =========================================================================
   // Maintenance
   // =========================================================================
   
-  async triggerReflection(batchSize = 5) {
+  async triggerReflection(batchSize = 5, options = {}) {
+    const { reflectionId, reflectionIds, ...requestOptions } = options;
+    const selection = reflectionId !== undefined ? { reflection_id: reflectionId }
+      : reflectionIds !== undefined ? { reflection_ids: reflectionIds } : null;
     return this.fetch(`/api/maintenance/reflect?batch_size=${batchSize}`, {
-      method: 'POST'
+      ...requestOptions,
+      method: 'POST',
+      ...(selection ? { body: JSON.stringify(selection) } : {})
     });
   }
   
@@ -218,8 +234,8 @@ class IntelligenceAPI {
     return this.fetch('/api/maintenance/anomaly', { method: 'POST' });
   }
   
-  async runMetaCognition() {
-    return this.fetch('/api/maintenance/meta-cognition', { method: 'POST' });
+  async runMetaCognition(options = {}) {
+    return this.fetch('/api/maintenance/meta-cognition', { ...options, method: 'POST' });
   }
   
   async runAllMaintenance() {

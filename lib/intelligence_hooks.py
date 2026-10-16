@@ -29,7 +29,8 @@ from datetime import datetime
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(__file__))
-from security_utils import redact_sensitive_data, redact_sensitive_text
+from reflection_review import ReflectionBusy
+from security_utils import MAX_TRANSCRIPT_LENGTH, redact_sensitive_data, redact_sensitive_text
 
 logger = logging.getLogger(__name__)
 _INTELLIGENCE_EXCLUDED_TOOLS = {"tool_search"}
@@ -74,6 +75,9 @@ def _run_async(coro):
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(context.run, asyncio.run, coro)
             return future.result(timeout=30)
+    except ReflectionBusy:
+        # Contention is not the RuntimeError indicating no running event loop.
+        raise
     except RuntimeError:
         # No running loop - safe to use asyncio.run()
         return asyncio.run(coro)
@@ -125,12 +129,25 @@ def _get_intel(mode: str | None = None):
 # EXPERIENCE RECORDING (After interaction)
 # ============================================
 
+def build_interaction_context(user_query: str, *, source: str = "unknown") -> dict[str, Any]:
+    """Keep only the bounded original request and explicit queue provenance."""
+    interaction = {
+        "version": 1,
+        "source": source if source in {"web", "voice", "cli", "api", "scheduled"} else "unknown",
+        "user_query": redact_sensitive_text(user_query[:MAX_TRANSCRIPT_LENGTH]),
+    }
+    if len(user_query) > MAX_TRANSCRIPT_LENGTH:
+        interaction["user_query_truncated"] = True
+    return interaction
+
+
 def record_interaction(
     query: str,
     tools_used: list[str],
     result: dict[str, Any],
     conversation_context: list[dict] | None = None,
     queue_reflection: bool = True,
+    interaction: dict[str, Any] | None = None,
 ) -> int:
     """
     Record an interaction as an experience for learning.
@@ -143,6 +160,7 @@ def record_interaction(
         result: The final result dict from orchestrator (contains speech, data, ok, etc.)
         conversation_context: Optional list of conversation turns
         queue_reflection: When false, store the experience without a reflection_queue row
+        interaction: Minimal original-request and source metadata for queue review
     
     Returns:
         Experience ID if recorded successfully, -1 otherwise
@@ -241,6 +259,7 @@ def record_interaction(
             'experience_id': result.get('experience_id'),
             'web_conversation_id': result.get('web_conversation_id'),
             'jarvis_session_id': result.get('jarvis_session_id'),
+            'interaction': interaction or build_interaction_context(query),
         }
         
         # Run async in sync context (handles FastAPI and standalone)
@@ -1676,6 +1695,10 @@ def trigger_reflection(batch_size: int = 3) -> int:
     
     Returns:
         Number of reflections processed
+
+    Raises:
+        ReflectionBusy: Another process or queue mutation holds this database's
+            reflection lock. Retry after it finishes.
     """
     intel = _get_intel()
     if not intel:
@@ -1686,7 +1709,9 @@ def trigger_reflection(batch_size: int = 3) -> int:
         if processed > 0:
             logger.info(f"Processed {processed} reflections")
         return processed
-            
+
+    except ReflectionBusy:
+        raise
     except Exception as e:
         logger.warning(f"Reflection processing failed: {e}")
         return 0

@@ -989,6 +989,11 @@ print(f'Processed {processed} reflections')
 "
 ```
 
+If another process is reflecting or changing this database's queue,
+`trigger_reflection()` raises `reflection_review.ReflectionBusy` instead of
+returning zero. Retry after that operation finishes. HTTP reflection endpoints
+report the same contention as 409.
+
 ### What Reflection Does
 
 1. Takes a recorded experience
@@ -1008,6 +1013,38 @@ setting is off, web chat hides thumbs and rejects them, including for
 reflections already waiting in the queue.
 
 Nothing calls the reflection LLM until you trigger it.
+
+The Intelligence dashboard provides compact, expandable pending rows with the
+user request, source, local time, tools and priority. Expanding shows the full
+request and one **Recorded answer**, labeled when it is an excerpt.
+**Open experience** uses the existing Experience viewer for deeper inspection.
+The queue adds no diagnostic panels or extra conversation/tool/attachment capture,
+and does not change the reflection prompt.
+
+New experience metadata stores the original user request and explicit Web,
+Voice, CLI, API, or Scheduled task source. Dashboard TUI commands travel through
+CLI. Existing records without reliable provenance remain unknown. Recognized
+legacy wrappers are cleaned for display; historical queries and embeddings are
+not rewritten. Web Completion Guard repairs still disable learning, and explicit
+workflow commands retain their existing early return without an experience row.
+
+Per-row processing targets that pending queue entry. **Process next 5** follows
+global priority order in the selected mode, independently of the search filter.
+The larger **Process 20** action uses at most four chunks of five and can stop
+between chunks. Each experience uses an independent LLM context; twenty entries
+are not combined into one prompt. More entries do not guarantee cache hits or a
+provider batch discount. Pending entries that fail remain available for a later
+manual retry, without repeated attempts in the same larger UI run.
+An orphan whose experience is missing is settled without a model call so it
+cannot block a one-entry batch. Runtime dashboard and main API processing and
+deletion share a database-side OS file lock; contention is reported as HTTP 409.
+No SQLite write transaction is held while awaiting the model.
+
+**Discard reflection** and **☢️ Clear All** remove pending queue entries while
+retaining the experience records. They do not delete existing insights. Loading,
+searching, or expanding entries does not process them. See the
+[Intelligence dashboard guide](../jarvis-intelligence/README.md#-reflection-tab)
+for the review controls and source-label limitations.
 
 ```
 Eligible completed foreground turn:

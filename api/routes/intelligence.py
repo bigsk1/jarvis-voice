@@ -300,7 +300,7 @@ async def get_pending_reflections(limit: int = 50):
             FROM reflection_queue rq
             LEFT JOIN experiences e ON rq.experience_id = e.id
             WHERE rq.processed = 0
-            ORDER BY rq.priority DESC, rq.queued_at ASC
+            ORDER BY rq.priority DESC, rq.queued_at ASC, rq.id ASC
             LIMIT ?
         """, (limit,))
         
@@ -328,95 +328,90 @@ async def get_pending_reflections(limit: int = 50):
 
 @router.delete("/reflections/{reflection_id}")
 async def delete_reflection(reflection_id: int):
-    """Cancel a pending reflection (don't process it for insights).
-    
-    Use this when you don't want to generate insights from an experience,
-    e.g., during testing/development or for known bad data.
-    """
+    """Cancel one pending item, coordinated with reflection processing."""
+    from fastapi.responses import JSONResponse
+    from reflection_review import ReflectionBusy, processing_lock
+
     try:
         from intelligence import get_intelligence_layer
-        
+
         intel = get_intelligence_layer()
         if not intel:
             return {"status": "error", "error": "Intelligence layer not available"}
-        
-        cursor = intel.conn.cursor()
-        cursor.execute("""
-            DELETE FROM reflection_queue 
-            WHERE id = ? AND processed = 0
-        """, (reflection_id,))
-        
-        deleted = cursor.rowcount > 0
-        intel.conn.commit()
-        
+        lock = processing_lock(intel.db_path)
+        if not lock.acquire(blocking=False):
+            raise ReflectionBusy('Reflection processing is already running for this mode')
+        try:
+            cursor = intel.conn.execute(
+                'DELETE FROM reflection_queue WHERE id = ? AND processed = 0', (reflection_id,))
+            deleted = cursor.rowcount > 0
+            intel.conn.commit()
+        except Exception:
+            intel.conn.rollback()
+            raise
+        finally:
+            lock.release()
         if deleted:
-            return {
-                "status": "ok",
-                "message": f"Reflection {reflection_id} cancelled"
-            }
-        else:
-            return {
-                "status": "error",
-                "error": f"Reflection {reflection_id} not found or already processed"
-            }
+            return {"status": "ok", "message": f"Reflection {reflection_id} cancelled"}
+        return {"status": "error", "error": f"Reflection {reflection_id} not found or already processed"}
+    except ReflectionBusy as e:
+        return JSONResponse(status_code=409, content={"status": "error", "error": str(e)})
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
 
 @router.delete("/reflections")
 async def delete_all_reflections():
-    """Cancel ALL pending reflections.
-    
-    Use with caution - clears the entire reflection queue.
-    Useful after testing sessions or to reset the queue.
-    """
+    """Cancel pending items only, coordinated with reflection processing."""
+    from fastapi.responses import JSONResponse
+    from reflection_review import ReflectionBusy, processing_lock
+
     try:
         from intelligence import get_intelligence_layer
-        
+
         intel = get_intelligence_layer()
         if not intel:
             return {"status": "error", "error": "Intelligence layer not available"}
-        
-        cursor = intel.conn.cursor()
-        cursor.execute("DELETE FROM reflection_queue WHERE processed = 0")
-        deleted_count = cursor.rowcount
-        intel.conn.commit()
-        
-        return {
-            "status": "ok",
-            "deleted": deleted_count,
-            "message": f"Cancelled {deleted_count} pending reflections"
-        }
+        lock = processing_lock(intel.db_path)
+        if not lock.acquire(blocking=False):
+            raise ReflectionBusy('Reflection processing is already running for this mode')
+        try:
+            cursor = intel.conn.execute('DELETE FROM reflection_queue WHERE processed = 0')
+            deleted_count = cursor.rowcount
+            intel.conn.commit()
+        except Exception:
+            intel.conn.rollback()
+            raise
+        finally:
+            lock.release()
+        return {"status": "ok", "deleted": deleted_count,
+                "message": f"Cancelled {deleted_count} pending reflections"}
+    except ReflectionBusy as e:
+        return JSONResponse(status_code=409, content={"status": "error", "error": str(e)})
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
 
 @router.post("/reflect")
 async def trigger_reflection_endpoint(batch_size: int = 5):
-    """Manually trigger reflection processing."""
+    """Manually process a coordinated batch; report contention without claiming completion."""
+    from fastapi.responses import JSONResponse
+    from reflection_review import ReflectionBusy
+
     try:
         from intelligence import get_intelligence_layer
-        
+
         intel = get_intelligence_layer()
         if not intel:
-            return {
-                "status": "error",
-                "error": "Intelligence layer not available"
-            }
-        
-        # Directly await the async method (we're already in async context)
-        processed = await intel.process_reflection_queue(batch_size=batch_size)
-        
-        return {
-            "status": "ok",
-            "processed": processed,
-            "message": f"Processed {processed} pending reflections"
-        }
+            return {"status": "error", "error": "Intelligence layer not available"}
+        result = await intel.process_reflection_queue_detailed(batch_size=batch_size)
+        processed = result['processed']
+        return {"status": "ok", "processed": processed,
+                "message": f"Processed {processed} pending reflections"}
+    except ReflectionBusy as e:
+        return JSONResponse(status_code=409, content={"status": "error", "error": str(e)})
     except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e)
-        }
+        return {"status": "error", "error": str(e)}
 
 
 @router.get("/evaluate")

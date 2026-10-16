@@ -64,7 +64,9 @@ async def _query_jarvis_scoped(body: QueryRequest):
         
         result = orch.process(
             transcript=body.query,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            original_query=body.query,
+            request_source='api',
         )
         from lib.background_tasks.admission import reject_background_result
         result = reject_background_result(result)

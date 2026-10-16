@@ -34,6 +34,7 @@ def parser(*, legacy: bool = False) -> argparse.ArgumentParser:
     cli.add_argument('--prompt', metavar='NAME', help='Load jarvis-web/data/prompts/NAME.md (including personal/NAME)')
     cli.add_argument('--speak', action='store_true', help='Also speak the final answer through the configured TTS provider')
     cli.add_argument('--voice-progress', action='store_true', help='Honor configured spoken progress updates (used by wake-word wrappers)')
+    cli.add_argument('--request-source', choices=('cli', 'voice'), default='cli', help=argparse.SUPPRESS)
     cli.add_argument('--debug-thinking', action='store_true', help='Enable visible reasoning and show it on stderr when the provider supports it')
     cli.add_argument('--feedback', action='store_true', help='Collect LLM QA feedback; show a summary on stderr or include it in JSON')
     return cli
@@ -200,6 +201,7 @@ def main(argv=None, *, legacy=False, orchestrator_factory=None, load_config_fn=N
     transcript = sys.stdin.read() if args.stdin else ' '.join(args.request)
     if not transcript.strip():
         cli.error('Provide a nonempty request or pipe one with --stdin')
+    original_query = transcript
     if args.prompt:
         try:
             prompt = _prompt_text(args.prompt)
@@ -245,7 +247,11 @@ def main(argv=None, *, legacy=False, orchestrator_factory=None, load_config_fn=N
             progress_setter = getattr(orch, 'set_progress_callback', None)
             if args.verbose and callable(progress_setter):
                 progress_setter(_show_progress)
-            options = {'excluded_tools': exclusions}
+            options = {
+                'excluded_tools': exclusions,
+                'original_query': original_query,
+                'request_source': args.request_source,
+            }
             if args.no_tools:
                 options['tool_policy'] = 'none'
             result = reject_background_result(orch.process(transcript, **options))

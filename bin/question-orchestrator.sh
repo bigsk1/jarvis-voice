@@ -141,7 +141,7 @@ echo "$TRANSCRIPT" > "$TRANSCRIPT_FILE"
 echo "🧠 Processing with orchestrator..."
 configure_wake_response_style
 ORCH_ERR_LOG="$AUDIO_DIR/logs/orchestrator-${TIMESTAMP}.stderr"
-ORCH_RESULT=$(python3 "$ORCHESTRATOR" cloud "$TRANSCRIPT" --json --voice-progress 2>"$ORCH_ERR_LOG") || true
+ORCH_RESULT=$(python3 "$ORCHESTRATOR" cloud "$TRANSCRIPT" --json --voice-progress --request-source voice 2>"$ORCH_ERR_LOG") || true
 
 if [ -z "$ORCH_RESULT" ] || ! echo "$ORCH_RESULT" | jq -e . >/dev/null 2>&1; then
     echo "❌ Orchestrator returned invalid JSON" >&2

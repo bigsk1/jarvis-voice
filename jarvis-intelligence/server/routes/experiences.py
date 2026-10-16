@@ -140,7 +140,11 @@ def update_experience(experience_id):
 @experiences_bp.route('/<int:experience_id>', methods=['DELETE'])
 def delete_experience(experience_id):
     """Delete an experience"""
+    from reflection_review import ReflectionBusy
+
     try:
+        if request.args.get('mode', 'cloud') not in {'cloud', 'local'}:
+            return jsonify({'ok': False, 'error': 'mode must be cloud or local'}), 400
         service = get_service()
         success = service.delete_experience(experience_id)
         
@@ -148,6 +152,8 @@ def delete_experience(experience_id):
             return jsonify({'ok': True, 'message': 'Experience deleted'})
         else:
             return jsonify({'ok': False, 'error': 'Experience not found'}), 404
+    except ReflectionBusy as e:
+        return jsonify({'ok': False, 'error': str(e)}), 409
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 

@@ -58,6 +58,7 @@ from embedding_metadata import (
 from embedding_inputs import build_outcome_embedding_text
 from security_utils import redact_sensitive_data, redact_sensitive_text
 from time_utils import now_utc
+from reflection_review import QUEUE_ORDER, ReflectionBusy, processing_lock
 
 
 def _reflection_cost_from_usage(usage_info: dict) -> "float | None":
@@ -2749,24 +2750,77 @@ Example for FACTUAL (should NOT be stored here):
         return analysis
 
     async def process_reflection_queue(self, batch_size: int = 5) -> int:
-        """Process pending reflections in the queue."""
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT experience_id FROM reflection_queue
-            WHERE processed = 0
-            ORDER BY priority DESC
-            LIMIT ?
-        """, (batch_size,))
+        """Legacy integer-returning entry point, shared with manual queue processing."""
+        result = await self.process_reflection_queue_detailed(batch_size=batch_size)
+        return result['processed']
 
-        pending = cursor.fetchall()
-        processed = 0
-
-        for row in pending:
-            result = await self.reflect_on_experience(row['experience_id'])
-            if result:
-                processed += 1
-
-        return processed
+    async def process_reflection_queue_detailed(
+        self, batch_size: int = 5, reflection_ids: list[int] | None = None,
+    ) -> dict:
+        """Process a bounded snapshot while coordinating all services sharing the DB."""
+        if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
+            raise ValueError('batch_size must be a positive integer')
+        if reflection_ids is not None:
+            if (not reflection_ids or len(reflection_ids) > 20
+                    or any(isinstance(value, bool) or not isinstance(value, int) or value < 1
+                           for value in reflection_ids)
+                    or len(set(reflection_ids)) != len(reflection_ids)):
+                raise ValueError('reflection_ids must contain 1 to 20 unique positive integers')
+        lock = processing_lock(self.db_path)
+        if not lock.acquire(blocking=False):
+            raise ReflectionBusy('Reflection processing is already running for this mode')
+        try:
+            # An experience removed by older clients cannot produce an insight.
+            # Settle its orphan row so it cannot consume every batch_size=1 run.
+            orphan_condition = ('processed = 0 AND NOT EXISTS (SELECT 1 FROM experiences e '
+                                'WHERE e.id = reflection_queue.experience_id)')
+            orphan_count = self.conn.execute(
+                'SELECT COUNT(*) FROM reflection_queue WHERE ' + orphan_condition).fetchone()[0]
+            discarded_orphans = 0
+            if orphan_count:
+                discarded_orphans = self.conn.execute(
+                    'UPDATE reflection_queue SET processed = 1 WHERE ' + orphan_condition).rowcount
+                self.conn.commit()
+            ids = reflection_ids
+            if ids is None:
+                ids = [row['id'] for row in self.conn.execute(
+                    'SELECT id FROM reflection_queue WHERE processed = 0 ORDER BY '
+                    + QUEUE_ORDER + ' LIMIT ?', (batch_size,)).fetchall()]
+            outcomes = []
+            attempted = 0
+            for queue_id in ids:
+                # Recheck every selected row; entries can settle between UI chunks.
+                row = self.conn.execute(
+                    'SELECT rq.experience_id, rq.processed, e.id AS stored_experience_id '
+                    'FROM reflection_queue rq LEFT JOIN experiences e ON e.id = rq.experience_id '
+                    'WHERE rq.id = ?', (queue_id,)).fetchone()
+                item = {'reflection_id': queue_id,
+                        'experience_id': row['experience_id'] if row else None}
+                reason = ('missing' if row is None
+                          else 'missing_experience' if row['stored_experience_id'] is None
+                          else 'already_processed' if row['processed'] else None)
+                if reason:
+                    outcomes.append({**item, 'status': 'skipped', 'reason': reason})
+                    continue
+                attempted += 1
+                try:
+                    await self.reflect_on_experience(row['experience_id'])
+                except Exception:
+                    logging.getLogger(__name__).exception('Reflection failed for queue item %s', queue_id)
+                settled = self.conn.execute(
+                    'SELECT processed FROM reflection_queue WHERE id = ?', (queue_id,)).fetchone()
+                # A valid non-procedural reflection settles the queue even without a new insight.
+                status = 'processed' if settled and settled['processed'] else 'failed'
+                outcomes.append({**item, 'status': status})
+            counts = {status: sum(item['status'] == status for item in outcomes)
+                      for status in ('processed', 'failed', 'skipped')}
+            remaining = self.conn.execute(
+                'SELECT COUNT(*) FROM reflection_queue WHERE processed = 0').fetchone()[0]
+            return {'requested': len(ids), 'attempted': attempted, **counts,
+                    'discarded_orphans': discarded_orphans,
+                    'remaining': remaining, 'outcomes': outcomes}
+        finally:
+            lock.release()
 
     # ============================================
     # MAINTENANCE JOBS (Decay, Anomaly, Meta-Cognition)

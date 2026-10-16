@@ -971,8 +971,8 @@ definitions, `Dockerfile`, and conversion/background tests.
 - Observability improvements (trace + budgets + “why” summaries)
 - Generic tool-result references and automatic payload hydration, after a
   measured opaque-token pilot
-- Cache-aware Intelligence reflection processing with a safe chunked
-  "Process up to 20" option
+- Cache-aware Intelligence reflection prompts and measured cache/cost telemetry
+  (chunked Process 20 and individual queue processing are implemented)
 - Per-provider media model pickers in Web AI config (Gemini Veo/Omni, Grok Imagine variants, etc.)
 - Credential-aware tool/provider availability + manual Tool Doctor diagnostics
 - Restricted child environments for higher-risk local tools (opt-in; Tavily and SearXNG are templates)
@@ -1327,14 +1327,16 @@ requirements shipped for file-backed tools (Spotify OAuth, `ssh_remote`,
 
 ### 10) Reflection Queue Throughput and Cache-Aware Processing
 **Priority:** Medium operational convenience / cost visibility
-**Status:** Design proposal; keep the current five-reflection default
+**Status:** Chunked UI processing and queue review implemented; cache-layout and
+cost-telemetry improvements remain proposals
 
-The Intelligence UI currently offers one action that processes up to five
-pending reflections. `process_reflection_queue(batch_size=5)` selects the
-highest-priority rows and calls the reflection LLM once per experience,
-sequentially. This is a Jarvis work chunk, not one provider batch request. If
-only two rows are pending, the database query naturally returns and processes
-two.
+The Intelligence UI supports individual pending-entry processing, the next five
+by priority, and up to twenty in at most four five-entry groups. The larger run
+shows progress, can stop between groups, and avoids retrying a failed entry
+within the same run. Search and pagination support reviewing longer backlogs;
+discard and Clear All remove pending entries while retaining experiences.
+`process_reflection_queue(batch_size=5)` still calls the reflection LLM once per
+experience, sequentially. If fewer rows are pending, fewer are processed.
 
 Increasing the number alone does not reduce the number of LLM requests or make
 the provider charge them as a batch. It mainly saves repeated button presses
@@ -1360,23 +1362,21 @@ and monitor the provider-reported cached-token count.
 
 | Option | Benefit | Main tradeoff | Recommendation |
 |---|---|---|---|
-| Keep **Process 5** only | Shorter synchronous request and bounded surprise cost | Repeated clicks for a backlog | Retain as the primary/default action |
+| Keep **Process next 5** as default | Shorter synchronous request and bounded surprise cost | Repeated clicks for a backlog | Implemented primary action |
 | Raise the default to 10 or 20 | Fewer clicks | Longer blocking request, greater timeout/failure exposure, and a larger unreviewed charge | Do not make this the default |
 | Add **Process up to 20** as one long request | Simple UI/API change | Can hold the Web request open for several minutes and gives weak partial-progress visibility | Avoid as the first implementation |
-| Add **Process up to 20** as four chunks of five | Backlog convenience with progress and partial completion | Same number of LLM calls and approximately the same model cost | Preferred interactive option |
+| **Process 20** as four chunks of five | Backlog convenience with progress and partial completion | Same number of LLM calls and approximately the same model cost | Implemented interactive option |
 | Add **Process All** as a background job | Best for very large queues and leaving the UI | Requires durable job status, cancellation, and restart recovery | Consider only if large queues become routine |
 | Put several experiences into one LLM prompt | May reduce repeated instructions | Cross-experience contamination, harder attribution/parsing, and all-or-nothing retries | Do not use for normal reflection quality |
 
-#### Recommended UI behavior
+#### Implemented UI behavior and remaining options
 
-- Keep **Process 5** as the primary action.
-- When more than five rows are pending, show a secondary **Process up to 20**
-  action. The label should use the real queue count, such as `Process 12` when
-  twelve remain.
-- Implement the larger action as at most four five-item requests. Show progress
-  (`5 of 20`, `10 of 20`) and allow stopping between chunks.
-- Disable overlapping reflection runs from the same UI and refresh insights,
-  pending count, cost, and failure state after each chunk.
+- Keep **Process next 5** as the primary action and offer **Process 20** for
+  larger queues, using at most four five-item requests with progress and a stop
+  between groups.
+- Disable overlapping processing/discard actions and keep each request bound to
+  its originating mode. Refresh pending counts and reflect failure/partial
+  completion accurately.
 - Explain that the larger action is a convenience and does not itself create a
   provider batch discount.
 - Optionally show a cost estimate based on recent recorded reflections, clearly
@@ -1384,19 +1384,24 @@ and monitor the provider-reported cached-token count.
 
 #### Backend contract and safety
 
-- Clamp a requested chunk size to a reviewed range such as `1..20`; do not
-  accept an unbounded `batch_size` query parameter.
+- The dashboard endpoint accepts chunk sizes in `1..20` and rejects invalid
+  values. Explicit queue-ID groups contain at most five entries; existing
+  operator/API core callers retain their batch-size behavior.
 - Preserve priority ordering and process fewer rows when fewer are pending.
-- Return `attempted`, `processed`, `failed`, `remaining`, duration, and the
-  provider/model used rather than only the successful count.
+- Return `attempted`, `processed`, `failed`, `skipped`, `remaining`, and per-entry
+  outcomes rather than only the successful count. Run-level duration and
+  provider/model telemetry remain proposed additions.
 - Keep each completed reflection committed independently so a later failure or
   cancellation does not lose earlier work.
+- Runtime reflection processing and deletion share a database-side file lock
+  across services, report contention, and settle orphan queue entries without
+  consuming a model call or blocking the next real entry.
 - Never mark a queue row processed when the reflection call or JSON parsing
   fails. Make retries safe and observable.
 - Continue disabling provider-native tools during reflection; the supplied
   experience record is the evidence being analyzed.
 
-#### Cache-efficiency work before raising throughput
+#### Remaining cache-efficiency work
 
 1. Move the stable reflection rubric, procedural-vs-factual rules, output JSON
    schema, and examples into a stable prefix or system prompt.
@@ -1408,8 +1413,8 @@ and monitor the provider-reported cached-token count.
 4. Record and aggregate input, output, reasoning, cache-read/cache-write tokens,
    cost, duration, parse failures, and provider/model for each UI-triggered run.
 5. Compare cache share and cost per reflection before and after the prompt
-   rearrangement. Add the larger UI action only after the behavior remains
-   correct under focused reflection tests.
+   rearrangement. The implemented larger UI action remains a convenience;
+   prompt-caching benefits require separate measurement.
 
 **Likely files:** `lib/intelligence.py`,
 `jarvis-intelligence/server/routes/maintenance.py`,

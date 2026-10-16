@@ -295,6 +295,25 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
             handler._run_completion_guard_repair("session-repair-review", record, note="Verify the saved result")
         return handler, fake_orchestrator, synthesize
 
+    def test_repair_preserves_web_original_request_and_separate_instructions(self):
+        record = {
+            "conversation_id": "conv-repair-provenance", "message_id": "msg-parent", "mode": "cloud",
+            "query": "Compare the two source prices", "speech": "Done.", "raw_llm_response": "Done.",
+            "tools_used": ["stock_price"], "data": {}, "completion_guard": {"ticket_on_fail": False},
+        }
+        result = {"ok": True, "speech": "REPAIR_STATUS: unresolved\nThe comparison is incomplete.",
+                  "raw_llm_response": "REPAIR_STATUS: unresolved\nThe comparison is incomplete.",
+                  "tools_used": [], "data": {}}
+        _handler, orchestrator, _synthesize = self._exercise_repair(record, result, None)
+        kwargs = orchestrator.process.call_args.kwargs
+        self.assertEqual(kwargs["request_source"], "web")
+        self.assertEqual(kwargs["original_query"], "Compare the two source prices")
+        repair_prompt = orchestrator.process.call_args.args[0]
+        self.assertIn("Original user request:\nCompare the two source prices", repair_prompt)
+        self.assertIn("REPAIR_STATUS:", repair_prompt)
+        self.assertNotEqual(repair_prompt, kwargs["original_query"])
+        orchestrator.set_learning_enabled.assert_called_once_with(False)
+
     def test_workflow_is_excluded_from_manual_and_auto_completion_guard(self):
         handler = ChatHandler.__new__(ChatHandler)
         policy = handler._get_completion_guard_policy()

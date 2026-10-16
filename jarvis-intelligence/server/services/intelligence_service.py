@@ -17,6 +17,7 @@ sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 from time_utils import utc_string_display_fields
 from security_utils import redact_sensitive_data, redact_sensitive_text
 from intelligence import IntelligenceLayer
+from reflection_review import QUEUE_ORDER, ReflectionBusy, processing_lock, project_review, review_request  # noqa: E402
 
 # Database paths
 DB_PATHS = {
@@ -589,22 +590,25 @@ class IntelligenceService:
             conn.close()
     
     def delete_experience(self, experience_id: int) -> bool:
-        """Delete an experience"""
-        conn = self._get_conn()
-        cursor = conn.cursor()
-        
+        """Delete source data only when no reflection processor owns this database."""
+        lock = processing_lock(self.db_path)
+        if not lock.acquire(blocking=False):
+            raise ReflectionBusy('Reflection processing is already running for this mode')
         try:
-            # Also unlink related audit/queue rows so provenance does not point
-            # at a deleted experience.
-            cursor.execute("DELETE FROM reflection_queue WHERE experience_id = ?", (experience_id,))
-            cursor.execute("UPDATE insight_evidence SET experience_id = NULL WHERE experience_id = ?", (experience_id,))
-            cursor.execute("UPDATE insights SET source_experience_id = NULL WHERE source_experience_id = ?", (experience_id,))
-            cursor.execute("DELETE FROM experiences WHERE id = ?", (experience_id,))
-            conn.commit()
-            return cursor.rowcount > 0
+            conn = self._get_conn()
+            try:
+                # Keep audit provenance consistent without racing an active model reflection.
+                conn.execute('DELETE FROM reflection_queue WHERE experience_id = ?', (experience_id,))
+                conn.execute('UPDATE insight_evidence SET experience_id = NULL WHERE experience_id = ?', (experience_id,))
+                conn.execute('UPDATE insights SET source_experience_id = NULL WHERE source_experience_id = ?', (experience_id,))
+                cursor = conn.execute('DELETE FROM experiences WHERE id = ?', (experience_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+            finally:
+                conn.close()
         finally:
-            conn.close()
-    
+            lock.release()
+
     # =========================================================================
     # Insights Operations
     # =========================================================================
@@ -919,67 +923,104 @@ class IntelligenceService:
     # Reflection Queue Operations
     # =========================================================================
     
+    @staticmethod
+    def _reflection_select() -> str:
+        return """
+            SELECT rq.id, rq.experience_id, rq.priority, rq.queued_at, rq.processed,
+                   e.query, e.tools_used, e.outcome_success, e.timestamp, e.raw_data,
+                   e.id AS stored_experience_id
+            FROM reflection_queue rq
+            LEFT JOIN experiences e ON rq.experience_id = e.id
+        """
+
+    def _reflection_item(self, row, *, full_request: bool = False) -> Dict:
+        item = dict(row)
+        raw_data = item.pop('raw_data', None)
+        item['experience_available'] = item.pop('stored_experience_id', None) is not None
+        item['query'] = redact_sensitive_text(item.get('query') or '')
+        item['tools_used'] = self._parse_json_value(item.get('tools_used'), [])
+        item['review'] = project_review(item, raw_data, full_request=full_request)
+        return self._add_time_display(item, ['timestamp', 'queued_at'])
+
     def get_reflection_queue(self, limit: int = 50) -> List[Dict]:
-        """Get pending reflections"""
+        """Compatibility list API; detailed UI counts live in the page method."""
+        return self.get_reflection_queue_page(limit=limit)['queue']
+
+    def get_reflection_queue_page(self, limit: int = 50, offset: int = 0, query: str = '') -> Dict:
+        """Search reviewed request text, preserving global processing order."""
+        limit = max(1, min(int(limit), 100))
+        offset = max(0, int(offset))
+        query = str(query or '').strip().casefold()
         conn = self._get_conn()
-        cursor = conn.cursor()
-        
         try:
-            results = cursor.execute("""
-                SELECT rq.id, rq.experience_id, rq.priority, rq.queued_at, rq.processed,
-                       e.query, e.tools_used, e.outcome_success
-                FROM reflection_queue rq
-                LEFT JOIN experiences e ON rq.experience_id = e.id
-                WHERE rq.processed = 0
-                ORDER BY rq.priority DESC, rq.queued_at ASC
-                LIMIT ?
-            """, (limit,)).fetchall()
-            
-            queue = []
-            for row in results:
-                item = dict(row)
-                if item.get('tools_used'):
-                    try:
-                        item['tools_used'] = json.loads(item['tools_used'])
-                    except (TypeError, ValueError):
-                        pass
-                queue.append(item)
-            
-            return queue
+            def search_text(stored_query, raw_data, tools, experience_id):
+                review = project_review({'query': stored_query}, raw_data)
+                return ' '.join(str(value or '') for value in (
+                    review_request(stored_query, raw_data)[0], review['source_label'], tools, experience_id,
+                )).casefold()
+
+            conn.create_function('reflection_search_text', 4, search_text)
+            condition = """rq.processed = 0 AND
+                (? = '' OR instr(reflection_search_text(e.query, e.raw_data, e.tools_used,
+                                                       rq.experience_id), ?) > 0)"""
+            params = (query, query)
+            total = conn.execute('SELECT COUNT(*) FROM reflection_queue WHERE processed = 0').fetchone()[0]
+            filtered_total = conn.execute("""
+                SELECT COUNT(*) FROM reflection_queue rq
+                LEFT JOIN experiences e ON rq.experience_id = e.id WHERE """ + condition, params).fetchone()[0]
+            # The outer SELECT exposes the same names used by the runtime queue order.
+            ordered = 'SELECT * FROM (' + self._reflection_select() + ' WHERE ' + condition + ') ORDER BY ' + QUEUE_ORDER
+            rows = conn.execute(ordered + ' LIMIT ? OFFSET ?', (*params, limit, offset)).fetchall()
+            next_rows = conn.execute(
+                'SELECT id FROM reflection_queue WHERE processed = 0 ORDER BY '
+                + QUEUE_ORDER + ' LIMIT 20').fetchall()
+            return {
+                'queue': [self._reflection_item(row) for row in rows],
+                'count': len(rows), 'total': total, 'filtered_total': filtered_total,
+                'limit': limit, 'offset': offset, 'has_more': offset + len(rows) < filtered_total,
+                'next_batch_ids': [row['id'] for row in next_rows],
+            }
         finally:
             conn.close()
-    
+
+    def get_reflection_review(self, reflection_id: int) -> Optional[Dict]:
+        conn = self._get_conn()
+        try:
+            row = conn.execute(self._reflection_select() + ' WHERE rq.id = ?', (reflection_id,)).fetchone()
+            if row is None:
+                return None
+            return {'item': self._reflection_item(row, full_request=True)}
+        finally:
+            conn.close()
+
+    def _discard_pending_reflections(self, reflection_id: Optional[int] = None) -> int:
+        lock = processing_lock(self.db_path)
+        if not lock.acquire(blocking=False):
+            raise ReflectionBusy('Reflection processing is already running for this mode')
+        try:
+            conn = self._get_conn()
+            try:
+                if reflection_id is None:
+                    cursor = conn.execute('DELETE FROM reflection_queue WHERE processed = 0')
+                else:
+                    cursor = conn.execute(
+                        'DELETE FROM reflection_queue WHERE id = ? AND processed = 0',
+                        (reflection_id,))
+                conn.commit()
+                return cursor.rowcount
+            finally:
+                conn.close()
+        finally:
+            lock.release()
+
     def delete_reflection(self, reflection_id: int) -> bool:
-        """Delete a pending reflection from the queue (cancel it without processing)"""
-        conn = self._get_conn()
-        cursor = conn.cursor()
-        
-        try:
-            # Only delete if not yet processed
-            cursor.execute("""
-                DELETE FROM reflection_queue 
-                WHERE id = ? AND processed = 0
-            """, (reflection_id,))
-            
-            deleted = cursor.rowcount > 0
-            conn.commit()
-            return deleted
-        finally:
-            conn.close()
-    
+        """Discard one pending item without removing its experience or learned insights."""
+        return self._discard_pending_reflections(reflection_id) > 0
+
     def delete_all_pending_reflections(self) -> int:
-        """Delete all pending reflections from the queue"""
-        conn = self._get_conn()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("DELETE FROM reflection_queue WHERE processed = 0")
-            deleted_count = cursor.rowcount
-            conn.commit()
-            return deleted_count
-        finally:
-            conn.close()
-    
+        """Discard pending items only, coordinated with this app's reflection processor."""
+        return self._discard_pending_reflections()
+
     # =========================================================================
     # Statistics
     # =========================================================================

@@ -62,6 +62,26 @@ def test_query_route_uses_scope_without_mutating_parent_environment(local_mode_c
     assert dict(os.environ) == before
 
 
+def test_query_route_marks_api_source_and_preserves_supplied_followup_context(local_mode_config):
+    observed = {}
+
+    class FakeOrchestrator:
+        def __init__(self, mode):
+            pass
+
+        def process(self, **kwargs):
+            observed.update(kwargs)
+            return {"ok": True, "speech": "done", "tools_used": []}
+
+    history = [{"role": "user", "content": "Compare blue and red"},
+               {"role": "assistant", "content": "Blue is cheaper"}]
+    with patch.dict(sys.modules, {"orchestrator_v2": SimpleNamespace(Orchestrator=FakeOrchestrator)}):
+        asyncio.run(query_jarvis(None, QueryRequest(query="Choose it", context={"messages": history})))
+    assert observed["request_source"] == "api"
+    assert observed["original_query"] == observed["transcript"] == "Choose it"
+    assert observed["conversation_history"] == history
+
+
 def test_workflow_route_uses_scope_without_mutating_parent_environment(local_mode_config):
     observed = {}
     shared_registry = SimpleNamespace(
@@ -300,7 +320,8 @@ def test_scheduled_query_uses_task_scope_not_runner_mode(tmp_path, monkeypatch):
             observed["active_mode"] = get_active_config_mode()
             observed["provider"] = get_config_value("LLM_PROVIDER")
 
-        def process(self, query):
+        def process(self, query, **kwargs):
+            observed["provenance"] = kwargs
             return {"ok": True, "speech": query}
 
     with patch.dict(sys.modules, {"orchestrator_v2": SimpleNamespace(Orchestrator=FakeOrchestrator)}):
@@ -311,6 +332,7 @@ def test_scheduled_query_uses_task_scope_not_runner_mode(tmp_path, monkeypatch):
         "constructor_mode": "local",
         "active_mode": "local",
         "provider": "ollama",
+        "provenance": {"original_query": "probe", "request_source": "scheduled"},
     }
     assert get_active_config_mode() == "cloud"
 

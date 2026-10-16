@@ -1411,7 +1411,9 @@ Mode: {self.mode}
                 tool_rag_limit: int | None = None,
                 tool_policy: str = 'auto',
                 allowed_tools: list[str] | None = None,
-                _retry_state: TurnState | None = None) -> dict[str, Any]:
+                _retry_state: TurnState | None = None,
+                original_query: str | None = None,
+                request_source: str = 'unknown') -> dict[str, Any]:
         """
         Process user transcript and execute tools or respond.
         Supports multi-turn tool execution until task is complete.
@@ -1442,6 +1444,8 @@ Mode: {self.mode}
             _retry_state: Internal only. Carries in-flight orchestrator state across
                          recursive tool-failure retries so UI events and accumulated
                          results stay consistent within one user request.
+            original_query: Original human input before entrypoint-added routing guidance.
+            request_source: Explicit entrypoint provenance; unclassified callers stay unknown.
             
         Returns:
             dict: Response for TTS
@@ -1452,6 +1456,7 @@ Mode: {self.mode}
                 "error": str (optional)
             }
         """
+        original_query = transcript if original_query is None else original_query
         # SECURITY: Sanitize user input
         try:
             from security_utils import sanitize_user_input
@@ -1513,7 +1518,7 @@ Mode: {self.mode}
         else:
             enhanced_transcript = transcript
             self._previous_experience_id_for_correction = self._last_experience_id
-        
+
         # Debug: Show what's being sent to LLM
         if os.environ.get('JARVIS_DEBUG') and enhanced_transcript != transcript:
             print("\n" + "="*80, file=sys.stderr)
@@ -2533,6 +2538,8 @@ Mode: {self.mode}
                             tool_policy=tool_policy,
                             allowed_tools=allowed_tools,
                             _retry_state=state.for_retry(turn_num),
+                            original_query=original_query,
+                            request_source=request_source,
                         )
                     
                     # Max retries exceeded. If useful tools already succeeded,
@@ -2693,7 +2700,10 @@ Mode: {self.mode}
                     response["thinking"] = state.first_thinking
                 
                 # Record experience for self-learning (returns experience_id for feedback linking)
-                experience_id = self._record_learning_experience(transcript, state.tools_used, response, state.conversation_context, applied_insights)
+                experience_id = self._record_learning_experience(
+                    original_query, state.tools_used, response,
+                    state.conversation_context, applied_insights, request_source=request_source,
+                )
                 if experience_id > 0:
                     response["experience_id"] = experience_id
 
@@ -4260,7 +4270,8 @@ Your synthesized response:"""
         tools_used: list,
         result: dict,
         conversation_context: list,
-        applied_insights: list = None
+        applied_insights: list = None,
+        request_source: str = 'unknown',
     ) -> int:
         """
         Record interaction for self-learning intelligence.
@@ -4282,7 +4293,14 @@ Your synthesized response:"""
             return -1
 
         try:
-            from intelligence_hooks import record_interaction, track_insight_outcomes
+            from intelligence_hooks import (
+                build_interaction_context,
+                record_interaction,
+                track_insight_outcomes,
+            )
+
+            interaction = build_interaction_context(transcript, source=request_source)
+            transcript = interaction['user_query']
 
             learning_result = result
             if self.web_conversation_id or self.session_id:
@@ -4298,6 +4316,7 @@ Your synthesized response:"""
                 result=learning_result,
                 conversation_context=conversation_context,
                 queue_reflection=self.reflection_queue_enabled,
+                interaction=interaction,
             )
 
             previous_experience_id = getattr(self, "_previous_experience_id_for_correction", None)

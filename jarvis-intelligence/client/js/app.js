@@ -28,6 +28,8 @@ let experienceSummary = null;
 let insightSummary = null;
 let experiencePagination = { offset: 0, total: 0, hasMore: false, loading: false, observer: null };
 let insightPagination = { offset: 0, total: 0, hasMore: false, loading: false, observer: null };
+let reflectionGeneration = 0;
+let reflectionState = newReflectionState();
 
 // ============================================================================
 // Initialization
@@ -56,6 +58,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 function setupEventListeners() {
   // Mode selector
   document.getElementById('modeSelect').addEventListener('change', (e) => {
+    resetReflectionState();
+    closeAllModals();
+    selectedExperienceId = null;
+    currentExperienceData = null;
     api.setMode(e.target.value);
     localStorage.setItem('jarvis-intelligence-mode', e.target.value);
     loadInitialData();
@@ -695,19 +701,82 @@ function showFeedbackModal(feedback) {
   showModal(modal);
 }
 
-async function loadReflectionQueue() {
+function newReflectionState() {
+  return {
+    queue: [], metaKnowledge: [], total: 0, filteredTotal: 0,
+    offset: 0, limit: LIST_PAGE_SIZE, query: '', hasMore: false, nextBatchIds: [],
+    loadId: 0, loading: false, controller: null, reviewCache: new Map(),
+    reviewRequests: new Map(), operation: null, progress: ''
+  };
+}
+
+function resetReflectionState() {
+  reflectionGeneration += 1;
+  reflectionState.controller?.abort();
+  reflectionState.reviewRequests.forEach(controller => controller.abort());
+  if (reflectionState.operation) {
+    reflectionState.operation.stop = true;
+    reflectionState.operation.controller.abort();
+  }
+  reflectionState = newReflectionState();
   const container = document.getElementById('reflectionContent');
-  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  
+  if (container) {
+    container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    container.setAttribute('aria-busy', 'true');
+  }
+  updateReflectionControls();
+}
+
+async function loadReflectionQueue({ offset = 0, query = null } = {}) {
+  const container = document.getElementById('reflectionContent');
+  const state = reflectionState;
+  const generation = reflectionGeneration;
+  const requestMode = api.mode;
+  const search = query ?? (currentTab === 'reflection' ? getCurrentSearchQuery() : state.query);
+  state.controller?.abort();
+  state.reviewRequests.forEach(controller => controller.abort());
+  state.reviewRequests.clear();
+  const controller = new AbortController();
+  state.controller = controller;
+  const loadId = ++state.loadId;
+  state.loading = true;
+  container.setAttribute('aria-busy', 'true');
+  if (!state.queue.length) container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  updateReflectionControls();
   try {
     const [queueResult, metaResult] = await Promise.all([
-      api.getReflectionQueue(50),
-      api.getMetaKnowledge()
+      api.getReflectionQueue({ limit: state.limit, offset, q: search }, { mode: requestMode, signal: controller.signal }),
+      api.getMetaKnowledge(null, { mode: requestMode, signal: controller.signal })
     ]);
-    
-    renderReflectionPanel(queueResult.queue || [], metaResult.entries || []);
+    if (generation !== reflectionGeneration || requestMode !== api.mode || loadId !== state.loadId) return;
+    const filteredTotal = Number(queueResult.filtered_total ?? queueResult.total ?? queueResult.count ?? 0);
+    if (offset > 0 && offset >= filteredTotal) {
+      return loadReflectionQueue({ offset: Math.max(0, Math.ceil(filteredTotal / state.limit) - 1) * state.limit, query: search });
+    }
+    state.queue = queueResult.queue || [];
+    state.metaKnowledge = metaResult.entries || [];
+    state.total = Number(queueResult.total ?? queueResult.count ?? state.queue.length);
+    state.filteredTotal = filteredTotal;
+    state.offset = Number(queueResult.offset ?? offset);
+    state.hasMore = Boolean(queueResult.has_more);
+    state.query = search;
+    state.nextBatchIds = [...new Set(queueResult.next_batch_ids || [])]
+      .map(Number).filter(id => Number.isSafeInteger(id) && id > 0).slice(0, 20);
+    state.reviewCache.clear();
+    state.loading = false;
+    renderReflectionPanel(state.queue, state.metaKnowledge);
   } catch (error) {
+    if (error.name === 'AbortError' || generation !== reflectionGeneration || loadId !== state.loadId) return;
+    if (!state.queue.length) {
+      container.innerHTML = `<div class="empty-state"><div class="empty-state-title">Unable to load reflections</div><div class="empty-state-desc">${escapeHtml(error.message)}</div></div>`;
+    }
     showToast(`Failed to load reflection data: ${error.message}`, 'error');
+  } finally {
+    if (generation === reflectionGeneration && loadId === state.loadId) {
+      state.loading = false;
+      container.setAttribute('aria-busy', 'false');
+      updateReflectionControls();
+    }
   }
 }
 
@@ -1061,48 +1130,241 @@ function getConfidenceLabel(confidence) {
   return `Low (${pct.toFixed(0)}%) - Weak`;
 }
 
+function reflectionRecordId(value) {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function renderReflectionRow(item) {
+  const id = reflectionRecordId(item.id);
+  if (!id) return '';
+  const review = item.review || {};
+  const experienceId = reflectionRecordId(item.experience_id);
+  const tools = parseToolsField(item.tools_used);
+  const priority = Number(item.priority);
+  const sourceLabel = review.source === 'unknown' || review.source_label === 'Unknown'
+    ? 'Unknown source' : review.source_label || 'Unknown source';
+  const timestamp = item.timestamp ? formatRecordTimestamp(item, 'timestamp')
+    : item.queued_at ? formatRecordTimestamp(item, 'queued_at') : formatDate(review.timestamp);
+  return `
+    <article class="reflection-row">
+      <details class="reflection-review" data-reflection-id="${id}">
+        <summary>
+          <span class="reflection-row-title"><span class="reflection-query">${escapeHtml(review.user_query || 'Request not available')}</span><span class="reflection-toggle"><span class="reflection-closed">Review +</span><span class="reflection-open">Close −</span></span></span>
+          <span class="reflection-meta">
+            <span>${escapeHtml(sourceLabel)}</span>
+            <span>${escapeHtml(timestamp)}</span>
+            <span>${escapeHtml(tools.length ? tools.join(', ') : 'No tools recorded')}</span>
+            <span class="queue-priority">Priority ${Number.isFinite(priority) ? priority.toFixed(1) : 'unknown'}</span>
+          </span>
+        </summary>
+        <div class="reflection-review-body" id="reflectionReview${id}">Open to load the saved record.</div>
+      </details>
+      <div class="reflection-row-actions">
+        ${experienceId ? `<button type="button" class="btn btn-small btn-secondary reflection-experience" data-experience-id="${experienceId}" title="Experience #${experienceId}">Open experience</button>` : '<span class="reflection-muted">Experience unavailable</span>'}
+        <span class="reflection-row-buttons">
+          <button type="button" class="btn btn-small btn-primary reflection-mutation reflection-process" data-reflection-id="${id}">Process one</button>
+          <button type="button" class="btn btn-small btn-secondary reflection-mutation reflection-discard" data-reflection-id="${id}">Discard reflection</button>
+        </span>
+      </div>
+    </article>`;
+}
+
+function renderReflectionQueue(queue) {
+  const state = reflectionState;
+  const first = queue.length ? state.offset + 1 : 0;
+  const last = state.offset + queue.length;
+  const count = state.query
+    ? `Showing ${first}–${last} of ${state.filteredTotal} matching “${state.query}” · ${state.total} pending total`
+    : `Showing ${first}–${last} of ${state.total} pending`;
+  return `
+    <section class="reflection-queue-section" aria-label="Pending reflections">
+      <div class="reflection-heading">
+        <div><h3>🔄 Pending reflections (${state.total})</h3><p class="reflection-muted">${escapeHtml(count)}</p></div>
+        <div class="reflection-batch-actions">
+          <button type="button" class="btn btn-primary reflection-mutation" id="triggerReflectionBtn">Process next 5</button>
+          ${state.total >= 20 ? '<button type="button" class="btn btn-secondary reflection-mutation" id="processTwentyReflectionsBtn">Process 20</button>' : ''}
+          <button type="button" class="btn btn-secondary reflection-mutation" id="clearAllReflectionsBtn">☢️ Clear All</button>
+        </div>
+      </div>
+      <p class="reflection-scope">Batch controls use global queue priority, including while searching. Each experience is reflected on separately; Process 20 runs up to four batches of five.</p>
+      <div class="reflection-progress" role="status" aria-live="polite" id="reflectionProgress">${escapeHtml(state.progress)}</div>
+      <button type="button" class="btn btn-small btn-secondary" id="stopReflectionsBtn" hidden>Stop after this batch</button>
+      ${queue.length ? `<div class="queue-list">${queue.map(renderReflectionRow).join('')}</div>` : `
+        <div class="empty-state reflection-empty"><div class="empty-state-icon">${state.query ? '🔍' : '✨'}</div><div class="empty-state-title">${state.query ? 'No matching pending reflections' : 'Queue is empty'}</div><div class="empty-state-desc">${state.query ? 'Change the search to review other pending entries.' : 'No experiences are waiting for reflection.'}</div></div>`}
+      <div class="reflection-pagination" aria-label="Reflection queue pages">
+        <button type="button" class="btn btn-small btn-secondary" id="previousReflectionsBtn" ${state.offset === 0 ? 'disabled' : ''}>Previous</button>
+        <span class="reflection-muted">${escapeHtml(count)}</span>
+        <button type="button" class="btn btn-small btn-secondary" id="nextReflectionsBtn" ${state.hasMore ? '' : 'disabled'}>Next</button>
+      </div>
+      <p class="reflection-muted">Discard and Clear All remove pending queue entries. Experiences and existing insights are kept.</p>
+    </section>`;
+}
+
+function reflectionTextBlock(value, missing, excerpt = false) {
+  const text = typeof value === 'string' ? value : '';
+  if (!text) return `<p class="reflection-muted">${escapeHtml(missing)}</p>`;
+  const shortened = text.length > 16000;
+  const truncated = excerpt || shortened || /\[truncated\]/i.test(text);
+  return `<pre class="reflection-stored-text" tabindex="0">${escapeHtml(text.slice(0, 16000))}</pre>${truncated ? '<p class="reflection-truncation">Excerpt shown. Open the experience for the stored record.</p>' : ''}`;
+}
+
+function renderReflectionReview(result) {
+  const review = result.item?.review || {};
+  return `
+    <div class="reflection-review-section"><h4>User request</h4>${reflectionTextBlock(review.user_query, 'The original request is not available.', review.user_query_truncated)}</div>
+    <div class="reflection-review-section"><h4>Recorded answer</h4>${reflectionTextBlock(review.response, 'An answer was not recorded for this experience.', review.response_truncated)}</div>
+  `;
+}
+
+async function loadReflectionReview(id, body) {
+  const state = reflectionState;
+  const generation = reflectionGeneration;
+  const mode = api.mode;
+  const loadId = state.loadId;
+  if (body.dataset.loaded === 'true' || state.reviewRequests.has(id)) return;
+  if (state.reviewCache.has(id)) {
+    body.innerHTML = state.reviewCache.get(id);
+    body.dataset.loaded = 'true';
+    return;
+  }
+  const controller = new AbortController();
+  state.reviewRequests.set(id, controller);
+  body.textContent = 'Loading saved record…';
+  try {
+    const result = await api.getReflectionReview(id, { mode, signal: controller.signal });
+    if (generation !== reflectionGeneration || mode !== api.mode || loadId !== state.loadId) return;
+    const html = renderReflectionReview(result);
+    state.reviewCache.set(id, html);
+    if (body.isConnected) {
+      body.innerHTML = html;
+      body.dataset.loaded = 'true';
+    }
+  } catch (error) {
+    if (error.name === 'AbortError' || generation !== reflectionGeneration || loadId !== state.loadId) return;
+    body.textContent = `Unable to review this entry: ${error.message}. Close and reopen to retry, or refresh the queue.`;
+  } finally {
+    if (state.reviewRequests.get(id) === controller) state.reviewRequests.delete(id);
+  }
+}
+
+function updateReflectionControls() {
+  const state = reflectionState;
+  const busy = Boolean(state.operation);
+  document.querySelectorAll('.reflection-mutation').forEach(button => { button.disabled = busy || state.loading; });
+  for (const id of ['deleteExperienceBtn', 'reembedExperienceBtn', 'runMetaCognitionBtn']) {
+    const button = document.getElementById(id);
+    if (button) button.disabled = busy;
+  }
+  for (const id of ['triggerReflectionBtn', 'processTwentyReflectionsBtn']) {
+    const button = document.getElementById(id);
+    if (button) button.disabled = busy || state.loading || !state.nextBatchIds.length;
+  }
+  const clear = document.getElementById('clearAllReflectionsBtn');
+  if (clear) clear.disabled = busy || state.loading || !state.total;
+  const progress = document.getElementById('reflectionProgress');
+  if (progress) progress.textContent = state.progress;
+  const stop = document.getElementById('stopReflectionsBtn');
+  if (stop) {
+    stop.hidden = !state.operation || state.operation.kind !== 'process' || state.operation.ids.length <= 5;
+    stop.disabled = Boolean(state.operation?.stop);
+  }
+}
+
+function reflectionOperationIsCurrent(operation) {
+  return reflectionState.operation === operation && operation.generation === reflectionGeneration && operation.mode === api.mode;
+}
+
+function reflectionProgressText(operation) {
+  const count = operation.counts;
+  return `${count.processed} processed · ${count.failed} failed · ${count.skipped} skipped · ${count.attempted} attempted (${count.finished}/${operation.ids.length} entries checked)${operation.stop ? ' · Stopping after the current batch.' : ''}`;
+}
+
+async function processReflections(count = 5, reflectionId = null) {
+  const state = reflectionState;
+  if (state.operation || state.loading) return;
+  // Freeze the global priority selection. Searches never change batch scope,
+  // and a failed high-priority entry cannot be retried by a later chunk.
+  const ids = reflectionId === null ? state.nextBatchIds.slice(0, Math.min(20, count)) : [reflectionRecordId(reflectionId)];
+  if (!ids.length || ids.some(id => !id)) return;
+  const operation = { kind: 'process', ids, mode: api.mode, generation: reflectionGeneration,
+    controller: new AbortController(), stop: false,
+    counts: { processed: 0, failed: 0, skipped: 0, attempted: 0, finished: 0 } };
+  state.operation = operation;
+  state.progress = reflectionProgressText(operation);
+  updateReflectionControls();
+  try {
+    for (let offset = 0; offset < ids.length; offset += 5) {
+      if (!reflectionOperationIsCurrent(operation) || operation.stop) break;
+      const chunk = ids.slice(offset, offset + 5);
+      const selection = reflectionId === null ? { reflectionIds: chunk } : { reflectionId: chunk[0] };
+      const result = await api.triggerReflection(chunk.length, { ...selection, mode: operation.mode, signal: operation.controller.signal });
+      if (!reflectionOperationIsCurrent(operation)) return;
+      if (result.ok === false) throw new Error(result.error || 'Reflection processing failed');
+      const outcomes = Array.isArray(result.outcomes) ? result.outcomes : [];
+      for (const key of ['processed', 'failed', 'skipped', 'attempted']) {
+        const fallback = key === 'attempted' ? outcomes.filter(item => item.status !== 'skipped').length
+          : outcomes.filter(item => item.status === (key === 'processed' ? 'processed' : key)).length;
+        operation.counts[key] += Number(result[key] ?? fallback);
+      }
+      operation.counts.finished += Number(result.requested ?? chunk.length);
+      state.progress = reflectionProgressText(operation);
+      updateReflectionControls();
+    }
+    if (!reflectionOperationIsCurrent(operation)) return;
+    state.progress = `${operation.stop ? 'Stopped. ' : 'Finished. '}${reflectionProgressText(operation).replace(' · Stopping after the current batch.', '')}`;
+    showToast(state.progress, operation.counts.failed ? 'warning' : 'success');
+    await loadReflectionQueue({ offset: state.offset, query: state.query });
+  } catch (error) {
+    if (!reflectionOperationIsCurrent(operation) || error.name === 'AbortError') return;
+    state.progress = `Processing stopped: ${error.message}. ${reflectionProgressText(operation)} The current request may already have completed; refresh before retrying.`;
+    showToast(`Reflection processing stopped: ${error.message}`, 'error');
+    await loadReflectionQueue({ offset: state.offset, query: state.query });
+  } finally {
+    if (reflectionOperationIsCurrent(operation)) {
+      state.operation = null;
+      updateReflectionControls();
+    }
+  }
+}
+
+async function mutateReflectionQueue(kind, id = null) {
+  const state = reflectionState;
+  if (state.operation || state.loading) return;
+  if (kind === 'clear' && !confirm(`Clear all ${state.total} pending reflections in ${api.mode}? Experiences and existing insights will be kept. This queue change cannot be undone.`)) return;
+  if (kind === 'discard' && !confirm('Discard this pending reflection? The experience and existing insights will be kept.')) return;
+  const operation = { kind, mode: api.mode, generation: reflectionGeneration, controller: new AbortController() };
+  state.operation = operation;
+  updateReflectionControls();
+  try {
+    const options = { mode: operation.mode, signal: operation.controller.signal };
+    const result = kind === 'clear' ? await api.deleteAllReflections(options)
+      : kind === 'discard' ? await api.deleteReflection(id, options) : await api.runMetaCognition(options);
+    if (!reflectionOperationIsCurrent(operation)) return;
+    if (result.ok === false || result.error) throw new Error(result.error || 'Request failed');
+    showToast(kind === 'clear' ? `Discarded ${result.deleted} pending reflections; experiences kept`
+      : kind === 'discard' ? 'Reflection discarded; experience kept' : 'Meta-cognition analysis complete', 'success');
+    await loadReflectionQueue({ offset: state.offset, query: state.query });
+  } catch (error) {
+    if (error.name !== 'AbortError' && reflectionOperationIsCurrent(operation)) showToast(`Request failed: ${error.message}`, 'error');
+  } finally {
+    if (reflectionOperationIsCurrent(operation)) {
+      state.operation = null;
+      updateReflectionControls();
+    }
+  }
+}
+
 function renderReflectionPanel(queue, metaKnowledge) {
   const container = document.getElementById('reflectionContent');
   
   let html = `
-    <div style="padding: var(--space-md);">
-      <!-- Reflection Queue Section -->
-      <div style="margin-bottom: var(--space-xl);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-md);">
-          <h3 style="color: var(--text-primary);">🔄 Pending Reflections (${queue.length})</h3>
-          <div style="display: flex; gap: var(--space-sm);">
-            ${queue.length > 0 ? `<button class="btn btn-secondary" id="clearAllReflectionsBtn" title="Cancel all pending reflections">🗑️ Clear All</button>` : ''}
-            <button class="btn btn-primary" id="triggerReflectionBtn">⚡ Process ${Math.min(5, queue.length)}</button>
-          </div>
-        </div>
-        ${queue.length === 0 ? `
-          <div class="empty-state" style="padding: var(--space-lg);">
-            <div class="empty-state-icon">✨</div>
-            <div class="empty-state-title">Queue is empty</div>
-            <div class="empty-state-desc">All experiences have been reflected upon</div>
-          </div>
-        ` : `
-          <div class="queue-list">
-            ${queue.slice(0, 20).map(item => `
-              <div class="queue-item" style="display: flex; align-items: center; gap: var(--space-sm);">
-                <button class="btn btn-icon delete-reflection-btn" data-id="${item.id}" title="Cancel this reflection (don't process)">✕</button>
-                <div style="flex: 1; min-width: 0;">
-                  <span class="queue-query">${escapeHtml(item.query || 'Unknown')}</span>
-                  <span class="queue-meta" style="font-size: var(--text-xs); color: var(--text-muted); margin-left: var(--space-sm);">
-                    ${item.outcome_success ? '✅' : '❌'} Exp #${item.experience_id}
-                  </span>
-                </div>
-                <span class="queue-priority">P: ${(item.priority || 0.5).toFixed(1)}</span>
-              </div>
-            `).join('')}
-            ${queue.length > 20 ? `<div style="text-align: center; color: var(--text-muted); padding: var(--space-sm);">... and ${queue.length - 20} more</div>` : ''}
-          </div>
-        `}
-      </div>
+    <div class="reflection-layout">
+      ${renderReflectionQueue(queue)}
       
       <!-- Meta Knowledge Section -->
       <div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-md);">
+        <div class="reflection-heading" style="margin-bottom: var(--space-md);">
           <h3 style="color: var(--text-primary);">🧠 Meta-Knowledge (${metaKnowledge.length})</h3>
           <button class="btn btn-secondary" id="runMetaCognitionBtn">🔍 Run Analysis</button>
         </div>
@@ -1117,8 +1379,8 @@ function renderReflectionPanel(queue, metaKnowledge) {
             ${metaKnowledge.map(mk => `
               <div class="card" style="cursor: default;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-sm);">
-                  <span style="font-weight: 600; color: var(--text-primary);">${getMetaTypeLabel(mk.meta_type)}</span>
-                  <span style="font-size: var(--text-xs); color: var(--text-muted);">${formatDate(mk.timestamp)}</span>
+                  <span style="font-weight: 600; color: var(--text-primary);">${escapeHtml(getMetaTypeLabel(mk.meta_type))}</span>
+                  <span style="font-size: var(--text-xs); color: var(--text-muted);">${escapeHtml(formatDate(mk.timestamp))}</span>
                 </div>
                 <div style="font-size: var(--text-sm); color: var(--text-secondary); margin-bottom: var(--space-sm);">
                   ${escapeHtml(mk.description || mk.observation || '')}
@@ -1138,82 +1400,34 @@ function renderReflectionPanel(queue, metaKnowledge) {
   
   container.innerHTML = html;
   
-  // Add event handlers
-  const reflectBtn = document.getElementById('triggerReflectionBtn');
-  if (reflectBtn) {
-    reflectBtn.addEventListener('click', async () => {
-      reflectBtn.disabled = true;
-      reflectBtn.textContent = '⏳ Processing...';
-      try {
-        const result = await api.triggerReflection(5);
-        showToast(`Processed ${result.processed} reflections`, 'success');
-        await loadReflectionQueue();
-        await loadInsights();
-      } catch (error) {
-        showToast(`Reflection failed: ${error.message}`, 'error');
-      }
-      reflectBtn.disabled = false;
-      reflectBtn.textContent = `⚡ Process ${Math.min(5, queue.length)}`;
-    });
-  }
-  
-  // Delete individual reflection buttons
-  document.querySelectorAll('.delete-reflection-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.id;
-      if (!confirm('Cancel this reflection? It won\'t be processed for insights.')) return;
-      
-      btn.disabled = true;
-      btn.textContent = '⏳';
-      try {
-        await api.deleteReflection(id);
-        showToast('Reflection cancelled', 'success');
-        await loadReflectionQueue();
-      } catch (error) {
-        showToast(`Failed to cancel: ${error.message}`, 'error');
-        btn.disabled = false;
-        btn.textContent = '✕';
-      }
+  document.getElementById('triggerReflectionBtn')?.addEventListener('click', () => processReflections(5));
+  document.getElementById('processTwentyReflectionsBtn')?.addEventListener('click', () => processReflections(20));
+  document.getElementById('clearAllReflectionsBtn')?.addEventListener('click', () => mutateReflectionQueue('clear'));
+  document.getElementById('runMetaCognitionBtn')?.addEventListener('click', () => mutateReflectionQueue('analysis'));
+  document.getElementById('previousReflectionsBtn')?.addEventListener('click', () => loadReflectionQueue({ offset: Math.max(0, reflectionState.offset - reflectionState.limit), query: reflectionState.query }));
+  document.getElementById('nextReflectionsBtn')?.addEventListener('click', () => loadReflectionQueue({ offset: reflectionState.offset + reflectionState.limit, query: reflectionState.query }));
+  document.getElementById('stopReflectionsBtn')?.addEventListener('click', () => {
+    if (reflectionState.operation) {
+      reflectionState.operation.stop = true;
+      reflectionState.progress = reflectionProgressText(reflectionState.operation);
+      updateReflectionControls();
+    }
+  });
+  container.querySelectorAll('.reflection-review').forEach(details => {
+    details.addEventListener('toggle', () => {
+      if (details.open) loadReflectionReview(Number(details.dataset.reflectionId), details.querySelector('.reflection-review-body'));
     });
   });
-  
-  // Clear all reflections button
-  const clearAllBtn = document.getElementById('clearAllReflectionsBtn');
-  if (clearAllBtn) {
-    clearAllBtn.addEventListener('click', async () => {
-      if (!confirm('Cancel ALL pending reflections? This cannot be undone.')) return;
-      
-      clearAllBtn.disabled = true;
-      clearAllBtn.textContent = '⏳ Clearing...';
-      try {
-        const result = await api.deleteAllReflections();
-        showToast(`Cancelled ${result.deleted} reflections`, 'success');
-        await loadReflectionQueue();
-      } catch (error) {
-        showToast(`Failed to clear: ${error.message}`, 'error');
-        clearAllBtn.disabled = false;
-        clearAllBtn.textContent = '🗑️ Clear All';
-      }
-    });
-  }
-  
-  const metaBtn = document.getElementById('runMetaCognitionBtn');
-  if (metaBtn) {
-    metaBtn.addEventListener('click', async () => {
-      metaBtn.disabled = true;
-      metaBtn.textContent = '⏳ Analyzing...';
-      try {
-        await api.runMetaCognition();
-        showToast('Meta-cognition analysis complete', 'success');
-        await loadReflectionQueue();
-      } catch (error) {
-        showToast(`Analysis failed: ${error.message}`, 'error');
-      }
-      metaBtn.disabled = false;
-      metaBtn.textContent = '🔍 Run Analysis';
-    });
-  }
+  container.querySelectorAll('.reflection-process').forEach(button => {
+    button.addEventListener('click', () => processReflections(1, Number(button.dataset.reflectionId)));
+  });
+  container.querySelectorAll('.reflection-discard').forEach(button => {
+    button.addEventListener('click', () => mutateReflectionQueue('discard', Number(button.dataset.reflectionId)));
+  });
+  container.querySelectorAll('.reflection-experience').forEach(button => {
+    button.addEventListener('click', () => viewExperience(Number(button.dataset.experienceId)));
+  });
+  updateReflectionControls();
 }
 
 function renderStats(stats, toolPerformance) {
@@ -1419,6 +1633,7 @@ function renderCompletionGuardStats(completionGuardStats) {
 let currentExperienceData = null;
 
 async function viewExperience(id) {
+  const requestMode = api.mode;
   selectedExperienceId = id;
   const modal = document.getElementById('experienceModal');
   const body = document.getElementById('experienceModalBody');
@@ -1427,7 +1642,8 @@ async function viewExperience(id) {
   showModal(modal);
   
   try {
-    const result = await api.getExperience(id);
+    const result = await api.getExperience(id, { mode: requestMode });
+    if (api.mode !== requestMode || selectedExperienceId !== id) return;
     const exp = result.experience;
     currentExperienceData = exp; // Store for copy functionality
     
@@ -1538,6 +1754,7 @@ async function viewExperience(id) {
       </div>
     `;
   } catch (error) {
+    if (api.mode !== requestMode || selectedExperienceId !== id) return;
     body.innerHTML = `<div class="empty-state"><div class="empty-state-icon">❌</div><div class="empty-state-title">Failed to load</div><div class="empty-state-desc">${escapeHtml(error.message)}</div></div>`;
   }
 }
@@ -1790,17 +2007,22 @@ async function reembedCurrentExperience() {
 }
 
 async function deleteCurrentExperience() {
-  if (!selectedExperienceId) return;
+  if (!selectedExperienceId || reflectionState.operation) return;
+  const requestMode = api.mode;
+  const experienceId = selectedExperienceId;
   
   if (!confirm('Are you sure you want to delete this experience?')) return;
   
   try {
-    await api.deleteExperience(selectedExperienceId);
+    await api.deleteExperience(experienceId, { mode: requestMode });
+    if (api.mode !== requestMode) return;
     showToast('Experience deleted', 'success');
     closeAllModals();
     await loadAllExperiencesForCounts();
     await loadExperiences();
+    await loadReflectionQueue({ offset: reflectionState.offset, query: reflectionState.query });
   } catch (error) {
+    if (api.mode !== requestMode) return;
     showToast(`Failed to delete: ${error.message}`, 'error');
   }
 }
@@ -2097,6 +2319,8 @@ async function handleSearch(e) {
   } else if (currentTab === 'feedback') {
     feedbackData = filterFeedbackByQuery(allFeedbackData, query);
     renderFeedback();
+  } else if (currentTab === 'reflection') {
+    await loadReflectionQueue({ query });
   }
 }
 

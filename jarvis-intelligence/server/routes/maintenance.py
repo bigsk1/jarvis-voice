@@ -17,28 +17,55 @@ maintenance_bp = Blueprint('maintenance', __name__, url_prefix='/api/maintenance
 
 @maintenance_bp.route('/reflect', methods=['POST'])
 def trigger_reflection():
-    """Trigger reflection processing"""
+    """Synchronously process a bounded global batch or explicit pending queue IDs."""
+    from reflection_review import ReflectionBusy
+
     try:
         mode = request.args.get('mode', 'cloud')
-        batch_size = request.args.get('batch_size', 5, type=int)
-        
+        if mode not in {'cloud', 'local'}:
+            raise ValueError('mode must be cloud or local')
+        batch_size = int(request.args.get('batch_size', '5'))
+        if not 1 <= batch_size <= 20:
+            raise ValueError('batch_size must be between 1 and 20')
+        body = request.get_json(silent=True) if request.is_json else {}
+        if body is None or not isinstance(body, dict):
+            raise ValueError('request body must be a JSON object')
+        if 'reflection_id' in body and 'reflection_ids' in body:
+            raise ValueError('use reflection_id or reflection_ids, not both')
+        single = 'reflection_id' in body
+        ids = [body['reflection_id']] if single else body.get('reflection_ids')
+        if 'reflection_ids' in body or single:
+            if (not isinstance(ids, list) or not 1 <= len(ids) <= 5
+                    or any(isinstance(value, bool) or not isinstance(value, int) or value < 1
+                           for value in ids)
+                    or len(set(ids)) != len(ids)):
+                raise ValueError('reflection_ids must contain 1 to 5 unique positive queue IDs')
+
         from config_loader import config_scope
         from intelligence import get_intelligence_layer
-        
+
         async def do_reflect():
             with config_scope(mode):
                 intel = get_intelligence_layer(mode)
                 if not intel:
-                    return 0
-                return await intel.process_reflection_queue(batch_size=batch_size)
-        
-        processed = asyncio.run(do_reflect())
-        
-        return jsonify({
-            'ok': True,
-            'processed': processed,
-            'message': f'Processed {processed} pending reflections'
-        })
+                    return None
+                return await intel.process_reflection_queue_detailed(
+                    batch_size=batch_size, reflection_ids=ids)
+
+        result = asyncio.run(do_reflect())
+        if result is None:
+            return jsonify({'ok': False, 'error': 'Intelligence layer not available'}), 503
+        if single and result['outcomes'][0]['status'] == 'skipped':
+            reason = result['outcomes'][0].get('reason')
+            if reason != 'missing_experience':
+                status = 404 if reason == 'missing' else 409
+                return jsonify({'ok': False, 'error': reason, **result}), status
+        return jsonify({'ok': True, **result,
+                        'message': f"Processed {result['processed']} pending reflections"})
+    except ReflectionBusy as e:
+        return jsonify({'ok': False, 'error': str(e)}), 409
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 

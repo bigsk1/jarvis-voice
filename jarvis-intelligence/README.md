@@ -59,13 +59,56 @@ http://localhost:5003
 - Re-embed after edits
 
 ### 🔄 Reflection Tab
-- View pending reflection queue
-- Trigger reflection processing
+- Scan compact pending rows with the user request, source, local time, tools,
+  and priority; expand a row for the full request and one **Recorded answer**
+- Search pending reflections and page through the complete queue
+- Process one entry, the next five by priority, or up to twenty in groups of five
+- Discard one pending reflection or use **☢️ Clear All** while retaining experiences
 - View meta-knowledge findings:
   - Blind spots
   - Over-generalizations
   - Learning quality issues
 - Run meta-cognition analysis
+
+The source label identifies the entry point: Web, Voice, CLI, API, or Scheduled
+task. Dashboard terminal commands use the CLI entry point. Older records without
+reliable provenance show **Unknown source**; a stored Web conversation ID can establish
+Web linkage. A session ID alone does not establish voice or CLI.
+
+The expanded row shows the original request and one recorded answer, preferring
+the saved raw response and falling back to the existing response text. Saved
+excerpts are labeled. **Open experience** opens the existing Experience viewer
+for deeper inspection; the queue does not duplicate logs or diagnostic panels.
+Recognized legacy routing wrappers are removed for display without rewriting
+historical records or embeddings.
+
+Web Completion Guard repair calls retain the original user request and Web
+source, while their existing learning-disabled policy prevents extra repair
+experiences. Explicit workflow commands retain their existing recording bypass.
+
+Only the original request and source are added to new experience metadata.
+The queue does not collect extra conversation snapshots, tool payloads or
+attachment excerpts, or add them to the reflection prompt. Priority controls
+queue order rather than confidence in an insight.
+
+Batch processing uses the selected mode's priority queue, including while search
+is active. **Process 20** runs at most four requests of five, with progress and a
+stop between groups. Each experience still gets its own reflection call. A
+failure remains pending and is not repeatedly retried during the same run.
+It keeps its priority and may be retried by a later click. Orphan queue entries
+whose experiences no longer exist are settled without a model call and do not
+consume an implicit batch slot. **Process one** reports such an entry as skipped.
+Stopping or switching modes does not cancel an active model call; it prevents
+subsequent groups from starting. Completed reflections remain saved.
+
+Processing and discarding are explicit actions. Opening or expanding the queue
+does not run the reflection model. Discarding removes only pending queue entries;
+experience deletion remains a separate action in the Experience detail view.
+Dashboard and main API processing, pending-entry cancellation and dashboard
+experience deletion coordinate through the same database-side file lock. Busy
+requests return HTTP 409; a worker exit releases the lock. This covers runtime
+routes; offline cleanup, destructive sync and database restoration still require
+exclusive operator access.
 
 ### 📈 Stats Tab
 - Experience totals and success rates
@@ -130,9 +173,12 @@ the canonical Intelligence schema owner before serving requests.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/stats` | Comprehensive statistics |
-| GET | `/api/stats/reflection-queue` | Pending reflections |
+| GET | `/api/stats/reflection-queue` | Searchable, paginated pending reflections and total counts |
+| GET | `/api/stats/reflection-queue/<id>` | Review the full request and one recorded answer |
+| DELETE | `/api/stats/reflection-queue/<id>` | Discard one pending reflection, retaining its experience |
+| DELETE | `/api/stats/reflection-queue` | Clear pending reflections in the selected mode |
 | GET | `/api/stats/meta-knowledge` | Meta-knowledge findings |
-| POST | `/api/maintenance/reflect?batch_size=5` | Process reflections |
+| POST | `/api/maintenance/reflect?batch_size=5` | Process a priority chunk (1–20), JSON `reflection_id`, or JSON `reflection_ids` (up to five queue IDs) |
 | POST | `/api/maintenance/decay` | Run decay job |
 | POST | `/api/maintenance/anomaly` | Run anomaly detection |
 | POST | `/api/maintenance/meta-cognition` | Run meta-cognition |

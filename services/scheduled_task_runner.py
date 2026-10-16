@@ -91,7 +91,9 @@ def _run_query_task(mode: str, query: str) -> dict:
 
         orch = Orchestrator(mode)
         from lib.background_tasks.admission import reject_background_result
-        return reject_background_result(orch.process(query))
+        return reject_background_result(orch.process(
+            query, original_query=query, request_source='scheduled',
+        ))
 
 
 def _run_workflow_task(mode: str, workflow_id: str, query: str | None = None) -> dict:

@@ -2169,6 +2169,8 @@ Previous structured data:
 
             result = orchestrator.process(
                 repair_prompt,
+                original_query=record.get('query', ''),
+                request_source='web',
                 tool_policy=repair_tool_policy,
                 # A fresh repair request must not replay an earlier reminder mutation.
                 allowed_tools=(
@@ -4677,6 +4679,8 @@ Previous structured data:
             with config_override_scope(feedback_overrides):
                 result = orchestrator.process(
                     enhanced_message,
+                    original_query=original_user_message,
+                    request_source='web',
                     conversation_history=conversation_history,
                     excluded_tools=blocked_tools,
                     tool_overrides=tool_overrides if tool_overrides else None,

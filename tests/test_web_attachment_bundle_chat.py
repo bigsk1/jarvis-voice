@@ -135,6 +135,8 @@ def test_two_pdfs_and_text_are_saved_routed_and_restored_in_order(journey):
     journey.process()
     assert len(journey.routes) == 1
     prompt, kwargs = journey.routes[0]
+    assert kwargs['request_source'] == 'web'
+    assert kwargs['original_query'] == 'Compare these sources.'
     positions = [prompt.index(source['stash_ref']) for source in sources]
     assert positions == sorted(positions)
     assert 'Source 3: source.pdf' in prompt

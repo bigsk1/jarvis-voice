@@ -128,7 +128,10 @@ def test_agent_flags_keep_stdin_literal_and_mode_context_tools_explicit(runner, 
     assert observed['request'] == request
     assert observed['mode'] == observed['active_mode'] == 'local'
     assert observed['context'] == 'false'
-    assert observed['options'] == {'excluded_tools': ['generate_video', 'send_email'], 'tool_policy': 'none'}
+    assert observed['options'] == {
+        'excluded_tools': ['generate_video', 'send_email'], 'tool_policy': 'none',
+        'original_query': request, 'request_source': 'cli',
+    }
     assert json.loads(capfd.readouterr().out)['ok']
 
 
@@ -160,6 +163,17 @@ def test_prompt_path_cannot_escape_prompt_directory(tmp_path):
     assert cli._prompt_text('personal/test', tmp_path) == 'Brief answers.'
     with pytest.raises(ValueError):
         cli._prompt_text('../private', tmp_path)
+
+
+@pytest.mark.parametrize('source', ['cli', 'voice'])
+def test_request_provenance_preserves_original_before_saved_prompt(runner, monkeypatch, capfd, source):
+    run, observed, _ = runner
+    monkeypatch.setattr(cli, '_prompt_text', lambda _name: 'Application guidance only.')
+    assert run(['Which one?', '--prompt', 'sample', '--request-source', source]) == 0
+    assert observed['options']['original_query'] == 'Which one?'
+    assert observed['options']['request_source'] == source
+    assert 'Application guidance only.' in observed['request']
+    capfd.readouterr()
 
 
 def test_launcher_selects_production_venv_and_preserves_arguments_from_any_directory(tmp_path):
@@ -225,6 +239,7 @@ def test_voice_wrapper_speaks_structured_failure_before_returning_nonzero(tmp_pa
 case "$1" in
  */orchestrator_v2.py)
    [[ " $* " == *" --voice-progress "* ]] || exit 2
+   [[ " $* " == *" --request-source voice "* ]] || exit 2
    printf '%s\\n' '{"ok":false,"speech":"The fixture provider is unavailable."}'
    exit 1 ;;
  */tts-normalize.py) printf '%s\\n' "$2" ;;
