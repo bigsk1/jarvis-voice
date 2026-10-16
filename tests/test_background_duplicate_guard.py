@@ -82,6 +82,7 @@ def test_accepted_exact_duplicate_is_blocked_before_admission(routing, monkeypat
     assert len(routing.dispatches) == 1
     assert len(routing.store.conversation_jobs()) == 1
     assert len(result["pending_jobs"]) == 1
+    assert result["data"]["pending_jobs"] == result["pending_jobs"]
     assert result["tools_used"] == []
     assert result["tool_trace"][0]["ok"] is None
     assert result["tool_trace"][0]["result_kind"] == "background_admission"

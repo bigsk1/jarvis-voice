@@ -1344,7 +1344,6 @@ Mode: {self.mode}
         
         return result
     
-    @carry_pending_jobs
     def _reminder_response_speech(
         self, conversation_context: list[dict], router_commentary: str = ""
     ) -> str | None:
@@ -1403,6 +1402,7 @@ Mode: {self.mode}
             receipts.append(router_commentary)
         return " ".join(receipts).strip() or None
 
+    @carry_pending_jobs
     def process(self, transcript: str, retry_count: int = 0, error_context: str = None,
                 conversation_history: list = None, excluded_tools: list = None,
                 tool_overrides: dict[str, dict] | None = None,
