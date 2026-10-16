@@ -13,10 +13,12 @@
   --bg-input: #16161f;
   
   /* Accent colors */
-  --accent-primary: #6366f1;
-  --accent-secondary: #8b5cf6;
-  --accent-tertiary: #a78bfa;
-  --accent-glow: rgba(99, 102, 241, 0.3);
+  --accent-primary: #1a43828c;
+  --accent-rgb: 26, 67, 130;
+  --accent-secondary: var(--accent-primary);
+  /* Opaque accent for readable text and icons on dark surfaces. */
+  --accent-tertiary: #8baad6;
+  --accent-glow: rgba(var(--accent-rgb), 0.3);
   
   /* Status colors */
   --success: #10b981;

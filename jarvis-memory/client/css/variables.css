@@ -12,11 +12,11 @@
   --bg-hover: #252532;
   --bg-input: #16161f;
   
-  /* Accent colors - Brain/Memory theme (purple-cyan) */
-  --accent-primary: #8b5cf6;
+  /* Accent colors - blue-cyan */
+  --accent-primary: #1a43828c;
   --accent-secondary: #06b6d4;
-  --accent-tertiary: #a78bfa;
-  --accent-glow: rgba(139, 92, 246, 0.3);
+  --accent-tertiary: var(--accent-primary);
+  --accent-glow: var(--accent-primary);
   
   /* Status colors */
   --success: #10b981;

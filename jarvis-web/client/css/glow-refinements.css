@@ -376,17 +376,17 @@
 
 /* User messages get depth, not glow */
 .message.user .message-bubble {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.68) 0%, var(--accent-primary) 100%);
   border: none;
   box-shadow: 
     var(--shadow-depth-md),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);  /* Inner highlight only */
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);  /* Inner highlight only */
 }
 
 .message.user .message-bubble:hover {
   box-shadow: 
     var(--shadow-depth-lg),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   transform: translateY(-1px);
 }
 
@@ -496,15 +496,15 @@ body::after {
   border-left-color: rgba(148, 163, 184, 0.7);
 }
 
-/* Feedback tool cards - purple accent */
+/* Feedback tool cards - blue accent */
 .tool-card.feedback {
-  border-left: 3px solid rgba(139, 92, 246, 0.5);
+  border-left: 3px solid rgba(var(--accent-rgb), 0.5);
 }
 
 .tool-card.feedback:hover {
-  border-left-color: rgba(139, 92, 246, 0.7);
+  border-left-color: rgba(var(--accent-rgb), 0.7);
   box-shadow: 
-    -2px 0 8px rgba(139, 92, 246, 0.1),
+    -2px 0 8px rgba(var(--accent-rgb), 0.1),
     var(--shadow-depth-md);
 }
 

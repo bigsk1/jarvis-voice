@@ -201,7 +201,7 @@ body {
 
 .sidebar-tab.active {
   background: var(--bg-tertiary);
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
 }
 
 .sidebar-content {
@@ -516,7 +516,7 @@ button.tool-item:focus-visible {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-secondary);
-  opacity: 0.6;
+  opacity: 0.85;
   z-index: 10;
   transition: opacity 0.2s ease;
   pointer-events: auto;
@@ -537,7 +537,7 @@ button.tool-item:focus-visible {
 }
 
 .token-cost {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
   margin-left: var(--space-xs);
 }
 
@@ -653,7 +653,7 @@ button.tool-item:focus-visible {
 }
 
 .message-response-action-btn.selected {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
   background: transparent;
 }
 
@@ -707,7 +707,7 @@ button.tool-item:focus-visible {
   border: 1px solid var(--border-primary);
   border-radius: 14px;
   background:
-    radial-gradient(circle at 80% 10%, rgba(99, 102, 241, 0.24), transparent 35%),
+    radial-gradient(circle at 80% 10%, rgba(var(--accent-rgb), 0.24), transparent 35%),
     linear-gradient(145deg, var(--bg-tertiary), var(--bg-secondary));
   color: var(--text-primary);
   text-decoration: none;
@@ -736,7 +736,7 @@ button.tool-item:focus-visible {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--accent-secondary);
+  color: var(--accent-tertiary);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1027,7 +1027,7 @@ button.tool-item:focus-visible {
 }
 .details-content pre .content-link:hover,
 .tool-card-body .content-link:hover {
-  color: var(--accent-secondary);
+  color: var(--accent-tertiary);
 }
 
 .message-details.collapsed .details-content {
@@ -1276,9 +1276,9 @@ button.tool-item:focus-visible {
   min-width: 1.35rem;
   height: 1.2rem;
   padding: 0 0.32rem;
-  border: 1px solid rgba(99, 102, 241, 0.42);
+  border: 1px solid rgba(var(--accent-rgb), 0.42);
   border-radius: 5px;
-  background: rgba(99, 102, 241, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
   color: var(--accent-tertiary);
   font-family: var(--font-mono);
   font-size: 0.72rem;
@@ -1291,7 +1291,7 @@ button.tool-item:focus-visible {
 .composer-hint-key:hover,
 .composer-hint-key:focus-visible {
   border-color: var(--accent-secondary);
-  background: rgba(99, 102, 241, 0.24);
+  background: rgba(var(--accent-rgb), 0.24);
   color: var(--text-primary);
   outline: none;
 }
@@ -1360,9 +1360,9 @@ button.tool-item:focus-visible {
 .tool-hint-chip {
   gap: 2px;
   padding: 0 4px 0 var(--space-sm);
-  background: rgba(99, 102, 241, 0.14);
-  border: 1px solid rgba(99, 102, 241, 0.45);
-  color: var(--accent-secondary);
+  background: rgba(var(--accent-rgb), 0.14);
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  color: var(--accent-tertiary);
 }
 
 .chat-only-chip {
@@ -1396,7 +1396,7 @@ button.tool-item:focus-visible {
 }
 
 .tool-hint-remove:hover {
-  background: rgba(99, 102, 241, 0.22);
+  background: rgba(var(--accent-rgb), 0.22);
   color: var(--text-primary);
 }
 
@@ -1415,7 +1415,7 @@ button.tool-item:focus-visible {
 
 .ambient-tool-chip:hover {
   border-color: var(--accent-secondary);
-  color: var(--accent-secondary);
+  color: var(--accent-tertiary);
   background: var(--bg-hover);
 }
 
@@ -1605,14 +1605,14 @@ button.tool-item:focus-visible {
 }
 
 .feedback-btn.active {
-  background: rgba(139, 92, 246, 0.2);
-  color: #a78bfa;
-  border-color: rgba(139, 92, 246, 0.5);
+  background: rgba(var(--accent-rgb), 0.2);
+  color: var(--accent-tertiary);
+  border-color: rgba(var(--accent-rgb), 0.5);
   opacity: 1;
 }
 
 .feedback-btn.active:hover {
-  background: rgba(139, 92, 246, 0.3);
+  background: rgba(var(--accent-rgb), 0.3);
 }
 
 .feedback-btn:disabled,
@@ -1625,17 +1625,17 @@ button.tool-item:focus-visible {
 
 /* Feedback badge on user message */
 .badge-feedback {
-  background: rgba(139, 92, 246, 0.2);
-  color: #a78bfa;
+  background: rgba(var(--accent-rgb), 0.2);
+  color: var(--accent-tertiary);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   font-size: 0.75em;
 }
 
-/* Feedback tool card - purple accent */
+/* Feedback tool card - blue accent */
 .tool-card.feedback {
-  border-left: 3px solid rgba(139, 92, 246, 0.5);
-  background: linear-gradient(135deg, var(--bg-tertiary) 0%, rgba(139, 92, 246, 0.05) 100%);
+  border-left: 3px solid rgba(var(--accent-rgb), 0.5);
+  background: linear-gradient(135deg, var(--bg-tertiary) 0%, rgba(var(--accent-rgb), 0.05) 100%);
 }
 
 .tool-card.feedback .tool-card-title::before {
@@ -1643,16 +1643,16 @@ button.tool-item:focus-visible {
 }
 
 .tool-card.feedback.pending .tool-card-status {
-  color: #a78bfa;
+  color: var(--accent-tertiary);
 }
 
 .tool-card.feedback.success {
-  border-left-color: rgba(139, 92, 246, 0.7);
+  border-left-color: rgba(var(--accent-rgb), 0.7);
 }
 
 .tool-card.feedback.success:hover {
   box-shadow: 
-    -2px 0 8px rgba(139, 92, 246, 0.15),
+    -2px 0 8px rgba(var(--accent-rgb), 0.15),
     var(--shadow-depth-md);
 }
 
@@ -1927,10 +1927,10 @@ button.tool-item:focus-visible {
 
 @keyframes speaker-pulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4);
+    box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.4);
   }
   50% {
-    box-shadow: 0 0 0 8px rgba(139, 92, 246, 0);
+    box-shadow: 0 0 0 8px rgba(var(--accent-rgb), 0);
   }
 }
 
@@ -2121,8 +2121,8 @@ button.tool-item:focus-visible {
   height: 26px;
   flex: 0 0 26px;
   overflow: visible;
-  filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.55))
-          drop-shadow(0 0 11px rgba(139, 92, 246, 0.3));
+  filter: drop-shadow(0 0 4px rgba(var(--accent-rgb), 0.55))
+          drop-shadow(0 0 11px rgba(var(--accent-rgb), 0.3));
   transition: filter 0.5s ease;
 }
 
@@ -2248,8 +2248,8 @@ button.tool-item:focus-visible {
 
 /* Phase: working — fast spin, comet tail stretches, glow intensifies */
 .thinking-indicator[data-phase="working"] .processing-glyph {
-  filter: drop-shadow(0 0 5px rgba(99, 102, 241, 0.75))
-          drop-shadow(0 0 14px rgba(139, 92, 246, 0.45));
+  filter: drop-shadow(0 0 5px rgba(var(--accent-rgb), 0.75))
+          drop-shadow(0 0 14px rgba(var(--accent-rgb), 0.45));
 }
 
 .thinking-indicator[data-phase="working"] .processing-glyph__orbit--outer {
@@ -2416,7 +2416,7 @@ button.tool-item:focus-visible {
 
 /* Progress status messages (instant tool/routing updates) */
 .progress-status-message {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.1), rgba(var(--accent-rgb), 0.1));
   border: 1px dashed var(--accent-primary);
   border-left: 3px solid var(--accent-primary);
   padding: var(--space-xs) var(--space-md);
@@ -2443,7 +2443,7 @@ button.tool-item:focus-visible {
 
 .progress-text {
   font-size: var(--text-sm);
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
   font-weight: 500;
 }
 
@@ -2664,7 +2664,7 @@ button.tool-item:focus-visible {
 
 .structured-results-action,
 .structured-result-link {
-  color: var(--accent-primary, #8ec5ff);
+  color: var(--accent-tertiary, #8ec5ff);
   font-weight: 600;
   text-decoration: none;
 }
@@ -2945,7 +2945,7 @@ button.tool-item:focus-visible {
   border: 1px solid var(--accent-primary, #8ec5ff);
   border-radius: 8px;
   background: transparent;
-  color: var(--accent-primary, #8ec5ff);
+  color: var(--accent-tertiary, #8ec5ff);
   font: inherit;
   font-size: 0.8rem;
   font-weight: 700;
@@ -3162,7 +3162,7 @@ button.tool-item:focus-visible {
 }
 
 .product-preview-link {
-  color: var(--accent-primary, #8ec5ff);
+  color: var(--accent-tertiary, #8ec5ff);
   text-decoration: none;
   font-weight: 600;
 }
@@ -3238,7 +3238,7 @@ button.tool-item:focus-visible {
 
 .message-audio .audio-open-link,
 .message-audio .audio-download-link {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
   font-weight: 600;
   text-decoration: none;
 }
@@ -3365,7 +3365,7 @@ button.tool-item:focus-visible {
 }
 
 .video-action-btn:hover {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
   background: var(--bg-secondary);
 }
 
@@ -3390,7 +3390,7 @@ button.tool-item:focus-visible {
 
 .file-download-link:hover {
   background: var(--bg-secondary);
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
 }
 
 .file-icon {
@@ -3539,7 +3539,7 @@ button.tool-item:focus-visible {
 }
 
 .lightbox-close:hover {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
 }
 
 .lightbox-actions {
@@ -4401,7 +4401,7 @@ button.tool-item:focus-visible {
 
 .profile-version-link:hover,
 .profile-version-link:focus-visible {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
   text-decoration: underline;
   text-underline-offset: 3px;
   text-shadow: 0 0 12px color-mix(in srgb, var(--accent-primary) 35%, transparent);
@@ -4812,7 +4812,7 @@ button.tool-item:focus-visible {
 }
 
 .settings-tab.active {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
   background: var(--bg-tertiary);
 }
 
@@ -5017,7 +5017,7 @@ button.tool-item:focus-visible {
 .prompt-hint-chip {
   padding: 1px 6px;
   background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
   font-family: var(--font-mono);
 }
 
@@ -5059,7 +5059,7 @@ button.tool-item:focus-visible {
 }
 
 .prompt-name-field > span {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
   font-family: var(--font-mono);
   font-weight: 700;
 }
@@ -5205,13 +5205,13 @@ button.tool-item:focus-visible {
   text-align: right;
   font-family: var(--font-mono);
   font-size: var(--text-sm);
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
 }
 
 .setting-desc {
   display: block;
   font-size: var(--text-xs);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   margin-top: var(--space-xs);
 }
 
@@ -5219,13 +5219,13 @@ button.tool-item:focus-visible {
   display: block;
   min-height: 1.2em;
   margin-top: var(--space-xs);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: var(--text-xs);
 }
 
 .setting-default {
   font-size: var(--text-xs);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-weight: normal;
   margin-left: var(--space-sm);
 }
@@ -5239,7 +5239,7 @@ button.tool-item:focus-visible {
 }
 
 .setting-override {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
 }
 
 .setting-override::before {
@@ -6571,7 +6571,7 @@ button.tool-item:focus-visible {
 }
 
 .user-video-attachment .video-actions a {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
   font-weight: 600;
 }
 
@@ -6739,7 +6739,7 @@ button.tool-item:focus-visible {
 .autocomplete-name {
   font-weight: 600;
   font-family: var(--font-mono);
-  color: var(--accent-secondary);
+  color: var(--accent-tertiary);
   min-width: 100px;
 }
 
@@ -6800,7 +6800,7 @@ button.tool-item:focus-visible {
 }
 
 .tooltip-step-num {
-  color: var(--accent-primary);
+  color: var(--accent-tertiary);
   font-weight: 600;
   min-width: 16px;
 }
@@ -6818,11 +6818,11 @@ button.tool-item:focus-visible {
 
 /* Prompt tooltip specific styles */
 .prompt-tooltip .tooltip-header {
-  color: var(--accent-secondary, #9b59b6);
+  color: var(--accent-tertiary, #8baad6);
 }
 
 .prompt-tooltip .tooltip-step-num {
-  color: var(--accent-secondary, #9b59b6);
+  color: var(--accent-tertiary, #8baad6);
 }
 
 .tool-tooltip .tooltip-header {
@@ -6934,10 +6934,10 @@ button.tool-item:focus-visible {
   background: var(--bg-primary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  color: var(--text-muted);
+  color: var(--text-primary);
   cursor: pointer;
   transition: all var(--transition-fast);
-  opacity: 0.6;
+  opacity: 1;
 }
 
 .log-source-btn:hover {
@@ -6959,7 +6959,7 @@ button.tool-item:focus-visible {
 }
 
 .log-scroll-btn[data-enabled="true"] {
-  color: var(--accent-secondary);
+  color: var(--accent-tertiary);
 }
 
 .log-scroll-btn[data-enabled="false"] {
@@ -7018,7 +7018,7 @@ button.tool-item:focus-visible {
   text-align: center;
 }
 
-.log-source-llm { background: rgba(139, 92, 246, 0.2); color: #a78bfa; }
+.log-source-llm { background: rgba(var(--accent-rgb), 0.2); color: var(--accent-tertiary); }
 .log-source-tool { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
 .log-source-workflow { background: rgba(0, 217, 255, 0.2); color: #00d9ff; }
 .log-source-opencode { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
@@ -7096,12 +7096,12 @@ button.tool-item:focus-visible {
 }
 
 .log-panel-resize:hover {
-  background: linear-gradient(transparent, rgba(139, 92, 246, 0.3));
+  background: linear-gradient(transparent, rgba(var(--accent-rgb), 0.3));
 }
 
 /* Highlight new entries */
 @keyframes logHighlight {
-  from { background: rgba(139, 92, 246, 0.3); }
+  from { background: rgba(var(--accent-rgb), 0.3); }
   to { background: transparent; }
 }
 

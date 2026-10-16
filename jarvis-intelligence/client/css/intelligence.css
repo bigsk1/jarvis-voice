@@ -142,7 +142,7 @@ body {
 }
 
 .nav-tab.active {
-  background: var(--accent-primary);
+  background: #1a43828c;
   color: white;
 }
 
@@ -252,7 +252,7 @@ body {
 }
 
 .filter-item.active {
-  background: var(--accent-primary);
+  background: #1a43828c;
   color: white;
 }
 
@@ -419,7 +419,7 @@ body {
 }
 
 .btn-primary {
-  background: var(--accent-primary);
+  background: #1a43828c;
   color: white;
 }
 
