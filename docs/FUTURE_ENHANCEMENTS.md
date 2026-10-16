@@ -901,6 +901,59 @@ receipts. See [Google Calendar sync](n8n/docs/GOOGLE_CALENDAR_SYNC.md).
 
 ---
 
+### 17) JPEG XL Support Through the Existing Image Conversion Path
+
+**Priority:** Low / potential feature
+**Status:** Proposed (2026-10-15); dependency compatibility must be established before implementation
+
+Add `.jxl` input and output to `convert_file` through its existing ImageMagick
+image-conversion path. JPEG XL is a candidate for efficient high-quality and
+lossless image storage; compare representative images at matched quality before
+claiming savings over WebP.
+
+[ImageMagick supports JPEG XL reading and writing](https://imagemagick.org/formats/)
+when built with the JPEG XL delegate library. Having ImageMagick installed, or
+installing a codec runtime separately, does not establish that the selected
+ImageMagick executable can read and write JXL.
+
+**Dependency and installation gate:**
+
+- Keep the same image-conversion backend and integration used by existing
+  conversions. Do not introduce a dedicated FFmpeg route merely because a
+  developer machine's FFmpeg build already supports JXL.
+- A compatible upgrade to the existing packaged library/backend is acceptable
+  if normal supported package installation supplies JXL support. Check existing
+  conversions, Python dependencies, native installation, and Docker for conflicts.
+- Deliver any dependency change through the maintained installer/package and
+  Docker paths. A user cloning the repo must not need another manual setup
+  step, codec command, service, or account to use the feature.
+- Skip/defer the feature if it requires custom source compilation, build tooling,
+  manual standalone binary downloads, a special ImageMagick build, or extra
+  user provisioning. Do not add these as fallback installation instructions.
+- Verify JXL read/write capability in the actual supported native and container
+  builds; do not assume parity from a version number or one developer host.
+  An unsupported installation must keep existing conversions working and report
+  the missing capability without downloading or building anything at runtime.
+
+**Potential scope once that gate passes:**
+
+- Begin with single-frame conversion to/from JXL, clear lossless/lossy options,
+  and verified transparency behavior; explicitly reject unsupported animation.
+- Preserve the established resize, metadata, Stash, follow-up, foreground, and
+  background conversion contracts. Do not silently expand background removal
+  or vision support just because conversion accepts another format.
+- Update the manifest, format selector/upload handling, `image/jxl` delivery,
+  and foreground/background result cards. Keep a usable download when the
+  browser cannot preview JXL.
+- Add focused round-trip, alpha, missing-codec, option, and artifact-delivery
+  coverage, plus native/Docker checks for regressions in existing formats.
+
+**Likely files:** `skills/convert_file.py`, `skills/convert_file.tool.json`,
+Web conversion controls/result renderers and Stash routes, dependency/setup
+definitions, `Dockerfile`, and conversion/background tests.
+
+---
+
 ## 📊 Implementation Priority
 
 **High Priority (Next Sprint):**
@@ -930,6 +983,8 @@ receipts. See [Google Calendar sync](n8n/docs/GOOGLE_CALENDAR_SYNC.md).
 - Native helper LLM execution-tier extensions, after per-role evaluation
 - Streaming and atomic Stash ingestion, if large or concurrent workloads create measured pressure
 - Conditional write-through mirroring for alerts and reminders, only if seamless mode switching becomes necessary
+- JPEG XL conversion, only through the existing image backend with compatible
+  packaged dependencies and no additional user setup
 
 ---
 
@@ -1500,5 +1555,5 @@ edited or run by the check. Source: `jarvis-memory/client/js/app.js` and
 
 ---
 
-**Last Updated:** October 12, 2026
-**Version:** 2.15 (Resolved Scheduled Tasks UI follow-ups)
+**Last Updated:** October 15, 2026
+**Version:** 2.16 (JPEG XL conversion candidate and installation constraints)
