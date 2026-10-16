@@ -244,7 +244,7 @@ print(json.dumps({"ok": True, "speech": "The foreground clock returned.", "data"
             lease.release()
 
 
-def test_background_receipt_hint_only_when_active_profile_has_selected_tool(web_tasks):
+def test_background_context_is_gated_without_wrapping_user_request_in_receipt_policy(web_tasks):
     h = web_tasks
     (h.root / 'foreground_finish').touch()
 
@@ -255,8 +255,9 @@ def test_background_receipt_hint_only_when_active_profile_has_selected_tool(web_
         return str(h.instances[-1].route_inputs[0])
 
     enabled_prompt = send_foreground(1)
-    assert 'A background acceptance receipt confirms admission, not completion.' in enabled_prompt
+    assert 'background acceptance receipt' not in enabled_prompt
     assert 'Saved Web settings enable background execution for these tools' not in enabled_prompt
+    assert h.instances[-1].background_context.selected == ('fixture',)
 
     # Saved permission alone is not enough if the active profile omits its tool.
     registry = h.background.registry

@@ -94,6 +94,14 @@ _CHAT_ONLY_SYSTEM_POLICY = (
     "- Answer directly from the conversation context and your existing knowledge.\n"
     "- Do not emit a tool call. If current or external information is required, say that it cannot be fetched in Chat only mode."
 )
+_BACKGROUND_RECEIPT_SYSTEM_POLICY = (
+    "A background acceptance receipt confirms admission, not completion. "
+    "Its job_id identifies the Jarvis queue entry, not a provider task. "
+    "Do not pass it to a remote tool for job, status or collect. "
+    "Provider task IDs and output references arrive separately. "
+    "Continue independent work; acknowledge queued work when its result is needed. "
+    "Do not repeat the accepted call or rely on its result until it arrives separately."
+)
 
 
 def _web_search_tool_names(registry: ToolRegistry, excluded_tools: set[str]) -> list[str]:
@@ -1174,7 +1182,7 @@ Rules:
                 "confidence": float
             }
         """
-        from lib.background_tasks.admission import background_only_exclusions
+        from lib.background_tasks.admission import WebTaskContext, background_only_exclusions
         chat_only = tool_policy == "none"
         required_exclusions = set() if chat_only else background_only_exclusions(self.registry, background_context)
         excluded_tools = sorted(set(excluded_tools or []) | required_exclusions)
@@ -1213,6 +1221,12 @@ Rules:
                 provider_shape=provider_shape,
                 responses_continuation_payload_items=0,
             )
+        # Keep this stable rule ahead of the composed prompt's changing clock/context.
+        # Native continuations inherit the initial system message and deliberately pass None here.
+        if (provider_system_prompt is not None and not chat_only
+                and isinstance(background_context, WebTaskContext) and background_context.selected
+                and _BACKGROUND_RECEIPT_SYSTEM_POLICY not in provider_system_prompt):
+            provider_system_prompt = "\n\n".join((_BACKGROUND_RECEIPT_SYSTEM_POLICY, provider_system_prompt))
         if chat_only:
             provider_system_prompt = "\n\n".join(
                 part for part in (provider_system_prompt, _CHAT_ONLY_SYSTEM_POLICY) if part

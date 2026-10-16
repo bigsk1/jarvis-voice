@@ -1,15 +1,20 @@
-"""Web search availability is a prompt hint, not a routing preference."""
+"""Conditional routing policies stay in system instructions, separate from user input."""
 
 import sys
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
 sys.path.insert(0, str(ROOT / "orchestrator"))
 
 from config_loader import config_scope  # noqa: E402
+from lib.background_tasks.admission import WebTaskContext  # noqa: E402
+from router_prompts import get_router_system_prompt  # noqa: E402
 from router_v2 import LLMRouter, ProviderRouteInput, _web_search_availability_hint  # noqa: E402
 from tool_schema import ToolSchema  # noqa: E402
 
@@ -108,3 +113,100 @@ def test_router_sends_hint_without_adding_search_schemas_or_chat_only_tools():
     assert chat_only["web_search_hint_tools"] == []
     assert "Local web search tools" not in router.provider.calls[1]["system_prompt"]
     assert router.provider.calls[1]["tools"] == []
+
+
+def _background_policy_call(request, context, *, version="v4", tool_policy="auto", now=None):
+    router = LLMRouter.__new__(LLMRouter)
+    router.mode = "cloud"
+    router.registry = _Registry()
+    router.provider = _Provider()
+    router.provider_type = "test"
+    router._provider_override = "test"
+    router.model_name = "test-model"
+    router.system_prompt_version, router._system_prompt_base = get_router_system_prompt(version)
+    router.timezone = ZoneInfo("UTC")
+    router.prompt_override = None
+    with config_scope("cloud", overrides={"TOOL_RAG_TRACE_ENABLED": "false",
+                                          "JARVIS_DEFAULT_LOCATION": "Fixture City"}), \
+         patch("router_v2.append_profile_card_for_router_direct_answer", side_effect=lambda text: text), \
+         patch("router_v2._log_tool_rag_trace"), \
+         patch("thinking.should_enable_thinking", return_value=False), \
+         patch("llm_logger.get_logger"), \
+         patch("router_v2.datetime") as clock:
+        clock.now.return_value = now or datetime(2026, 10, 15, 12, tzinfo=ZoneInfo("UTC"))
+        router.route(request, background_context=context, tool_policy=tool_policy)
+    return router.provider.calls[-1]
+
+
+@pytest.mark.parametrize("version", ["v1", "v2", "v3", "v4"])
+def test_background_receipt_policy_is_system_only_for_every_prompt_version(version):
+    query = "Get the current Bitcoin price."
+    context = WebTaskContext(object(), "fixture-request", ("fixture",))
+    call = _background_policy_call(query, context, version=version)
+
+    assert call["messages"] == [{"role": "user", "content": query}]
+    assert call["system_prompt"].count("A background acceptance receipt") == 1
+    assert "job_id identifies the Jarvis queue entry, not a provider task" in call["system_prompt"]
+    assert "Do not repeat the accepted call" in call["system_prompt"]
+
+
+@pytest.mark.parametrize("context", [None, object(), WebTaskContext(object(), "fixture-request", ())])
+def test_background_receipt_policy_requires_selected_web_context(context):
+    call = _background_policy_call("Get the current Bitcoin price.", context)
+    assert "background acceptance receipt" not in call["system_prompt"]
+
+
+def test_chat_only_does_not_receive_background_receipt_policy():
+    context = WebTaskContext(object(), "fixture-request", ("fixture",))
+    call = _background_policy_call("Explain Bitcoin.", context, tool_policy="none")
+    assert "background acceptance receipt" not in call["system_prompt"]
+    assert call["tools"] == []
+
+
+@pytest.mark.parametrize("system_prompt", [None, "Fallback system instructions."])
+def test_background_receipt_policy_preserves_structural_continuation_and_text_fallback(system_prompt):
+    context = WebTaskContext(object(), "fixture-request", ("fixture",))
+    messages = [{"role": "tool", "tool_call_id": "fixture-call", "content": "queued"}]
+    request = ProviderRouteInput(
+        tool_retrieval_query="Get the current Bitcoin price.",
+        messages=messages,
+        system_prompt=system_prompt,
+        previous_response_id="fixture-response" if system_prompt is None else None,
+        continuation_mode="structural" if system_prompt is None else "text_fallback",
+    )
+    call = _background_policy_call(request, context)
+    assert call["messages"] == messages
+    if system_prompt is None:
+        assert call["system_prompt"] is None
+    else:
+        assert system_prompt in call["system_prompt"]
+        assert call["system_prompt"].count("A background acceptance receipt") == 1
+
+
+def test_background_receipt_policy_is_not_duplicated_in_a_supplied_system_prompt():
+    context = WebTaskContext(object(), "fixture-request", ("fixture",))
+    first = _background_policy_call("Get the current Bitcoin price.", context)
+    request = ProviderRouteInput(
+        tool_retrieval_query="Continue from the prior result.",
+        messages=[{"role": "user", "content": "Continue from the prior result."}],
+        system_prompt=first["system_prompt"],
+    )
+    call = _background_policy_call(request, context)
+    assert call["system_prompt"].count("A background acceptance receipt") == 1
+
+
+def test_background_receipt_policy_and_base_stay_in_the_stable_prefix_when_clock_changes():
+    context = WebTaskContext(object(), "fixture-request", ("fixture",))
+    first = _background_policy_call(
+        "Get the current Bitcoin price.", context,
+        now=datetime(2026, 10, 15, 12, tzinfo=ZoneInfo("UTC")),
+    )["system_prompt"]
+    second = _background_policy_call(
+        "Get the current Bitcoin price.", context,
+        now=datetime(2026, 10, 15, 13, tzinfo=ZoneInfo("UTC")),
+    )["system_prompt"]
+    _, base = get_router_system_prompt("v4")
+    stable_end = first.index(base.strip()) + len(base.strip())
+    assert first.startswith("A background acceptance receipt")
+    assert first[:stable_end] == second[:stable_end]
+    assert first[stable_end:] != second[stable_end:]

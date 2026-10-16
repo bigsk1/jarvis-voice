@@ -498,7 +498,6 @@ class ChatHandler:
         self,
         message: str,
         prompt_meta: dict,
-        background_tools: list[str],
         conversation_id: str,
         mode: str,
     ) -> str:
@@ -522,15 +521,6 @@ class ChatHandler:
                     tool_hints,
                     request_kind=prompt_meta.get('request_kind', ''),
                 )
-            )
-        if background_tools:
-            context_blocks.append(
-                'A background acceptance receipt confirms admission, not completion. '
-                'Its job_id identifies the Jarvis queue entry, not a provider task. '
-                'Do not pass it to a remote tool for job, status or collect. '
-                'Provider task IDs and output references arrive separately. '
-                'Continue independent work; acknowledge queued work when its result is needed. '
-                'Do not repeat the accepted call or rely on its result until it arrives separately.'
             )
         task_context = self.background_tasks.conversation_context(conversation_id, mode)
         if task_context:
@@ -4645,7 +4635,6 @@ Previous structured data:
             enhanced_message = self._build_enhanced_message(
                 message,
                 prompt_meta,
-                background_tools,
                 conversation_id,
                 mode,
             )

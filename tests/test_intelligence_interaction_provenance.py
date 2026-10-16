@@ -89,6 +89,8 @@ def test_clean_query_and_source_saved_without_new_routing_or_prior_context_captu
         assert intel.conn.execute("SELECT COUNT(*) FROM reflection_queue").fetchone()[0] == int(queue_enabled)
         routed = orch.router.route.call_args.args[0]
         assert augmented in routed and "PRIVATE_HISTORY_SENTINEL" in routed and "PRIOR_RESULT_SENTINEL" in routed
+        orch._log_conversation.assert_called_once()
+        assert orch._log_conversation.call_args.args[0] == "Which one?"
         assert result["experience_id"] > 0
     finally:
         intel.conn.close()
@@ -111,6 +113,7 @@ def test_original_query_keeps_existing_length_boundary_in_storage(tmp_path):
         routed = orch.router.route.call_args.args[0]
         assert routed.endswith("q" * 10000)
         assert "OMITTED_QUERY_SUFFIX" not in routed
+        assert orch._log_conversation.call_args.args[0] == "q" * 10000
     finally:
         intel.conn.close()
 
@@ -168,6 +171,76 @@ def test_retry_preserves_original_source_and_request_boundary(long_original):
         expected["user_query_truncated"] = True
     assert captured["query"] == original[:10000]
     assert captured["interaction"] == expected
+    orch._log_conversation.assert_called_once()
+    assert orch._log_conversation.call_args.args[0] == original[:10000]
+    for call in orch.router.route.call_args_list:
+        assert "wrapper\nUser's request: " in call.args[0]
+    assert "temporary failure" in orch.router.route.call_args.args[0]
+
+
+def test_default_query_keeps_existing_memory_logging_length_boundary():
+    orch = make_orchestrator()
+    orch.learning_enabled = False
+    query = "q" * 10000 + " OMITTED_QUERY_SUFFIX"
+    orch.process(query, tool_policy="none")
+    orch._log_conversation.assert_called_once()
+    assert orch._log_conversation.call_args.args[0] == "q" * 10000
+    assert "OMITTED_QUERY_SUFFIX" not in orch.router.route.call_args.args[0]
+
+
+@pytest.mark.parametrize(
+    "ending", ["single_call_failure", "retry_exhausted", "duplicate_guard", "routing_error", "max_turns"]
+)
+def test_terminal_paths_log_original_request_and_retain_routing_guidance(ending):
+    original = "Get the requested result."
+    augmented = "ROUTING_GUIDANCE_SENTINEL.\n\nUser's request: " + original
+    tool = {"intent": "tool", "tool_name": "get_time", "arguments": {}}
+    success = {"ok": True, "speech": "It is noon.", "data": {"time": "12:00"}}
+    failure = {"ok": False, "speech": "Could not finish.", "error": "temporary failure"}
+    routes = [tool]
+    results = [failure]
+    max_turns = 5
+    if ending == "single_call_failure":
+        routes = [{"intent": "tool", "tool_name": "generate_image", "arguments": {"prompt": "test"}}]
+    elif ending == "duplicate_guard":
+        routes = [tool] * 4
+        results = [success]
+    elif ending == "routing_error":
+        routes = [{"intent": "error", "error": "router unavailable", "text_response": "Try later."}]
+        results = []
+    elif ending == "max_turns":
+        results = [success]
+        max_turns = 1
+
+    orch = make_orchestrator(routes=routes, results=results)
+    orch.learning_enabled = False
+    orch.max_retries = 0
+    orch._synthesize_duplicate_prevented_response = Mock(return_value="Already completed.")
+    with patch("orchestrator_v2.get_config_value", side_effect=lambda key, default=None:
+               "detailed" if key == "JARVIS_RESPONSE_STYLE" else default), patch(
+        "orchestrator_v2.get_int", side_effect=lambda key, default=0:
+        max_turns if key == "MAX_TOOL_TURNS" else default,
+    ):
+        result = orch.process(augmented, original_query=original, request_source="web")
+
+    orch._log_conversation.assert_called_once()
+    logged = orch._log_conversation.call_args
+    assert logged.args[0] == original
+    assert logged.args[1] == result["speech"]
+    assert logged.kwargs["success"] is result["ok"]
+    for call in orch.router.route.call_args_list:
+        assert augmented in call.args[0]
+    if ending == "single_call_failure":
+        assert result["terminal_failure"] is True
+    elif ending == "duplicate_guard":
+        assert result["duplicate_prevented"] is True
+        assert orch.executor.execute.call_count == 1
+    elif ending == "max_turns":
+        assert result["max_turns_reached"] is True
+    elif ending == "retry_exhausted":
+        assert result["retries"] == 0
+    else:
+        assert result["error"] == "router unavailable"
 
 
 @pytest.mark.parametrize("guard", ["disabled", "background"])

@@ -1457,10 +1457,14 @@ Mode: {self.mode}
             }
         """
         original_query = transcript if original_query is None else original_query
+        conversation_query = original_query
         # SECURITY: Sanitize user input
         try:
             from security_utils import sanitize_user_input
             transcript, security_info = sanitize_user_input(transcript)
+            # Persist the human request with the existing input-length boundary;
+            # keep the raw original for Intelligence's truncation metadata.
+            conversation_query, _ = sanitize_user_input(original_query)
             
             # Log security events (don't block, but audit)
             if security_info.get("injection_detected"):
@@ -2099,7 +2103,7 @@ Mode: {self.mode}
                     completed_any_tool = bool(state.tools_used)
 
                     self._log_conversation(
-                        transcript,
+                        conversation_query,
                         final_speech,
                         state.tools_used,
                         success=completed_any_tool,
@@ -2472,7 +2476,7 @@ Mode: {self.mode}
                     if is_single_call_failure:
                         final_speech = _format_terminal_tool_failure(tool_name, error, arguments)
                         attempted_tools = list(dict.fromkeys([*state.tools_used, tool_name]))
-                        self._log_conversation(transcript, final_speech, attempted_tools, success=False)
+                        self._log_conversation(conversation_query, final_speech, attempted_tools, success=False)
                         self.status_updater.mark_complete()
                         return {
                             "speech": final_speech,
@@ -2566,7 +2570,7 @@ Mode: {self.mode}
                             final_speech = f"{friendly_error.capitalize()}."
                     
                     # Auto-log failed conversation
-                    self._log_conversation(transcript, final_speech, state.tools_used, success=False)
+                    self._log_conversation(conversation_query, final_speech, state.tools_used, success=False)
                     
                     # Mark status updates complete
                     self.status_updater.mark_complete()
@@ -2709,7 +2713,7 @@ Mode: {self.mode}
 
                 # Auto-log conversation after experience_id is known (wake-word linkage)
                 self._log_conversation(
-                    transcript,
+                    conversation_query,
                     speech,
                     state.tools_used,
                     success=True,
@@ -2731,7 +2735,7 @@ Mode: {self.mode}
                     print(f"❌ Routing error: {error}")
                 
                 # Auto-log error
-                self._log_conversation(transcript, speech, state.tools_used, success=False)
+                self._log_conversation(conversation_query, speech, state.tools_used, success=False)
                 
                 # Mark status updates complete
                 self.status_updater.mark_complete()
@@ -2767,7 +2771,7 @@ Mode: {self.mode}
         if sys.stdout.isatty():
             print(f"⚠️  Max turns ({max_turns}) reached")
         
-        self._log_conversation(transcript, final_speech, state.tools_used, success=True)
+        self._log_conversation(conversation_query, final_speech, state.tools_used, success=True)
         
         # Mark status updates complete
         self.status_updater.mark_complete()
