@@ -4,7 +4,7 @@
 
 The Intelligence Dashboard provides a web interface to monitor, inspect, and manage Jarvis's learning capabilities - including experiences, insights, reflection queue, and meta-knowledge.
 
-![jarvis-intelligence](../docs/images/jarvis-intelligence.jpg)
+![jarvis-intelligence](../docs/images/jarvis-intelligence-ui.png)
 
 ## Quick Start
 
@@ -59,6 +59,9 @@ http://localhost:5003
 - Re-embed after edits
 
 ### 🔄 Reflection Tab
+
+![Jarvis reflection queue with sample requests and source labels](../docs/images/jarvis-reflection-queue.png)
+
 - Scan compact pending rows with the user request, source, local time, tools,
   and priority; expand a row for the full request and one **Recorded answer**
 - Search pending reflections and page through the complete queue

@@ -1,0 +1,188 @@
+{
+  "/api/logs/folders": {
+    "ok": true,
+    "folders": [
+      {
+        "path": "tools",
+        "label": "tools",
+        "file_count": 24,
+        "extensions": [
+          "jsonl"
+        ],
+        "latest_modified_at": "2026-10-16T17:42:00Z",
+        "latest_file": "2026-10-16.jsonl"
+      },
+      {
+        "path": "llm",
+        "label": "llm",
+        "file_count": 18,
+        "extensions": [
+          "jsonl"
+        ],
+        "latest_modified_at": "2026-10-16T17:42:00Z",
+        "latest_file": "2026-10-16.jsonl"
+      },
+      {
+        "path": "tool-rag",
+        "label": "tool-rag",
+        "file_count": 12,
+        "extensions": [
+          "jsonl"
+        ],
+        "latest_modified_at": "2026-10-16T17:42:00Z",
+        "latest_file": "retrieval-2026-10-16.jsonl"
+      },
+      {
+        "path": "workflows",
+        "label": "workflows",
+        "file_count": 9,
+        "extensions": [
+          "jsonl",
+          "log"
+        ],
+        "latest_modified_at": "2026-10-16T17:42:00Z",
+        "latest_file": "2026-10-16.jsonl"
+      },
+      {
+        "path": "web-ui",
+        "label": "web-ui",
+        "file_count": 6,
+        "extensions": [
+          "jsonl",
+          "log"
+        ],
+        "latest_modified_at": "2026-10-16T17:42:00Z",
+        "latest_file": "events-2026-10-16.log"
+      },
+      {
+        "path": "intelligence",
+        "label": "intelligence",
+        "file_count": 8,
+        "extensions": [
+          "jsonl"
+        ],
+        "latest_modified_at": "2026-10-16T17:42:00Z",
+        "latest_file": "reflection-2026-10-16.jsonl"
+      },
+      {
+        "path": "services",
+        "label": "services",
+        "file_count": 4,
+        "extensions": [
+          "log"
+        ],
+        "latest_modified_at": "2026-10-16T17:42:00Z",
+        "latest_file": "services-2026-10-16.log"
+      },
+      {
+        "path": "canvas-ui",
+        "label": "canvas-ui",
+        "file_count": 3,
+        "extensions": [
+          "jsonl"
+        ],
+        "latest_modified_at": "2026-10-16T17:42:00Z",
+        "latest_file": "events-2026-10-16.jsonl"
+      }
+    ]
+  },
+  "/api/logs/files": {
+    "ok": true,
+    "files": [
+      {
+        "path": "tools/2026-10-16.jsonl",
+        "filename": "2026-10-16.jsonl",
+        "size_label": "84.6 KB",
+        "modified_at": "2026-10-16T17:42:00Z",
+        "extension": "jsonl",
+        "tags": [
+          "cloud",
+          "tools"
+        ]
+      },
+      {
+        "path": "tools/2026-10-15.jsonl",
+        "filename": "2026-10-15.jsonl",
+        "size_label": "122.3 KB",
+        "modified_at": "2026-10-15T17:42:00Z",
+        "extension": "jsonl",
+        "tags": [
+          "cloud",
+          "tools"
+        ]
+      },
+      {
+        "path": "tools/2026-10-14.jsonl",
+        "filename": "2026-10-14.jsonl",
+        "size_label": "76.1 KB",
+        "modified_at": "2026-10-14T17:42:00Z",
+        "extension": "jsonl",
+        "tags": [
+          "local",
+          "tools"
+        ]
+      },
+      {
+        "path": "tools/2026-10-13.jsonl",
+        "filename": "2026-10-13.jsonl",
+        "size_label": "91.8 KB",
+        "modified_at": "2026-10-13T17:42:00Z",
+        "extension": "jsonl",
+        "tags": [
+          "cloud",
+          "tools"
+        ]
+      },
+      {
+        "path": "tools/2026-10-12.jsonl",
+        "filename": "2026-10-12.jsonl",
+        "size_label": "68.2 KB",
+        "modified_at": "2026-10-12T17:42:00Z",
+        "extension": "jsonl",
+        "tags": [
+          "local",
+          "tools"
+        ]
+      },
+      {
+        "path": "tools/2026-10-11.jsonl",
+        "filename": "2026-10-11.jsonl",
+        "size_label": "104.7 KB",
+        "modified_at": "2026-10-11T17:42:00Z",
+        "extension": "jsonl",
+        "tags": [
+          "cloud",
+          "tools"
+        ]
+      }
+    ],
+    "total": 24,
+    "next_offset": 6,
+    "has_more": true
+  },
+  "/api/logs/content": {
+    "ok": true,
+    "path": "tools/2026-10-16.jsonl",
+    "filename": "2026-10-16.jsonl",
+    "view_type": "yaml-records",
+    "extension": "jsonl",
+    "size_label": "84.6 KB",
+    "modified_at": "2026-10-16T17:42:00Z",
+    "records": [
+      {
+        "timestamp": "Oct 16, 10:42:18 AM",
+        "yaml": "timestamp: 2026-10-16T17:42:18.327Z\nmode: cloud\ntool: bookmark_search\nduration_ms: 418\narguments:\n  action: search\n  query: local AI workspace\n  limit: 5\nresult:\n  ok: true\n  speech: Returned 5 saved bookmarks.\n  data:\n    backend: builtin\n    status: matches\n    returned_count: 5\n"
+      },
+      {
+        "timestamp": "Oct 16, 10:41:52 AM",
+        "yaml": "timestamp: 2026-10-16T17:41:52.184Z\nmode: cloud\ntool: canvas\nduration_ms: 126\narguments:\n  action: create\n  title: Research/Local AI workspace\nresult:\n  ok: true\n  speech: Your research page is saved to Canvas.\n  data:\n    page_id: page_demo_workspace\n    pinned: false\n"
+      },
+      {
+        "timestamp": "Oct 16, 10:40:09 AM",
+        "yaml": "timestamp: 2026-10-16T17:40:09.116Z\nmode: local\ntool: get_time\nduration_ms: 12\narguments: {}\nresult:\n  ok: true\n  speech: It is 10:40 AM.\n"
+      }
+    ],
+    "next_offset": 3,
+    "has_more": true
+  }
+}

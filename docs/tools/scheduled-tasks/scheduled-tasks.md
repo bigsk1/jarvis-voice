@@ -2,6 +2,8 @@
 
 > Purpose: Let Jarvis schedule future queries, workflows, and recurring jobs using its normal tool and orchestration stack, with first-class logs, visibility, and safe execution semantics.
 
+![Scheduled tasks in the Jarvis Memory dashboard](../../images/jarvis-scheduled-tasks.png)
+
 ## Current Status
 
 The foundation is now implemented, not just planned.

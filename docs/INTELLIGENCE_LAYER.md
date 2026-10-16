@@ -9,7 +9,9 @@
 
 The Intelligence Layer is Jarvis's self-learning system. It observes interactions, reflects on what worked and what didn't, and applies learned insights to improve future routing decisions.
 
-![Intelligence Layer Info Graph](images/intelligence-info-graph.jpeg)
+![Jarvis Intelligence dashboard with learned insights](images/jarvis-intelligence-ui.png)
+
+See the [Intelligence Layer infographic](images/intelligence-info-graph.jpeg) for the learning architecture.
 
 **Key Principles**:
 - Everything is continuous (vectors), not discrete rules
@@ -1002,6 +1004,8 @@ report the same contention as 409.
 4. Stores as embedding for future matching
 
 ### Reflection queue (operational detail)
+
+![Jarvis reflection queue with review and batch-processing controls](images/jarvis-reflection-queue.png)
 
 Reflection is **queued, not automatic**. By default, an eligible completed
 foreground turn writes an experience and enqueues `reflection_queue`

@@ -8,7 +8,7 @@ To understand an existing clip or screen recording, see [Video analysis](ANALYSI
 
 The `generate_video` tool creates AI-generated videos from text prompts or images. Videos are saved locally and indexed in stash for use with other tools.
 
-![jarvis-web-video](../../images/jarvis-web.jpg)
+![jarvis-web-video](../../images/jarvis-web-ui.png)
 
 ## Quick Start
 

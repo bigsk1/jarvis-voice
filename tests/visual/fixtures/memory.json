@@ -1,0 +1,894 @@
+{
+  "/api/status": {
+    "ok": true,
+    "startup_mode": "cloud"
+  },
+  "/api/memories": {
+    "ok": true,
+    "memories": [
+      {
+        "id": 101,
+        "key": "response_preferences",
+        "category": "preferences",
+        "value": "Keep everyday answers concise. For a technical change, explain the result, why it matters, and how it was checked.",
+        "importance": 9,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-16T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 102,
+        "key": "morning_briefing",
+        "category": "routines",
+        "value": "Start the morning briefing with today\u2019s calendar, upcoming reminders, and the local weather forecast.",
+        "importance": 8,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-15T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 103,
+        "key": "project_documentation",
+        "category": "work",
+        "value": "Store useful project research in Canvas with a clear title, a short summary, and links to the original sources.",
+        "importance": 8,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-14T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 104,
+        "key": "weekend_trip_checklist",
+        "category": "travel",
+        "value": "Before a weekend trip, check the forecast, download the route, charge the camera, and pack a reusable water bottle.",
+        "importance": 6,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-13T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 105,
+        "key": "shopping_comparisons",
+        "category": "preferences",
+        "value": "When comparing products, include the total price, practical tradeoffs, and a link to each source.",
+        "importance": 8,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-12T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 106,
+        "key": "weekly_review",
+        "category": "routines",
+        "value": "Review outstanding tasks on Friday afternoon. Separate completed work, next actions, and anything waiting on a decision.",
+        "importance": 7,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-16T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 107,
+        "key": "recipe_notes",
+        "category": "personal",
+        "value": "Save recipes with metric measurements, preparation time, and a short ingredient checklist.",
+        "importance": 5,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-15T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 108,
+        "key": "research_workflow",
+        "category": "work",
+        "value": "Use the deep-dive workflow for a topic that needs multiple sources, then save the referenced summary to Canvas.",
+        "importance": 8,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-14T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 109,
+        "key": "home_maintenance",
+        "category": "personal",
+        "value": "Keep recurring maintenance reminders together: air filters, smoke detector batteries, and seasonal outdoor checks.",
+        "importance": 7,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-13T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 110,
+        "key": "reading_list",
+        "category": "learning",
+        "value": "Collect useful articles with the author, date, and one sentence explaining why they are worth revisiting.",
+        "importance": 6,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-12T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 111,
+        "key": "meeting_preparation",
+        "category": "work",
+        "value": "Before a planning meeting, collect the agenda, relevant notes, and open questions in one place.",
+        "importance": 7,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-16T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 112,
+        "key": "learning_preferences",
+        "category": "learning",
+        "value": "For a new technical topic, begin with a small working example and add details as needed.",
+        "importance": 7,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-15T16:30:00Z",
+        "metadata": {}
+      }
+    ]
+  },
+  "/api/memories/search": {
+    "ok": true,
+    "memories": [
+      {
+        "id": 101,
+        "key": "response_preferences",
+        "category": "preferences",
+        "value": "Keep everyday answers concise. For a technical change, explain the result, why it matters, and how it was checked.",
+        "importance": 9,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-16T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 102,
+        "key": "morning_briefing",
+        "category": "routines",
+        "value": "Start the morning briefing with today\u2019s calendar, upcoming reminders, and the local weather forecast.",
+        "importance": 8,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-15T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 103,
+        "key": "project_documentation",
+        "category": "work",
+        "value": "Store useful project research in Canvas with a clear title, a short summary, and links to the original sources.",
+        "importance": 8,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-14T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 104,
+        "key": "weekend_trip_checklist",
+        "category": "travel",
+        "value": "Before a weekend trip, check the forecast, download the route, charge the camera, and pack a reusable water bottle.",
+        "importance": 6,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-13T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 105,
+        "key": "shopping_comparisons",
+        "category": "preferences",
+        "value": "When comparing products, include the total price, practical tradeoffs, and a link to each source.",
+        "importance": 8,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-12T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 106,
+        "key": "weekly_review",
+        "category": "routines",
+        "value": "Review outstanding tasks on Friday afternoon. Separate completed work, next actions, and anything waiting on a decision.",
+        "importance": 7,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-16T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 107,
+        "key": "recipe_notes",
+        "category": "personal",
+        "value": "Save recipes with metric measurements, preparation time, and a short ingredient checklist.",
+        "importance": 5,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-15T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 108,
+        "key": "research_workflow",
+        "category": "work",
+        "value": "Use the deep-dive workflow for a topic that needs multiple sources, then save the referenced summary to Canvas.",
+        "importance": 8,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-14T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 109,
+        "key": "home_maintenance",
+        "category": "personal",
+        "value": "Keep recurring maintenance reminders together: air filters, smoke detector batteries, and seasonal outdoor checks.",
+        "importance": 7,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-13T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 110,
+        "key": "reading_list",
+        "category": "learning",
+        "value": "Collect useful articles with the author, date, and one sentence explaining why they are worth revisiting.",
+        "importance": 6,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-12T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 111,
+        "key": "meeting_preparation",
+        "category": "work",
+        "value": "Before a planning meeting, collect the agenda, relevant notes, and open questions in one place.",
+        "importance": 7,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-16T16:30:00Z",
+        "metadata": {}
+      },
+      {
+        "id": 112,
+        "key": "learning_preferences",
+        "category": "learning",
+        "value": "For a new technical topic, begin with a small working example and add details as needed.",
+        "importance": 7,
+        "has_embedding": true,
+        "created_at": "2026-10-10T16:00:00Z",
+        "updated_at": "2026-10-15T16:30:00Z",
+        "metadata": {}
+      }
+    ]
+  },
+  "/api/memories/categories": {
+    "ok": true,
+    "categories": [
+      {
+        "name": "learning",
+        "count": 2
+      },
+      {
+        "name": "personal",
+        "count": 2
+      },
+      {
+        "name": "preferences",
+        "count": 2
+      },
+      {
+        "name": "routines",
+        "count": 2
+      },
+      {
+        "name": "travel",
+        "count": 1
+      },
+      {
+        "name": "work",
+        "count": 3
+      }
+    ]
+  },
+  "/api/stats": {
+    "ok": true,
+    "memory": {
+      "total_memories": 12,
+      "with_embeddings": 12,
+      "recent_7_days": 8,
+      "categories": [
+        {
+          "name": "learning",
+          "count": 2
+        },
+        {
+          "name": "personal",
+          "count": 2
+        },
+        {
+          "name": "preferences",
+          "count": 2
+        },
+        {
+          "name": "routines",
+          "count": 2
+        },
+        {
+          "name": "travel",
+          "count": 1
+        },
+        {
+          "name": "work",
+          "count": 3
+        }
+      ],
+      "db_size_mb": 4.8
+    },
+    "conversations": {
+      "total_conversations": 3,
+      "success_rate": 100,
+      "top_tools": [
+        {
+          "name": "canvas",
+          "count": 2
+        },
+        {
+          "name": "create_reminder",
+          "count": 1
+        }
+      ]
+    }
+  },
+  "/api/stats/memory": {
+    "ok": true,
+    "memory": {
+      "total_memories": 12,
+      "with_embeddings": 12,
+      "recent_7_days": 8,
+      "categories": [
+        {
+          "name": "learning",
+          "count": 2
+        },
+        {
+          "name": "personal",
+          "count": 2
+        },
+        {
+          "name": "preferences",
+          "count": 2
+        },
+        {
+          "name": "routines",
+          "count": 2
+        },
+        {
+          "name": "travel",
+          "count": 1
+        },
+        {
+          "name": "work",
+          "count": 3
+        }
+      ],
+      "db_size_mb": 4.8
+    }
+  },
+  "/api/scheduled-tasks": {
+    "ok": true,
+    "tasks": [
+      {
+        "id": 501,
+        "name": "Morning briefing",
+        "task_type": "workflow",
+        "task_target": "morning_brief",
+        "mode": "cloud",
+        "enabled": true,
+        "schedule_type": "cron",
+        "schedule_expr": "{\"expression\": \"0 9 * * *\"}",
+        "task_payload": "{\"workflow_id\": \"morning_brief\", \"schedule_summary\": \"Every weekday at 7:30 AM\"}",
+        "next_run_at": "2026-10-19T14:30:00Z",
+        "last_run_at": "2026-10-16T17:15:00Z",
+        "last_status": "success",
+        "last_duration_ms": 4260,
+        "last_result_summary": "Your briefing is ready: calendar, weather, and today\u2019s priorities.",
+        "last_error": null,
+        "metadata": {}
+      },
+      {
+        "id": 502,
+        "name": "Research digest",
+        "task_type": "workflow",
+        "task_target": "github_ai_radar_daily",
+        "mode": "cloud",
+        "enabled": true,
+        "schedule_type": "cron",
+        "schedule_expr": "{\"expression\": \"0 9 * * *\"}",
+        "task_payload": "{\"workflow_id\": \"github_ai_radar_daily\", \"schedule_summary\": \"Every day at 9:00 AM\"}",
+        "next_run_at": "2026-10-17T16:00:00Z",
+        "last_run_at": "2026-10-16T17:15:00Z",
+        "last_status": "success",
+        "last_duration_ms": 5490,
+        "last_result_summary": "Research digest saved to Canvas with source links and a concise overview.",
+        "last_error": null,
+        "metadata": {}
+      },
+      {
+        "id": 503,
+        "name": "Important events watch",
+        "task_type": "workflow",
+        "task_target": "important_events_watch",
+        "mode": "cloud",
+        "enabled": true,
+        "schedule_type": "cron",
+        "schedule_expr": "{\"expression\": \"0 9 * * *\"}",
+        "task_payload": "{\"workflow_id\": \"important_events_watch\", \"schedule_summary\": \"Every 15 minutes\"}",
+        "next_run_at": "2026-10-16T17:45:00Z",
+        "last_run_at": "2026-10-16T17:15:00Z",
+        "last_status": "success",
+        "last_duration_ms": 6720,
+        "last_result_summary": "Events checked. No new alerts met your notification preferences.",
+        "last_error": null,
+        "metadata": {}
+      },
+      {
+        "id": 504,
+        "name": "Weekly review",
+        "task_type": "workflow",
+        "task_target": "weekly_review",
+        "mode": "cloud",
+        "enabled": true,
+        "schedule_type": "cron",
+        "schedule_expr": "{\"expression\": \"0 9 * * *\"}",
+        "task_payload": "{\"workflow_id\": \"weekly_review\", \"schedule_summary\": \"Every Friday at 4:00 PM\"}",
+        "next_run_at": "2026-10-16T23:00:00Z",
+        "last_run_at": "2026-10-16T17:15:00Z",
+        "last_status": "success",
+        "last_duration_ms": 7950,
+        "last_result_summary": "Weekly review prepared with open tasks and upcoming reminders.",
+        "last_error": null,
+        "metadata": {}
+      }
+    ]
+  },
+  "/api/scheduled-tasks/workflows": {
+    "ok": true,
+    "workflows": []
+  },
+  "/api/reminders": {
+    "ok": true,
+    "reminders": [
+      {
+        "id": 601,
+        "title": "Prepare the weekly review",
+        "description": "Collect the completed tasks and the next priorities.",
+        "status": "scheduled",
+        "trigger_time": "2026-10-16T22:30:00Z",
+        "created_at": "2026-10-16T17:30:00Z",
+        "recurrence": null,
+        "spoken": false,
+        "metadata": {}
+      },
+      {
+        "id": 602,
+        "title": "Check the trip checklist",
+        "description": "Review the weather and download the route before leaving.",
+        "status": "scheduled",
+        "trigger_time": "2026-10-17T16:00:00Z",
+        "created_at": "2026-10-16T17:30:00Z",
+        "recurrence": null,
+        "spoken": false,
+        "metadata": {}
+      },
+      {
+        "id": 603,
+        "title": "Replace the air filter",
+        "description": "Check the filter size before ordering a replacement.",
+        "status": "scheduled",
+        "trigger_time": "2026-10-24T17:00:00Z",
+        "created_at": "2026-10-16T17:30:00Z",
+        "recurrence": null,
+        "spoken": false,
+        "metadata": {}
+      }
+    ]
+  },
+  "/api/alerts": {
+    "ok": true,
+    "alerts": [
+      {
+        "id": 701,
+        "title": "Research digest is ready",
+        "source": "research_digest",
+        "description": "Your daily research digest is saved in Canvas with the original source links.",
+        "severity": "low",
+        "status": "acknowledged",
+        "created_at": "2026-10-16T17:30:00Z",
+        "acknowledged_at": "2026-10-16T17:30:00Z",
+        "spoken": false
+      }
+    ],
+    "has_more": false,
+    "next_offset": 1
+  },
+  "/api/conversations": {
+    "ok": true,
+    "conversations": [
+      {
+        "id": 801,
+        "user_query": "Summarize the articles I saved for this week.",
+        "jarvis_response": "I grouped the articles by topic and saved a referenced reading brief to Canvas.",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "tools_used": [
+          "bookmark_search",
+          "canvas"
+        ],
+        "success": true
+      },
+      {
+        "id": 802,
+        "user_query": "Set a reminder for Friday at 3:30 PM to prepare the weekly review.",
+        "jarvis_response": "Reminder set for Friday at 3:30 PM: Prepare the weekly review.",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "tools_used": [
+          "create_reminder"
+        ],
+        "success": true
+      },
+      {
+        "id": 803,
+        "user_query": "What is on my calendar tomorrow?",
+        "jarvis_response": "Tomorrow has two planning sessions and a free afternoon.",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "tools_used": [
+          "manage_event"
+        ],
+        "success": true
+      }
+    ]
+  },
+  "/api/intel/files": {
+    "ok": true,
+    "files": []
+  },
+  "/api/memories/101": {
+    "ok": true,
+    "memory": {
+      "id": 101,
+      "key": "response_preferences",
+      "category": "preferences",
+      "value": "Keep everyday answers concise. For a technical change, explain the result, why it matters, and how it was checked.",
+      "importance": 9,
+      "has_embedding": true,
+      "created_at": "2026-10-10T16:00:00Z",
+      "updated_at": "2026-10-16T16:30:00Z",
+      "metadata": {}
+    }
+  },
+  "/api/memories/102": {
+    "ok": true,
+    "memory": {
+      "id": 102,
+      "key": "morning_briefing",
+      "category": "routines",
+      "value": "Start the morning briefing with today\u2019s calendar, upcoming reminders, and the local weather forecast.",
+      "importance": 8,
+      "has_embedding": true,
+      "created_at": "2026-10-10T16:00:00Z",
+      "updated_at": "2026-10-15T16:30:00Z",
+      "metadata": {}
+    }
+  },
+  "/api/memories/103": {
+    "ok": true,
+    "memory": {
+      "id": 103,
+      "key": "project_documentation",
+      "category": "work",
+      "value": "Store useful project research in Canvas with a clear title, a short summary, and links to the original sources.",
+      "importance": 8,
+      "has_embedding": true,
+      "created_at": "2026-10-10T16:00:00Z",
+      "updated_at": "2026-10-14T16:30:00Z",
+      "metadata": {}
+    }
+  },
+  "/api/memories/104": {
+    "ok": true,
+    "memory": {
+      "id": 104,
+      "key": "weekend_trip_checklist",
+      "category": "travel",
+      "value": "Before a weekend trip, check the forecast, download the route, charge the camera, and pack a reusable water bottle.",
+      "importance": 6,
+      "has_embedding": true,
+      "created_at": "2026-10-10T16:00:00Z",
+      "updated_at": "2026-10-13T16:30:00Z",
+      "metadata": {}
+    }
+  },
+  "/api/memories/105": {
+    "ok": true,
+    "memory": {
+      "id": 105,
+      "key": "shopping_comparisons",
+      "category": "preferences",
+      "value": "When comparing products, include the total price, practical tradeoffs, and a link to each source.",
+      "importance": 8,
+      "has_embedding": true,
+      "created_at": "2026-10-10T16:00:00Z",
+      "updated_at": "2026-10-12T16:30:00Z",
+      "metadata": {}
+    }
+  },
+  "/api/memories/106": {
+    "ok": true,
+    "memory": {
+      "id": 106,
+      "key": "weekly_review",
+      "category": "routines",
+      "value": "Review outstanding tasks on Friday afternoon. Separate completed work, next actions, and anything waiting on a decision.",
+      "importance": 7,
+      "has_embedding": true,
+      "created_at": "2026-10-10T16:00:00Z",
+      "updated_at": "2026-10-16T16:30:00Z",
+      "metadata": {}
+    }
+  },
+  "/api/memories/107": {
+    "ok": true,
+    "memory": {
+      "id": 107,
+      "key": "recipe_notes",
+      "category": "personal",
+      "value": "Save recipes with metric measurements, preparation time, and a short ingredient checklist.",
+      "importance": 5,
+      "has_embedding": true,
+      "created_at": "2026-10-10T16:00:00Z",
+      "updated_at": "2026-10-15T16:30:00Z",
+      "metadata": {}
+    }
+  },
+  "/api/memories/108": {
+    "ok": true,
+    "memory": {
+      "id": 108,
+      "key": "research_workflow",
+      "category": "work",
+      "value": "Use the deep-dive workflow for a topic that needs multiple sources, then save the referenced summary to Canvas.",
+      "importance": 8,
+      "has_embedding": true,
+      "created_at": "2026-10-10T16:00:00Z",
+      "updated_at": "2026-10-14T16:30:00Z",
+      "metadata": {}
+    }
+  },
+  "/api/memories/109": {
+    "ok": true,
+    "memory": {
+      "id": 109,
+      "key": "home_maintenance",
+      "category": "personal",
+      "value": "Keep recurring maintenance reminders together: air filters, smoke detector batteries, and seasonal outdoor checks.",
+      "importance": 7,
+      "has_embedding": true,
+      "created_at": "2026-10-10T16:00:00Z",
+      "updated_at": "2026-10-13T16:30:00Z",
+      "metadata": {}
+    }
+  },
+  "/api/memories/110": {
+    "ok": true,
+    "memory": {
+      "id": 110,
+      "key": "reading_list",
+      "category": "learning",
+      "value": "Collect useful articles with the author, date, and one sentence explaining why they are worth revisiting.",
+      "importance": 6,
+      "has_embedding": true,
+      "created_at": "2026-10-10T16:00:00Z",
+      "updated_at": "2026-10-12T16:30:00Z",
+      "metadata": {}
+    }
+  },
+  "/api/memories/111": {
+    "ok": true,
+    "memory": {
+      "id": 111,
+      "key": "meeting_preparation",
+      "category": "work",
+      "value": "Before a planning meeting, collect the agenda, relevant notes, and open questions in one place.",
+      "importance": 7,
+      "has_embedding": true,
+      "created_at": "2026-10-10T16:00:00Z",
+      "updated_at": "2026-10-16T16:30:00Z",
+      "metadata": {}
+    }
+  },
+  "/api/memories/112": {
+    "ok": true,
+    "memory": {
+      "id": 112,
+      "key": "learning_preferences",
+      "category": "learning",
+      "value": "For a new technical topic, begin with a small working example and add details as needed.",
+      "importance": 7,
+      "has_embedding": true,
+      "created_at": "2026-10-10T16:00:00Z",
+      "updated_at": "2026-10-15T16:30:00Z",
+      "metadata": {}
+    }
+  },
+  "/api/scheduled-tasks/501": {
+    "ok": true,
+    "task": {
+      "id": 501,
+      "name": "Morning briefing",
+      "task_type": "workflow",
+      "task_target": "morning_brief",
+      "mode": "cloud",
+      "enabled": true,
+      "schedule_type": "cron",
+      "schedule_expr": "{\"expression\": \"0 9 * * *\"}",
+      "task_payload": "{\"workflow_id\": \"morning_brief\", \"schedule_summary\": \"Every weekday at 7:30 AM\"}",
+      "next_run_at": "2026-10-19T14:30:00Z",
+      "last_run_at": "2026-10-16T17:15:00Z",
+      "last_status": "success",
+      "last_duration_ms": 4260,
+      "last_result_summary": "Your briefing is ready: calendar, weather, and today\u2019s priorities.",
+      "last_error": null,
+      "metadata": {}
+    }
+  },
+  "/api/scheduled-tasks/501/runs": {
+    "ok": true,
+    "runs": []
+  },
+  "/api/scheduled-tasks/502": {
+    "ok": true,
+    "task": {
+      "id": 502,
+      "name": "Research digest",
+      "task_type": "workflow",
+      "task_target": "github_ai_radar_daily",
+      "mode": "cloud",
+      "enabled": true,
+      "schedule_type": "cron",
+      "schedule_expr": "{\"expression\": \"0 9 * * *\"}",
+      "task_payload": "{\"workflow_id\": \"github_ai_radar_daily\", \"schedule_summary\": \"Every day at 9:00 AM\"}",
+      "next_run_at": "2026-10-17T16:00:00Z",
+      "last_run_at": "2026-10-16T17:15:00Z",
+      "last_status": "success",
+      "last_duration_ms": 5490,
+      "last_result_summary": "Research digest saved to Canvas with source links and a concise overview.",
+      "last_error": null,
+      "metadata": {}
+    }
+  },
+  "/api/scheduled-tasks/502/runs": {
+    "ok": true,
+    "runs": []
+  },
+  "/api/scheduled-tasks/503": {
+    "ok": true,
+    "task": {
+      "id": 503,
+      "name": "Important events watch",
+      "task_type": "workflow",
+      "task_target": "important_events_watch",
+      "mode": "cloud",
+      "enabled": true,
+      "schedule_type": "cron",
+      "schedule_expr": "{\"expression\": \"0 9 * * *\"}",
+      "task_payload": "{\"workflow_id\": \"important_events_watch\", \"schedule_summary\": \"Every 15 minutes\"}",
+      "next_run_at": "2026-10-16T17:45:00Z",
+      "last_run_at": "2026-10-16T17:15:00Z",
+      "last_status": "success",
+      "last_duration_ms": 6720,
+      "last_result_summary": "Events checked. No new alerts met your notification preferences.",
+      "last_error": null,
+      "metadata": {}
+    }
+  },
+  "/api/scheduled-tasks/503/runs": {
+    "ok": true,
+    "runs": []
+  },
+  "/api/scheduled-tasks/504": {
+    "ok": true,
+    "task": {
+      "id": 504,
+      "name": "Weekly review",
+      "task_type": "workflow",
+      "task_target": "weekly_review",
+      "mode": "cloud",
+      "enabled": true,
+      "schedule_type": "cron",
+      "schedule_expr": "{\"expression\": \"0 9 * * *\"}",
+      "task_payload": "{\"workflow_id\": \"weekly_review\", \"schedule_summary\": \"Every Friday at 4:00 PM\"}",
+      "next_run_at": "2026-10-16T23:00:00Z",
+      "last_run_at": "2026-10-16T17:15:00Z",
+      "last_status": "success",
+      "last_duration_ms": 7950,
+      "last_result_summary": "Weekly review prepared with open tasks and upcoming reminders.",
+      "last_error": null,
+      "metadata": {}
+    }
+  },
+  "/api/scheduled-tasks/504/runs": {
+    "ok": true,
+    "runs": []
+  },
+  "/api/reminders/601": {
+    "ok": true,
+    "reminder": {
+      "id": 601,
+      "title": "Prepare the weekly review",
+      "description": "Collect the completed tasks and the next priorities.",
+      "status": "scheduled",
+      "trigger_time": "2026-10-16T22:30:00Z",
+      "created_at": "2026-10-16T17:30:00Z",
+      "recurrence": null,
+      "spoken": false,
+      "metadata": {}
+    }
+  },
+  "/api/reminders/602": {
+    "ok": true,
+    "reminder": {
+      "id": 602,
+      "title": "Check the trip checklist",
+      "description": "Review the weather and download the route before leaving.",
+      "status": "scheduled",
+      "trigger_time": "2026-10-17T16:00:00Z",
+      "created_at": "2026-10-16T17:30:00Z",
+      "recurrence": null,
+      "spoken": false,
+      "metadata": {}
+    }
+  },
+  "/api/reminders/603": {
+    "ok": true,
+    "reminder": {
+      "id": 603,
+      "title": "Replace the air filter",
+      "description": "Check the filter size before ordering a replacement.",
+      "status": "scheduled",
+      "trigger_time": "2026-10-24T17:00:00Z",
+      "created_at": "2026-10-16T17:30:00Z",
+      "recurrence": null,
+      "spoken": false,
+      "metadata": {}
+    }
+  },
+  "/api/alerts/701": {
+    "ok": true,
+    "alert": {
+      "id": 701,
+      "title": "Research digest is ready",
+      "source": "research_digest",
+      "description": "Your daily research digest is saved in Canvas with the original source links.",
+      "severity": "low",
+      "status": "acknowledged",
+      "created_at": "2026-10-16T17:30:00Z",
+      "acknowledged_at": "2026-10-16T17:30:00Z",
+      "spoken": false
+    }
+  }
+}

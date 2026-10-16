@@ -1,0 +1,1827 @@
+{
+  "/api/status": {
+    "ok": true,
+    "startup_mode": "cloud"
+  },
+  "/api/experiences": {
+    "ok": true,
+    "experiences": [
+      {
+        "id": 201,
+        "query": "Compare the articles I saved and create a concise research brief.",
+        "tools_used": [
+          "bookmark_search",
+          "tavily_search",
+          "canvas"
+        ],
+        "outcome_success": true,
+        "turns_taken": 4,
+        "has_embedding": true,
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "completion_guard": {
+          "status": "accepted"
+        },
+        "raw_data": {}
+      },
+      {
+        "id": 202,
+        "query": "Set a reminder for Friday at 3:30 PM to prepare the weekly review.",
+        "tools_used": [
+          "create_reminder"
+        ],
+        "outcome_success": true,
+        "turns_taken": 1,
+        "has_embedding": true,
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:27 AM PDT",
+        "completion_guard": {
+          "status": "auto_accepted"
+        },
+        "raw_data": {}
+      },
+      {
+        "id": 203,
+        "query": "Check tomorrow\u2019s weather and help me plan a short afternoon walk.",
+        "tools_used": [
+          "get_weather"
+        ],
+        "outcome_success": true,
+        "turns_taken": 2,
+        "has_embedding": true,
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:24 AM PDT",
+        "completion_guard": {
+          "status": "accepted"
+        },
+        "raw_data": {}
+      },
+      {
+        "id": 204,
+        "query": "Find the latest project release notes and summarize the changes.",
+        "tools_used": [
+          "tavily_search",
+          "canvas"
+        ],
+        "outcome_success": true,
+        "turns_taken": 3,
+        "has_embedding": true,
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:21 AM PDT",
+        "completion_guard": {
+          "status": "accepted"
+        },
+        "raw_data": {}
+      },
+      {
+        "id": 205,
+        "query": "What reminders do I have for the coming week?",
+        "tools_used": [
+          "list_reminders"
+        ],
+        "outcome_success": true,
+        "turns_taken": 1,
+        "has_embedding": true,
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 9:18 AM PDT",
+        "completion_guard": {
+          "status": "accepted"
+        },
+        "raw_data": {}
+      },
+      {
+        "id": 206,
+        "query": "Run the research digest and save its summary to Canvas.",
+        "tools_used": [
+          "workflow"
+        ],
+        "outcome_success": true,
+        "turns_taken": 3,
+        "has_embedding": true,
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 9:15 AM PDT",
+        "completion_guard": {
+          "status": "accepted"
+        },
+        "raw_data": {}
+      },
+      {
+        "id": 207,
+        "query": "Help me organize the notes from today\u2019s planning session.",
+        "tools_used": [
+          "remember",
+          "canvas"
+        ],
+        "outcome_success": true,
+        "turns_taken": 2,
+        "has_embedding": true,
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 9:12 AM PDT",
+        "completion_guard": {
+          "status": "auto_accepted"
+        },
+        "raw_data": {}
+      },
+      {
+        "id": 208,
+        "query": "Check the weather service again.",
+        "tools_used": [
+          "get_weather"
+        ],
+        "outcome_success": false,
+        "turns_taken": 1,
+        "has_embedding": true,
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 9:09 AM PDT",
+        "completion_guard": null,
+        "raw_data": {}
+      }
+    ],
+    "total": 8,
+    "offset": 0,
+    "has_more": false
+  },
+  "/api/experiences/summary": {
+    "ok": true,
+    "summary": {
+      "total": 8,
+      "success": 7,
+      "failed": 1,
+      "tool_count": {
+        "none": 0,
+        "single": 4,
+        "multi": 4
+      },
+      "tools": [
+        {
+          "name": "bookmark_search",
+          "count": 1
+        },
+        {
+          "name": "tavily_search",
+          "count": 2
+        },
+        {
+          "name": "canvas",
+          "count": 3
+        },
+        {
+          "name": "create_reminder",
+          "count": 1
+        },
+        {
+          "name": "get_weather",
+          "count": 2
+        },
+        {
+          "name": "list_reminders",
+          "count": 1
+        },
+        {
+          "name": "workflow",
+          "count": 1
+        },
+        {
+          "name": "remember",
+          "count": 1
+        }
+      ],
+      "completion_guard": {
+        "accepted": 5,
+        "auto_accepted": 2,
+        "none": 1
+      }
+    }
+  },
+  "/api/insights": {
+    "ok": true,
+    "insights": [
+      {
+        "id": 301,
+        "description": "For multi-source research, gather the evidence first, then save a concise Canvas brief with the original links.",
+        "constraint_type": "positive",
+        "confidence": 0.98,
+        "preferred_tools": [
+          "canvas"
+        ],
+        "preferred_tool_sequence": [
+          "tavily_search",
+          "canvas"
+        ],
+        "avoided_tools": [],
+        "applies_to_pattern": "Research and source-based summaries",
+        "has_embedding": true,
+        "times_applied": 38,
+        "times_helpful": 35,
+        "times_failed": 0,
+        "created_at": "2026-10-12T16:00:00Z",
+        "updated_at": "2026-10-16T17:30:00Z",
+        "updated_at_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT"
+      },
+      {
+        "id": 302,
+        "description": "Use the requested notification time exactly. Keep a later appointment time in the reminder title or description.",
+        "constraint_type": "positive",
+        "confidence": 0.97,
+        "preferred_tools": [
+          "create_reminder"
+        ],
+        "preferred_tool_sequence": [],
+        "avoided_tools": [],
+        "applies_to_pattern": "Reminder scheduling",
+        "has_embedding": true,
+        "times_applied": 31,
+        "times_helpful": 30,
+        "times_failed": 0,
+        "created_at": "2026-10-12T16:00:00Z",
+        "updated_at": "2026-10-16T17:30:00Z",
+        "updated_at_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT"
+      },
+      {
+        "id": 303,
+        "description": "Prefer a named workflow when the request matches an established repeatable process.",
+        "constraint_type": "positive",
+        "confidence": 0.93,
+        "preferred_tools": [
+          "workflow"
+        ],
+        "preferred_tool_sequence": [],
+        "avoided_tools": [],
+        "applies_to_pattern": "Repeatable multi-step tasks",
+        "has_embedding": true,
+        "times_applied": 24,
+        "times_helpful": 22,
+        "times_failed": 0,
+        "created_at": "2026-10-12T16:00:00Z",
+        "updated_at": "2026-10-16T17:30:00Z",
+        "updated_at_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT"
+      },
+      {
+        "id": 304,
+        "description": "After saving an artifact, confirm its title and provide the browser-accessible link returned by the tool.",
+        "constraint_type": "positive",
+        "confidence": 0.91,
+        "preferred_tools": [
+          "canvas"
+        ],
+        "preferred_tool_sequence": [],
+        "avoided_tools": [],
+        "applies_to_pattern": "Saving and sharing artifacts",
+        "has_embedding": true,
+        "times_applied": 27,
+        "times_helpful": 25,
+        "times_failed": 0,
+        "created_at": "2026-10-12T16:00:00Z",
+        "updated_at": "2026-10-16T17:30:00Z",
+        "updated_at_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT"
+      },
+      {
+        "id": 305,
+        "description": "Do not repeat a successful create call merely to reword its confirmation. Use the saved receipt.",
+        "constraint_type": "negative",
+        "confidence": 0.89,
+        "preferred_tools": [],
+        "preferred_tool_sequence": [],
+        "avoided_tools": [],
+        "applies_to_pattern": "Tools that create persistent records",
+        "has_embedding": true,
+        "times_applied": 19,
+        "times_helpful": 18,
+        "times_failed": 0,
+        "created_at": "2026-10-12T16:00:00Z",
+        "updated_at": "2026-10-16T17:30:00Z",
+        "updated_at_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT"
+      },
+      {
+        "id": 306,
+        "description": "For product comparisons, show the source links and practical differences alongside the price.",
+        "constraint_type": "positive",
+        "confidence": 0.84,
+        "preferred_tools": [
+          "google_shopping"
+        ],
+        "preferred_tool_sequence": [],
+        "avoided_tools": [],
+        "applies_to_pattern": "Shopping and product research",
+        "has_embedding": true,
+        "times_applied": 16,
+        "times_helpful": 14,
+        "times_failed": 0,
+        "created_at": "2026-10-12T16:00:00Z",
+        "updated_at": "2026-10-16T17:30:00Z",
+        "updated_at_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT"
+      }
+    ],
+    "total": 6,
+    "offset": 0,
+    "has_more": false
+  },
+  "/api/insights/summary": {
+    "ok": true,
+    "summary": {
+      "total": 6,
+      "positive": 5,
+      "negative": 1,
+      "confidence": {
+        "elite": 2,
+        "high": 3,
+        "good": 1,
+        "medium": 0,
+        "low": 0
+      }
+    }
+  },
+  "/api/stats": {
+    "ok": true,
+    "stats": {
+      "experiences": {
+        "total": 8,
+        "recent_24h": 8,
+        "success_rate": 87.5
+      },
+      "insights": {
+        "total": 6,
+        "positive": 5,
+        "negative": 1,
+        "recent_24h": 2,
+        "avg_confidence": 0.92
+      },
+      "application": {
+        "total_applied": 155,
+        "helpfulness_rate": 93
+      },
+      "reflection": {
+        "pending": 24
+      },
+      "meta_knowledge": {
+        "blind_spots": 0
+      },
+      "db_size_mb": 3.2,
+      "completion_guard": {
+        "total": 7,
+        "repaired": 0,
+        "by_status": {
+          "accepted": 5,
+          "auto_accepted": 2
+        }
+      }
+    }
+  },
+  "/api/insights/tool-performance": {
+    "ok": true,
+    "tools": [
+      {
+        "name": "canvas",
+        "prefer_count": 3,
+        "avoid_count": 0,
+        "net_score": 3
+      },
+      {
+        "name": "create_reminder",
+        "prefer_count": 1,
+        "avoid_count": 0,
+        "net_score": 1
+      }
+    ]
+  },
+  "/api/stats/reflection-queue": {
+    "ok": true,
+    "queue": [
+      {
+        "id": 901,
+        "experience_id": 201,
+        "priority": 0.8,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "bookmark_search",
+          "tavily_search",
+          "canvas"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Compare the articles I saved and create a concise research brief.",
+          "source": "web",
+          "source_label": "Web",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 902,
+        "experience_id": 202,
+        "priority": 0.7,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "create_reminder"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Set a reminder for Friday at 3:30 PM to prepare the weekly review.",
+          "source": "voice",
+          "source_label": "Voice",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 903,
+        "experience_id": 203,
+        "priority": 0.6,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "workflow"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Run the research digest and save its summary to Canvas.",
+          "source": "scheduled",
+          "source_label": "Scheduled task",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 904,
+        "experience_id": 204,
+        "priority": 0.5,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "tavily_search",
+          "canvas"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Find the latest project release notes and summarize the changes.",
+          "source": "cli",
+          "source_label": "CLI",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 905,
+        "experience_id": 205,
+        "priority": 0.8,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "list_reminders"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "What reminders do I have for the coming week?",
+          "source": "web",
+          "source_label": "Web",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 906,
+        "experience_id": 206,
+        "priority": 0.7,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "get_weather"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Check tomorrow\u2019s weather and help me plan a short afternoon walk.",
+          "source": "api",
+          "source_label": "API",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 907,
+        "experience_id": 207,
+        "priority": 0.6,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "bookmark_search",
+          "tavily_search",
+          "canvas"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Compare the articles I saved and create a concise research brief. Follow-up 2.",
+          "source": "web",
+          "source_label": "Web",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 908,
+        "experience_id": 208,
+        "priority": 0.5,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "create_reminder"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Set a reminder for Friday at 3:30 PM to prepare the weekly review. Follow-up 2.",
+          "source": "voice",
+          "source_label": "Voice",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 909,
+        "experience_id": 209,
+        "priority": 0.8,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "workflow"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Run the research digest and save its summary to Canvas. Follow-up 2.",
+          "source": "scheduled",
+          "source_label": "Scheduled task",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 910,
+        "experience_id": 210,
+        "priority": 0.7,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "tavily_search",
+          "canvas"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Find the latest project release notes and summarize the changes. Follow-up 2.",
+          "source": "cli",
+          "source_label": "CLI",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 911,
+        "experience_id": 211,
+        "priority": 0.6,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "list_reminders"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "What reminders do I have for the coming week? Follow-up 2.",
+          "source": "web",
+          "source_label": "Web",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 912,
+        "experience_id": 212,
+        "priority": 0.5,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "get_weather"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Check tomorrow\u2019s weather and help me plan a short afternoon walk. Follow-up 2.",
+          "source": "api",
+          "source_label": "API",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 913,
+        "experience_id": 213,
+        "priority": 0.8,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "bookmark_search",
+          "tavily_search",
+          "canvas"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Compare the articles I saved and create a concise research brief. Follow-up 3.",
+          "source": "web",
+          "source_label": "Web",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 914,
+        "experience_id": 214,
+        "priority": 0.7,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "create_reminder"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Set a reminder for Friday at 3:30 PM to prepare the weekly review. Follow-up 3.",
+          "source": "voice",
+          "source_label": "Voice",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 915,
+        "experience_id": 215,
+        "priority": 0.6,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "workflow"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Run the research digest and save its summary to Canvas. Follow-up 3.",
+          "source": "scheduled",
+          "source_label": "Scheduled task",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 916,
+        "experience_id": 216,
+        "priority": 0.5,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "tavily_search",
+          "canvas"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Find the latest project release notes and summarize the changes. Follow-up 3.",
+          "source": "cli",
+          "source_label": "CLI",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 917,
+        "experience_id": 217,
+        "priority": 0.8,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "list_reminders"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "What reminders do I have for the coming week? Follow-up 3.",
+          "source": "web",
+          "source_label": "Web",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 918,
+        "experience_id": 218,
+        "priority": 0.7,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "get_weather"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Check tomorrow\u2019s weather and help me plan a short afternoon walk. Follow-up 3.",
+          "source": "api",
+          "source_label": "API",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 919,
+        "experience_id": 219,
+        "priority": 0.6,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "bookmark_search",
+          "tavily_search",
+          "canvas"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Compare the articles I saved and create a concise research brief. Follow-up 4.",
+          "source": "web",
+          "source_label": "Web",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 920,
+        "experience_id": 220,
+        "priority": 0.5,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "create_reminder"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Set a reminder for Friday at 3:30 PM to prepare the weekly review. Follow-up 4.",
+          "source": "voice",
+          "source_label": "Voice",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 921,
+        "experience_id": 221,
+        "priority": 0.8,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "workflow"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Run the research digest and save its summary to Canvas. Follow-up 4.",
+          "source": "scheduled",
+          "source_label": "Scheduled task",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 922,
+        "experience_id": 222,
+        "priority": 0.7,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "tavily_search",
+          "canvas"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Find the latest project release notes and summarize the changes. Follow-up 4.",
+          "source": "cli",
+          "source_label": "CLI",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 923,
+        "experience_id": 223,
+        "priority": 0.6,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "list_reminders"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "What reminders do I have for the coming week? Follow-up 4.",
+          "source": "web",
+          "source_label": "Web",
+          "user_query_truncated": false
+        }
+      },
+      {
+        "id": 924,
+        "experience_id": 224,
+        "priority": 0.5,
+        "queued_at": "2026-10-16T17:30:00Z",
+        "timestamp": "2026-10-16T17:30:00Z",
+        "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+        "processed": false,
+        "experience_available": true,
+        "tools_used": [
+          "get_weather"
+        ],
+        "outcome_success": true,
+        "review": {
+          "user_query": "Check tomorrow\u2019s weather and help me plan a short afternoon walk. Follow-up 4.",
+          "source": "api",
+          "source_label": "API",
+          "user_query_truncated": false
+        }
+      }
+    ],
+    "count": 24,
+    "total": 24,
+    "filtered_total": 24,
+    "offset": 0,
+    "limit": 50,
+    "has_more": false,
+    "next_batch_ids": [
+      901,
+      902,
+      903,
+      904,
+      905,
+      906,
+      907,
+      908,
+      909,
+      910,
+      911,
+      912,
+      913,
+      914,
+      915,
+      916,
+      917,
+      918,
+      919,
+      920
+    ]
+  },
+  "/api/stats/meta-knowledge": {
+    "ok": true,
+    "entries": []
+  },
+  "/api/feedback": {
+    "ok": true,
+    "feedback": []
+  },
+  "/api/feedback/stats": {
+    "ok": true,
+    "stats": {
+      "total": 0,
+      "avg_rating": 0,
+      "by_rating": {}
+    }
+  },
+  "/api/stats/reflection-queue/901": {
+    "ok": true,
+    "item": {
+      "id": 901,
+      "experience_id": 201,
+      "priority": 0.8,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "bookmark_search",
+        "tavily_search",
+        "canvas"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Compare the articles I saved and create a concise research brief.",
+        "source": "web",
+        "source_label": "Web",
+        "user_query_truncated": false,
+        "response": "The brief is saved to Canvas with a short summary and links to the original articles.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/902": {
+    "ok": true,
+    "item": {
+      "id": 902,
+      "experience_id": 202,
+      "priority": 0.7,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "create_reminder"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Set a reminder for Friday at 3:30 PM to prepare the weekly review.",
+        "source": "voice",
+        "source_label": "Voice",
+        "user_query_truncated": false,
+        "response": "Reminder set for Friday at 3:30 PM: Prepare the weekly review.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/903": {
+    "ok": true,
+    "item": {
+      "id": 903,
+      "experience_id": 203,
+      "priority": 0.6,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "workflow"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Run the research digest and save its summary to Canvas.",
+        "source": "scheduled",
+        "source_label": "Scheduled task",
+        "user_query_truncated": false,
+        "response": "The research digest is ready in Canvas. It includes the source links and a short overview.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/904": {
+    "ok": true,
+    "item": {
+      "id": 904,
+      "experience_id": 204,
+      "priority": 0.5,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "tavily_search",
+        "canvas"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Find the latest project release notes and summarize the changes.",
+        "source": "cli",
+        "source_label": "CLI",
+        "user_query_truncated": false,
+        "response": "I found the release notes and saved the referenced summary to Canvas.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/905": {
+    "ok": true,
+    "item": {
+      "id": 905,
+      "experience_id": 205,
+      "priority": 0.8,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "list_reminders"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "What reminders do I have for the coming week?",
+        "source": "web",
+        "source_label": "Web",
+        "user_query_truncated": false,
+        "response": "You have three scheduled reminders this week: prepare the weekly review, check the trip checklist, and replace the air filter.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/906": {
+    "ok": true,
+    "item": {
+      "id": 906,
+      "experience_id": 206,
+      "priority": 0.7,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "get_weather"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Check tomorrow\u2019s weather and help me plan a short afternoon walk.",
+        "source": "api",
+        "source_label": "API",
+        "user_query_truncated": false,
+        "response": "Tomorrow afternoon looks suitable for a short walk. Bring a light layer and check the forecast before leaving.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/907": {
+    "ok": true,
+    "item": {
+      "id": 907,
+      "experience_id": 207,
+      "priority": 0.6,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "bookmark_search",
+        "tavily_search",
+        "canvas"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Compare the articles I saved and create a concise research brief. Follow-up 2.",
+        "source": "web",
+        "source_label": "Web",
+        "user_query_truncated": false,
+        "response": "The brief is saved to Canvas with a short summary and links to the original articles.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/908": {
+    "ok": true,
+    "item": {
+      "id": 908,
+      "experience_id": 208,
+      "priority": 0.5,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "create_reminder"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Set a reminder for Friday at 3:30 PM to prepare the weekly review. Follow-up 2.",
+        "source": "voice",
+        "source_label": "Voice",
+        "user_query_truncated": false,
+        "response": "Reminder set for Friday at 3:30 PM: Prepare the weekly review.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/909": {
+    "ok": true,
+    "item": {
+      "id": 909,
+      "experience_id": 209,
+      "priority": 0.8,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "workflow"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Run the research digest and save its summary to Canvas. Follow-up 2.",
+        "source": "scheduled",
+        "source_label": "Scheduled task",
+        "user_query_truncated": false,
+        "response": "The research digest is ready in Canvas. It includes the source links and a short overview.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/910": {
+    "ok": true,
+    "item": {
+      "id": 910,
+      "experience_id": 210,
+      "priority": 0.7,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "tavily_search",
+        "canvas"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Find the latest project release notes and summarize the changes. Follow-up 2.",
+        "source": "cli",
+        "source_label": "CLI",
+        "user_query_truncated": false,
+        "response": "I found the release notes and saved the referenced summary to Canvas.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/911": {
+    "ok": true,
+    "item": {
+      "id": 911,
+      "experience_id": 211,
+      "priority": 0.6,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "list_reminders"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "What reminders do I have for the coming week? Follow-up 2.",
+        "source": "web",
+        "source_label": "Web",
+        "user_query_truncated": false,
+        "response": "You have three scheduled reminders this week: prepare the weekly review, check the trip checklist, and replace the air filter.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/912": {
+    "ok": true,
+    "item": {
+      "id": 912,
+      "experience_id": 212,
+      "priority": 0.5,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "get_weather"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Check tomorrow\u2019s weather and help me plan a short afternoon walk. Follow-up 2.",
+        "source": "api",
+        "source_label": "API",
+        "user_query_truncated": false,
+        "response": "Tomorrow afternoon looks suitable for a short walk. Bring a light layer and check the forecast before leaving.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/913": {
+    "ok": true,
+    "item": {
+      "id": 913,
+      "experience_id": 213,
+      "priority": 0.8,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "bookmark_search",
+        "tavily_search",
+        "canvas"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Compare the articles I saved and create a concise research brief. Follow-up 3.",
+        "source": "web",
+        "source_label": "Web",
+        "user_query_truncated": false,
+        "response": "The brief is saved to Canvas with a short summary and links to the original articles.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/914": {
+    "ok": true,
+    "item": {
+      "id": 914,
+      "experience_id": 214,
+      "priority": 0.7,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "create_reminder"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Set a reminder for Friday at 3:30 PM to prepare the weekly review. Follow-up 3.",
+        "source": "voice",
+        "source_label": "Voice",
+        "user_query_truncated": false,
+        "response": "Reminder set for Friday at 3:30 PM: Prepare the weekly review.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/915": {
+    "ok": true,
+    "item": {
+      "id": 915,
+      "experience_id": 215,
+      "priority": 0.6,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "workflow"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Run the research digest and save its summary to Canvas. Follow-up 3.",
+        "source": "scheduled",
+        "source_label": "Scheduled task",
+        "user_query_truncated": false,
+        "response": "The research digest is ready in Canvas. It includes the source links and a short overview.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/916": {
+    "ok": true,
+    "item": {
+      "id": 916,
+      "experience_id": 216,
+      "priority": 0.5,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "tavily_search",
+        "canvas"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Find the latest project release notes and summarize the changes. Follow-up 3.",
+        "source": "cli",
+        "source_label": "CLI",
+        "user_query_truncated": false,
+        "response": "I found the release notes and saved the referenced summary to Canvas.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/917": {
+    "ok": true,
+    "item": {
+      "id": 917,
+      "experience_id": 217,
+      "priority": 0.8,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "list_reminders"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "What reminders do I have for the coming week? Follow-up 3.",
+        "source": "web",
+        "source_label": "Web",
+        "user_query_truncated": false,
+        "response": "You have three scheduled reminders this week: prepare the weekly review, check the trip checklist, and replace the air filter.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/918": {
+    "ok": true,
+    "item": {
+      "id": 918,
+      "experience_id": 218,
+      "priority": 0.7,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "get_weather"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Check tomorrow\u2019s weather and help me plan a short afternoon walk. Follow-up 3.",
+        "source": "api",
+        "source_label": "API",
+        "user_query_truncated": false,
+        "response": "Tomorrow afternoon looks suitable for a short walk. Bring a light layer and check the forecast before leaving.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/919": {
+    "ok": true,
+    "item": {
+      "id": 919,
+      "experience_id": 219,
+      "priority": 0.6,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "bookmark_search",
+        "tavily_search",
+        "canvas"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Compare the articles I saved and create a concise research brief. Follow-up 4.",
+        "source": "web",
+        "source_label": "Web",
+        "user_query_truncated": false,
+        "response": "The brief is saved to Canvas with a short summary and links to the original articles.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/920": {
+    "ok": true,
+    "item": {
+      "id": 920,
+      "experience_id": 220,
+      "priority": 0.5,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "create_reminder"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Set a reminder for Friday at 3:30 PM to prepare the weekly review. Follow-up 4.",
+        "source": "voice",
+        "source_label": "Voice",
+        "user_query_truncated": false,
+        "response": "Reminder set for Friday at 3:30 PM: Prepare the weekly review.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/921": {
+    "ok": true,
+    "item": {
+      "id": 921,
+      "experience_id": 221,
+      "priority": 0.8,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "workflow"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Run the research digest and save its summary to Canvas. Follow-up 4.",
+        "source": "scheduled",
+        "source_label": "Scheduled task",
+        "user_query_truncated": false,
+        "response": "The research digest is ready in Canvas. It includes the source links and a short overview.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/922": {
+    "ok": true,
+    "item": {
+      "id": 922,
+      "experience_id": 222,
+      "priority": 0.7,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "tavily_search",
+        "canvas"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Find the latest project release notes and summarize the changes. Follow-up 4.",
+        "source": "cli",
+        "source_label": "CLI",
+        "user_query_truncated": false,
+        "response": "I found the release notes and saved the referenced summary to Canvas.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/923": {
+    "ok": true,
+    "item": {
+      "id": 923,
+      "experience_id": 223,
+      "priority": 0.6,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "list_reminders"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "What reminders do I have for the coming week? Follow-up 4.",
+        "source": "web",
+        "source_label": "Web",
+        "user_query_truncated": false,
+        "response": "You have three scheduled reminders this week: prepare the weekly review, check the trip checklist, and replace the air filter.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/stats/reflection-queue/924": {
+    "ok": true,
+    "item": {
+      "id": 924,
+      "experience_id": 224,
+      "priority": 0.5,
+      "queued_at": "2026-10-16T17:30:00Z",
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "processed": false,
+      "experience_available": true,
+      "tools_used": [
+        "get_weather"
+      ],
+      "outcome_success": true,
+      "review": {
+        "user_query": "Check tomorrow\u2019s weather and help me plan a short afternoon walk. Follow-up 4.",
+        "source": "api",
+        "source_label": "API",
+        "user_query_truncated": false,
+        "response": "Tomorrow afternoon looks suitable for a short walk. Bring a light layer and check the forecast before leaving.",
+        "response_truncated": false
+      }
+    }
+  },
+  "/api/experiences/201": {
+    "ok": true,
+    "experience": {
+      "id": 201,
+      "query": "Compare the articles I saved and create a concise research brief.",
+      "tools_used": [
+        "bookmark_search",
+        "tavily_search",
+        "canvas"
+      ],
+      "outcome_success": true,
+      "turns_taken": 4,
+      "has_embedding": true,
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT",
+      "completion_guard": {
+        "status": "accepted"
+      },
+      "raw_data": {}
+    }
+  },
+  "/api/experiences/202": {
+    "ok": true,
+    "experience": {
+      "id": 202,
+      "query": "Set a reminder for Friday at 3:30 PM to prepare the weekly review.",
+      "tools_used": [
+        "create_reminder"
+      ],
+      "outcome_success": true,
+      "turns_taken": 1,
+      "has_embedding": true,
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:27 AM PDT",
+      "completion_guard": {
+        "status": "auto_accepted"
+      },
+      "raw_data": {}
+    }
+  },
+  "/api/experiences/203": {
+    "ok": true,
+    "experience": {
+      "id": 203,
+      "query": "Check tomorrow\u2019s weather and help me plan a short afternoon walk.",
+      "tools_used": [
+        "get_weather"
+      ],
+      "outcome_success": true,
+      "turns_taken": 2,
+      "has_embedding": true,
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:24 AM PDT",
+      "completion_guard": {
+        "status": "accepted"
+      },
+      "raw_data": {}
+    }
+  },
+  "/api/experiences/204": {
+    "ok": true,
+    "experience": {
+      "id": 204,
+      "query": "Find the latest project release notes and summarize the changes.",
+      "tools_used": [
+        "tavily_search",
+        "canvas"
+      ],
+      "outcome_success": true,
+      "turns_taken": 3,
+      "has_embedding": true,
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 10:21 AM PDT",
+      "completion_guard": {
+        "status": "accepted"
+      },
+      "raw_data": {}
+    }
+  },
+  "/api/experiences/205": {
+    "ok": true,
+    "experience": {
+      "id": 205,
+      "query": "What reminders do I have for the coming week?",
+      "tools_used": [
+        "list_reminders"
+      ],
+      "outcome_success": true,
+      "turns_taken": 1,
+      "has_embedding": true,
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 9:18 AM PDT",
+      "completion_guard": {
+        "status": "accepted"
+      },
+      "raw_data": {}
+    }
+  },
+  "/api/experiences/206": {
+    "ok": true,
+    "experience": {
+      "id": 206,
+      "query": "Run the research digest and save its summary to Canvas.",
+      "tools_used": [
+        "workflow"
+      ],
+      "outcome_success": true,
+      "turns_taken": 3,
+      "has_embedding": true,
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 9:15 AM PDT",
+      "completion_guard": {
+        "status": "accepted"
+      },
+      "raw_data": {}
+    }
+  },
+  "/api/experiences/207": {
+    "ok": true,
+    "experience": {
+      "id": 207,
+      "query": "Help me organize the notes from today\u2019s planning session.",
+      "tools_used": [
+        "remember",
+        "canvas"
+      ],
+      "outcome_success": true,
+      "turns_taken": 2,
+      "has_embedding": true,
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 9:12 AM PDT",
+      "completion_guard": {
+        "status": "auto_accepted"
+      },
+      "raw_data": {}
+    }
+  },
+  "/api/experiences/208": {
+    "ok": true,
+    "experience": {
+      "id": 208,
+      "query": "Check the weather service again.",
+      "tools_used": [
+        "get_weather"
+      ],
+      "outcome_success": false,
+      "turns_taken": 1,
+      "has_embedding": true,
+      "timestamp": "2026-10-16T17:30:00Z",
+      "timestamp_local_display": "Oct 16, 2026 \u00b7 9:09 AM PDT",
+      "completion_guard": null,
+      "raw_data": {}
+    }
+  },
+  "/api/insights/301": {
+    "ok": true,
+    "insight": {
+      "id": 301,
+      "description": "For multi-source research, gather the evidence first, then save a concise Canvas brief with the original links.",
+      "constraint_type": "positive",
+      "confidence": 0.98,
+      "preferred_tools": [
+        "canvas"
+      ],
+      "preferred_tool_sequence": [
+        "tavily_search",
+        "canvas"
+      ],
+      "avoided_tools": [],
+      "applies_to_pattern": "Research and source-based summaries",
+      "has_embedding": true,
+      "times_applied": 38,
+      "times_helpful": 35,
+      "times_failed": 0,
+      "created_at": "2026-10-12T16:00:00Z",
+      "updated_at": "2026-10-16T17:30:00Z",
+      "updated_at_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT"
+    }
+  },
+  "/api/insights/302": {
+    "ok": true,
+    "insight": {
+      "id": 302,
+      "description": "Use the requested notification time exactly. Keep a later appointment time in the reminder title or description.",
+      "constraint_type": "positive",
+      "confidence": 0.97,
+      "preferred_tools": [
+        "create_reminder"
+      ],
+      "preferred_tool_sequence": [],
+      "avoided_tools": [],
+      "applies_to_pattern": "Reminder scheduling",
+      "has_embedding": true,
+      "times_applied": 31,
+      "times_helpful": 30,
+      "times_failed": 0,
+      "created_at": "2026-10-12T16:00:00Z",
+      "updated_at": "2026-10-16T17:30:00Z",
+      "updated_at_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT"
+    }
+  },
+  "/api/insights/303": {
+    "ok": true,
+    "insight": {
+      "id": 303,
+      "description": "Prefer a named workflow when the request matches an established repeatable process.",
+      "constraint_type": "positive",
+      "confidence": 0.93,
+      "preferred_tools": [
+        "workflow"
+      ],
+      "preferred_tool_sequence": [],
+      "avoided_tools": [],
+      "applies_to_pattern": "Repeatable multi-step tasks",
+      "has_embedding": true,
+      "times_applied": 24,
+      "times_helpful": 22,
+      "times_failed": 0,
+      "created_at": "2026-10-12T16:00:00Z",
+      "updated_at": "2026-10-16T17:30:00Z",
+      "updated_at_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT"
+    }
+  },
+  "/api/insights/304": {
+    "ok": true,
+    "insight": {
+      "id": 304,
+      "description": "After saving an artifact, confirm its title and provide the browser-accessible link returned by the tool.",
+      "constraint_type": "positive",
+      "confidence": 0.91,
+      "preferred_tools": [
+        "canvas"
+      ],
+      "preferred_tool_sequence": [],
+      "avoided_tools": [],
+      "applies_to_pattern": "Saving and sharing artifacts",
+      "has_embedding": true,
+      "times_applied": 27,
+      "times_helpful": 25,
+      "times_failed": 0,
+      "created_at": "2026-10-12T16:00:00Z",
+      "updated_at": "2026-10-16T17:30:00Z",
+      "updated_at_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT"
+    }
+  },
+  "/api/insights/305": {
+    "ok": true,
+    "insight": {
+      "id": 305,
+      "description": "Do not repeat a successful create call merely to reword its confirmation. Use the saved receipt.",
+      "constraint_type": "negative",
+      "confidence": 0.89,
+      "preferred_tools": [],
+      "preferred_tool_sequence": [],
+      "avoided_tools": [],
+      "applies_to_pattern": "Tools that create persistent records",
+      "has_embedding": true,
+      "times_applied": 19,
+      "times_helpful": 18,
+      "times_failed": 0,
+      "created_at": "2026-10-12T16:00:00Z",
+      "updated_at": "2026-10-16T17:30:00Z",
+      "updated_at_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT"
+    }
+  },
+  "/api/insights/306": {
+    "ok": true,
+    "insight": {
+      "id": 306,
+      "description": "For product comparisons, show the source links and practical differences alongside the price.",
+      "constraint_type": "positive",
+      "confidence": 0.84,
+      "preferred_tools": [
+        "google_shopping"
+      ],
+      "preferred_tool_sequence": [],
+      "avoided_tools": [],
+      "applies_to_pattern": "Shopping and product research",
+      "has_embedding": true,
+      "times_applied": 16,
+      "times_helpful": 14,
+      "times_failed": 0,
+      "created_at": "2026-10-12T16:00:00Z",
+      "updated_at": "2026-10-16T17:30:00Z",
+      "updated_at_local_display": "Oct 16, 2026 \u00b7 10:30 AM PDT"
+    }
+  }
+}

@@ -209,19 +209,30 @@
   }));
 
   const gallery = [
-    { src: 'site/images/jarvis-web.webp', alt: 'Current Jarvis Web conversational interface', title: 'Conversational workbench', copy: 'Chat, tools, files, images, voice, and live execution telemetry—composed into one focused surface.' },
-    { src: 'site/images/jarvis-canvas.webp', alt: 'Jarvis Canvas daily status report', title: 'Durable Canvas', copy: 'Living reports, notes, dashboards, and visual artifacts that remain useful after the conversation ends.' },
-    { src: 'site/images/jarvis-tui.webp', alt: 'Jarvis terminal command dashboard', title: 'Terminal control center', copy: 'Search commands, inspect system output, and operate the entire stack without leaving the terminal.' },
-    { src: 'site/images/memory-browser.webp', alt: 'Jarvis Memory Browser knowledge and conversation search', title: 'Persistent memory', copy: 'Hybrid keyword and semantic search across knowledge, conversations, reminders, and scheduled work—with mode-isolated data.' },
-    { src: 'site/images/jarvis-images.webp', alt: 'Jarvis image gallery with generated artwork', title: 'Image intelligence', copy: 'Generate, organize, inspect, and reuse visual output from the Canvas image gallery.' },
-    { src: 'site/images/jarvis-videos.webp', alt: 'Jarvis generated video gallery', title: 'Motion library', copy: 'Generated video stays browsable, playable, and connected to the system that created it.' }
+    { src: 'site/images/jarvis-web.webp', width: 1600, height: 1000, alt: 'Jarvis Web sample conversation with tool cards and a workspace comparison', title: 'Conversational workbench', copy: 'Follow a conversation through tool results and a readable answer, with saved chats and controls close at hand.' },
+    { src: 'site/images/jarvis-canvas.webp', width: 1600, height: 1000, alt: 'Jarvis Canvas sample research page with a folder tree, references, and a comparison table', title: 'Durable Canvas', copy: 'Organize research and notes into readable pages, with folders, pinned references, source links, and portable exports.' },
+    { src: 'site/images/jarvis-tui.webp', width: 1500, height: 812, alt: 'Jarvis terminal command dashboard', title: 'Terminal control center', copy: 'Search commands, inspect system output, and operate the entire stack without leaving the terminal.' },
+    { src: 'site/images/memory-browser.webp', width: 1600, height: 1000, alt: 'Jarvis Memory Browser showing sample saved preferences, routines, and project notes', title: 'Persistent memory', copy: 'Browse and search saved facts and preferences, then manage conversations, reminders, alerts, and scheduled work in the same dashboard.' },
+    { src: 'site/images/jarvis-images.webp', width: 1600, height: 768, alt: 'Jarvis image gallery with generated artwork', title: 'Image intelligence', copy: 'Generate, organize, inspect, and reuse visual output from the Canvas image gallery.' },
+    { src: 'site/images/jarvis-videos.webp', width: 1600, height: 756, alt: 'Jarvis generated video gallery', title: 'Motion library', copy: 'Generated video stays browsable, playable, and connected to the system that created it.' },
+    { src: 'site/images/jarvis-intelligence.webp', width: 1600, height: 1000, alt: 'Jarvis Intelligence Dashboard showing sample learned insights, confidence bars, and tool preferences', title: 'Learning you can inspect', copy: 'Review procedural insights, their confidence and supporting experience, then choose what to process in the reflection queue.' },
+    { src: 'site/images/jarvis-logs.webp', width: 1600, height: 1000, alt: 'Jarvis Logs Viewer with sample folders, dated files, and tool results formatted as YAML', title: 'Readable execution history', copy: 'Inspect structured logs through a read-only browser, with folder search, dated files, and expandable records.' }
   ];
   let galleryIndex = 0;
   const stageImage = $('[data-showcase-image]');
   const renderGallery = (index) => {
     galleryIndex = (index + gallery.length) % gallery.length;
     const item = gallery[galleryIndex];
-    if (stageImage) { stageImage.style.opacity = '0'; setTimeout(() => { stageImage.src = item.src; stageImage.alt = item.alt; stageImage.style.opacity = '1'; }, 120); }
+    if (stageImage) {
+      stageImage.style.opacity = '0';
+      setTimeout(() => {
+        stageImage.src = item.src;
+        stageImage.alt = item.alt;
+        stageImage.width = item.width;
+        stageImage.height = item.height;
+        stageImage.style.opacity = '1';
+      }, 120);
+    }
     $('[data-showcase-index]').textContent = `${String(galleryIndex + 1).padStart(2, '0')} / ${String(gallery.length).padStart(2, '0')}`;
     $('[data-showcase-title]').textContent = item.title; $('[data-showcase-copy]').textContent = item.copy;
     $$('[data-gallery-index]').forEach((button) => button.classList.toggle('active', Number(button.dataset.galleryIndex) === galleryIndex));
@@ -231,7 +242,12 @@
   const galleryDialog = $('[data-gallery-dialog]');
   const openGallery = () => {
     const item = gallery[galleryIndex];
-    $('[data-dialog-image]').src = item.src; $('[data-dialog-image]').alt = item.alt; $('[data-dialog-caption]').textContent = item.title;
+    const dialogImage = $('[data-dialog-image]');
+    dialogImage.src = item.src;
+    dialogImage.alt = item.alt;
+    dialogImage.width = item.width;
+    dialogImage.height = item.height;
+    $('[data-dialog-caption]').textContent = item.title;
     if (galleryDialog && !galleryDialog.open) galleryDialog.showModal();
     document.body.classList.add('dialog-open');
   };

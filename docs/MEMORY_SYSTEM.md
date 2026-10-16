@@ -2,7 +2,9 @@
 
 Jarvis has an intelligent memory system that allows it to remember important information, recall past interactions, and learn from experience.
 
-![memory-info-graph](images/memory-info-graph.jpeg)
+![Jarvis Memory dashboard with sample memories and categories](images/jarvis-memory-ui.png)
+
+See the [memory system infographic](images/memory-info-graph.jpeg) for an architectural overview.
 
 ## Database Location
 

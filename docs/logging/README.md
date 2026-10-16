@@ -2,6 +2,8 @@
 
 Complete map of where Jarvis writes logs, how to inspect them, and which files answer which debugging question.
 
+![Jarvis Logs Viewer with folders, files, and formatted sample records](../images/jarvis-logs-viewer.png)
+
 **Last Updated:** May 12, 2026
 
 ---

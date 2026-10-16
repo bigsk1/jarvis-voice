@@ -6,7 +6,7 @@ A visual viewer for rich content that Jarvis populates. Think of it as a persona
 
 ## Overview
 
-![jarvis-canvas](images/jarvis-canvas.jpeg)
+![jarvis-canvas](images/jarvis-canvas-ui.png)
 
 ## Quick Start
 

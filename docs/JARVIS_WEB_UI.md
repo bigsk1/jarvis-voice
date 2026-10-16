@@ -24,7 +24,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 - Dashboard TUI (`bin/jarvis-dashboard`) - Terminal control surface
 - **Web UI (`jarvis-web`)** - Full-featured chat interface ✅
 
-![jarvis-web](images/jarvis-web.jpg)
+![jarvis-web](images/jarvis-web-ui.png)
 
 For private HTTPS access from your other devices, see the
 [Tailscale HTTPS guide](TAILSCALE_HTTPS.md). It covers Serve commands for all five
@@ -1725,6 +1725,8 @@ A collapsible panel at the bottom of the UI that streams server logs in real-tim
 ### `/logs` Read-Only Browser (NEW)
 
 A dedicated page at `/logs` for browsing structured and plain-text logs without leaving Jarvis Web UI.
+
+![Jarvis Logs Viewer with searchable folders and formatted records](images/jarvis-logs-viewer.png)
 
 **Features:**
 - **Read-only by design** - No editing, deletion, or file writes

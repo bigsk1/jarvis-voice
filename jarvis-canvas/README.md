@@ -6,7 +6,7 @@ A visual viewer for rich content that Jarvis populates. Think of it as a persona
 
 ## Overview
 
-![jarvis-canvas](../docs/images/jarvis-canvas.jpeg)
+![jarvis-canvas](../docs/images/jarvis-canvas-ui.png)
 
 ## Quick Start
 
@@ -181,8 +181,6 @@ When viewing a page, the header shows:
 1. A breadcrumb path in small muted text (e.g., `Workflows / Research`)
 2. The page's display name as the h1 (e.g., `Claude 4 release date`)
 
-
-![jarvis-canvas](../docs/images/jarvis-canvas.png)
 
 ---
 

@@ -1,0 +1,533 @@
+{
+  "/api/status": {
+    "ok": true,
+    "mode": "cloud",
+    "version": "2.56.1",
+    "tools_count": 241,
+    "tool_sync_warning": null
+  },
+  "/api/profile-appearance": {
+    "ok": true,
+    "profile": {
+      "display_name": "",
+      "avatar": null,
+      "revision": 0
+    }
+  },
+  "/api/settings": {
+    "ok": true,
+    "settings": {
+      "mode": "cloud",
+      "audio": {
+        "tts_enabled": false
+      },
+      "ui": {
+        "progress_events": true,
+        "intelligence_reflections": true
+      },
+      "llm": {
+        "provider": {
+          "value": "xai",
+          "default": "xai",
+          "is_override": false,
+          "options": [
+            "xai",
+            "ollama",
+            "openai",
+            "anthropic"
+          ]
+        },
+        "model": {
+          "value": "grok-4.7",
+          "default": "grok-4.7",
+          "is_override": false,
+          "options": [
+            {
+              "id": "grok-4.7",
+              "name": "Grok 4.7",
+              "context": 1000000
+            }
+          ]
+        },
+        "thinking_effort": {
+          "value": "auto",
+          "default": "auto",
+          "is_override": false
+        }
+      },
+      "provider_models": {
+        "xai": [
+          {
+            "id": "grok-4.7",
+            "name": "Grok 4.7",
+            "context": 1000000
+          }
+        ]
+      },
+      "router_prompt": {
+        "version": {
+          "value": "v4",
+          "default": "v4",
+          "is_override": false,
+          "options": [
+            {
+              "id": "v1",
+              "label": "v1 · Recovery prompt"
+            },
+            {
+              "id": "v2",
+              "label": "v2 · Compact"
+            },
+            {
+              "id": "v3",
+              "label": "v3 · Caveman hybrid"
+            },
+            {
+              "id": "v4",
+              "label": "v4 · Caveman-light hybrid"
+            }
+          ]
+        }
+      },
+      "tool_rag": {
+        "limit": {
+          "value": 15,
+          "default": 15,
+          "is_override": false
+        }
+      },
+      "tts": {
+        "provider": {
+          "value": "elevenlabs",
+          "default": "elevenlabs",
+          "options": [
+            "elevenlabs",
+            "xai",
+            "openai"
+          ]
+        }
+      },
+      "image": {
+        "provider": {
+          "value": "openai",
+          "default": "openai"
+        }
+      },
+      "video": {
+        "provider": {
+          "value": "xai",
+          "default": "xai"
+        }
+      },
+      "music": {
+        "provider": {
+          "value": "elevenlabs",
+          "default": "elevenlabs"
+        }
+      },
+      "provider_availability": {
+        "llm": {
+          "xai": {
+            "available": true
+          },
+          "ollama": {
+            "available": true
+          },
+          "openai": {
+            "available": true
+          },
+          "anthropic": {
+            "available": true
+          }
+        }
+      }
+    }
+  },
+  "/api/settings/system": {
+    "ok": true,
+    "config": {
+      "JARVIS_RESPONSE_STYLE": "detailed",
+      "JARVIS_TIMEZONE": "America/Los_Angeles",
+      "OLLAMA_CONTEXT_WINDOW": "32768",
+      "JARVIS_TOOL_PROFILE": "default"
+    }
+  },
+  "/api/prompts": {
+    "ok": true,
+    "prompts": {
+      "research": {
+        "name": "research",
+        "description": "Research a question using primary sources and save a concise brief."
+      },
+      "compare": {
+        "name": "compare",
+        "description": "Compare options with clear criteria and evidence."
+      }
+    }
+  },
+  "/api/workflows": {
+    "ok": true,
+    "workflows": {
+      "deep_dive": {
+        "name": "deep_dive",
+        "description": "Research a topic, verify sources, and save a structured Canvas brief."
+      },
+      "note": {
+        "name": "note",
+        "description": "Save a note to memory and Canvas."
+      },
+      "bookmark_search": {
+        "name": "bookmark_search",
+        "description": "Search saved bookmarks and open the most relevant sources.",
+        "trigger": "*"
+      },
+      "github_ai_radar_daily": {
+        "name": "github_ai_radar_daily",
+        "description": "Discover AI projects and build a source-backed daily report."
+      },
+      "buying_brief": {
+        "name": "buying_brief",
+        "description": "Compare products and save a buying guide with sources."
+      },
+      "game_brief": {
+        "name": "game_brief",
+        "description": "Create a concise game recap with verified results."
+      }
+    }
+  },
+  "/api/tools": {
+    "ok": true,
+    "count": 241,
+    "tools": [
+      {
+        "name": "tavily_search",
+        "description": "Search the web for current information with cited sources.",
+        "source": "local",
+        "enabled": true
+      },
+      {
+        "name": "canvas",
+        "description": "Create, append, and update saved Canvas pages.",
+        "source": "local",
+        "enabled": true
+      },
+      {
+        "name": "bookmark_search",
+        "description": "Search your saved bookmarks by text, topic, or URL.",
+        "source": "local",
+        "enabled": true
+      },
+      {
+        "name": "create_reminder",
+        "description": "Set one-time and recurring reminders at your requested notification time.",
+        "source": "local",
+        "enabled": true
+      },
+      {
+        "name": "convert_file",
+        "description": "Convert images, audio, video, and documents.",
+        "source": "local",
+        "enabled": true
+      },
+      {
+        "name": "generate_image",
+        "description": "Generate an image from a description.",
+        "source": "local",
+        "enabled": true
+      },
+      {
+        "name": "get_time",
+        "description": "Get the current local date and time.",
+        "source": "local",
+        "enabled": true
+      },
+      {
+        "name": "source_library",
+        "description": "Save and search original documents with citations.",
+        "source": "local",
+        "enabled": true
+      }
+    ]
+  },
+  "/api/background-tasks": {
+    "ok": true,
+    "settings": {
+      "background_enabled": true,
+      "background_tools": [
+        "browser_use_cloud",
+        "convert_file"
+      ]
+    },
+    "tools": [
+      "browser_use_cloud",
+      "convert_file"
+    ],
+    "configured_tools": [
+      "browser_use_cloud",
+      "convert_file"
+    ],
+    "worker_ready": true,
+    "tool_details": {
+      "browser_use_cloud": {
+        "worker_ready": true,
+        "remote_work": true
+      },
+      "convert_file": {
+        "worker_ready": true
+      }
+    }
+  },
+  "/api/conversations": {
+    "ok": true,
+    "conversations": [
+      {
+        "id": "demo-research",
+        "title": "Build a local AI workspace",
+        "updated_at": "2026-10-16T17:35:00Z",
+        "message_count": 2,
+        "pinned": true,
+        "archived": false
+      },
+      {
+        "id": "demo-projects",
+        "title": "Explore promising open-source AI projects",
+        "updated_at": "2026-10-16T17:20:00Z",
+        "message_count": 6,
+        "pinned": true,
+        "archived": false
+      },
+      {
+        "id": "demo-bookmarks",
+        "title": "Find my saved browser automation resources",
+        "updated_at": "2026-10-16T16:55:00Z",
+        "message_count": 4,
+        "pinned": false,
+        "archived": false
+      },
+      {
+        "id": "demo-docs",
+        "title": "Summarize these documents with citations",
+        "updated_at": "2026-10-16T16:30:00Z",
+        "message_count": 8,
+        "pinned": false,
+        "archived": false
+      },
+      {
+        "id": "demo-reminder",
+        "title": "Set a reminder for tomorrow at noon",
+        "updated_at": "2026-10-16T15:30:00Z",
+        "message_count": 2,
+        "pinned": false,
+        "archived": false
+      },
+      {
+        "id": "demo-conversion",
+        "title": "Convert the logo to transparent WebP",
+        "updated_at": "2026-10-16T15:05:00Z",
+        "message_count": 4,
+        "pinned": false,
+        "archived": false
+      },
+      {
+        "id": "demo-planning",
+        "title": "Plan the next feature release",
+        "updated_at": "2026-10-15T22:15:00Z",
+        "message_count": 12,
+        "pinned": false,
+        "archived": false
+      }
+    ]
+  },
+  "/api/conversations/demo-research": {
+    "ok": true,
+    "conversation": {
+      "id": "demo-research",
+      "title": "Build a local AI workspace",
+      "mode": "cloud",
+      "generation": 0,
+      "llm_provider": "xai",
+      "llm_model": "grok-4.7",
+      "messages": [
+        {
+          "id": "demo-user-01",
+          "role": "user",
+          "content": "Help me plan a local AI workspace. Compare chat, tools, memory, and Canvas.",
+          "data": {
+            "_request_id": "demo-request-01"
+          }
+        },
+        {
+          "id": "demo-assistant-01",
+          "role": "assistant",
+          "content": "## A workspace that remembers and gets things done\n\nKeep the conversation simple, and give each kind of information a clear home.\n\n| Area | Use it for | What you keep |\n| --- | --- | --- |\n| **Chat & voice** | Ask questions and work through a task | Conversation context |\n| **Tools & workflows** | Search, convert files, and automate a routine | Results and artifacts |\n| **Memory** | Save preferences and useful facts | Searchable long-term context |\n| **Canvas** | Turn research into something worth keeping | Notes, briefs, and original sources |\n\n**A practical starting point:** search your saved sources, compare the options, and keep the finished brief in Canvas. Add integrations as you need them.",
+          "tools_used": [
+            "bookmark_search",
+            "search_memory"
+          ],
+          "data": {
+            "_web_message_id": "demo-assistant-01",
+            "_tool_trace": [
+              {
+                "tool": "bookmark_search",
+                "ok": true,
+                "arguments": {
+                  "query": "local AI workspace",
+                  "limit": 5
+                },
+                "duration_ms": 418
+              },
+              {
+                "tool": "search_memory",
+                "ok": true,
+                "arguments": {
+                  "query": "local AI workspace preferences"
+                },
+                "duration_ms": 183
+              }
+            ],
+            "usage": {
+              "input_tokens": 18945,
+              "output_tokens": 1408,
+              "total_tokens": 20353,
+              "cost_usd": 0.038,
+              "model_calls": 3,
+              "peak_context_tokens": 12400,
+              "provider": "xai",
+              "model": "grok-4.7",
+              "mode": "cloud",
+              "cache_read_tokens": 12288,
+              "cache_savings_usd": 0.012
+            }
+          }
+        }
+      ]
+    }
+  },
+  "/api/pages/page_demo_research": {
+    "id": "page_demo_research",
+    "title": "Open-source AI · Research Brief",
+    "content": "# Open-source AI · Research Brief\n\nA concise, source-backed snapshot of project announcements, developer tools, and research updates.\n\n## Highlights\n\nOriginal sources lead each finding, with practical context and clear links for a deeper read. Older report history stays in its own section.\n\n## Sources\n\n- Project announcements\n- Developer documentation\n- Research overview",
+    "tags": [
+      "research",
+      "ai",
+      "daily-brief"
+    ]
+  },
+  "/api/conversations/demo-background": {
+    "ok": true,
+    "conversation": {
+      "id": "demo-background",
+      "title": "Research running in the background",
+      "mode": "cloud",
+      "generation": 0,
+      "messages": [
+        {
+          "id": "demo-user-bg",
+          "role": "user",
+          "content": "Compare three project management tools in the background. Save the findings here when you finish.",
+          "data": {
+            "_request_id": "demo-request-bg"
+          }
+        },
+        {
+          "id": "demo-assistant-bg",
+          "role": "assistant",
+          "content": "Browser research is running in the background. You can keep chatting; the comparison will return to this conversation when it is ready.",
+          "tools_used": [],
+          "data": {
+            "_web_message_id": "demo-assistant-bg",
+            "background_jobs": {
+              "demo-job-01": {
+                "schema_version": 1,
+                "job_id": "demo-job-01",
+                "conversation_id": "demo-background",
+                "generation": 0,
+                "source_message_id": "demo-assistant-bg",
+                "mode": "cloud",
+                "tool": "browser_use_cloud",
+                "state": "running",
+                "revision": 2,
+                "can_cancel": true,
+                "progress": {
+                  "phase": "Reviewing product documentation and pricing"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "/api/demo/logs": {
+    "entries": [
+      {
+        "timestamp": "2026-10-16T17:34:53Z",
+        "source": "llm",
+        "level": "info",
+        "title": "Routing research request · 2 tools selected",
+        "details": {
+          "mode": "cloud",
+          "router_prompt": "v4",
+          "tools": [
+            "tavily_search",
+            "canvas"
+          ]
+        }
+      },
+      {
+        "timestamp": "2026-10-16T17:34:55Z",
+        "source": "tool",
+        "level": "info",
+        "title": "tavily_search completed · 3 sources returned",
+        "details": {
+          "tool": "tavily_search",
+          "duration_ms": 1240,
+          "success": true
+        }
+      },
+      {
+        "timestamp": "2026-10-16T17:34:57Z",
+        "source": "llm",
+        "level": "info",
+        "title": "Source review complete · composing research brief",
+        "details": {
+          "input_tokens": 12400,
+          "cache_read_tokens": 12288
+        }
+      },
+      {
+        "timestamp": "2026-10-16T17:34:59Z",
+        "source": "tool",
+        "level": "info",
+        "title": "canvas completed · Research Brief saved",
+        "details": {
+          "action": "create",
+          "page_id": "page_demo_research",
+          "duration_ms": 183
+        }
+      },
+      {
+        "timestamp": "2026-10-16T17:35:00Z",
+        "source": "workflow",
+        "level": "info",
+        "title": "Research finished · answer and sources ready",
+        "details": {
+          "steps_completed": 2,
+          "mode": "cloud"
+        }
+      }
+    ]
+  },
+  "/api/settings/models/xai": {
+    "ok": true,
+    "provider": "xai",
+    "models": [
+      {
+        "id": "grok-4.7",
+        "name": "Grok 4.7",
+        "context": 1000000
+      }
+    ],
+    "default_model": "grok-4.7"
+  }
+}

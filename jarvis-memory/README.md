@@ -2,7 +2,7 @@
 
 A web-based interface for viewing, searching, and managing Jarvis's memory database.
 
-![memory-browser](../docs/images/memory-browser.jpg)
+![memory-browser](../docs/images/jarvis-memory-ui.png)
 
 ## Features
 
@@ -115,6 +115,9 @@ Memory database before requests are served.
 - `POST /api/reminders/acknowledge-all?status=triggered` - Acknowledge all matching reminders
 
 ### Scheduled Tasks
+
+![Jarvis Memory scheduled tasks with next-run times and recent results](../docs/images/jarvis-scheduled-tasks.png)
+
 - `GET /api/scheduled-tasks` - List scheduled tasks
 - `GET /api/scheduled-tasks/<id>` - Get one scheduled task
 - `POST /api/scheduled-tasks` - Create task

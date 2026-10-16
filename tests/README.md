@@ -94,6 +94,10 @@ OpenCode `--live` creates a session. Thinking `--live` makes real LLM requests a
 
 ## Manual diagnostics
 
+For browser layout review with public sample data and no live credentials or
+databases, use the [UI preview and screenshot helper](visual/README.md).
+It is a manual visual check, separate from the deterministic core suite.
+
 These are diagnostics rather than pass/fail integration suites:
 
 ```bash

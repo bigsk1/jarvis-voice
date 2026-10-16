@@ -1,0 +1,162 @@
+{
+  "/api/pages": [
+    {
+      "id": "page_demo_workspace",
+      "title": "Research/Local AI workspace",
+      "content": "A practical starting point for a useful, private AI workspace — with clear boundaries between conversation, tools, and the things you keep.\n\n> **The goal:** ask naturally, use the right tool, and save a result you can return to.\n\n## The building blocks\n\n| Layer | What it does | A useful default |\n| :--- | :--- | :--- |\n| **Conversation** | Turn a question into a clear next step | Keep context close to the task |\n| **Tools** | Search, calculate, convert, and act | Enable the integrations you need |\n| **Memory** | Remember preferences and useful facts | Keep personal and operational data distinct |\n| **Canvas** | Keep research, notes, and finished work | Save a readable page with its sources |\n\n## From a question to a saved result\n\n1. **Start with intent.** Explain what you want to learn or make.\n2. **Gather the evidence.** Search, inspect a file, or use an enabled integration.\n3. **Make it useful.** Compare the options and keep the details that matter.\n4. **Save it here.** A Canvas page gives the result a home beyond the chat.\n\n## A small checklist for the next project\n\n- [x] Choose the tools and data sources the project needs.\n- [x] Keep credentials in private configuration.\n- [x] Save source links alongside conclusions.\n- [ ] Turn the repeatable steps into a scheduled workflow.\n\n<details>\n<summary>Reference links and implementation notes</summary>\n\n### Explore the components\n\n- [Ollama](https://github.com/ollama/ollama) — a local model runtime.\n- [Open WebUI](https://github.com/open-webui/open-webui) — a browser interface for AI workflows.\n- [Qdrant](https://github.com/qdrant/qdrant) — a vector search engine.\n\nThese links are examples for a saved research page. Select services to fit your own setup.\n\n</details>\n",
+      "tags": [
+        "research",
+        "local-ai",
+        "reference"
+      ],
+      "pinned": false,
+      "created": "2026-10-16T15:30:00Z",
+      "updated": "2026-10-16T17:42:00Z",
+      "source_query": "Create a concise research page for a local AI workspace, with a checklist and useful references."
+    },
+    {
+      "id": "page_demo_briefing",
+      "title": "Today’s briefing",
+      "content": "## A clear place to begin\n\nReview your notes, pick the next task, and keep what you learn.",
+      "tags": [
+        "note",
+        "briefing"
+      ],
+      "pinned": true,
+      "created": "2026-10-16T15:30:00Z",
+      "updated": "2026-10-16T17:42:00Z",
+      "source_query": ""
+    },
+    {
+      "id": "page_demo_reading",
+      "title": "Reading list",
+      "content": "## Reading list\n\nA small collection of useful references.",
+      "tags": [
+        "reference"
+      ],
+      "pinned": true,
+      "created": "2026-10-16T15:30:00Z",
+      "updated": "2026-10-16T17:42:00Z",
+      "source_query": ""
+    },
+    {
+      "id": "page_demo_research_tools",
+      "title": "Research/Tools worth exploring",
+      "content": "## Tools worth exploring\n\nSaved ideas for a future project.",
+      "tags": [
+        "research"
+      ],
+      "pinned": false,
+      "created": "2026-10-16T15:30:00Z",
+      "updated": "2026-10-16T17:42:00Z",
+      "source_query": ""
+    },
+    {
+      "id": "page_demo_research_notes",
+      "title": "Research/Source notes",
+      "content": "## Source notes\n\nLinks, excerpts, and questions to revisit.",
+      "tags": [
+        "research",
+        "reference"
+      ],
+      "pinned": false,
+      "created": "2026-10-16T15:30:00Z",
+      "updated": "2026-10-16T17:42:00Z",
+      "source_query": ""
+    },
+    {
+      "id": "page_demo_notes_project",
+      "title": "Notes/Project ideas",
+      "content": "## Project ideas\n\nSmall ideas with a clear next step.",
+      "tags": [
+        "note"
+      ],
+      "pinned": false,
+      "created": "2026-10-16T15:30:00Z",
+      "updated": "2026-10-16T17:42:00Z",
+      "source_query": ""
+    },
+    {
+      "id": "page_demo_notes_meeting",
+      "title": "Notes/Weekly planning",
+      "content": "## Weekly planning\n\nPlan the work and save the decisions.",
+      "tags": [
+        "note"
+      ],
+      "pinned": false,
+      "created": "2026-10-16T15:30:00Z",
+      "updated": "2026-10-16T17:42:00Z",
+      "source_query": ""
+    },
+    {
+      "id": "page_demo_notes_quick",
+      "title": "Notes/Quick captures",
+      "content": "## Quick captures\n\nA home for passing ideas.",
+      "tags": [
+        "note"
+      ],
+      "pinned": false,
+      "created": "2026-10-16T15:30:00Z",
+      "updated": "2026-10-16T17:42:00Z",
+      "source_query": ""
+    },
+    {
+      "id": "page_demo_workflow_research",
+      "title": "Workflows/Research brief",
+      "content": "## Research brief\n\nSearch, compare, and save a concise summary.",
+      "tags": [
+        "reference"
+      ],
+      "pinned": false,
+      "created": "2026-10-16T15:30:00Z",
+      "updated": "2026-10-16T17:42:00Z",
+      "source_query": ""
+    },
+    {
+      "id": "page_demo_workflow_inbox",
+      "title": "Workflows/Inbox check",
+      "content": "## Inbox check\n\nA repeatable check with a clear outcome.",
+      "tags": [
+        "reference"
+      ],
+      "pinned": false,
+      "created": "2026-10-16T15:30:00Z",
+      "updated": "2026-10-16T17:42:00Z",
+      "source_query": ""
+    },
+    {
+      "id": "page_demo_ref_commands",
+      "title": "Reference/Useful commands",
+      "content": "## Useful commands\n\nKeep the commands you use often.",
+      "tags": [
+        "code",
+        "reference"
+      ],
+      "pinned": false,
+      "created": "2026-10-16T15:30:00Z",
+      "updated": "2026-10-16T17:42:00Z",
+      "source_query": ""
+    },
+    {
+      "id": "page_demo_ref_setup",
+      "title": "Reference/Setup checklist",
+      "content": "## Setup checklist\n\nA short checklist for a fresh installation.",
+      "tags": [
+        "reference"
+      ],
+      "pinned": false,
+      "created": "2026-10-16T15:30:00Z",
+      "updated": "2026-10-16T17:42:00Z",
+      "source_query": ""
+    }
+  ],
+  "/api/xai-pdf-shares/status": {
+    "available": false,
+    "default_ttl_days": 7,
+    "allowed_ttl_days": [
+      1,
+      7,
+      30
+    ]
+  }
+}
