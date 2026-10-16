@@ -129,6 +129,53 @@ class OpenAIContinuationShapeTests(unittest.TestCase):
         self.assertGreaterEqual(len(payload), 2)
         self.assertEqual(payload[0]["type"], "function_call_output")
 
+    def test_reminder_hint_reaches_both_native_providers_with_and_without_delta(self) -> None:
+        from orchestrator_v2 import Orchestrator  # noqa: E402
+
+        orch = Orchestrator.__new__(Orchestrator)
+        orch.timezone = ZoneInfo("America/Los_Angeles")
+        orch.router = mock.MagicMock(model_name="test-model")
+        result = {"ok": True, "speech": "Reminder set for noon.", "data": {
+            "reminder_id": 123, "trigger_time_local": "2099-10-23T12:00:00-07:00",
+        }}
+        for provider in ("openai", "xai"):
+            for delta_enabled in (False, True):
+                with self.subTest(provider=provider, delta_enabled=delta_enabled):
+                    with mock.patch("orchestrator_v2.get_config_value", side_effect=lambda _, default=None: default):
+                        continuation = getattr(orch, f"_build_{provider}_provider_continuation")(
+                            route={"response_id": "resp_reminder", "tool_call_id": "call_reminder"},
+                            tool_name="create_reminder", arguments={"title": "Call plumber", "when": "noon"},
+                            result=result, duration_ms=123,
+                        )
+                    with mock.patch.object(orch, "_config_bool", return_value=delta_enabled):
+                        builder = (orch._build_openai_responses_route_input if provider == "openai"
+                                   else orch._build_xai_structural_route_input)
+                        payload = builder(retrieval_query="Set a reminder", continuation=continuation,
+                                          turn_notice="[Turn 2/15]")
+                    self.assertEqual(payload.previous_response_id, "resp_reminder")
+                    if provider == "openai":
+                        items = payload.responses_continuation_input
+                        self.assertEqual(items[0]["type"], "function_call_output")
+                        self.assertEqual(items[0]["call_id"], "call_reminder")
+                        output = items[0]["output"]
+                    else:
+                        items = payload.messages
+                        self.assertEqual(items[0]["role"], "tool")
+                        self.assertEqual(items[0]["tool_call_id"], "call_reminder")
+                        output = items[0]["content"]
+                    self.assertIn("Reminder saved. Confirm saved time", output)
+                    self.assertIn("report mismatch without replacement", output)
+                    self.assertIn("another explicitly requested notification", output)
+                    self.assertIn('"reminder_id": 123', output)
+                    self.assertIn("2099-10-23T12:00:00-07:00", output)
+                    self.assertEqual(len(items), 2 if delta_enabled else 1)
+                    if delta_enabled:
+                        self.assertEqual(items[1]["role"], "user")
+                        self.assertIn("[Turn 2/15]", items[1]["content"])
+                        self.assertNotIn("[Turn 2/15]", output)
+                    else:
+                        self.assertIn("[Turn 2/15]", output)
+
     def test_orchestrator_keeps_openai_shape_with_turn_notice_when_delta_off(self) -> None:
         from orchestrator_v2 import Orchestrator  # noqa: E402
 

@@ -118,10 +118,10 @@ time.
 
 | Version | Characters | Words | Rough Token Estimate | Character Delta |
 | --- | ---: | ---: | ---: | --- |
-| `v1` | `31,826` | `4,877` | `~7,957` | Baseline |
-| `v2` | `14,006` | `1,986` | `~3,502` | `56.0%` fewer than v1 |
-| `v3` | `10,022` | `1,316` | `~2,506` | `68.5%` fewer than v1; `28.4%` fewer than v2 |
-| `v4` | `10,508` | `1,393` | `~2,627` | `67.0%` fewer than v1; `25.0%` fewer than v2; `4.8%` more than v3 |
+| `v1` | `32,130` | `4,924` | `~8,033` | Baseline |
+| `v2` | `14,166` | `2,010` | `~3,542` | `55.9%` fewer than v1 |
+| `v3` | `10,190` | `1,339` | `~2,548` | `68.3%` fewer than v1; `28.1%` fewer than v2 |
+| `v4` | `10,672` | `1,416` | `~2,668` | `66.8%` fewer than v1; `24.7%` fewer than v2; `4.7%` more than v3 |
 
 The important live metric is full routing payload size. A compact prompt can
 still be dominated by retrieved tool schemas, profile/context overlays, or
@@ -139,11 +139,16 @@ of this version.
 
 Baseline measurements:
 
-- Characters: `31,826`
-- Physical lines: `417` (`340` nonblank)
-- Space-separated words: `4,877`
-- Rough token estimate: approximately `7,957` by characters divided by four; provider tokenizers differ
-- Prompt SHA-256: `7e6aba1b93b5765ba409d3bf520b67ab8af9bef288d4926a2faae7821d6b6671`
+- Characters: `32,130`
+- Physical lines: `419` (`342` nonblank)
+- Space-separated words: `4,924`
+- Rough token estimate: approximately `8,033` by characters divided by four; provider tokenizers differ
+- Prompt SHA-256: `cd3f1129e885476b829daa92022023a75b78b0139a99ca7e4208efa06e1832bb`
+
+Reminder creation uses one call per explicitly requested notification schedule.
+Only that schedule belongs in `when`; appointment times stay in the title or
+description. Preserve the stated local notification time without invented lead
+time, and confirm the saved receipt without creating again to verify or correct it.
 
 ### v1 integrity and maintenance
 
@@ -183,11 +188,11 @@ into one authoritative section.
 
 Measurements:
 
-- Characters: `14,006` (`56.0%` fewer than v1)
+- Characters: `14,166` (`55.9%` fewer than v1)
 - Physical lines: `89` (`76` nonblank)
-- Space-separated words: `1,986`
-- Rough token estimate: approximately `3,502` by characters divided by four; provider tokenizers differ
-- Prompt SHA-256: `a3ef882708880d0372ad3dc0636e1e01890a79ca611e8c5e582ceca6e459128d`
+- Space-separated words: `2,010`
+- Rough token estimate: approximately `3,542` by characters divided by four; provider tokenizers differ
+- Prompt SHA-256: `0c501cbdd840428b6837dfbdf76b749b947da04690afb74c10512639648a7a47`
 
 Tool RAG, schemas, runtime date/time, provider capability notes, response-style
 overlays, model overrides, and profile cards remain unchanged. Treat live tests
@@ -212,11 +217,11 @@ the injected time without a tool call.
 
 Measurements:
 
-- Characters: `10,022` (`68.5%` fewer than v1; `28.4%` fewer than v2)
+- Characters: `10,190` (`68.3%` fewer than v1; `28.1%` fewer than v2)
 - Physical lines: `92` (`77` nonblank)
-- Space-separated words: `1,316`
-- Rough token estimate: approximately `2,506` by characters divided by four; provider tokenizers differ
-- Prompt SHA-256: `323ede1603570e646f61eb907ff60a14f64bd9c35af67b9c82d29e8ad8d24ecf`
+- Space-separated words: `1,339`
+- Rough token estimate: approximately `2,548` by characters divided by four; provider tokenizers differ
+- Prompt SHA-256: `0bc20b9a3d98e17f8a75100180adf71440ea00605d9dc505388caf7a67d3b98d`
 
 The main experimental risk is instruction adherence on weaker/local models:
 telegraphic grammar removes explanatory redundancy that may help some models.
@@ -234,11 +239,11 @@ improves adherence for providers/models that struggle with v3 shorthand.
 
 Measurements:
 
-- Characters: `10,508` (`67.0%` fewer than v1; `25.0%` fewer than v2; `4.8%` more than v3)
+- Characters: `10,672` (`66.8%` fewer than v1; `24.7%` fewer than v2; `4.7%` more than v3)
 - Physical lines: `46` (`31` nonblank)
-- Space-separated words: `1,393`
-- Rough token estimate: approximately `2,627` by characters divided by four; provider tokenizers differ
-- Prompt SHA-256: `a077bf959ed6f0772129dc9fda6e43f6fe4521a207a45446acb4dd6edb13ced2`
+- Space-separated words: `1,416`
+- Rough token estimate: approximately `2,668` by characters divided by four; provider tokenizers differ
+- Prompt SHA-256: `c8b27f9d1c01bf32afdd90032dd469b85f39ff9c8565d4a78f1ecd9207a4a86a`
 
 V4 intentionally preserves the supplied Unicode comparison arrows and symbols;
 provider tokenization may therefore differ slightly from the character-based

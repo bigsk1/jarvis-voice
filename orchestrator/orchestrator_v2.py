@@ -1345,6 +1345,64 @@ Mode: {self.mode}
         return result
     
     @carry_pending_jobs
+    def _reminder_response_speech(
+        self, conversation_context: list[dict], router_commentary: str = ""
+    ) -> str | None:
+        """Select actual receipts for a reminder turn, including recovery stops."""
+        actual_contexts = [
+            ctx for ctx in conversation_context if ctx.get("tool") != "duplicate_guard"
+        ]
+        if not any(ctx.get("tool") == "create_reminder" for ctx in actual_contexts):
+            return None
+
+        # Discovery, clock, and reminder-state lookups do not invalidate a saved receipt.
+        preparation_tools = {"tool_search", "get_time", "list_reminders"}
+        has_other_actions = any(
+            ctx.get("tool") not in self.DIRECT_SPEECH_TOOLS | preparation_tools
+            for ctx in actual_contexts
+        )
+        if has_other_actions and not router_commentary:
+            # A safety-stop summary must still account for cancellation/other actions.
+            return None
+
+        receipts = []
+        saved_subjects = set()
+        for ctx in reversed(actual_contexts):
+            tool = ctx.get("tool")
+            if tool not in self.DIRECT_SPEECH_TOOLS:
+                continue
+            result = ctx.get("result", {})
+            if tool == "create_reminder":
+                if has_other_actions:
+                    # A later cancellation may invalidate an earlier create receipt.
+                    continue
+                arguments = ctx.get("arguments", {})
+                subject = tuple(
+                    " ".join(str(arguments.get(key) or "").split())
+                    for key in ("title", "description")
+                )
+                if result.get("ok"):
+                    saved_subjects.add(subject)
+                elif (
+                    result.get("error_code") == "invalid_reminder_schedule"
+                    and subject[0]
+                    and subject in saved_subjects
+                ):
+                    # This pre-write rejection was followed by a corrected same-subject save.
+                    # Keep the attempt in the trace, rather than speaking an obsolete failure.
+                    continue
+            receipt = ctx.get("speech", "") or result.get("speech", "") or ""
+            if tool == "create_reminder":
+                receipt = receipt.strip()
+                if receipt and not receipt.endswith((".", "!", "?")):
+                    receipt += "."
+            if receipt:
+                receipts.append(receipt)
+        receipts.reverse()
+        if has_other_actions:
+            receipts.append(router_commentary)
+        return " ".join(receipts).strip() or None
+
     def process(self, transcript: str, retry_count: int = 0, error_context: str = None,
                 conversation_history: list = None, excluded_tools: list = None,
                 tool_overrides: dict[str, dict] | None = None,
@@ -1604,11 +1662,29 @@ Mode: {self.mode}
 
             if state.blocked_duplicate_calls:
                 recent_blocks = list(state.blocked_duplicate_calls.values())[-3:]
+                recovery_choice = "- You must either answer directly from the existing results or choose a clearly different tool call."
+                if any(
+                    blocked["tool"] == "create_reminder"
+                    for blocked in state.blocked_duplicate_calls.values()
+                ):
+                    recovery_choice = (
+                        "- For create_reminder, answer from the saved result. Do not retry "
+                        "that reminder with a different title or time. Only create another "
+                        "reminder for a distinct notification explicitly requested by the user."
+                    )
+                    if any(
+                        blocked["tool"] != "create_reminder"
+                        for blocked in state.blocked_duplicate_calls.values()
+                    ):
+                        recovery_choice += (
+                            "\n- For tools other than create_reminder, answer directly from "
+                            "existing results or choose a clearly different tool call."
+                        )
                 guard_lines = [
                     "DUPLICATE TOOL GUARD:",
                     "- One or more attempted tool calls were blocked in this request.",
                     "- The exact blocked call signatures below are unavailable for the rest of this in-flight request.",
-                    "- You must either answer directly from the existing results or choose a clearly different tool call.",
+                    recovery_choice,
                     "- Repeating a blocked call again will end the task with the duplicate safeguard fallback.",
                 ]
                 for blocked in recent_blocks:
@@ -1651,7 +1727,11 @@ Mode: {self.mode}
                         f"{turn_input}"
                     )
                 else:
-                    if (
+                    next_action = "Use results already gathered, choose a client-side search tool, or answer directly."
+                    if allowed_tools is not None:
+                        reason = "The request tool allowlist disables provider-native tools."
+                        next_action = "Use only the allowed tools, or answer directly from results already gathered."
+                    elif (
                         state.vision_pre_analyzed
                         and self._provider_server_side_tools_available()
                         and not client_search_hint_active
@@ -1667,8 +1747,7 @@ Mode: {self.mode}
                         reason = "The provider-native search budget is exhausted."
                     turn_input = (
                         "[NATIVE SEARCH DISABLED]\n"
-                        f"{reason} Use results already gathered, choose a client-side search tool, "
-                        "or answer directly.\n\n"
+                        f"{reason} {next_action}\n\n"
                         f"{turn_input}"
                     )
             route_payload: str | ProviderRouteInput = turn_input
@@ -1953,6 +2032,13 @@ Mode: {self.mode}
                     }
                     state.duplicate_recovery_attempts += 1
 
+                    recovery_instruction = (
+                        "Answer from the saved reminder result. Do not retry this reminder "
+                        "with a different title or time. Create another reminder only for a "
+                        "distinct notification explicitly requested by the user."
+                        if tool_name == "create_reminder"
+                        else "Answer directly from existing results or choose a different tool."
+                    )
                     executed_at = datetime.now(self.timezone)
                     state.conversation_context.append({
                         "tool": "duplicate_guard",
@@ -1966,7 +2052,7 @@ Mode: {self.mode}
                             "speech": f"Blocked duplicate tool call for {tool_name}.",
                             "error": (
                                 f"Duplicate guard blocked tool '{tool_name}' ({reason}). "
-                                "Answer directly from existing results or choose a different tool."
+                                f"{recovery_instruction}"
                             ),
                             "data": {
                                 "blocked_tool": tool_name,
@@ -1976,7 +2062,7 @@ Mode: {self.mode}
                         },
                         "speech": (
                             f"Duplicate guard blocked tool '{tool_name}' ({reason}). "
-                            "Answer directly from existing results or choose a different tool."
+                            f"{recovery_instruction}"
                         ),
                         "meta": {
                             "executed_at_iso": executed_at.isoformat(),
@@ -2000,7 +2086,8 @@ Mode: {self.mode}
 
                     # Generate intelligent summary using accumulated data (not just tool list!)
                     # This ensures the user gets actual research results, not just "I used tools"
-                    final_speech = self._synthesize_duplicate_prevented_response(
+                    reminder_speech = self._reminder_response_speech(state.conversation_context)
+                    final_speech = reminder_speech or self._synthesize_duplicate_prevented_response(
                         transcript, state.tools_used, state.accumulated_data, state.conversation_context
                     )
 
@@ -2022,6 +2109,11 @@ Mode: {self.mode}
                         "tools_used": state.tools_used,
                         "data": state.accumulated_data,
                         "duplicate_prevented": True,
+                        **({
+                            "raw_llm_response": final_speech,
+                            "tool_trace": state.tool_trace,
+                        } if any(ctx.get("tool") == "create_reminder"
+                                 for ctx in state.conversation_context) else {}),
                         **(
                             {}
                             if completed_any_tool
@@ -2498,9 +2590,25 @@ Mode: {self.mode}
                 # @TOOL_CONFIG: direct speech bypass — tools whose speech is used as-is (LLM won't reformat)
                 last_tool = state.tools_used[-1] if state.tools_used else None
                 use_direct_speech = False
-                
-                if last_tool in self.DIRECT_SPEECH_TOOLS and state.conversation_context:
-                    # Use the tool's speech directly instead of LLM's reformulation
+                reminder_contexts = [
+                    ctx for ctx in state.conversation_context
+                    if ctx.get("tool") == "create_reminder"
+                ]
+
+                if reminder_contexts:
+                    router_commentary = route.get("text_response", "") or ""
+                    # Keep unverified QA for review without presenting it as a receipt.
+                    for entry in reversed(state.tool_trace):
+                        if entry.get("tool") == "create_reminder":
+                            entry["reminder_router_commentary"] = router_commentary
+                            break
+                    raw_speech = self._reminder_response_speech(
+                        state.conversation_context, router_commentary
+                    ) or router_commentary
+                    # Preserve receipts and mixed-action answers without another model pass.
+                    use_direct_speech = True
+                elif last_tool in self.DIRECT_SPEECH_TOOLS and state.conversation_context:
+                    # Other direct-speech tools retain their existing latest-result policy.
                     last_ctx = state.conversation_context[-1]
                     tool_speech = last_ctx.get("speech", "") or last_ctx.get("result", {}).get("speech", "")
                     if tool_speech:
@@ -2636,7 +2744,10 @@ Mode: {self.mode}
         # Generate intelligent summary of what was accomplished
         response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'casual').lower()
         
-        if response_style == 'casual' or response_style == 'auto':
+        reminder_speech = self._reminder_response_speech(state.conversation_context)
+        if reminder_speech:
+            final_speech = reminder_speech
+        elif response_style == 'casual' or response_style == 'auto':
             # Casual and auto both format max turns summary
             final_speech = self._format_max_turns_summary(transcript, state.tools_used, state.accumulated_data, max_turns)
         else:
@@ -2663,6 +2774,8 @@ Mode: {self.mode}
             "usage": state.total_usage if self._has_usage_data(state.total_usage) else None,
             "server_side_tools": state.total_usage.get("server_side_tools", {})
         }
+        if reminder_speech:
+            result["raw_llm_response"] = final_speech
         
         # Maybe collect feedback (random chance based on env config)
         return self._maybe_collect_feedback(result, transcript)

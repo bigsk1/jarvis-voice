@@ -2175,6 +2175,79 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertFalse(metadata["arguments_truncated"])
         self.assertIn("arguments_truncated=false", message)
 
+    def test_saved_reminder_guidance_reaches_text_and_provider_context(self):
+        self.orch.timezone = ZoneInfo("America/Los_Angeles")
+        assembler = self.orch._get_context_assembler()
+        result = {"ok": True, "speech": "Reminder set for noon.", "data": {
+            "reminder_id": 123, "trigger_time_local": "2099-10-23T12:00:00-07:00",
+        }}
+        arguments = {"title": "Call the plumber", "when": "October 23rd at noon"}
+        original = json.dumps({"arguments": arguments, "result": result})
+        text_context = self.orch._build_turn_context("Set a reminder", [{
+            "tool": "create_reminder", "arguments": arguments, "result": result,
+        }])
+        provider_context, metadata = assembler.build_provider_tool_result_message(
+            tool_name="create_reminder", arguments=arguments, result=result, max_chars=6000,
+        )
+
+        for context in (text_context, provider_context):
+            self.assertIn("Reminder saved. Confirm saved time", context)
+            self.assertIn("report mismatch without replacement", context)
+            self.assertIn("Do not recreate with changed title/time or Calendar", context)
+            self.assertIn("another explicitly requested notification", context)
+        self.assertFalse(metadata["result_truncated"])
+        payload = json.loads(provider_context.split("\nResult:\n", 1)[1])
+        self.assertEqual(payload["result"], result)
+        self.assertEqual(json.dumps({"arguments": arguments, "result": result}), original)
+
+    def test_saved_reminder_guidance_preserves_provider_budget_and_truncation(self):
+        assembler = self.orch._get_context_assembler()
+        result = {"ok": True, "speech": "Reminder set for noon.", "data": {
+            "reminder_id": 123, "trigger_time_local": "2099-10-23T12:00:00-07:00",
+        }}
+        arguments = {"title": "Call the plumber " * 200, "when": "October 23rd at noon"}
+        original = json.dumps({"arguments": arguments, "result": result})
+        for budget in (800, 999, 1000, 1399, 1400, 1800, 6000):
+            with self.subTest(budget=budget):
+                message, metadata = assembler.build_provider_tool_result_message(
+                    tool_name="create_reminder", arguments=arguments, result=result,
+                    tool_call_id="call_reminder", duration_ms=123, max_chars=budget,
+                )
+                body = message.split("\nResult:\n", 1)[1]
+                payload = json.loads(body)
+                self.assertLessEqual(len(message), budget)
+                self.assertIn("Reminder saved. Confirm saved time", message)
+                self.assertIn("another explicitly requested notification", message)
+                self.assertTrue(metadata["arguments_truncated"])
+                self.assertIn("arguments_truncated=true", message)
+                self.assertEqual(payload["result_truncated"], metadata["result_truncated"])
+                self.assertEqual(metadata["result_chars_shown"], len(body))
+                self.assertIn(f"Result Meta: result_truncated={metadata['result_truncated']}", message)
+                if metadata["result_truncated"]:
+                    self.assertIn(f"result_chars_shown={len(body)}, ", message)
+                if budget == 6000:
+                    self.assertFalse(metadata["result_truncated"])
+                    self.assertEqual(payload["result"], result)
+        self.assertEqual(json.dumps({"arguments": arguments, "result": result}), original)
+
+    def test_failed_reminders_and_other_tools_do_not_claim_reminder_saved(self):
+        self.orch.timezone = ZoneInfo("America/Los_Angeles")
+        assembler = self.orch._get_context_assembler()
+        for tool_name, result in (
+            ("create_reminder", {"ok": False, "speech": "No reminder was created.",
+                                 "error": "Supply one notification time."}),
+            ("weather", {"ok": True, "speech": "It is sunny.", "data": {"temperature": 72}}),
+        ):
+            with self.subTest(tool_name=tool_name):
+                text_context = self.orch._build_turn_context("Help", [{
+                    "tool": tool_name, "arguments": {}, "result": result,
+                }])
+                provider_context, _ = assembler.build_provider_tool_result_message(
+                    tool_name=tool_name, arguments={}, result=result,
+                )
+                self.assertNotIn("Reminder saved.", text_context)
+                self.assertNotIn("Reminder saved.", provider_context)
+
     def test_provider_result_header_matches_final_truncation_and_body_size(self):
         assembler = self.orch._get_context_assembler()
         result = {"ok": True, "speech": "Analyzed image.", "data": {

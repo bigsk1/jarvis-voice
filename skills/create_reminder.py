@@ -71,6 +71,13 @@ MONTH_NAME_TO_NUMBER = {
     "dec": 12,
 }
 MONTH_NAME_PATTERN = "|".join(sorted(MONTH_NAME_TO_NUMBER.keys(), key=len, reverse=True))
+EXPLICIT_CLOCK_PATTERN = re.compile(
+    r'(?<![\w:])(?P<hour12>\d{1,2})(?::(?P<minute12>\d{2}))?\s*(?P<meridiem>am|pm)\b'
+    r'|\b(?P<named>noon|midday|midnight)\b'
+    # Consume seconds as part of an ISO clock; signed UTC offsets are not clocks.
+    r'|(?<![\d:+-])(?:\b|(?<=t))(?P<hour24>[01]?\d|2[0-3]):(?P<minute24>[0-5]\d)'
+    r'(?::[0-5]\d(?:\.\d+)?)?(?![\d:])'
+)
 
 
 def sync_to_google_calendar(reminder_id: int, title: str, description: str, 
@@ -262,34 +269,30 @@ def parse_recurrence(when: str):
     return None
 
 
+def explicit_clock_times(when: str) -> list[tuple[int, int]]:
+    """Read clock tokens at the reminder parser's minute precision, not intent."""
+    times = []
+    for match in EXPLICIT_CLOCK_PATTERN.finditer(normalize_meridiem(when)):
+        if match['named']:
+            times.append((0 if match['named'] == 'midnight' else 12, 0))
+        elif match['hour12']:
+            hour = int(match['hour12'])
+            minute = int(match['minute12'] or 0)
+            if not 1 <= hour <= 12 or not 0 <= minute <= 59:
+                raise ValueError('Invalid 12-hour clock time in notification schedule')
+            times.append((hour % 12 + (12 if match['meridiem'] == 'pm' else 0), minute))
+        else:
+            times.append((int(match['hour24']), int(match['minute24'])))
+    return times
+
+
 def extract_time_from_expression(when: str, default_hour: int = 10):
     """Extract hour and minute from a time expression.
     
     Returns: (hour, minute) tuple
     """
-    when = normalize_meridiem(when)
-    time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)\b', when)
-    if time_match:
-        hour = int(time_match.group(1))
-        minute = int(time_match.group(2)) if time_match.group(2) else 0
-        meridiem = time_match.group(3)
-        
-        if meridiem == 'pm' and hour != 12:
-            hour += 12
-        elif meridiem == 'am' and hour == 12:
-            hour = 0
-        
-        return hour, minute
-    
-    # Check for "noon" or "midday"
-    if "noon" in when.lower() or "midday" in when.lower():
-        return 12, 0
-    
-    # Check for "midnight"
-    if "midnight" in when.lower():
-        return 0, 0
-    
-    return default_hour, 0
+    times = explicit_clock_times(when)
+    return times[0] if times else (default_hour, 0)
 
 
 def _build_month_day_target(now: datetime, month: int, day: int, hour: int, minute: int, year: int | None = None) -> datetime:
@@ -372,6 +375,14 @@ def parse_time_expression(when: str, default_hour: int = 10):
     
     # Normalize word numbers to digits (e.g., "one hour" -> "1 hour")
     when = normalize_time_words(when)
+    # A schedule has one wall-clock time. Do not guess between notification
+    # and appointment times if the caller accidentally includes both.
+    if len(set(explicit_clock_times(when))) > 1:
+        raise ValueError(
+            "when contains multiple times of day. Send only the requested notification "
+            "schedule in when; keep appointment/event times in title or description. "
+            "No reminder was created."
+        )
     now = now_local()
     
     # Check for bounded daily patterns FIRST (creates multiple reminders)
@@ -490,30 +501,8 @@ def parse_time_expression(when: str, default_hour: int = 10):
     # Pattern: "tomorrow at 3pm" (one-time)
     if "tomorrow" in when:
         tomorrow = add_days_local(now, 1)
-        
-        # Check for "noon" or "midday"
-        if "noon" in when or "midday" in when:
-            return tomorrow.replace(hour=12, minute=0, second=0, microsecond=0), None
-        
-        # Check for "midnight"
-        if "midnight" in when:
-            return tomorrow.replace(hour=0, minute=0, second=0, microsecond=0), None
-        
-        # Check for specific time
-        time_match = re.search(r'(\d+)\s*(am|pm)\b', when)
-        if time_match:
-            hour = int(time_match.group(1))
-            meridiem = time_match.group(2)
-            
-            if meridiem == 'pm' and hour != 12:
-                hour += 12
-            elif meridiem == 'am' and hour == 12:
-                hour = 0
-            
-            return tomorrow.replace(hour=hour, minute=0, second=0, microsecond=0), None
-        else:
-            # Just "tomorrow" - default to 10am
-            return tomorrow.replace(hour=default_hour, minute=0, second=0, microsecond=0), None
+        hour, minute = extract_time_from_expression(when, default_hour)
+        return tomorrow.replace(hour=hour, minute=minute, second=0, microsecond=0), None
 
     # Pattern: "May 1st at 6pm" or "next month on the 1st at 6pm" (one-time)
     absolute_date = parse_absolute_date_expression(when, now, default_hour)
@@ -741,7 +730,16 @@ def main():
             raise ValueError("when is required (e.g., 'in 4 hours', 'tomorrow at 3pm')")
         
         # Parse time (returns tuple: datetime OR list of datetimes, recurrence_rule)
-        trigger_result, recurrence_rule = parse_time_expression(when)
+        try:
+            trigger_result, recurrence_rule = parse_time_expression(when)
+        except ValueError as error:
+            print(json.dumps({
+                "ok": False,
+                "error": str(error),
+                "error_code": "invalid_reminder_schedule",
+                "speech": "I couldn't create the reminder because the notification schedule is invalid.",
+            }))
+            sys.exit(1)
         
         # Get database path
         db = MemoryDB()
@@ -767,10 +765,18 @@ def main():
             
             # Format response for multiple reminders
             num_reminders = len(reminders_created)
+            reused_count = sum(bool(reminder.get('duplicate_suppressed')) for reminder in reminders_created)
+            created_count = num_reminders - reused_count
             first_date = reminders_created[0]['formatted_time']
             last_date = reminders_created[-1]['formatted_time']
             
-            speech = f"Created {num_reminders} reminders for '{title}': {first_date} through {last_date}"
+            if reused_count == num_reminders:
+                speech = f"Active reminders already exist for '{title}': {first_date} through {last_date}"
+            elif reused_count:
+                created_label = 'reminder' if created_count == 1 else 'reminders'
+                speech = f"Created {created_count} {created_label} and reused {reused_count} existing reminders for '{title}': {first_date} through {last_date}"
+            else:
+                speech = f"Created {num_reminders} reminders for '{title}': {first_date} through {last_date}"
             if gcal_synced_count > 0:
                 speech += f". All {gcal_synced_count} added to Google Calendar."
             
@@ -778,7 +784,11 @@ def main():
                 "ok": True,
                 "speech": speech,
                 "data": {
+                    # Legacy field counts all requested occurrences, including reuse.
                     "reminders_created": num_reminders,
+                    "newly_created_count": created_count,
+                    "reminders_reused": reused_count,
+                    "reminders_total": num_reminders,
                     "reminders": reminders_created,
                     "first_reminder": reminders_created[0],
                     "last_reminder": reminders_created[-1],

@@ -41,6 +41,67 @@ class CompletionGuardPolicy:
     combine_feedback_tools_fn: Callable[[list[str] | None, list[str] | None], list[str]]
     default_excluded_tools: set[str]
 
+    @staticmethod
+    def has_reminder_attempt(record: dict) -> bool:
+        """Recognize saved or attempted creates, including failures captured only in traces."""
+        data = record.get("data") or {}
+        return (
+            "create_reminder" in (record.get("tools_used") or [])
+            or isinstance(data, dict) and (
+                "create_reminder" in data
+                or any(
+                    isinstance(entry, dict) and entry.get("tool") == "create_reminder"
+                    for entry in (data.get("_tool_trace") or [])
+                )
+            )
+        )
+
+    @classmethod
+    def reminder_guidance(cls, record: dict, *, for_repair: bool = False) -> str:
+        """Share reminder semantics between the evaluator and manual/automatic repairs."""
+        if not cls.has_reminder_attempt(record):
+            return ""
+        timezone_name = get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles")
+        data = record.get("data") or {}
+        commentary = [
+            entry["reminder_router_commentary"]
+            for entry in (data.get("_tool_trace") or [])
+            if isinstance(entry, dict) and entry.get("reminder_router_commentary")
+        ] if isinstance(data, dict) else []
+        repair_boundary = (
+            "- Chat only mode permits no tools, including in a subsequent repair. "
+            "Judge existing reminder receipts and explain limitations from that context only."
+            if record.get("tool_policy") == "none"
+            else "- Any subsequent repair of a previously attempted reminder is READ-ONLY: use existing "
+            "receipts and, if necessary, list_reminders. Do not call create_reminder again, "
+            "acknowledge/cancel reminders, or mutate Calendar through another tool. "
+            "A repair pass is not permission to replay the original side effect."
+        )
+        output_rule = (
+            "- If incorrect or extra reminders remain scheduled, use REPAIR_STATUS: unresolved "
+            "and explain the saved state and the correction still needed. Do not claim a "
+            "wording-only clarification repaired persisted reminders."
+            if for_repair else
+            "- Return the evaluator's JSON audit, with recommended_action=repair_required "
+            "and task_status=partial or failed for a wrong or extra scheduled reminder. "
+            "Use suggested_note to request read-only verification and explain the correction "
+            "still needed; wording alone does not repair persisted reminders."
+        )
+        return f"""BUILT-IN REMINDER COMPLETION RULES:
+- Judge the requested NOTIFICATION schedule, not merely whether create_reminder returned ok=true. Never invent lead time, travel time, preparation time, or an event start time. If the user supplied one reminder time, preserve it.
+- 'Remind me tomorrow at noon about my appointment at 2pm' requests ONE noon notification; the 2pm appointment belongs in title/description. Saving 2pm, inventing 9am for a requested 1pm, or saving both noon and 2pm is an incorrect outcome.
+- Compare every saved reminder ID, schedule, recurrence, and subject with the explicitly requested notifications. Different titles or times do not automatically mean the user wanted distinct reminders. Explicitly requested separate notifications and bounded daily schedules are legitimate multiple reminders.
+- A blocked exact repeat or a reused reminder_id is not proof of a second insert. Inspect distinct saved IDs and current statuses; do not count tool calls alone as persisted duplicates. An empty or limited list is not proof that no reminder exists; list_reminders defaults to ten current rows.
+- For mixed create/cancel/create actions, judge the final current state; an earlier reminder that was canceled is not an extra active notification.
+- Stored trigger_time values are UTC. Prefer saved trigger_time_local/offsets; otherwise compare equivalent instants using the configured timezone ({timezone_name}). A local/UTC representation difference is not itself a wrong schedule. If the historical timezone is unclear, report uncertainty.
+- Built-in reminders do not require Google Workspace MCP or n8n. gcal_synced is optional; absent/failed Calendar sync does not invalidate a saved local reminder. Do not recommend an additional Calendar create to verify or duplicate it.
+- Check the spoken/raw confirmation against saved state, including every requested reminder and any failed additional attempt. Reminder-only confirmations speak receipts, not router commentary. The unverified commentary below may flag a mismatch, but is not evidence of saved state and must not override receipts. A warning or clearer wording does not correct a wrong scheduled row.
+- A wrong saved schedule, an unrequested extra notification, or a misleading success claim is a substantive contradiction/incomplete task, not tighten_only. Include the saved versus requested times/IDs in contradictions or missing_requirements and the repair note.
+{repair_boundary}
+Unverified router commentary excerpt (audit context only; may also appear in mixed-action replies):
+{json.dumps(commentary, ensure_ascii=False)[:1600]}
+{output_rule}"""
+
     def get_config(self, mode: str) -> dict:
         """Get effective Completion Guard settings for the current mode."""
         load_jarvis_config(mode)
@@ -202,6 +263,12 @@ class CompletionGuardPolicy:
                     for key, value in data.items()
                     if key not in {"speech", "raw_llm_response", "usage", "_web_message_id", "_completion_guard"}
                 }
+                if isinstance(cleaned.get("_tool_trace"), list):
+                    cleaned["_tool_trace"] = [
+                        {key: value for key, value in entry.items() if key != "reminder_router_commentary"}
+                        if isinstance(entry, dict) else entry
+                        for entry in cleaned["_tool_trace"]
+                    ]
             else:
                 cleaned = data
             text = json.dumps(cleaned, sort_keys=True, ensure_ascii=False, default=str)
@@ -505,6 +572,15 @@ Location handling:
             "completion_hint": "If a tool result already contains the answer, stop and answer directly from that result.",
         }
 
+        if CompletionGuardPolicy.has_reminder_attempt(record):
+            return {
+                "family": "reminder_review",
+                "reason": "A reminder create was already attempted; verify its outcome without repeating side effects.",
+                "preferred_tools": ["list_reminders"],
+                "avoid_tools": ["create_reminder", "acknowledge_reminders", "Calendar mutations"],
+                "completion_hint": "Compare the requested notifications with saved reminder IDs, local times, and current statuses. Do not create or cancel anything. Report unresolved if an incorrect or extra reminder still needs correction.",
+            }
+
         if any(token in combined for token in ["jarvis-intel", "user_profile", "user profile", ".md", "profile"]):
             strategy.update(
                 {
@@ -608,6 +684,13 @@ Location handling:
     @staticmethod
     def format_strategy(strategy: dict) -> str:
         """Render repair strategy hints into prompt-ready text."""
+        if strategy.get("family") == "reminder_review":
+            return (
+                "- Strategy family: reminder_review\n"
+                f"- Why: {strategy.get('reason', '')}\n"
+                "- Only list_reminders is permitted for verification; use existing receipts otherwise.\n"
+                f"- Completion hint: {strategy.get('completion_hint', '')}"
+            )
         preferred = ", ".join(strategy.get("preferred_tools", [])) or "(none)"
         avoid = ", ".join(strategy.get("avoid_tools", [])) or "(none)"
         return (

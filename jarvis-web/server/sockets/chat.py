@@ -278,7 +278,6 @@ class ChatHandler:
     DEFAULT_COMPLETION_GUARD_EXCLUDED_TOOLS = {
         'phone_call',
         'send_email',
-        'create_reminder',
         'create_alert',
         'opencode',
         'workflow',
@@ -1318,6 +1317,8 @@ Structured result data:
 
 Important:
 {evidence_rules}
+
+{self._get_completion_guard_policy().reminder_guidance(record)}
 """
 
         override = load_model_prompt_override(
@@ -1981,6 +1982,7 @@ Returned tool data:
         parent_message_id = record.get('message_id')
         mode = record.get('mode', 'cloud')
         repair_tool_policy = self._sanitize_tool_policy(record.get('tool_policy'))
+        reminder_review = self._get_completion_guard_policy().has_reminder_attempt(record)
         start_time = time.time()
         delivery_room = self._delivery_room(session_id, conversation_id)
 
@@ -2092,6 +2094,13 @@ Returned tool data:
 - Correct or complete the answer using only the existing conversation, prior response, and injected context"""
                 strong_claim_rule = "- If the previous answer made a strong claim that the existing context cannot support, qualify or remove it instead of seeking new evidence"
                 repair_value_rule = "- Do not spend a repair pass on wording-only cleanup unless corrected reasoning or completeness materially improves the answer"
+            elif reminder_review:
+                repair_tool_rules = """- Only list_reminders is permitted for read-only verification; all other client tools, hosted tools, and workflows are unavailable
+- Compare saved reminder IDs, schedules, subjects, and current statuses with the original request
+- Use existing receipts where sufficient; a limited listing cannot prove that an unlisted reminder is absent
+- Do not create, cancel, replace, or update reminders, Calendar events, or other artifacts"""
+                strong_claim_rule = "- Verify reminder claims against saved receipts and any returned reminder listing before repeating them"
+                repair_value_rule = "- If incorrect or extra reminders still exist, report the remaining correction rather than treating verification or clearer wording as a repair"
             else:
                 repair_tool_rules = """- You may use tools if needed, but only when they clearly help verify or correct the issue
 - Do not just repeat the same failed retrieval path if it came back empty or weak
@@ -2130,6 +2139,7 @@ Rules:
 - Prefer fixing the smallest missing step
 {repair_tool_rules}
 {repair_value_rule}
+{self._get_completion_guard_policy().reminder_guidance(record, for_repair=True)}
 - If you still cannot resolve the issue after one attempt, use REPAIR_STATUS: unresolved and explain exactly what remains uncertain
 - Do not write to jarvis-learned-lessons.md unless this repair uncovers a real reusable operational lesson, provider quirk, or tool limitation. Rewording alone is not lesson-worthy.
 
@@ -2160,6 +2170,12 @@ Previous structured data:
             result = orchestrator.process(
                 repair_prompt,
                 tool_policy=repair_tool_policy,
+                # A fresh repair request must not replay an earlier reminder mutation.
+                allowed_tools=(
+                    ([] if repair_tool_policy == 'none' else ["list_reminders"])
+                    if reminder_review
+                    else None
+                ),
             )
             if repair_message_id in self.pending_cancellations:
                 del self.pending_cancellations[repair_message_id]
@@ -2232,7 +2248,7 @@ Previous structured data:
             elif cleaned_raw and result.get('speech'):
                 result['speech'] = cleaned_raw
 
-            if result.get('data') and (
+            if not reminder_review and result.get('data') and (
                 repair_status != 'repaired'
                 or self._is_machine_like_completion_text(result.get('speech', ''))
                 or self._is_machine_like_completion_text(result.get('raw_llm_response', ''))

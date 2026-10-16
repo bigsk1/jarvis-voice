@@ -23,6 +23,84 @@ Use natural language with Jarvis:
 "Remind me on the 15th to submit report"
 ```
 
+### Notification Time and Reminder Message
+
+The `create_reminder` tool's `when` field is when Jarvis should notify the user.
+Its `title` and `description` hold what to say, including any later appointment
+time. For example, "Remind me tomorrow at noon about my appointment at 2pm"
+requests **one notification at noon**, with the 2pm appointment retained in the
+message. Use the explicitly requested notification time; do not calculate a
+lead time or create an additional notification at the appointment time.
+
+After saving that reminder, confirm the saved result. Additional reminders need
+an explicit request for distinct notifications; repeating creation is not a way
+to verify success or edit an existing reminder. Bounded daily schedules still
+use one `create_reminder` call.
+
+If `when` contains distinct times written with am/pm, noon/midday, midnight, or
+24-hour clocks such as `14:00` (for example,
+`October 23rd at noon about my appointment at 2pm`), creation fails before any
+database access or Calendar sync. Retry with only the notification schedule in
+`when`, retaining the appointment time in the message. Jarvis does not choose
+between those times or save a reminder that then needs cancellation.
+Equivalent clocks such as `noon`/`12pm` or `14:00`/`2pm` count as one time.
+Clock minutes are preserved, including `tomorrow at 8:00am` and `tomorrow at
+1:30pm`. This validation reads explicit clock tokens; it does not decide which
+time the user intended.
+
+Built-in reminders work without Google Workspace MCP or the legacy n8n Calendar
+workflow. Calendar sync is optional and a sync failure does not invalidate the
+saved local reminder.
+
+These are routing instructions, not a semantic duplicate constraint. Exact
+repeats can reuse an existing row, but different titles or notification times
+can still create separate reminders. The conversational loop preserves explicit
+requests for multiple reminders; it does not impose a one-reminder limit.
+
+For requests consisting only of reminder creation, conversational confirmation
+includes saved receipts and failures that remain uncorrected as complete
+sentences. A schedule rejected before any write has
+`error_code: invalid_reminder_schedule`; if a later successful retry keeps the
+same title and description, its obsolete validation failure stays in the trace
+without being spoken. Uncertain write failures and failures for other subjects
+remain audible. Preparatory `tool_search`, `get_time`, and `list_reminders` calls
+do not replace the saved receipts with model prose. Additional router commentary
+is not appended to these confirmations.
+It is retained as unverified audit context on the reminder's existing tool trace
+for Completion Guard; it is not another tool execution or saved-state evidence.
+
+When a reminder shares a request with `status_recap`, `phone_call`, or
+`generate_music`, their actual receipts are preserved verbatim in execution
+order. Failed attempts are included. Mixed actions such as create/cancel/create
+still use the router's whole-task answer, retaining any other direct-speech
+receipts without replaying obsolete reminder-create confirmations.
+These replies bypass the extra response-style summary pass in auto and casual
+modes. The selected answer appears in both `speech` and `raw_llm_response`,
+including for `/api/query`.
+
+After a blocked repeat of `create_reminder`, recovery instructions prohibit
+changing the title or time to retry that same reminder. Other tools retain their
+existing different-call recovery guidance and duplicate-loop limits. Receipt
+selection also applies when a reminder-only turn ends at the duplicate or turn
+limit. Successful reminder completion guidance reaches both text follow-ups and
+OpenAI/xAI native continuations.
+
+For bounded daily schedules, receipts distinguish newly created reminders from
+reused active rows. The legacy `reminders_created` field still counts requested
+occurrences for compatibility; `newly_created_count`, `reminders_reused`, and
+`reminders_total` expose the actual breakdown.
+
+Completion Guard can audit these outcomes in automatic or manual mode. Its
+repair pass verifies attempted reminder creations with a read-only tool scope;
+it does not create replacements or cancel reminders. See
+[Built-in reminder review](../COMPLETION_GUARD.md#built-in-reminder-review),
+including the explicit-exclusion setting required on older installations.
+
+Direct `POST /api/reminders` and Memory UI creation bypass
+the tool parser and conversational confirmation; their contracts are unchanged.
+Deterministic workflow steps bypass conversational confirmation, but steps
+executing `create_reminder` use its schedule validation just like other callers.
+
 ### Supported Time Expressions
 
 **Relative:**

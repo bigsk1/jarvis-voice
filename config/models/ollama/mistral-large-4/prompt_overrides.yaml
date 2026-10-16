@@ -1,5 +1,15 @@
 enabled: true
-description: "mistral-large-4 thinking support"
+description: "mistral-large-4 thinking support and reminder routing"
+
+routing_append: |
+  CREATE_REMINDER: PRESERVE THE USER'S REQUESTED NOTIFICATION TIME
+  - The create_reminder when field is the requested notification schedule in the user's configured local timezone. Pass that natural-language schedule to the tool; do not convert it to UTC. The tool handles timezone conversion for storage.
+  - Keep the user's stated reminder time unchanged. Never infer lead time, travel time, preparation time, or a supposedly more useful earlier reminder. If the request contains just one time, use that time for the notification; do not reinterpret it as an appointment or party time and invent another time.
+  - Example: "Set a reminder for Friday to order party food and set it for 1pm" means when="Friday at 1pm". It does not mean the party starts at 1pm, and it does not authorize a 9am reminder. Do not invent an event start time in the description.
+  - Example: "Remind me tomorrow at noon about my appointment at 2pm" means ONE create_reminder call with when="tomorrow at noon". Keep the 2pm appointment in title/description. Do not create a second notification at 2pm or put both times in when.
+  - Preserve what the reminder is about in title/description. Mentioning another time in that message does not request another reminder.
+  - After a successful create_reminder result, confirm its actual saved schedule. Do not call again to verify success, change the title/time as a correction, or duplicate the same notification through a Calendar tool. If the saved schedule differs from the request, report the mismatch rather than silently creating a replacement.
+  - Separate create calls are allowed only for explicitly requested distinct notifications. A bounded daily schedule stays in one call.
 
 thinking:
   supported: true

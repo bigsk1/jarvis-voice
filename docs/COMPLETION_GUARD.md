@@ -196,6 +196,59 @@ The auto-eval prompt includes:
 
 Implementation reference: `ChatHandler._compute_effective_evidence` and `_evaluate_completion_guard_auto` in `jarvis-web/server/sockets/chat.py`, with extraction logic in `jarvis-web/server/services/followup_extractor.py`.
 
+## Built-in Reminder Review
+
+`create_reminder` is eligible for manual prompting and automatic evaluation by
+default when Completion Guard and tool-task reviews are enabled. Explicit
+operator exclusions still take precedence; other sensitive tools and workflows
+retain their exclusions.
+
+The evaluator and both repair paths share reminder-specific guidance:
+
+- Compare the requested notification time with saved reminder schedules and
+  subjects. Do not infer lead time or turn an appointment time into another
+  notification. A noon reminder about a 2pm appointment requests one noon alert.
+- Compare equivalent local/UTC instants rather than treating different display
+  representations as a mismatch.
+- Check distinct saved IDs and final statuses. A blocked exact call or a reused
+  ID is not another insert; intentional separate notifications and bounded daily
+  spans may legitimately produce several reminders. Canceled earlier rows do
+  not count as extra active notifications.
+- Calendar integration is optional. A missing or failed Calendar sync does not
+  mean the local reminder failed or authorize another Calendar event.
+- A wrong schedule, unrequested extra notification, or misleading success claim
+  is a substantive failure. Clearer wording or a mismatch warning does not fix
+  the scheduled database state.
+
+Router commentary remains in the existing saved tool trace as unverified audit
+context. It is suppressed from receipt-based reminder confirmations, but may be
+spoken in mixed-action replies. The evaluator/repair prompt includes a bounded
+excerpt so a mismatch warning is still available for review. Commentary is not
+evidence that reminder state changed; it is excluded from repair evidence-delta
+comparisons and normal follow-up extraction.
+
+For an original reminder attempt, including a failed attempt recorded only in
+the saved tool trace, repair uses an enforced `list_reminders`-only tool allowlist.
+It can verify and explain the outcome; it cannot create a replacement, cancel
+reminders, invoke a workflow, or write through a Calendar MCP or another tool.
+Chat-only policy remains stricter and permits no tools. This restriction also
+applies to repairs of mixed tasks containing an attempted reminder creation.
+An empty/default-ten-row listing does not prove a reminder is absent.
+
+If incorrect or extra reminders remain scheduled, repair must report
+`REPAIR_STATUS: unresolved` with the saved versus requested state and the
+correction still needed. Correction of the reminder itself requires a separate
+user action; the guard does not silently replay the original side effect.
+Returning a nonempty reminder listing does not promote an unresolved review to
+`repaired`. Reminder repair instructions use the same read-only scope as the
+executor; they do not direct the model to search, edit files, or write to Canvas.
+
+For existing installations, check both mode env files for an explicit
+`create_reminder` entry in `COMPLETION_GUARD_EXCLUDED_TOOLS`. Remove only that
+entry when deploying this updated guard, retain the other exclusions, and
+restart Jarvis Web to load the updated code/configuration. The tracked examples
+omit reminders; private env files are not migrated automatically.
+
 ## Why Same Runtime Matters
 
 The repair pass should see all of this without reconstructing it from scratch:
@@ -629,7 +682,7 @@ JARVIS_COMPLETION_GUARD_SHOW_UI_PROMPT=true
 JARVIS_COMPLETION_GUARD_MANUAL_TTL_SECONDS=600
 JARVIS_COMPLETION_GUARD_INCLUDE_QA=true
 JARVIS_COMPLETION_GUARD_INCLUDE_TOOL_TASKS=true
-COMPLETION_GUARD_EXCLUDED_TOOLS=phone_call,send_email,create_reminder,create_alert,workflow
+COMPLETION_GUARD_EXCLUDED_TOOLS=phone_call,send_email,create_alert,workflow
 JARVIS_COMPLETION_GUARD_EVAL_PROVIDER=
 JARVIS_COMPLETION_GUARD_EVAL_MODEL=
 ```

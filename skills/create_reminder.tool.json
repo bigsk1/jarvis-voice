@@ -1,25 +1,28 @@
 {
   "enabled": true,
   "name": "create_reminder",
-  "description": "Create reminder(s) that can trigger TTS notifications. Use when user says: 'remind me', 'set a reminder', 'add to calendar', 'schedule', 'create event', 'calendar event', etc. IMPORTANT: Supports bounded daily spans in a SINGLE call. Examples: 'next 5 days at 2pm', 'for the next 5 days at 2pm', '5 days in a row at 2pm', 'every day for 5 days at 2pm', 'every day the next 2 weeks at 5pm'. Do NOT split bounded daily requests into separate one-time plus recurring reminders unless the user explicitly asks for separate reminders. Also supports: 'in 30 minutes', 'tomorrow at 3pm', 'May 1st at 6pm', 'next month on the 1st at 6pm', 'every Wednesday at 2pm' (weekly), 'every month on the 10th' (monthly), 'every day at 2pm' (daily recurring).",
+  "description": "Create reminder(s) that can trigger TTS notifications. Use when user says: 'remind me', 'set a reminder', 'add to calendar', 'schedule', 'create event', 'calendar event', etc. IMPORTANT: Supports bounded daily spans in a SINGLE call. Examples: 'next 5 days at 2pm', 'for the next 5 days at 2pm', '5 days in a row at 2pm', 'every day for 5 days at 2pm', 'every day the next 2 weeks at 5pm'. Do NOT split bounded daily requests into separate one-time plus recurring reminders unless the user explicitly asks for separate reminders. Also supports: 'in 30 minutes', 'tomorrow at 3pm', 'May 1st at 6pm', 'next month on the 1st at 6pm', 'every Wednesday at 2pm' (weekly), 'every month on the 10th' (monthly), 'every day at 2pm' (daily recurring). IMPORTANT: when is the requested notification schedule only; preserve any later appointment time in title/description. For 'Remind me tomorrow at noon about my appointment at 2pm', create ONE reminder with when='tomorrow at noon' and title='Appointment at 2pm'. Do not infer lead time or create a second notification from a time mentioned in the reminder message. Create separate reminders only for explicitly requested distinct notifications. After success, confirm the saved result; do not call again to verify or correct that reminder with different arguments. If the saved schedule is wrong, report the actual saved schedule and the mismatch rather than silently creating a replacement.",
   "script": "create_reminder.py",
   "parameters": {
     "type": "object",
     "properties": {
       "title": {
         "type": "string",
-        "description": "Reminder title (what to remind about)"
+        "description": "What to remind the user about. Preserve the subject and any appointment/event time, for example 'Appointment at 2pm' even when the notification is requested for noon. Do not replace the subject with the notification time."
       },
       "description": {
         "type": "string",
-        "description": "Optional additional details about the reminder"
+        "description": "Optional reminder message/details, including an appointment/event time mentioned by the user. A time in this message is context, not an instruction to create another notification."
       },
       "when": {
         "type": "string",
-        "description": "Natural time expression. Bounded daily spans: 'next 5 days at 2pm', 'for the next 5 days at 2pm', '5 days in a row at 2pm', 'every day for 5 days at 2pm', 'every day the next 2 weeks at 5pm' (creates multiple reminders from ONE tool call). One-time: 'in 30 minutes', 'tomorrow at 3pm', 'May 1st at 6pm', 'next month on the 1st at 6pm', 'at 5pm'. Recurring: 'every day at 2pm', 'every Wednesday at 2pm', 'every month on the 10th'. Use the user's natural phrasing."
+        "description": "When Jarvis should notify the user, as a natural time expression. Extract the requested notification schedule, not an appointment/event time in the reminder's subject. For 'Remind me tomorrow at noon about my appointment at 2pm', use 'tomorrow at noon'; keep '2pm' in title/description. Bounded daily spans: 'next 5 days at 2pm', 'for the next 5 days at 2pm', '5 days in a row at 2pm', 'every day for 5 days at 2pm', 'every day the next 2 weeks at 5pm' (creates multiple reminders from ONE tool call). One-time: 'in 30 minutes', 'tomorrow at noon', 'tomorrow at 3pm', 'May 1st at 6pm', 'next month on the 1st at 6pm', 'at 5pm'. Recurring: 'every day at 2pm', 'every Wednesday at 2pm', 'every month on the 10th'."
       }
     },
-    "required": ["title", "when"]
+    "required": [
+      "title",
+      "when"
+    ]
   },
   "permissions": {
     "dangerous": false,

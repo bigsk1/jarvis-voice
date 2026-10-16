@@ -24,18 +24,18 @@ from router_prompts import _validate_router_prompts, get_router_system_prompt  #
 from router_v2 import LLMRouter  # noqa: E402
 from tts_style_tags import XAI_INLINE_SPEECH_TAGS, XAI_WRAPPING_SPEECH_TAGS  # noqa: E402
 
-V1_SHA256 = "7e6aba1b93b5765ba409d3bf520b67ab8af9bef288d4926a2faae7821d6b6671"
-V2_SHA256 = "a3ef882708880d0372ad3dc0636e1e01890a79ca611e8c5e582ceca6e459128d"
-V3_SHA256 = "323ede1603570e646f61eb907ff60a14f64bd9c35af67b9c82d29e8ad8d24ecf"
-V4_SHA256 = "a077bf959ed6f0772129dc9fda6e43f6fe4521a207a45446acb4dd6edb13ced2"
+V1_SHA256 = "cd3f1129e885476b829daa92022023a75b78b0139a99ca7e4208efa06e1832bb"
+V2_SHA256 = "0c501cbdd840428b6837dfbdf76b749b947da04690afb74c10512639648a7a47"
+V3_SHA256 = "0bc20b9a3d98e17f8a75100180adf71440ea00605d9dc505388caf7a67d3b98d"
+V4_SHA256 = "c8b27f9d1c01bf32afdd90032dd469b85f39ff9c8565d4a78f1ecd9207a4a86a"
 
 
 def test_v1_is_pinned_recovery_router_prompt():
     version, prompt = get_router_system_prompt("v1")
 
     assert version == "v1"
-    assert len(prompt) == 31_826
-    assert len(prompt.splitlines()) == 417
+    assert len(prompt) == 32_130
+    assert len(prompt.splitlines()) == 419
     assert hashlib.sha256(prompt.encode()).hexdigest() == V1_SHA256
 
 
@@ -48,9 +48,9 @@ def test_v2_is_compact_standalone_prompt_with_its_own_hash():
     version, v2 = get_router_system_prompt("v2")
 
     assert version == "v2"
-    assert len(v2) == 14_006
+    assert len(v2) == 14_166
     assert len(v2.splitlines()) == 89
-    assert len(v2.split()) == 1_986
+    assert len(v2.split()) == 2_010
     assert v2.isascii()
     assert hashlib.sha256(v2.encode()).hexdigest() == V2_SHA256
 
@@ -59,9 +59,9 @@ def test_v3_is_caveman_hybrid_with_normal_output_guard_and_own_hash():
     version, v3 = get_router_system_prompt("v3")
 
     assert version == "v3"
-    assert len(v3) == 10_022
+    assert len(v3) == 10_190
     assert len(v3.splitlines()) == 92
-    assert len(v3.split()) == 1_316
+    assert len(v3.split()) == 1_339
     assert v3.isascii()
     assert "NEVER imitate caveman grammar in user-facing answer" in v3
     assert "Speak normal fluent language" in v3
@@ -72,9 +72,9 @@ def test_v4_is_caveman_light_with_normal_output_guard_and_own_hash():
     version, v4 = get_router_system_prompt("v4")
 
     assert version == "v4"
-    assert len(v4) == 10_508
+    assert len(v4) == 10_672
     assert len(v4.splitlines()) == 46
-    assert len(v4.split()) == 1_393
+    assert len(v4.split()) == 1_416
     assert "NEVER use caveman grammar in user answers" in v4
     assert "Speak normal fluent English" in v4
     assert hashlib.sha256(v4.encode()).hexdigest() == V4_SHA256
@@ -88,6 +88,16 @@ def test_maintained_prompts_describe_current_opencode_timeout(version):
     assert "6-minute timeout" not in prompt
     assert "timeout 6 min" not in prompt
     assert "6 min timeout" not in prompt
+
+
+@pytest.mark.parametrize("version", ["v1", "v2", "v3", "v4"])
+def test_maintained_prompts_separate_reminder_schedule_from_appointment_time(version):
+    _, prompt = get_router_system_prompt(version)
+
+    assert "requested notification schedule" in prompt
+    assert "appointment times" in prompt
+    assert "title/description" in prompt
+    assert "do not create again to verify or correct it" in prompt
 
 
 @pytest.mark.parametrize("version", ["v2", "v3", "v4"])

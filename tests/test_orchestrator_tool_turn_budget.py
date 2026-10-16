@@ -94,8 +94,10 @@ class ToolTurnBudgetTests(unittest.TestCase):
         original_set = orchestrator.executor.set_allowed_tools
         orchestrator.executor.set_allowed_tools = lambda tools: (allowed.append(tools), original_set(tools))
         routes = []
+        transcripts = []
         original_route = orchestrator.router.route
         def route(*args, **kwargs):
+            transcripts.append(args[0])
             routes.append(kwargs)
             return original_route(*args, **kwargs)
         orchestrator.router.route = route
@@ -105,6 +107,10 @@ class ToolTurnBudgetTests(unittest.TestCase):
         self.assertTrue(all(names == ["stock_price"] for names in allowed))
         self.assertTrue(all(call["disable_server_side_tools"] for call in routes))
         self.assertTrue(all("send_email" in call["excluded_tools"] for call in routes))
+        for transcript in transcripts:
+            self.assertIn("request tool allowlist", transcript)
+            self.assertNotIn("search budget is exhausted", transcript)
+            self.assertNotIn("choose a client-side search tool", transcript)
 
     def test_webhook_retry_router_receives_nested_payload_contract(self):
         orchestrator = self._build_orchestrator(fail_on_calls=set(), tool_name='send_webhook')

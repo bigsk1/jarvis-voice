@@ -59,6 +59,12 @@ def _followup_json(value) -> str:
 class ContextAssembler:
     """Build prompt/context strings while keeping the main orchestrator slimmer."""
 
+    _REMINDER_COMPLETION_HINT = (
+        "Reminder saved. Confirm saved time; report mismatch without replacement. Do not "
+        "recreate with changed title/time or Calendar; create again only for another "
+        "explicitly requested notification."
+    )
+
     _CANVAS_ARTIFACT_QUERY_TERMS = (
         "send to canvas",
         "save to canvas",
@@ -703,6 +709,8 @@ class ContextAssembler:
             context_parts.append(result_note)
             result_label = "Result Preview" if result_truncated else "Result"
             context_parts.append(f"   {result_label}: {result_summary}")
+            if tool_name == "create_reminder" and result.get("ok"):
+                context_parts.append(f"   {self._REMINDER_COMPLETION_HINT}")
             if tool_name == "tool_search":
                 discovery_data = result.get("data", {}) if isinstance(result, dict) else {}
                 selected_hints = discovery_data.get("selected_tool_hints", [])
@@ -795,10 +803,19 @@ class ContextAssembler:
         result_summary, result_chars_total, result_chars_shown, result_truncated = (
             self.build_llm_result_context_preview(tool_name, result)
         )
+        reminder_hint = (
+            self._REMINDER_COMPLETION_HINT
+            if tool_name == "create_reminder" and result.get("ok") else ""
+        )
+        arguments_budget = max(120, min(1200, max_chars // 4))
+        if reminder_hint:
+            # Preserve guidance at the smallest continuation budget by shortening
+            # only this display preview; the full arguments remain in canonical state.
+            arguments_budget = max(20, arguments_budget - len(reminder_hint))
         args_preview, args_chars_total, args_chars_shown, args_truncated = (
             self.build_arguments_context_preview(
                 arguments or {},
-                max_chars=max(120, min(1200, max_chars // 4)),
+                max_chars=arguments_budget,
             )
         )
         metadata = {
@@ -829,6 +846,10 @@ class ContextAssembler:
         ]
         if duration_ms is not None:
             header.append(f"Duration: {duration_ms} ms")
+        if reminder_hint:
+            # Both native continuation providers use this bounded result message.
+            # Reserve the hint before choosing a result preview, including tiny budgets.
+            header.append(reminder_hint)
 
         def result_prefix(*, truncated: bool, shown: int) -> str:
             result_header = f"Result Meta: result_truncated={truncated}"

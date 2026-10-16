@@ -41,6 +41,260 @@ class _FakeSocketIO:
 
 
 class CompletionGuardServerSideToolsTests(unittest.TestCase):
+    def test_reminder_is_eligible_for_manual_and_auto_review_unless_explicitly_excluded(self):
+        handler = ChatHandler.__new__(ChatHandler)
+        policy = handler._get_completion_guard_policy()
+        manual = {
+            "enabled": True, "mode": "manual", "show_ui_prompt": True,
+            "include_tool_tasks": True,
+            "excluded_tools": sorted(ChatHandler.DEFAULT_COMPLETION_GUARD_EXCLUDED_TOOLS),
+        }
+        self.assertNotIn("create_reminder", ChatHandler.DEFAULT_COMPLETION_GUARD_EXCLUDED_TOOLS)
+        self.assertTrue(policy.should_prompt(manual, ["create_reminder"]))
+        self.assertTrue(policy.should_auto_evaluate({**manual, "mode": "auto"}, ["create_reminder"]))
+        excluded = {**manual, "excluded_tools": [*manual["excluded_tools"], "create_reminder"]}
+        self.assertFalse(policy.should_prompt(excluded, ["create_reminder"]))
+        self.assertFalse(policy.should_auto_evaluate({**excluded, "mode": "auto"}, ["create_reminder"]))
+        self.assertFalse(policy.should_prompt(manual, ["create_reminder", "send_email"]))
+
+    def test_reminder_attempt_detection_includes_failed_traces_and_preserves_chat_only(self):
+        policy = ChatHandler.__new__(ChatHandler)._get_completion_guard_policy()
+        records = [
+            {"tools_used": ["create_reminder"]},
+            {"data": {"create_reminder": {"reminder_id": 1}}},
+            {"tools_used": [], "data": {"_tool_trace": [{"tool": "create_reminder", "ok": False}]}},
+        ]
+        for record in records:
+            with self.subTest(record=record):
+                self.assertTrue(policy.has_reminder_attempt(record))
+                strategy = policy.classify_strategy({**record, "raw_llm_response": "Saved."})
+                self.assertEqual(strategy["family"], "reminder_review")
+                self.assertEqual(strategy["preferred_tools"], ["list_reminders"])
+
+        unrelated = {"tools_used": ["weather"], "data": {"temperature": 10}}
+        self.assertFalse(policy.has_reminder_attempt(unrelated))
+        self.assertEqual(policy.reminder_guidance(unrelated), "")
+        chat_only = {**records[0], "tool_policy": "none"}
+        self.assertEqual(policy.classify_strategy(chat_only)["family"], "chat_only_repair")
+        guidance = policy.reminder_guidance(chat_only)
+        self.assertIn("Chat only mode permits no tools", guidance)
+        self.assertNotIn("if necessary, list_reminders", guidance)
+
+    def test_reminder_auto_evaluator_receives_schedule_and_duplicate_semantics(self):
+        handler = ChatHandler.__new__(ChatHandler)
+        provider = unittest.mock.Mock()
+        provider.chat.return_value = (
+            '{"recommended_action":"repair_required","task_status":"failed",'
+            '"risk_level":"high","repair_worthwhile":true,'
+            '"failure_types":["contradiction_with_tool_data"],'
+            '"contradictions":["Saved 2pm instead of requested noon"],'
+            '"suggested_note":"Inspect saved IDs without creating replacements"}'
+        )
+        handler._create_completion_guard_eval_provider = lambda **kwargs: ("openai", "test-model", provider)
+        record = {
+            "mode": "cloud", "tool_policy": "auto",
+            "query": "Remind me tomorrow at noon about my appointment at 2pm",
+            "speech": "Reminder set for 2pm.", "raw_llm_response": "Reminder set for 2pm.",
+            "tools_used": ["create_reminder"],
+            "data": {
+                "create_reminder": {"reminder_id": 1, "trigger_time_local": "2026-10-16T14:00:00-07:00"},
+                "large_other_result": "x" * 9000,
+                "_tool_trace": [{"tool": "create_reminder",
+                                 "reminder_router_commentary": "The saved 2pm time differs from the requested noon."}],
+            },
+        }
+        with patch("jarvis_web_test_server.services.completion_guard.load_config"), \
+             patch("jarvis_web_test_server.services.completion_guard.get_config_value",
+                   side_effect=lambda key, default="": "America/Los_Angeles" if key == "JARVIS_TIMEZONE" else default):
+            result = handler._evaluate_completion_guard_auto(record)
+
+        prompt = provider.chat.call_args.args[0]
+        self.assertIn(handler._get_completion_guard_policy().reminder_guidance(record).splitlines()[0], prompt)
+        self.assertIn("requests ONE noon notification", prompt)
+        self.assertIn("configured timezone (America/Los_Angeles)", prompt)
+        self.assertIn("reused reminder_id is not proof of a second insert", prompt)
+        self.assertIn("bounded daily schedules are legitimate", prompt)
+        self.assertIn("defaults to ten current rows", prompt)
+        self.assertIn("gcal_synced is optional", prompt)
+        self.assertIn("not tighten_only", prompt)
+        self.assertIn("READ-ONLY", prompt)
+        self.assertIn("recommended_action=repair_required", prompt)
+        self.assertNotIn("REPAIR_STATUS:", prompt)
+        self.assertIn("2026-10-16T14:00:00-07:00", prompt)
+        self.assertIn("Unverified router commentary excerpt", prompt)
+        self.assertIn("may also appear in mixed-action replies", prompt)
+        self.assertNotIn("not spoken confirmation", prompt)
+        self.assertIn("The saved 2pm time differs from the requested noon.", prompt)
+        self.assertIn("not evidence of saved state", prompt)
+        self.assertEqual(result["recommended_action"], "repair_required")
+        self.assertGreaterEqual(result["repair_score"], 0.88)
+
+    def test_router_commentary_does_not_count_as_changed_reminder_evidence(self):
+        policy = ChatHandler.__new__(ChatHandler)._get_completion_guard_policy()
+        original = {"create_reminder": {"reminder_id": 1}, "_tool_trace": [
+            {"tool": "create_reminder", "arguments": {"when": "tomorrow at noon"},
+             "reminder_router_commentary": "Reminder saved."},
+        ]}
+        revised = {**original, "_tool_trace": [
+            {**original["_tool_trace"][0], "reminder_router_commentary": "A different explanation."},
+        ]}
+        self.assertEqual(policy.prepare_repair_data_for_delta(original), policy.prepare_repair_data_for_delta(revised))
+        self.assertEqual(original["_tool_trace"][0]["reminder_router_commentary"], "Reminder saved.")
+        changed_state = {**revised, "create_reminder": {"reminder_id": 2}}
+        self.assertNotEqual(policy.prepare_repair_data_for_delta(original), policy.prepare_repair_data_for_delta(changed_state))
+
+    def test_mixed_action_commentary_is_not_labeled_as_unspoken(self):
+        policy = ChatHandler.__new__(ChatHandler)._get_completion_guard_policy()
+        commentary = "The first reminder was canceled and its replacement is set for noon."
+        record = {
+            "tools_used": ["create_reminder", "acknowledge_reminders", "create_reminder"],
+            "speech": commentary, "raw_llm_response": commentary,
+            "data": {"_tool_trace": [{"tool": "create_reminder",
+                                      "reminder_router_commentary": commentary}]},
+        }
+        for for_repair in (False, True):
+            with self.subTest(for_repair=for_repair):
+                guidance = policy.reminder_guidance(record, for_repair=for_repair)
+                self.assertIn("may also appear in mixed-action replies", guidance)
+                self.assertNotIn("not spoken confirmation", guidance)
+                self.assertIn(commentary, guidance)
+
+    def test_unverified_reminder_commentary_does_not_enter_followup_context(self):
+        from jarvis_web_test_server.services.followup_extractor import extract_followup_data
+
+        result = extract_followup_data({
+            "create_reminder": {"reminder_id": 1, "formatted_time": "Tomorrow at noon"},
+            "_tool_trace": [{
+                "tool": "create_reminder", "ok": True,
+                "arguments": {"title": "Order food", "when": "tomorrow at noon"},
+                "reminder_router_commentary": "The party starts at 1pm.",
+            }],
+        })
+        self.assertIn("create_reminder", result)
+        self.assertNotIn("party starts", repr(result))
+
+    def test_reminder_repair_is_read_only_for_manual_auto_and_failed_attempts(self):
+        for automatic, trace_only, tool_policy in (
+            (False, False, "auto"), (True, False, "auto"),
+            (False, True, "auto"), (False, False, "none"),
+        ):
+            with self.subTest(automatic=automatic, trace_only=trace_only, tool_policy=tool_policy):
+                self._check_reminder_repair(automatic, trace_only, tool_policy)
+
+    def test_nonempty_reminder_listing_does_not_promote_unresolved_review(self):
+        for automatic in (False, True):
+            with self.subTest(automatic=automatic):
+                self._check_reminder_repair(automatic, False, "auto", with_listing=True)
+
+    def test_unrelated_repair_keeps_tool_result_synthesis_and_search_guidance(self):
+        record = {
+            "conversation_id": "conv-source-review", "message_id": "msg-parent", "mode": "cloud",
+            "tool_policy": "auto", "query": "What does the source say?",
+            "speech": "The value is unknown.", "raw_llm_response": "The value is unknown.",
+            "tools_used": [], "data": {}, "completion_guard": {"ticket_on_fail": False},
+            "web_search_hint_tools": ["searxng_search"],
+        }
+        result = {
+            "ok": True, "speech": "REPAIR_STATUS: unresolved\nThe source needs inspection.",
+            "raw_llm_response": "REPAIR_STATUS: unresolved\nThe source needs inspection.",
+            "tools_used": ["read_file"], "data": {"read_file": {"content": "The verified value is 42."}},
+        }
+        answer = "The verified value is 42."
+        handler, orchestrator, synthesize = self._exercise_repair(record, result, answer)
+
+        synthesize.assert_called_once()
+        self.assertEqual(record["status"], "repaired")
+        self.assertEqual(record["repair_result"]["speech"], answer)
+        self.assertIsNone(orchestrator.process.call_args.kwargs["allowed_tools"])
+        prompt = orchestrator.process.call_args.args[0]
+        self.assertIn("If one memory/search tool did not find enough", prompt)
+        self.assertIn("enabled local web search tools: searxng_search", prompt)
+        self.assertIn("tool families first", prompt)
+
+    def test_read_only_reminder_scope_blocks_side_effects_before_dispatch(self):
+        from executor import ToolExecutor
+
+        executor = ToolExecutor.__new__(ToolExecutor)
+        executor.set_allowed_tools(["list_reminders"])
+        executor.registry = unittest.mock.Mock()
+        executor._effective_exclusions = lambda: set()
+        executor._execute_foreground = unittest.mock.Mock(return_value={"ok": True, "data": {"reminders": []}})
+        for tool_name in (
+            "create_reminder", "acknowledge_reminders", "workflow", "send_webhook",
+            "api_call", "mcp_google_workspace_manage_event",
+        ):
+            with self.subTest(tool=tool_name):
+                result = executor.execute(tool_name, {}, skip_permission_check=True)
+                self.assertFalse(result["ok"])
+                executor._execute_foreground.assert_not_called()
+                executor.registry.get_tool.assert_not_called()
+
+        result = executor.execute("list_reminders", {"status": "current"})
+        self.assertTrue(result["ok"])
+        executor._execute_foreground.assert_called_once()
+
+    def _check_reminder_repair(self, automatic, trace_only, tool_policy, *, with_listing=False):
+        record = {
+            "conversation_id": "conv-reminder-review", "message_id": "msg-parent", "mode": "cloud",
+            "tool_policy": tool_policy, "query": "Remind me tomorrow at noon about my appointment at 2pm",
+            "speech": "Reminder set for 2pm.", "raw_llm_response": "Reminder set for 2pm.",
+            "tools_used": [] if trace_only else ["create_reminder"],
+            "data": {"_tool_trace": [{"tool": "create_reminder", "ok": False}]} if trace_only else {
+                "create_reminder": {"reminder_id": 1, "trigger_time_local": "2026-10-16T14:00:00-07:00"}
+            },
+            "completion_guard": {"ticket_on_fail": False},
+            "auto_evaluation": {"repair_score": 0.95} if automatic else None,
+            "web_search_hint_tools": ["searxng_search"],
+        }
+        answer = "The saved reminder is at 2pm instead of noon. Its schedule still needs correction."
+        result = {
+            "ok": True, "speech": "REPAIR_STATUS: unresolved\n" + answer,
+            "raw_llm_response": "REPAIR_STATUS: unresolved\n" + answer,
+            "tools_used": ["list_reminders"] if with_listing else [],
+            "data": {"list_reminders": {"reminders": [{
+                "id": 1, "status": "scheduled", "title": "Appointment at 2pm",
+                "trigger_time": "2026-10-16T21:00:00", "trigger_time_local": "2026-10-16T14:00:00-07:00",
+            }]}} if with_listing else {},
+        }
+        handler, fake_orchestrator, synthesize = self._exercise_repair(
+            record, result, "The reminder issue has been repaired."
+        )
+
+        self.assertEqual(record["status"], "unresolved")
+        call = fake_orchestrator.process.call_args
+        self.assertEqual(call.kwargs["allowed_tools"], [] if tool_policy == "none" else ["list_reminders"])
+        self.assertEqual(call.kwargs["tool_policy"], tool_policy)
+        self.assertIn("BUILT-IN REMINDER COMPLETION RULES", call.args[0])
+        self.assertIn("Do not claim a wording-only clarification repaired persisted reminders", call.args[0])
+        self.assertNotIn("If one memory/search tool did not find enough", call.args[0])
+        self.assertNotIn("enabled local web search tools", call.args[0])
+        if tool_policy != "none":
+            self.assertNotIn("tool families first", call.args[0])
+            self.assertIn("Only list_reminders is permitted", call.args[0])
+        synthesize.assert_not_called()
+        self.assertEqual(record["status"], "unresolved")
+        self.assertEqual(record["repair_result"]["speech"], answer)
+        self.assertEqual(record["repair_result"]["raw_llm_response"], answer)
+
+    def _exercise_repair(self, record, result, synthesized_answer):
+        handler = ChatHandler.__new__(ChatHandler)
+        handler.socketio = _FakeSocketIO()
+        handler.pending_cancellations = {}
+        handler.sessions = {}
+        fake_orchestrator = unittest.mock.MagicMock()
+        fake_orchestrator.process.return_value = result
+        with patch("orchestrator_v2.Orchestrator", return_value=fake_orchestrator), \
+             patch("jarvis_web_test_server.services.conversation_store.get_conversation_store"), \
+             patch.object(handler, "_prepare_web_response_text", side_effect=lambda value, _fallback:
+                          (value.get("raw_llm_response", ""), value.get("speech", ""))), \
+             patch.object(handler, "_synthesize_from_existing_tool_result", return_value=synthesized_answer) as synthesize, \
+             patch.object(handler, "_compute_effective_evidence", return_value=None), \
+             patch.object(handler, "_update_completion_guard_experience"), \
+             patch.object(handler, "_start_feedback_async"), \
+             patch.object(handler, "_generate_tts", return_value=None):
+            handler._run_completion_guard_repair("session-repair-review", record, note="Verify the saved result")
+        return handler, fake_orchestrator, synthesize
+
     def test_workflow_is_excluded_from_manual_and_auto_completion_guard(self):
         handler = ChatHandler.__new__(ChatHandler)
         policy = handler._get_completion_guard_policy()
