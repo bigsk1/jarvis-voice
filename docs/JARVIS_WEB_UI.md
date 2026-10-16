@@ -1357,7 +1357,7 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 | **Canvas header icon** | ✅ Done | 📄 button opens Canvas in new tab |
 | **`/canvas` command** | ✅ Done | Type `/canvas query` to research + save to Canvas |
 | **Send to Canvas button** | ✅ Done | Second icon in the consolidated latest-response action rail; creates a Canvas page from that response and its supporting conversation context |
-| **Inline Canvas preview** | ✅ Done | Show a compact clickable page thumbnail and direct Canvas link after successful page creation |
+| **Inline Canvas preview** | ✅ Done | Show a compact clickable page thumbnail; the preview and matching reply links use the current host's configured Canvas origin |
 
 ---
 

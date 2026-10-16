@@ -4172,6 +4172,10 @@ class ChatUI {
       ${messageBubbleHtml}
       ${genericStashAudio ? audioHtml : ''}
     `;
+
+    if (canvasPreview) {
+      window.assistantMessageRenderer.rewriteCanvasLinks(messageEl, canvasPreview);
+    }
     
     // Add click handler for details toggle
     const detailsToggle = messageEl.querySelector('.details-toggle');
@@ -4448,6 +4452,7 @@ class ChatUI {
       try {
         let parsed = new URL(pageUrl);
         if (!['http:', 'https:'].includes(parsed.protocol)) continue;
+        const sourceUrl = parsed.href;
         const origin = window.JarvisUINavigation?.url('canvas', parsed.origin) || parsed.origin;
         if (origin !== parsed.origin) {
           parsed = new URL(`${origin}${parsed.pathname}${parsed.search}${parsed.hash}`);
@@ -4455,6 +4460,7 @@ class ChatUI {
         return {
           pageId: String(pageId),
           title,
+          sourceUrl,
           url: parsed.href,
           apiUrl: `${parsed.origin}/api/pages/${encodeURIComponent(pageId)}`,
           tags: Array.isArray(payload.tags) ? payload.tags : []

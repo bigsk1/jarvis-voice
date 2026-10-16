@@ -2,10 +2,43 @@
  * HTML fragments for assistant tool results.
  *
  * ChatUI prepares tool entries and selects which surfaces to display. These
- * helpers return markup; message identity, events and cleanup stay in ChatUI.
+ * helpers produce markup and normalize known artifact links; message identity,
+ * events and cleanup stay in ChatUI.
  * Loaded after utils.js and before chat.js as a classic script.
  */
 window.assistantMessageRenderer = {
+  rewriteCanvasLinks(root, preview) {
+    if (!preview?.sourceUrl || !preview.url) return;
+    let source;
+    let destination;
+    try {
+      source = new URL(preview.sourceUrl);
+      destination = new URL(preview.url);
+    } catch {
+      return;
+    }
+    if (![source, destination].every(url => ['http:', 'https:'].includes(url.protocol)
+        && !url.username && !url.password) || source.origin === destination.origin) return;
+
+    // A matching receipt identifies this page; other sites and pages keep their URLs.
+    root.querySelectorAll('.message-bubble a.content-link').forEach(anchor => {
+      if (anchor.closest('pre, code')) return;
+      const href = anchor.getAttribute('href');
+      let link;
+      try {
+        link = new URL(href);
+      } catch {
+        return;
+      }
+      if (link.username || link.password || link.origin !== source.origin
+          || link.pathname !== source.pathname) return;
+      const resolved = new URL(`${destination.origin}${link.pathname}${link.search}${link.hash}`);
+      anchor.setAttribute('href', resolved.href);
+      const label = String(anchor.textContent || '').trim();
+      if (label === href || label === link.href) anchor.textContent = resolved.href;
+    });
+  },
+
   renderToolCards(entries, renderCard) {
     if (!entries.length) return '';
     return '<div class="tool-cards">' + entries.map(renderCard).join('') + '</div>';
