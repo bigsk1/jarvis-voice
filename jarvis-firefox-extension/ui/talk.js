@@ -2,7 +2,7 @@ import './talk-capture.js';
 
 /** Hands-free turns through Jarvis's ordinary STT, chat and TTS paths. */
 export class TalkActivityDetector {
-  constructor(startedAt, { silenceMs = 1200, maxMs = 45000, idleMs = 30000 } = {}) {
+  constructor(startedAt, { silenceMs = 2200, maxMs = 45000, idleMs = 30000 } = {}) {
     Object.assign(this, { startedAt, silenceMs, maxMs, idleMs });
     this.attackAt = null;
     this.lastVoiceAt = null;

@@ -73,7 +73,11 @@ const talk = new sandbox.window.TalkController({app,chat,socket});
 async function start(){const pending=talk.start();await flush();permissions.at(-1).resolve(stream());await pending;assert.equal(talk.session.phase,'listening');}
 function tick(rms,ms){amplitude=rms;for(let i=0;i<ms/50;i++){clock+=50;for(const fn of [...intervals.values()])fn();}}
 function finishTimers(){for(const [id,item] of [...timers])if(item.ms===350){timers.delete(id);item.fn();}}
-async function utterance(){tick(.04,500);tick(0,1300);await flush();assert.equal(requests.at(-1).url,'/api/stt');}
+async function utterance(){
+  tick(.04,500);tick(0,2150);await flush();
+  assert.equal(talk.session.phase,'listening','a pause shorter than 2.2 seconds must not submit');
+  tick(0,50);await flush();assert.equal(requests.at(-1).url,'/api/stt');
+}
 async function transcribe(text='What time is it?'){requests.at(-1).resolve({ok:true,json:async()=>({ok:true,text})});await flush();}
 function settle(status='completed', id='r1'){chat.isProcessing=false;emit('runState',{conversation_id:'a',message_id:id,status});}
 async function answer(data={}){emit('response',{message_id:'r1',conversation_id:'a',ok:true,speech:'It is noon.',...data});await flush();}

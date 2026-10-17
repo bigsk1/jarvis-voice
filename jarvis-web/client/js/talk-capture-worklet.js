@@ -112,7 +112,7 @@ class JarvisTalkCaptureProcessor extends AudioWorkletProcessor {
     } else {
       this._send(samples);
       if (voice) this.lastVoiceAt = this.clock;
-      if (this.clock - this.lastVoiceAt >= 1200 || this.clock - this.recordingAt >= 45000) {
+      if (this.clock - this.lastVoiceAt >= 2200 || this.clock - this.recordingAt >= 45000) {
         this.armed = false;
         this.recording = false;
         this.port.postMessage({type: 'speech-end', token: this.token});

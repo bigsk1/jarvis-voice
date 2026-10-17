@@ -18,7 +18,7 @@ before starting. The Talk button is also available in the mobile composer.
 - **Speak to interrupt** is optional and off by default. Enable it in the Talk
   panel to speak over a reply without a trigger phrase. Playback stops after
   sustained sound is detected, and your buffered utterance is sent after about
-  1.2 seconds of silence. It stays in the same conversation and uses ordinary
+  2.2 seconds of silence. It stays in the same conversation and uses ordinary
   model/tool routing. Any unfinished task must confirm cancellation before the
   next turn is submitted; completed tool actions cannot be undone.
 - **End Talk**, **Esc**, or the Talk button ends the session and requests
@@ -89,7 +89,7 @@ and [Web Audio guidance](https://developer.mozilla.org/en-US/docs/Web/API/Web_Au
 
 ## Limits and troubleshooting
 
-- A turn ends after about 1.2 seconds of silence, or 45 seconds of recording.
+- A turn ends after about 2.2 seconds of silence, or 45 seconds of recording.
   Thirty seconds without sustained sound pauses Talk. The detector measures
   audio level; steady loud background noise can be mistaken for speech.
 - Recordings are bounded to 10 MB. STT/TTS browser requests have a 90-second

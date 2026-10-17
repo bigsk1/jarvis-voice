@@ -41,23 +41,24 @@ assert.equal(count('speech-start'),0,'delayed attenuated playback echo must not 
 // Independent user speech must still trigger over audible playback.
 feed(p,700,i=>voice(i)+assistant(i-1280)*.08,assistant);
 assert.equal(count('speech-start'),1);
-feed(p,1400,i=>assistant(i-1280)*.08,assistant);
+feed(p,2400,i=>assistant(i-1280)*.08,assistant);
 assert.equal(count('speech-end'),1);
 const captured=messages.filter(m=>m.type==='samples').flatMap(m=>Array.from(m.samples));
 assert(captured.some(v=>Math.abs(v)>.02));
-assert(captured.length<=16000*3);
+assert(captured.length<=16000*4);
 // An immediate interruption keeps the onset while the detector waits for attack.
 p=processor();feed(p,700,voice);assert.equal(count('speech-start'),1);
 const first=messages.find(m=>m.type==='samples').samples;
 assert(Math.abs(first[1]-voice(1))<1e-6,'pre-roll must preserve first syllable');
-feed(p,1400);assert.equal(count('speech-end'),1);
+feed(p,2180);assert.equal(count('speech-end'),0,'a pause shorter than 2.2 seconds must not end capture');
+feed(p,20);assert.equal(count('speech-end'),1);
 p=processor();feed(p,500,voice);p.port.onmessage({data:{type:'disarm'}});
 feed(p,3000,voice);assert.equal(count('speech-end'),0);
 p=processor();feed(p,46400,voice);assert.equal(count('speech-end'),1,'continuous sound must hit recording limit');
 // Actual browser render quanta need not divide a 20 ms analysis frame.
 for (const rate of [44100,48000]) {
   sandbox.sampleRate=rate;p=processor();let offset=0;
-  for(let quantum=0;quantum<Math.ceil(rate*2.1/128);quantum++) {
+  for(let quantum=0;quantum<Math.ceil(rate*3.1/128);quantum++) {
     const mic=Float32Array.from({length:128},(_,i)=>offset+i<rate*.7?voice(offset+i):0);
     p.process([[mic],[]],[[new Float32Array(128)]]);offset+=128;
   }
