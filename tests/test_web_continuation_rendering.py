@@ -354,6 +354,85 @@ assert.equal(messages[1].data._background_mode,undefined); // No mutation/migrat
 """)
 
 
+@pytest.mark.parametrize('form', ['live', 'saved', 'nested', 'object', 'object_nested', 'object_marker'])
+@pytest.mark.parametrize('mode', ['cloud', 'local'])
+@pytest.mark.parametrize('complete', [True, False])
+def test_external_contract_panels_use_safe_dom_for_live_and_saved_results(form, mode, complete):
+    arguments = json.dumps({'form': form, 'mode': mode, 'complete': complete})
+    run_message_browser(DOM + '\nconst args=' + arguments + ';\n' + r"""
+const ui=chat();
+ui.pendingTools={get_time:{status:'running'}}; ui.currentMessageId='foreground'; ui.isProcessing=true;
+sandbox.window.jarvisSocket.mode=args.mode==='cloud'?'local':'cloud';
+const attack='<img src=x onerror=alert(1)>', raw='stash://space_external/f_raw';
+const payload={_background_mode:args.mode, future_catalog_tool:{ok:true,data:{
+  contract:'external_result_v1',source:{provider:'<script>provider</script>',tool:'read-any-result',mode:args.mode},
+  execution:{run_id:'NativeRun123',status:'SUCCEEDED'},
+  result:{items:[{title:attack,nested:{id:'9007199254740993'}},{other:false}],
+    offset:args.complete?0:20,total_items:args.complete?2:25,returned_count:args.complete?2:5,
+    complete:args.complete,pagination:{has_more:!args.complete}},
+  raw_ref:raw,artifacts:[{ref:raw,name:'Duplicate raw'},
+    {ref:'stash://space_external/f_page',name:'<page>.json',download_url:'https://evil.invalid/raw'},
+    {ref:'javascript:alert(2)',name:'Invalid'}],
+  limits:{sample_truncated:!args.complete,integer_strings:true},
+}}};
+const before=JSON.stringify(payload), data=lateData(payload,args.form);
+if(args.form.startsWith('object')) ui.addAssistantMessage({...data,content:'Actor result is ready.'});
+else ui.addAssistantMessage('Actor result is ready.',[],data,args.form==='live'?{late:true}:{});
+const rendered=message(ui), all=descendants(rendered), content=visible(rendered);
+assert.equal(rendered.querySelectorAll('.structured-results-external').length,1);
+for(const tag of ['table','thead','tbody','th','td','details','summary','code']) {
+  assert.ok(all.some(el=>el.tag===tag),tag);
+}
+for(const text of [attack,'<script>provider</script>','NativeRun123','9007199254740993',
+  'Large integers shown as exact text', args.complete?'Rows 1–2 of 2':'Rows 21–22 of 25',
+  args.complete?'Page returned 2 items':'Page returned 5 items',
+  args.complete?'Complete result':'Partial result']) assert.ok(content.includes(text),text);
+assert.equal(content.includes('More pages available'),!args.complete);
+assert.equal(content.includes('Preview shortened'),!args.complete);
+assert.ok(!all.some(el=>['img','script','svg','iframe','object','video','audio'].includes(el.tag)));
+const links=all.filter(el=>el.tag==='a');
+assert.deepEqual(links.map(el=>el.href),[
+  '/api/stash/space_external/f_raw?mode='+args.mode,
+  '/api/stash/space_external/f_page?mode='+args.mode,
+]);
+assert.ok(links.every(el=>el.download===''));
+assert.ok(links.some(el=>el.textContent==='Download <page>.json'));
+assert.equal(JSON.stringify(payload),before);
+assert.equal(ui.pendingTools.get_time.status,'running');
+assert.equal(ui.currentMessageId,'foreground'); assert.equal(ui.isProcessing,true);
+assert.ok(!effects.some(e=>e==='clear-actions'||e==='hydrate'||Array.isArray(e)));
+""")
+
+
+def test_saved_external_panel_recovers_mode_without_using_current_chat_mode():
+    run_message_browser(DOM + r"""
+const ui=chat();
+const app=Object.create(JarvisApp.prototype);
+Object.assign(app,{chat:ui,socket:{mode:'local',conversationId:'thread'},
+  _displayedConversationId:'thread',_completedResponseIds:new Set(),
+  _updateActiveConversation(){},_updateConvIdBadge(){},_loadConversationHistory(){}});
+Object.assign(ui,{setConversationLoading(){},restoreRunState(){},reconcileLiveActions(){},
+  clearChat(){this.messagesContainer.children=[];this._renderedMessageIds=new Set();}});
+const messages=[
+  {role:'assistant',id:'receipt',content:'Queued',data:{_web_message_id:'receipt',
+    _kind:'continuation',background_jobs:{job:{job_id:'job',mode:'cloud'}}}},
+  {role:'assistant',id:'done',content:'Done',data:{_web_message_id:'done',_kind:'continuation',
+    parent_job_id:'job',unknown_provider:{ok:true,data:{contract:'external_result_v1',
+      source:{provider:'fixture',tool:'read'},execution:{run_id:'NativeRun123'},
+      result:{items:[0],offset:'9007199254740993',total_items:'9007199254741993',
+        returned_count:1,complete:false},raw_ref:'stash://space_external/f_saved',
+      limits:{integer_strings:true}}}}}
+];
+await app._displayLoadedConversation({id:'thread',generation:0,messages});
+const rendered=message(ui), all=descendants(rendered);
+assert.equal(rendered.querySelectorAll('.structured-results-external').length,1);
+assert.ok(visible(rendered).includes('Rows 9007199254740994–9007199254740994 of 9007199254741993'));
+assert.ok(all.some(el=>el.tag==='a'&&el.href==='/api/stash/space_external/f_saved?mode=cloud'));
+assert.equal(messages[1].data._background_mode,undefined);
+assert.equal(messages[1].data.unknown_provider.data.source.mode,undefined);
+""")
+
+
 def test_browser_research_uses_dedicated_card_with_full_report_and_sources():
     run_message_browser(DOM + r"""
 const ui = chat();

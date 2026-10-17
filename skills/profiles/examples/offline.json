@@ -1,6 +1,10 @@
 {
   "description": "Disable tools that typically use the public internet (search, fetch, SerpAPI, weather, media APIs, webhooks, email, MCP fetch/brave/playwright, etc.). Keeps canvas, stash, semantic_recall, deep_memory_search (local/LAN-first). Adjust for your setup; add more mcp_* names from ./bin/manage-tools.py profile export when online.",
   "overrides": {
+    "apify_read_result": false,
+    "apify_run_actor": false,
+    "mcp_apify_search-actors": false,
+    "mcp_apify_fetch-actor-details": false,
     "api_call": false,
     "brave_llm_context": false,
     "check_opencode_sessions": false,

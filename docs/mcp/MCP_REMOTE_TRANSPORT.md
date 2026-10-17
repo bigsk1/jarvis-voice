@@ -116,6 +116,21 @@ false; arbitrary `Error:` text from other servers is not globally reclassified.
 
 ## Available Remote MCP Servers
 
+### Apify
+
+- **URL**: `https://mcp.apify.com` with an explicit discovery-tool selection.
+- **Authentication**: Bearer header from the selected mode's `APIFY_TOKEN`.
+- **Transport**: Streamable HTTP (`type: "http"`).
+- **Scope**: Policy-aware Store search under `mcp_apify_search-actors`, hosted
+  MCP Actor details, and one shared Jarvis run/read gateway with run limits and
+  optional durable background observation.
+- **Eligibility**: Apify-maintained Actors by default, plus additive trusted
+  community exceptions in `APIFY_ALLOWED_ACTORS`. Ratings and usage guide selection.
+- **Activation**: Opt-in with `APIFY_MCP_ENABLED`; disabled in the env templates.
+
+See [Apify setup, results, and recovery](APIFY.md). Actors remain runtime data;
+they do not each become a registry entry or frontend adapter.
+
 ### Malwarebytes
 
 - **URL**: `https://scamguard.malwarebytes.com/claude/mcp`

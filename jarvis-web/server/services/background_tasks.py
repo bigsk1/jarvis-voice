@@ -192,6 +192,16 @@ class WebBackgroundTasks:
             # The hosted live viewer is a bearer capability for the Web card,
             # never task context sent to the next LLM turn.
             progress = {key: value for key, value in progress.items() if key != 'live_view_url'}
+        from lib.external_results import is_external_result, project_external_result
+        result = job.get('result')
+        if is_external_result(result):
+            projected_result = {
+                'ok': result.get('ok'),
+                'speech': str(result.get('speech') or '')[:400],
+                'data': project_external_result(result, max_chars=3400, sample_limit=3),
+            }
+        else:
+            projected_result = _bounded_structured_followup_value(result, max_chars=4000)
         return {
             "job_id": job["id"],
             "tool": job["admission"]["tool"],
@@ -207,7 +217,7 @@ class WebBackgroundTasks:
             "input_arguments": _bounded_structured_followup_value(
                 job["admission"]["arguments"], max_chars=2000
             ),
-            "result": _bounded_structured_followup_value(job["result"], max_chars=4000),
+            "result": projected_result,
         }
 
     def conversation_context(self, conversation_id, mode):
@@ -389,14 +399,14 @@ class WebBackgroundTasks:
             "delivery_state": job.get("delivery_state"),
             "delivery_error": job.get("delivery_error"),
             "mode": job['mode'],
-            "remote_work": job['adapter'] == REMOTE_ADAPTER,
+            "remote_work": job['adapter'] in {REMOTE_ADAPTER, 'apify_actor_v1'},
             "archived_at": job.get('archived_at'),
             "created_at": job['created_at'],
             "updated_at": job['updated_at'],
             "unread": state in {'succeeded', 'failed', 'cancelled', 'expired', 'needs_attention'}
                 and (job.get('read_at') is None or job['read_at'] < job['updated_at']),
             "can_cancel": state == 'queued' or (state in {'starting', 'running'} and
-                (job['adapter'] in LOCAL_ADAPTERS or
+                (job['adapter'] in LOCAL_ADAPTERS or job['adapter'] == 'apify_actor_v1' or
                  (job['admission']['tool'] == 'browser_use' and job['adapter'] == 'http_callback_v1'))),
             "can_reconcile": state == 'needs_attention',
             "can_retry_delivery": job.get('archived_at') is None and delivery in {'pending', 'ready', 'suppressed'},
@@ -596,7 +606,7 @@ class WebBackgroundTasks:
                 text += 'The tool\'s waiting limit was reached. '
             if uncertain:
                 text += ('Remote work may still be running; this is not a confirmed operation failure. '
-                         if job['adapter'] in {'remote_skill_v1', CALLBACK_ADAPTER} else
+                         if job['adapter'] in {'remote_skill_v1', 'apify_actor_v1', CALLBACK_ADAPTER} else
                          'The operation may already have taken effect; its outcome needs checking. ')
             else:
                 text += 'The task ended without a successful result. '

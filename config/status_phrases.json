@@ -180,6 +180,8 @@
     "acknowledge_alerts": "_family_alerts",
     "acknowledge_reminders": "_family_reminders",
     "api_call": "_family_developer_ops",
+    "apify_read_result": "_family_remote_tasks",
+    "apify_run_actor": "_family_remote_tasks",
     "bookmark_search": "_family_search",
     "brave_llm_context": "_family_search",
     "browser_use": "_family_search",
@@ -263,6 +265,11 @@
 
   "tool_specific": {
     "_description": "Override messages for specific tools. Falls back to categories if not defined.",
+
+    "_family_remote_tasks": {
+      "start": ["Preparing the remote request", "Checking the external task"],
+      "progress": ["Checking remote status", "Reading available output"]
+    },
 
     "_family_alerts": {
       "start": ["Checking your alerts", "Updating your alerts"],

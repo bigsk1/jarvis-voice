@@ -7,6 +7,7 @@ The separately supervised CLI registers reviewed production adapters explicitly.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import random
 import threading
@@ -18,7 +19,16 @@ from dataclasses import dataclass, field
 
 from lib.config_loader import config_scope
 
-from .models import Claim, LostLease, TaskError, recovery_details
+from .models import (
+    RESUMABLE_REMOTE_ADAPTERS,
+    Claim,
+    LostLease,
+    TaskError,
+    identifier,
+    recovery_details,
+    remote_checkpoint,
+    validate_remote_checkpoint,
+)
 from .store import TaskStore
 
 logger = logging.getLogger(__name__)
@@ -71,6 +81,18 @@ class KnownCancelled(TaskError):
     """Adapter verified that its entire local execution has stopped."""
 
 
+class KnownRemoteCancelled(TaskError):
+    """A trusted observer verified native cancellation of its saved remote run."""
+
+    def __init__(self, run_id: str):
+        super().__init__('Provider confirmed cancellation')
+        self.run_id = identifier(run_id, 'cancelled remote run ID')
+
+
+class RemoteObservationPaused(TaskError):
+    """Observation may be reacquired without repeating the paid submission."""
+
+
 class KnownStopped(TaskError):
     """Local execution is proven stopped, including after observation expires."""
 
@@ -98,6 +120,7 @@ class ExecutionContext:
     local_execution: dict = field(default_factory=dict)
     local_process_started: bool = False
     local_process_stopped: bool = False
+    remote_submission_started: bool = False
 
     def record_process_stop(self):
         # Called only after the supervisor verifies death of the whole group.
@@ -109,7 +132,7 @@ class ExecutionContext:
         self.local_process_started = True
         self.progress({'phase': phase, 'process_id': pid, 'process_group': pid})
 
-    def checkpoint(self):
+    def checkpoint(self, *, allow_cancel=False):
         if self.lost.is_set() or self.store.clock() >= self.claim.job["deadline"]:
             raise LostLease("Worker ownership or observation deadline ended")
         if self.stop.is_set():
@@ -118,12 +141,42 @@ class ExecutionContext:
         # alone could let a child run for seconds after ownership was revoked.
         with self.store._connection() as conn:
             row = self.store._active(conn, self.claim)
-            if row['cancel_requested']:
+            if row['cancel_requested'] and not allow_cancel:
                 raise CancellationRequested("Operator requested cancellation")
 
-    def progress(self, value: dict):
+    @property
+    def remote_checkpoint(self) -> dict[str, str] | None:
+        return remote_checkpoint(self.claim.job['adapter'], self.claim.job.get('progress'))
+
+    def persist_remote_checkpoint(self, checkpoint: dict):
+        """Save submission identity even if shutdown/cancellation raced its receipt."""
+        checkpoint = validate_remote_checkpoint(checkpoint)
         try:
-            self.checkpoint()
+            progress = self.store.checkpoint_remote(self.claim, checkpoint)
+        except LostLease:
+            # A late submission receipt remains recovery evidence, never a new
+            # lease or authorization to continue a fenced attempt.
+            self.store.reconcile()
+            self.store.retain_uncertain_result(self.claim, {'data': {'run_id': checkpoint['run_id']}})
+            raise
+        self.claim.job['progress'] = progress
+
+    def wait(self, seconds: float, *, allow_cancel=False):
+        """Wait between short HTTP observations while checking durable fences."""
+        if (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
+                or not math.isfinite(seconds) or not 0 <= seconds <= 300):
+            raise TaskError('Observer wait must be between zero and 300 seconds')
+        until = time.monotonic() + seconds
+        while True:
+            self.checkpoint(allow_cancel=allow_cancel)
+            remaining = until - time.monotonic()
+            if remaining <= 0:
+                return
+            self.stop.wait(min(0.25, remaining))
+
+    def progress(self, value: dict, *, allow_cancel=False):
+        try:
+            self.checkpoint(allow_cancel=allow_cancel)
             self.store.progress(self.claim, value)
         except LostLease:
             # Only recovery metadata can survive expiry; normal progress still
@@ -136,6 +189,40 @@ class ExecutionContext:
 
 
 Adapter = Callable[[ExecutionContext], dict]
+
+
+@dataclass(frozen=True)
+class ResumableRemoteAdapter:
+    """One paid start followed by repeatable observation of an immutable handle.
+
+    Trusted ``observe`` code may read/collect or confirm cancellation of that
+    handle. It must never call the provider's submission entry point. Registration
+    is restricted to reviewed adapter IDs independently of manifest metadata.
+    """
+
+    start: Callable[[ExecutionContext], dict]
+    observe: Callable[[ExecutionContext, dict[str, str]], dict]
+
+    def __call__(self, context: ExecutionContext) -> dict:
+        if context.claim.job['adapter'] not in RESUMABLE_REMOTE_ADAPTERS:
+            raise KnownFailure({'ok': False, 'error': 'Unreviewed remote observer adapter'})
+        try:
+            saved = context.remote_checkpoint
+            if saved is None:
+                context.checkpoint()
+                context.remote_submission_started = True
+                saved = validate_remote_checkpoint(self.start(context))
+                context.persist_remote_checkpoint(saved)
+            else:
+                # A replacement observer must reach its native abort/read path
+                # when cancellation was requested while no worker was present.
+                context.checkpoint(allow_cancel=True)
+            return self.observe(context, saved)
+        except Interrupted:
+            if context.remote_checkpoint is None:
+                raise
+            context.store.pause_remote_observation(context.claim)
+            raise RemoteObservationPaused() from None
 
 
 class TaskWorker:
@@ -156,6 +243,9 @@ class TaskWorker:
             raise TaskError("Heartbeat must be below half the lease; poll interval must be bounded")
         if any(not callable(adapter) for adapter in adapters.values()):
             raise TaskError("Adapters must be trusted callables")
+        if any(isinstance(adapter, ResumableRemoteAdapter) and name not in RESUMABLE_REMOTE_ADAPTERS
+               for name, adapter in adapters.items()):
+            raise TaskError('Remote observer recovery requires a reviewed adapter ID')
         self.store = store
         self.adapters = dict(adapters)
         self.owner = owner or uuid.uuid4().hex
@@ -174,6 +264,9 @@ class TaskWorker:
             loaded = dict(self.adapter_loader())
             if any(not callable(adapter) for adapter in loaded.values()):
                 raise TaskError("Adapters must be trusted callables")
+            if any(isinstance(adapter, ResumableRemoteAdapter) and name not in RESUMABLE_REMOTE_ADAPTERS
+                   for name, adapter in loaded.items()):
+                raise TaskError('Remote observer recovery requires a reviewed adapter ID')
             added = sorted(set(loaded) - set(self.adapters))
             if added:
                 # Never remove a live adapter: an accepted job may still depend on it.
@@ -226,6 +319,12 @@ class TaskWorker:
                 pass  # Disposal/operator decisions still supersede this attempt.
         self.store.reconcile()
 
+    @staticmethod
+    def _before_remote_submission(adapter: Adapter, context: ExecutionContext | None) -> bool:
+        """Only reviewed starters can attest that no provider POST was invoked."""
+        return (isinstance(adapter, ResumableRemoteAdapter) and context is not None
+                and context.remote_checkpoint is None and not context.remote_submission_started)
+
     def run_once(self, stop: threading.Event | None = None) -> bool:
         """Claim at most one released job. A stop never admits additional work."""
         stop = stop if stop is not None else threading.Event()
@@ -235,7 +334,10 @@ class TaskWorker:
         self._presence()
         with self._adapter_lock:
             adapters = dict(self.adapters)
-        claim = self.store.claim(self.owner, set(adapters), lease_seconds=self.lease_seconds)
+        resumable = {name for name, adapter in adapters.items()
+                     if isinstance(adapter, ResumableRemoteAdapter)}
+        claim = self.store.claim(self.owner, set(adapters), lease_seconds=self.lease_seconds,
+                                 resumable_adapters=resumable)
         if claim is None:
             return False
         started_at = time.monotonic()
@@ -258,7 +360,7 @@ class TaskWorker:
                     _child_environment(claim.job["mode"], snapshot),
                     dict(snapshot.overrides),
                 )
-                context.checkpoint()
+                context.checkpoint(allow_cancel=context.remote_checkpoint is not None)
                 self.store.running(claim)
                 self.store.events.emit('job_started', component='worker', job=claim.job, state='running',
                                        queue_ms=round(max(0, self.store.clock() - claim.job['created_at']) * 1000))
@@ -273,6 +375,20 @@ class TaskWorker:
                 else:
                     self.store.finish(claim, result)
                     logger.info('Task succeeded job=%s; result saved for Web delivery', claim.job_id)
+        except RemoteObservationPaused:
+            logger.info('Remote observer paused job=%s; saved native run will be observed after restart', claim.job_id)
+        except KnownRemoteCancelled as exc:
+            saved = context.remote_checkpoint if context else None
+            if not saved or saved['run_id'] != exc.run_id:
+                self._attention(claim, 'Remote cancellation did not match the saved native run')
+            else:
+                try:
+                    self.store.acknowledge_cancel(claim, 'Provider confirmed cancellation of saved remote run')
+                    logger.info('Remote task cancelled job=%s; provider termination confirmed', claim.job_id)
+                except LostLease:
+                    self.store.reconcile()
+                except TaskError:
+                    self._attention(claim, 'Native cancellation was not requested for this execution')
         except KnownStopped:
             try:
                 self.store.record_local_stop(claim)
@@ -280,17 +396,22 @@ class TaskWorker:
             except LostLease:
                 self.store.reconcile()
         except KnownCancelled:
-            try:
-                self.store.acknowledge_cancel(claim, "Local child and process-group termination verified")
-                logger.info('Task cancelled job=%s; local process group stopped', claim.job_id)
-            except LostLease:
+            if claim.job['adapter'] in resumable and context and context.remote_checkpoint:
+                self._attention(claim, 'Local termination is not native remote cancellation evidence')
+            else:
                 try:
-                    self.store.record_local_stop(claim)
+                    self.store.acknowledge_cancel(claim, "Local child and process-group termination verified")
+                    logger.info('Task cancelled job=%s; local process group stopped', claim.job_id)
                 except LostLease:
-                    self.store.reconcile()
+                    try:
+                        self.store.record_local_stop(claim)
+                    except LostLease:
+                        self.store.reconcile()
         except CancellationRequested:
-            if not adapter_started:
-                self.store.acknowledge_cancel(claim, "Adapter was never invoked")
+            before_remote_submit = self._before_remote_submission(adapters[claim.job['adapter']], context)
+            if not adapter_started or before_remote_submit:
+                evidence = 'Provider submission was never invoked' if before_remote_submit else 'Adapter was never invoked'
+                self.store.acknowledge_cancel(claim, evidence)
                 logger.info('Task cancelled job=%s before execution', claim.job_id)
             else:
                 self._attention(claim, "Cancellation needs adapter termination evidence")
@@ -309,7 +430,23 @@ class TaskWorker:
             self._recover_execution(claim, context)
             logger.warning('Task ownership lost job=%s; execution will not be retried', claim.job_id)
         except Interrupted:
-            if not adapter_started:
+            if context is not None and context.remote_checkpoint is not None:
+                try:
+                    self.store.pause_remote_observation(claim)
+                    logger.info('Remote observer paused before execution job=%s; saved native run retained', claim.job_id)
+                except LostLease:
+                    self.store.reconcile()
+            elif self._before_remote_submission(adapters[claim.job['adapter']], context):
+                try:
+                    self.store.finish(claim, {
+                        'ok': False, 'completion': 'rejected',
+                        'error': 'Worker stopped during preparation before provider submission',
+                        'speech': 'The background task stopped before provider submission. No remote run was started.',
+                    }, succeeded=False)
+                    logger.info('Task stopped before provider submission job=%s; no native run was started', claim.job_id)
+                except LostLease:
+                    self.store.reconcile()
+            elif not adapter_started:
                 try:
                     self.store.finish(claim, {'ok': False, 'error': 'Worker stopped before execution'}, succeeded=False)
                 except LostLease:

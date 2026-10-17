@@ -236,7 +236,8 @@ def status():
                     for name, adapter in tasks.adapters.items()}
     if 'browser_use' in tool_details:
         tool_details['browser_use']['browser_use'] = browser_details(tasks)
-    from lib.webhook_integrations.private_bindings import bindings as private_bindings, status as private_status
+    from lib.webhook_integrations.private_bindings import bindings as private_bindings
+    from lib.webhook_integrations.private_bindings import status as private_status
 
     for name in private_bindings():
         if name in tool_details:
@@ -361,6 +362,8 @@ def job_action(job_id):
             from lib.webhook_integrations.contracts import ADAPTER as CALLBACK_ADAPTER
 
             adapters = set(LOCAL_ADAPTERS)
+            if job['adapter'] == 'apify_actor_v1':
+                adapters.add('apify_actor_v1')
             if job['admission']['tool'] == 'browser_use' and job['adapter'] == CALLBACK_ADAPTER:
                 adapters.add(CALLBACK_ADAPTER)
             tasks.store.request_cancel(job_id, revision, supported_adapters=adapters)

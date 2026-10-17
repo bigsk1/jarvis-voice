@@ -1,6 +1,10 @@
 {
   "description": "OpenAI one-key starter profile. Keeps OpenAI-backed and credential-free tools, including OpenAI image generation and hosted web search. Disables integrations that require non-OpenAI credentials, personal configuration, or an external/self-hosted service.",
   "overrides": {
+    "apify_read_result": false,
+    "apify_run_actor": false,
+    "mcp_apify_search-actors": false,
+    "mcp_apify_fetch-actor-details": false,
     "brave_llm_context": false,
     "browser_use_cloud": false,
     "check_opencode_sessions": false,

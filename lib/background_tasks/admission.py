@@ -32,7 +32,11 @@ MEDIA_SELECTIONS = {
 def _media_arguments_for_worker(tool, args):
     """Persist only non-secret media choices, not the request's environment."""
     from config_loader import get_config_value
-    from model_catalog import get_media_model_env_key, resolve_media_model, validate_media_model_provider
+    from model_catalog import (
+        get_media_model_env_key,
+        resolve_media_model,
+        validate_media_model_provider,
+    )
 
     media_type, default, supported = MEDIA_SELECTIONS[tool]
     # Saved Web settings and the trusted modal scope outrank LLM arguments.
@@ -348,6 +352,22 @@ class BackgroundAdmissionService:
         from .local_contract import SKILL_ADAPTERS
 
         timeout = 900
+        if self.adapters[tool] == 'apify_actor_v1':
+            from jsonschema import ValidationError
+            from referencing.exceptions import Unresolvable
+
+            from .apify import TOOL as APIFY_TOOL
+            from .local_skill import argument_validators
+            if tool != APIFY_TOOL:
+                raise AdmissionDenied('Unsupported Apify submission tool')
+            try:
+                for validator in argument_validators(schema.parameters, None):
+                    validator.validate(args)
+            except (ValueError, ValidationError, Unresolvable):
+                raise AdmissionDenied('Apify arguments do not match the reviewed schema') from None
+            timeout = payload.get('tool_policies', {}).get(tool, {}).get('timeout_seconds')
+            if type(timeout) is not int or not 1 <= timeout <= 86400:
+                raise AdmissionDenied('Missing reviewed Apify observation timeout')
         from lib.webhook_integrations.contracts import ADAPTER as CALLBACK_ADAPTER
         if self.adapters[tool] in SKILL_ADAPTERS:
             from jsonschema import ValidationError

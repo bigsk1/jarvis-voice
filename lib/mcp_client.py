@@ -43,6 +43,8 @@ def server_configuration_status(server_config: dict) -> tuple[bool, str]:
     required = server_config.get("required_env", [])
     if not isinstance(required, list) or not all(isinstance(key, str) and key.strip() for key in required):
         return False, "invalid required_env"
+    if server_config.get("result_contract") not in (None, "external_result_v1"):
+        return False, "invalid result_contract"
     missing = [key for key in required if not get_config_value(key, None)]
     if missing:
         return False, "missing configuration: " + ", ".join(missing)
@@ -168,6 +170,8 @@ def _normalize_call_tool_result(
     *,
     server_name: str = "",
     arguments: dict[str, Any] | None = None,
+    result_contract: str | None = None,
+    output_schema: dict | None = None,
 ) -> dict[str, Any]:
     """Convert an MCP CallToolResult into Jarvis success/error semantics."""
     if not result:
@@ -177,13 +181,13 @@ def _normalize_call_tool_result(
             "error": "Empty result",
         }
 
-    if server_name == "deepwiki":
+    if server_name == "deepwiki" and result_contract is None:
         from deepwiki import DEEPWIKI_TOOL_NAMES, normalize_deepwiki_result
 
         if f"mcp_deepwiki_{tool_name}" in DEEPWIKI_TOOL_NAMES:
             return normalize_deepwiki_result(tool_name, result, arguments)
 
-    if server_name == "google_workspace":
+    if server_name == "google_workspace" and result_contract is None:
         from google_workspace import normalize_workspace_result
 
         return normalize_workspace_result(tool_name, result, arguments)
@@ -197,26 +201,43 @@ def _normalize_call_tool_result(
             text_parts.append(item)
     combined_text = "\n".join(text_parts) if text_parts else (str(content) if content else "")
 
+    data: dict[str, Any] = {"raw": content or result}
+    if content:
+        data["full_text"] = combined_text
+    # Preserve protocol-native structured evidence even when the server also
+    # emits a human-readable text block. Existing tools keep their old shape.
+    if "structuredContent" in result:
+        data["structuredContent"] = result["structuredContent"]
+    if result_contract == "external_result_v1":
+        try:
+            from external_results import external_result_from_mcp
+        except ModuleNotFoundError:
+            from lib.external_results import external_result_from_mcp
+        data = external_result_from_mcp(server_name, tool_name, result, output_schema=output_schema)
+
     if result.get("isError") is True or _duckduckgo_text_error(server_name, tool_name, combined_text):
         error_text = combined_text or str(result.get("error") or f"MCP tool {tool_name} failed")
+        if result_contract is None:
+            data.update({"full_text": combined_text, "isError": True})
         return {
             "ok": False,
             "speech": error_text[:500],
             "error": error_text,
-            "data": {"raw": content or result, "full_text": combined_text, "isError": True},
+            "data": data,
         }
 
     if not content:
         return {
             "ok": True,
-            "speech": str(result),
-            "data": {"raw": result},
+            "speech": (f"MCP tool {tool_name} returned a structured result"
+                       if result_contract else str(result)),
+            "data": data,
         }
 
     return {
         "ok": True,
         "speech": combined_text[:500],
-        "data": {"raw": content, "full_text": combined_text},
+        "data": data,
     }
 
 
@@ -247,6 +268,7 @@ class MCPClient:
         args: list[str],
         env: dict[str, str] | None = None,
         proxy_policy: str = "inherit",
+        result_contract: str | None = None,
     ):
         """
         Initialize MCP client.
@@ -263,6 +285,7 @@ class MCPClient:
         self.args = args
         self.env = env or {}
         self.proxy_policy = normalize_proxy_policy(proxy_policy)
+        self.result_contract = result_contract
         self.process = None
         self.lock = Lock()
         self.request_id = 0
@@ -845,6 +868,11 @@ class MCPClient:
                 response_holder.get("result"),
                 server_name=self.name,
                 arguments=arguments,
+                result_contract=self.result_contract,
+                output_schema=next((
+                    tool.get("outputSchema") for tool in (self._tools_cache or [])
+                    if tool.get("name") == tool_name and isinstance(tool.get("outputSchema"), dict)
+                ), None),
             )
             
         except Exception as e:
@@ -891,7 +919,7 @@ class MCPRemoteClient:
     """
     
     def __init__(self, name: str, url: str, transport_type: str, headers: dict[str, str] | None = None,
-                 proxy_policy: str = "inherit"):
+                 proxy_policy: str = "inherit", result_contract: str | None = None):
         """
         Initialize remote MCP client.
         
@@ -908,6 +936,7 @@ class MCPRemoteClient:
         self.transport_type = transport_type
         self.headers = headers or {}
         self.proxy_policy = normalize_proxy_policy(proxy_policy)
+        self.result_contract = result_contract
         self._proxy_route: dict[str, Any] = {}
         self._call_budgets: dict[int, _RemoteCallBudget] = {}
         # SSE initialization and reconnect both re-enter _send_request() while
@@ -1504,16 +1533,49 @@ class MCPRemoteClient:
             token = _remote_call_budget.set(budget)
             staged_id = None
             try:
+                if (self.name == "apify" and self.result_contract == "external_result_v1"
+                        and tool_name == "search-actors"):
+                    # Hosted search has no publisher filter. Keep its public
+                    # tool contract, but select eligible Actors at the Store API.
+                    from config_loader import get_active_config_mode, get_scoped_config
+
+                    from lib.apify import ApifyClient
+                    from lib.apify_catalog import search_actors
+                    from lib.config_loader import config_scope as apify_config_scope
+
+                    def request(method, url, **kwargs):
+                        kwargs.pop("proxy_policy", None)
+                        return self._http_request(method, url, **kwargs)
+
+                    # Both import layouts exist in the runtime. Carry the
+                    # request's selected mode and overrides into the API helper.
+                    with apify_config_scope(get_active_config_mode(),
+                                            overrides=get_scoped_config() or {}):
+                        response_holder["result"] = search_actors(
+                            arguments, client=ApifyClient(request=request),
+                            deadline=budget.deadline, cancel_event=budget.cancelled,
+                        )
+                    return
                 resolved_arguments = arguments
                 upstream = arguments
                 stash = False
                 space_id = None
                 if self.name == "google_workspace":
-                    from google_workspace import prepare_workspace_transfer, resolve_workspace_recipients
+                    from google_workspace import (
+                        prepare_workspace_transfer,
+                        resolve_workspace_recipients,
+                    )
                     resolved_arguments = resolve_workspace_recipients(tool_name, arguments)
                     upstream, stash, space_id, staged_id = prepare_workspace_transfer(self, tool_name, resolved_arguments)
                 raw = self._send_request("tools/call", {"name": tool_name, "arguments": upstream})
-                normalized = _normalize_call_tool_result(tool_name, raw, server_name=self.name, arguments=resolved_arguments)
+                normalized = _normalize_call_tool_result(
+                    tool_name, raw, server_name=self.name, arguments=resolved_arguments,
+                    result_contract=self.result_contract,
+                    output_schema=next((
+                        tool.get("outputSchema") for tool in (self._tools_cache or [])
+                        if tool.get("name") == tool_name and isinstance(tool.get("outputSchema"), dict)
+                    ), None),
+                )
                 if stash:
                     from google_workspace import stash_workspace_download
                     normalized = stash_workspace_download(self, normalized, space_id)
@@ -1653,6 +1715,7 @@ class MCPManager:
                 self.servers[name] = MCPRemoteClient(
                     name, url, transport_type, headers,
                     proxy_policy=server_config.get("proxy_policy", "inherit"),
+                    result_contract=server_config.get("result_contract"),
                 )
                 self.servers[name].tool_defaults = self._substitute_env_vars(
                     server_config.get("tool_defaults", {})
@@ -1674,6 +1737,7 @@ class MCPManager:
                     args,
                     env,
                     proxy_policy=proxy_policy,
+                    result_contract=server_config.get("result_contract"),
                 )
                 
                 if os.environ.get("MCP_DEBUG", "").lower() == "true":

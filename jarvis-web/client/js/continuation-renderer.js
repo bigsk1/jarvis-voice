@@ -95,7 +95,7 @@ window.continuationRenderer = (() => {
     }
   }
 
-  function appendArtifacts(parent, data, media, mode) {
+  function appendArtifacts(parent, data, media, mode, externalResults) {
     const seen = new Set([...media].map(url => url.replace('/api/stash/', '/stash/view/') + (mode ? `?mode=${mode}` : '')));
     const visited = new WeakSet(), artifacts = new Map(), list = node('ul');
     list.className = 'continuation-artifacts';
@@ -122,6 +122,7 @@ window.continuationRenderer = (() => {
         && stashUrl(value[key], mode) === url && !extensions.includes(extension)) ? null : filename;
     }
     function visit(value, key) {
+      if (value && typeof value === 'object' && externalResults?.has(value)) return;
       if (typeof value === 'string') {
         add(value, roles[key], roles[key] ? 1 : 0);
       } else if (value && typeof value === 'object' && !visited.has(value)) {
@@ -270,6 +271,7 @@ window.continuationRenderer = (() => {
 
   function append(message, text, data) {
     const mode = ['cloud', 'local'].includes(data?._background_mode) ? data._background_mode : null;
+    const external = window.structuredResultsRenderer?.appendExternalResults?.(message, data, mode);
     const research = browserResearch(data);
     if (research) {
       appendBrowserResearch(message, research, mode);
@@ -289,7 +291,7 @@ window.continuationRenderer = (() => {
       // A missing/failed parser must never fall through to an HTML interpretation.
       bubble.textContent = text; bubble.style.whiteSpace = 'pre-wrap';
     }
-    appendArtifacts(bubble, data, media, mode);
+    appendArtifacts(bubble, data, media, mode, external);
     message.appendChild(bubble);
     if (text) {
       const actions = node('div'); actions.className = 'message-response-actions continuation-actions';

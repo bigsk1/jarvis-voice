@@ -899,7 +899,8 @@ class ToolRegistry:
                     if docker:
                         # A timed-out probe can finish cleanup later. Give each
                         # attempt its own client so it cannot stop a successor.
-                        client = MCPClient(name, client.command, client.args, client.env, client.proxy_policy)
+                        client = MCPClient(name, client.command, client.args, client.env, client.proxy_policy,
+                                           result_contract=getattr(client, 'result_contract', None))
                         tools = probe_stdio_tools(client, timeout_seconds=3)
                     else:
                         tools = probe_remote_tools(client, timeout_seconds=3)

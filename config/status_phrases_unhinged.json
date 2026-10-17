@@ -178,6 +178,8 @@
       "acknowledge_alerts": "_family_alerts",
       "acknowledge_reminders": "_family_reminders",
       "api_call": "_family_developer_ops",
+      "apify_read_result": "_family_remote_tasks",
+      "apify_run_actor": "_family_remote_tasks",
       "bookmark_search": "_family_search",
       "brave_llm_context": "_family_search",
       "browser_use": "_family_search",
@@ -261,6 +263,11 @@
 
     "tool_specific": {
       "_description": "UNHINGED overrides for specific tools, because why not",
+
+      "_family_remote_tasks": {
+        "start": ["WAKING THE REMOTE WORK GOBLINS", "PREPARING THE EXTERNAL EXPEDITION"],
+        "progress": ["CHECKING THE DISTANT MACHINERY", "READING WHAT THE WORK GOBLINS RETURNED"]
+      },
 
       "_family_alerts": {
         "start": ["RINGING THE ALARM BELLS OF DESTINY", "WAKING THE ALERT GOBLINS"],

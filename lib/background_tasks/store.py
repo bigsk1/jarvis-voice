@@ -30,6 +30,8 @@ from .models import (
     digest,
     identifier,
     recovery_details,
+    remote_checkpoint,
+    validate_remote_checkpoint,
 )
 
 DEFAULT_SETTINGS = {
@@ -358,11 +360,20 @@ class TaskStore(DeliveryStore, ManagementStore):
     @staticmethod
     def _recover(conn, now):
         expired = conn.execute(
-            """SELECT id, attempt_id, deadline FROM jobs
+            """SELECT * FROM jobs
             WHERE state IN ('starting','running') AND ((callback_waiting=0 AND lease_expires_at<=?) OR deadline<=?)""",
             (now, now),
         ).fetchall()
+        recovered = 0
         for row in expired:
+            checkpoint = remote_checkpoint(row['adapter'], json.loads(row['progress_json'] or '{}'))
+            if (row['deadline'] > now and not row['callback_waiting'] and checkpoint
+                    and TaskStore._generation_allowed(conn, row['conversation_id'], row['generation'])):
+                # The paid submission already has a native handle. Preserve its
+                # running slot for a new fenced GET-only observer. No queued
+                # state or submission retry is involved, and the deadline stays.
+                continue
+            recovered += 1
             conn.execute(
                 """UPDATE jobs SET state='needs_attention', updated_at=?, fence=fence+1,
                 attention_reason='Execution ownership or observation deadline expired; not retried'
@@ -393,7 +404,7 @@ class TaskStore(DeliveryStore, ManagementStore):
                          (now, payload, digest(payload), row['id']))
             conn.execute("INSERT INTO outbox(id,job_id,result_digest,state,created_at) VALUES(?,?,?,'suppressed',?)",
                          (uuid.uuid4().hex, row['id'], digest(payload), now))
-        return len(expired) + len(held)
+        return recovered + len(held)
 
     def reconcile(self) -> int:
         """Fence uncertain executions; never turn interrupted attempts back into queued jobs."""
@@ -403,7 +414,8 @@ class TaskStore(DeliveryStore, ManagementStore):
             self.events.emit('expired_work_recovered', component='store', level='WARNING', count=count)
         return count
 
-    def claim(self, owner: str, adapters: set[str], *, lease_seconds=30) -> Claim | None:
+    def claim(self, owner: str, adapters: set[str], *, lease_seconds=30,
+              resumable_adapters: set[str] | None = None) -> Claim | None:
         identifier(owner, "worker owner")
         names = sorted({identifier(name, "adapter") for name in adapters})
         self._ttl(lease_seconds)
@@ -412,6 +424,24 @@ class TaskStore(DeliveryStore, ManagementStore):
         with self._connection(write=True) as conn:
             now = self._time()
             self._recover(conn, now)
+            resumable = sorted(set(resumable_adapters or ()) & set(names))
+            if resumable:
+                slots = ','.join('?' for _ in resumable)
+                candidates = conn.execute(
+                    f"""SELECT * FROM jobs WHERE state IN ('starting','running')
+                        AND callback_waiting=0 AND lease_expires_at<=? AND deadline>?
+                        AND dispatch_state='ready' AND receipt_json IS NOT NULL
+                        AND adapter IN ({slots}) ORDER BY created_at,id""",
+                    [now, now, *resumable],
+                ).fetchall()
+                for candidate in candidates:
+                    if (remote_checkpoint(candidate['adapter'], json.loads(candidate['progress_json'] or '{}'))
+                            and self._generation_allowed(conn, candidate['conversation_id'], candidate['generation'])):
+                        # This job already reserves a slot. Replacing its observer
+                        # must work even when all execution capacity is occupied.
+                        conn.execute("UPDATE attempts SET finished_at=?,outcome='observer_interrupted' WHERE id=?",
+                                     (now, candidate['attempt_id']))
+                        return self._claim_row(conn, candidate, owner, now, lease_seconds)
             # Unknown executions reserve capacity until explicit reconciliation.
             active = conn.execute("""SELECT COUNT(*) FROM jobs WHERE
                 (state IN ('starting','running') AND callback_waiting=0) OR
@@ -431,27 +461,20 @@ class TaskStore(DeliveryStore, ManagementStore):
             ).fetchone()
             if row is None:
                 return None
-            attempt_id = uuid.uuid4().hex
-            fence = row["fence"] + 1
-            conn.execute(
-                """UPDATE jobs SET state='starting', owner=?, attempt_id=?, fence=?,
+            return self._claim_row(conn, row, owner, now, lease_seconds)
+
+    def _claim_row(self, conn, row, owner, now, lease_seconds):
+        attempt_id = uuid.uuid4().hex
+        fence = row['fence'] + 1
+        conn.execute(
+            """UPDATE jobs SET state='starting', owner=?, attempt_id=?, fence=?,
                 lease_expires_at=?, heartbeat_at=?, updated_at=? WHERE id=?""",
-                (
-                    owner,
-                    attempt_id,
-                    fence,
-                    now + lease_seconds,
-                    now,
-                    now,
-                    row["id"],
-                ),
-            )
-            conn.execute(
-                "INSERT INTO attempts(id,job_id,owner,fence,started_at) VALUES(?,?,?,?,?)",
-                (attempt_id, row["id"], owner, fence, now),
-            )
-            job = self._job(conn.execute("SELECT * FROM jobs WHERE id=?", (row["id"],)).fetchone())
-            return Claim(row["id"], attempt_id, owner, fence, job)
+            (owner, attempt_id, fence, now + lease_seconds, now, now, row['id']),
+        )
+        conn.execute('INSERT INTO attempts(id,job_id,owner,fence,started_at) VALUES(?,?,?,?,?)',
+                     (attempt_id, row['id'], owner, fence, now))
+        job = self._job(conn.execute('SELECT * FROM jobs WHERE id=?', (row['id'],)).fetchone())
+        return Claim(row['id'], attempt_id, owner, fence, job)
 
     def _owned(self, conn, claim):
         row = conn.execute("SELECT * FROM jobs WHERE id=?", (claim.job_id,)).fetchone()
@@ -495,10 +518,14 @@ class TaskStore(DeliveryStore, ManagementStore):
         with self._connection(write=True) as conn:
             row = self._active(conn, claim)
             previous = json.loads(row['progress_json']) if row['progress_json'] else {}
+            if 'remote_observer' in value and value['remote_observer'] != previous.get('remote_observer'):
+                raise TaskError('Remote checkpoints require the trusted checkpoint operation')
             recovery = recovery_details(previous.get('recovery'))
             for key, item in recovery_details(value.get('recovery')).items():
                 recovery.setdefault(key, item)
             value = dict(value)
+            if remote_checkpoint(row['adapter'], previous):
+                value['remote_observer'] = previous['remote_observer']
             if recovery:
                 value['recovery'] = recovery
             payload = canonical_json(value, MAX_PROGRESS_BYTES)
@@ -506,6 +533,35 @@ class TaskStore(DeliveryStore, ManagementStore):
                 "UPDATE jobs SET progress_json=?, updated_at=? WHERE id=?",
                 (payload, self._time(), claim.job_id),
             )
+
+    def checkpoint_remote(self, claim: Claim, checkpoint: dict) -> dict:
+        """Persist a native handle before observation; it is immutable per job."""
+        checkpoint = validate_remote_checkpoint(checkpoint)
+        metadata = {'version': 1, 'adapter': claim.job['adapter'], 'checkpoint': checkpoint}
+        if remote_checkpoint(claim.job['adapter'], {'remote_observer': metadata}) is None:
+            raise TaskError('Adapter has no reviewed remote observer recovery policy')
+        with self._connection(write=True) as conn:
+            row = self._active(conn, claim)
+            progress = json.loads(row['progress_json'] or '{}')
+            existing = remote_checkpoint(row['adapter'], progress)
+            if existing is not None and existing != checkpoint:
+                raise Conflict('Remote observation identity already belongs to another run')
+            progress['remote_observer'] = metadata
+            progress['recovery'] = {**recovery_details(progress.get('recovery')), 'run_id': checkpoint['run_id']}
+            progress.setdefault('phase', 'Observing remote run')
+            payload = canonical_json(progress, MAX_PROGRESS_BYTES)
+            conn.execute('UPDATE jobs SET progress_json=?,updated_at=? WHERE id=?',
+                         (payload, self._time(), claim.job_id))
+        return progress
+
+    def pause_remote_observation(self, claim: Claim):
+        """Release only this observer's lease; retain the native run and slot."""
+        with self._connection(write=True) as conn:
+            row = self._active(conn, claim)
+            if not remote_checkpoint(row['adapter'], json.loads(row['progress_json'] or '{}')):
+                raise TaskError('No native run was saved for safe observer recovery')
+            conn.execute('UPDATE jobs SET lease_expires_at=?,updated_at=? WHERE id=?',
+                         (self._time(), self._time(), claim.job_id))
 
     def finish(self, claim: Claim, result: dict, *, succeeded=True) -> str:
         if not isinstance(result, dict) or type(succeeded) is not bool:

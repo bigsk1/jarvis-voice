@@ -226,6 +226,7 @@
 ### Integrations & Webhooks
 | Document | Purpose |
 |----------|---------|
+| **[mcp/APIFY.md](mcp/APIFY.md)** | Opt-in Apify Actor discovery, one generic run/read gateway, bounded results, and optional background recovery |
 | **WEBHOOK_SYSTEM.md** | **Modular webhook system** - Email, n8n, external APIs with auth examples  |
 | **n8n/docs/GOOGLE_CALENDAR_SYNC.md** | Bidirectional Google Calendar sync (reminders ↔ events) |
 | **n8n/docs/WEBHOOK_AND_EMAIL_SYSTEM.md** | Email tool and webhook registry details |

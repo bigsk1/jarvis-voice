@@ -10,9 +10,10 @@ Every background tool uses the same admission, saved job, card, late-answer, all
 | --- | --- | --- |
 | `local_skill_v1` | The task worker starts a reviewed local skill and supervises its process group until it exits. | `convert_file` |
 | `remote_skill_v1` | The worker runs the same kind of skill, but that skill calls an external API and waits or polls for a result. The worker is still the observer; stopping its process does not prove the provider stopped. | `generate_image`, `generate_video`, `generate_music`, `create_social_clip`, [Browser Use Cloud](BROWSER-USE-CLOUD.md), [Craft editing tools](../jarvis-craft-tools/README.md) |
+| `apify_actor_v1` | The worker submits one ordinary Actor, durably saves its native run ID, and polls that same run. A replacement worker can resume observation without submitting again. | Optional [Apify Actors](mcp/APIFY.md) |
 | `http_callback_v1` | The worker submits once and stops waiting. A separate service keeps the job identity and later POSTs an authenticated progress or final event to Jarvis. | Local Browser Use; optionally, an owner-installed remote agent over HTTPS |
 
-This is a choice about completion ownership, not three chat systems. A compatible local or remote skill needs reviewed manifest settings and a trusted binding to the shared runner. A callback tool also needs a real submit/receipt service, a configured source and credential, and a reviewed binding; adding a manifest flag or a URL alone cannot make a tool runnable. [Task callbacks](TASK-CALLBACKS.md) documents that protocol.
+These adapters share the same chat system and differ in who owns completion. A compatible local or remote skill needs reviewed manifest settings and a trusted binding to the shared runner. A callback tool also needs a real submit/receipt service, a configured source and credential, and a reviewed binding; adding a manifest flag or a URL alone cannot make a tool runnable. [Task callbacks](TASK-CALLBACKS.md) documents that protocol.
 
 Progress is separate from completion. The callback protocol accepts `task.progress`, but a service must actually send it; the expanded Web task card shows the latest short phase, not a full activity stream. Browser Use sends phase updates, while a service that only sends a final callback will appear idle until it finishes. OpenCode keeps its existing foreground tool card with richer live status; moving it to a background adapter is not planned.
 
@@ -99,6 +100,13 @@ turns still cannot release held jobs.
 A matching slash-workflow command takes precedence and runs its ordinary foreground pipeline. Saved background preferences are not inherited by workflow steps. The unsupported-caller guard also recognizes `status=accepted` plus `job_id` as a leaked receipt; it deliberately accepts that broader signal as well as the typed `background_admission` marker.
 
 Adapters receive `ExecutionContext`, use its mode environment for children, and check ownership/deadline/shutdown during cooperative work. A returned result means completion is known; `KnownFailure` means known unsuccessful completion. Unexpected errors and interruption without termination proof produce `needs_attention` without automatic execution retry. A surviving local supervisor can report verified process-group termination for its exact attempt after shutdown or lease/deadline expiry. That settles as failed (or cancelled if cancellation was requested) and releases capacity. This report cannot overwrite an operator disposition or cross a conversation-disposal fence. Remote work remains uncertain after stopping its local observer.
+
+The reviewed Apify adapter separates submission from observation. Its immutable
+native checkpoint lets another worker acquire a new attempt and fence for the
+same running slot, mode and deadline. Recovery calls only the observer; it never
+repeats submission. This does not change `remote_skill_v1` or its media tools.
+No saved native handle, an expired deadline, or a disposed conversation still
+takes the uncertainty path. See [Apify recovery and limits](mcp/APIFY.md).
 
 Tool timeouts and uncertain outcomes also queue a durable notice in the same
 conversation. A remote observer reaching its waiting limit does not prove the
@@ -196,7 +204,7 @@ The default path is repository-relative `data/background_tasks.db`, independent 
 
 Defaults: two globally running local execution slots, two per adapter, five outstanding jobs per conversation generation, and 100 queued jobs. A callback job releases its execution slot once its attempt is durably bound and `callback_waiting=1`; it remains visible as running until a terminal callback or deadline. Unknown `needs_attention` attempts still reserve capacity until reconciliation. Result retention defaults to 30 days (configurable from 1 to 3650). Arguments, progress, and results are bounded. Workers reconcile on startup, poll every second with jitter, and heartbeat every five seconds with a 30-second lease. PID files do not confer execution authority.
 
-Web starts its coordinator only when task storage exists or an authenticated operator explicitly initializes controls. An unstarted admission that reaches its deadline becomes **expired**, without executing. A started attempt whose ownership/deadline expires becomes **needs attention** unless its surviving local supervisor reports verified termination for that attempt. Cancellation and expiry are persisted flags over the existing physical state constraint, preserving old task databases without a destructive table rebuild.
+Web starts its coordinator only when task storage exists or an authenticated operator explicitly initializes controls. An unstarted admission that reaches its deadline becomes **expired**, without executing. A started attempt whose ownership/deadline expires becomes **needs attention** unless its surviving local supervisor reports verified termination for that attempt, or a reviewed Apify native checkpoint permits observation recovery before the original deadline. Cancellation and expiry are persisted flags over the existing physical state constraint, preserving old task databases without a destructive table rebuild.
 
 Every hour, the coordinator archives at most 100 old terminal result/progress payloads and cached follow-up outputs. Active/uncertain jobs and pending follow-ups are protected. Invocation identities, admission records, attempt history, and operator evidence remain; a repeated identity cannot execute again after archival. Conversation messages and stash artifacts are untouched. Archived payloads cannot be retried. The UI preview makes no writes. This is result-payload retention, not deletion of conversation history or a backup compaction policy.
 
@@ -366,7 +374,7 @@ Workers advertise supervision capability even if a particular conversion backend
 
 ### Existing conversion jobs
 
-The pre-extraction conversion alias and fingerprint bridge have been removed after verifying the installation has no legacy jobs. New jobs use `local_skill_v1` or `remote_skill_v1`. Worker upgrades never rewrite accepted policy fingerprints or replay started attempts. Finish pending work before changing skill scripts; queued jobs whose reviewed script/manifest changed fail closed before launch.
+The pre-extraction conversion alias and fingerprint bridge have been removed after verifying the installation has no legacy jobs. Supervised skill jobs use `local_skill_v1` or `remote_skill_v1`. Worker upgrades never rewrite accepted policy fingerprints or replay started submissions. Finish pending work before changing skill scripts; queued jobs whose reviewed script/manifest changed fail closed before launch.
 
 ## Remote media generation
 
@@ -402,7 +410,7 @@ The outcome contract is deliberately conservative:
 - `lib/remote_completion.py` carries this evidence from reviewed provider boundaries. Background xAI video uses separate SDK submission/polling calls with SDK resubmission disabled. Background Gemini Interactions uses public HTTP hooks to stop error responses before SDK retries and refuse a second submission after a lost response; polling remains independent. Gemini submission errors and explicit terminal results, synchronous image/music HTTP rejections, and MoneyPrinterTurbo rejected submissions/failed tasks provide evidence. Unclassified failures remain conservative.
 - Queued cancellation prevents dispatch. Running remote jobs have no Cancel action/API permission because process-group termination only proves the local observer stopped. Operator reconciliation requires evidence that the provider operation has settled; stopping Jarvis alone is insufficient.
 
-The shared remote policy does not resume remote job IDs, implement provider cancellation, or receive callbacks. Those require a provider-specific completion/recovery contract later. `transcribe_audio`, `document_ocr`, `analyze_video`, and `analyze_image` are not added to the background allowlist by this review.
+The shared remote skill policy does not resume remote job IDs, implement provider cancellation, or receive callbacks. Those require a separately reviewed completion/recovery contract; [Apify](mcp/APIFY.md) has one under `apify_actor_v1`, without changing these remote skill bindings. `transcribe_audio`, `document_ocr`, `analyze_video`, and `analyze_image` are not added to the background allowlist by this review.
 
 `tests/test_background_remote_skill.py` checks policy separation, uncertain outcomes, prelaunch rejection (including tool blocks changed after admission) and an independent provider fixture that completes after its local observer stops. `tests/test_web_background_media.py` runs the actual three generator CLI/save paths and social-clip submit/poll/download/stash path with scripted providers in both modes, using temporary artifacts/catalogs/stash and a live-write guard. It proves receipt → second foreground tool → saved artifact/late answer, plus mode-specific profile, ENV, manifest and Web blocking. The video bytes are fixture responses, not encoded provider videos. No paid API calls are used.
 

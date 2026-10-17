@@ -446,6 +446,7 @@ JSON object printed to stdout:
 ### Integrations
 | Tool | Description |
 |------|-------------|
+| [`apify_run_actor`, `apify_read_result`](../docs/mcp/APIFY.md) | Opt-in generic Apify Actor runs, native status/storage reads, bounded previews, and optional background completion |
 | `weather` | Weather forecasts (OpenWeatherMap) |
 | `crypto_price` | Cryptocurrency prices |
 | `stock_price` | Stock/futures/forex prices |

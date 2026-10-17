@@ -25,6 +25,13 @@ except ModuleNotFoundError as exc:
         raise
     from lib.deepwiki_context import DEEPWIKI_TOOL_NAMES, project_deepwiki_data
 
+try:
+    from external_results import is_external_result, project_external_result
+except ModuleNotFoundError as exc:
+    if exc.name != "external_results":
+        raise
+    from lib.external_results import is_external_result, project_external_result
+
 from .followup import local_travel as _local_travel_followup
 from .followup import media as _media_followup
 from .followup import search as _search_followup
@@ -2844,6 +2851,17 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         if key == 'send_webhook':
             continue
         if key in FOLLOWUP_DATA_SKIP_KEYS:
+            continue
+        external_runs = value if isinstance(value, list) else [value]
+        if external_runs and all(is_external_result(run) for run in external_runs):
+            selected = external_runs[-3:]
+            projected = [project_external_result(
+                run, max_chars=6000 // len(selected), sample_limit=max_candidates,
+            ) for run in selected]
+            followup[key] = projected[0] if len(external_runs) == 1 else {
+                "runs_count": len(external_runs), "results": projected,
+                "results_truncated": len(selected) < len(external_runs),
+            }
             continue
         if key == 'source_library':
             from source_library_context import project_library_result

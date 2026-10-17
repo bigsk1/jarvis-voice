@@ -13,6 +13,13 @@ MAX_ARGUMENT_BYTES = 64 * 1024
 MAX_RESULT_BYTES = 1024 * 1024
 MAX_PROGRESS_BYTES = 4096
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_.:-]{1,128}\Z")
+# Trusted runtime policy, never selected by tool arguments or manifest metadata.
+# These adapters may reacquire observation of a persisted native handle, but may
+# never repeat their submission entry point after an observer loses its lease.
+RESUMABLE_REMOTE_ADAPTERS = frozenset({'apify_actor_v1'})
+_REMOTE_CHECKPOINT_FIELDS = frozenset({
+    'run_id', 'actor_id', 'build_id', 'default_dataset_id', 'default_key_value_store_id',
+})
 
 
 class TaskError(ValueError):
@@ -61,6 +68,33 @@ def recovery_details(value) -> dict[str, str]:
     if isinstance(receipt, str) and re.fullmatch(r'stash://[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,128}', receipt):
         details['receipt_stash_ref'] = receipt
     return details
+
+
+def validate_remote_checkpoint(value) -> dict[str, str]:
+    """Bound native recovery identities without persisting inputs or credentials."""
+    if not isinstance(value, dict) or set(value) - _REMOTE_CHECKPOINT_FIELDS:
+        raise TaskError('Invalid remote observation checkpoint')
+    identifier(value.get('run_id'), 'remote run ID')
+    for key, item in value.items():
+        if (not isinstance(item, str) or not item or len(item) > 256
+                or not re.fullmatch(r'[A-Za-z0-9_./:~\-]+', item)):
+            raise TaskError('Invalid remote observation identity')
+    return dict(value)
+
+
+def remote_checkpoint(adapter: str, progress) -> dict[str, str] | None:
+    """Only a reviewed adapter's versioned checkpoint permits observer recovery."""
+    if adapter not in RESUMABLE_REMOTE_ADAPTERS or not isinstance(progress, dict):
+        return None
+    value = progress.get('remote_observer')
+    if (not isinstance(value, dict) or set(value) != {'version', 'adapter', 'checkpoint'}
+            or type(value['version']) is not int or value['version'] != 1
+            or value['adapter'] != adapter):
+        return None
+    try:
+        return validate_remote_checkpoint(value['checkpoint'])
+    except TaskError:
+        return None
 
 
 @dataclass(frozen=True)

@@ -28,6 +28,7 @@ TRUSTED_BINDINGS = {
     'docling_convert': REMOTE_ADAPTER,
     'browser_use_cloud': REMOTE_ADAPTER,
     'browser_use': 'http_callback_v1',
+    'apify_run_actor': 'apify_actor_v1',
 }
 
 # This provider observer is an external Python process. Give it only its own
@@ -105,6 +106,9 @@ def authorize_tools(selected):
 
     for name in set(selected) & private_bindings().keys():
         result[name] = private_policy(name)[1]
+    if 'apify_run_actor' in selected and 'apify_run_actor' in bindings():
+        from .apify import policy as apify_policy
+        result['apify_run_actor'] = apify_policy()[1]
     return result
 
 
@@ -126,6 +130,9 @@ def worker_adapters(store=None):
     # Readiness describes process supervision, not the presence of every skill's
     # optional backend. A missing conversion backend returns a known skill failure.
     adapters = dict.fromkeys(LOCAL_ADAPTERS | {REMOTE_ADAPTER}, runner()) if bindings() else {}
+    if bindings().get('apify_run_actor') == 'apify_actor_v1':
+        from .apify import worker_adapter
+        adapters['apify_actor_v1'] = worker_adapter()
     if adapters and store is not None:
         import json
 

@@ -29,6 +29,21 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "apify_run_actor": _case({
+        "contract": "external_result_v1", "source": {"provider": "apify", "tool": "apify_run_actor", "mode": "cloud"},
+        "execution": {"run_id": "testRun123", "actor_id": "testActor123", "status": "SUBMITTED"},
+        "result": {"kind": "object", "complete": False}, "artifacts": [],
+        "raw_ref": "stash://space_apify_receipt/f_raw", "limits": {"truncated": False},
+    }, {"actor": "example/scraper", "input": {"url": "https://example.test"}}),
+    "apify_read_result": _case({
+        "contract": "external_result_v1", "source": {"provider": "apify", "tool": "apify_read_result", "mode": "cloud"},
+        "execution": {"run_id": "testRun123", "actor_id": "testActor123", "status": "SUCCEEDED"},
+        "result": {"kind": "dataset", "dataset_id": "testDataset123", "sample_items": [
+            {"record_id": "record1", "nested": {"values": [0, False, None]}},
+        ], "sample_count": 1, "returned_count": 1, "total_items": 30, "complete": False, "offset": 0, "limit": 1,
+        "pagination": {"tool": "apify_read_result", "run_id": "testRun123", "next_offset": 1}},
+        "artifacts": [], "raw_ref": "stash://space_apify_dataset/f_raw", "limits": {"truncated": False},
+    }, {"run_id": "testRun123", "action": "dataset", "offset": 0, "limit": 1}),
     "email_inbox": _case({
         "enabled": True, "approved_sender_count": 2,
         "allowed_tools": ["get_time", "create_reminder"],

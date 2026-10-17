@@ -1,6 +1,10 @@
 {
   "description": "Copy to skills/profiles/offline_lan_first.json — disable tools that usually need the public internet or paid media APIs. Keeps memory, canvas, stash, docs, shell, and typical 'ghost' paths; tune mcp_* for your machine. Based on config/offline.json.example.",
   "overrides": {
+    "apify_read_result": false,
+    "apify_run_actor": false,
+    "mcp_apify_search-actors": false,
+    "mcp_apify_fetch-actor-details": false,
     "analyze_image": false,
     "api_call": false,
     "brave_llm_context": false,

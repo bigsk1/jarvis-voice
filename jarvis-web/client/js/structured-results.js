@@ -1,8 +1,7 @@
 /**
  * Shared structured tool-result previews for Jarvis Web.
  *
- * Adapters normalize tool-specific payloads into one small presentation model.
- * Future tools can register another adapter without changing ChatUI.
+ * Shared contracts render by shape; adapters cover established tool payloads.
  */
 class StructuredResultsRenderer {
   constructor() {
@@ -50,9 +49,12 @@ class StructuredResultsRenderer {
     }
 
     const collections = [];
-    for (const [toolName, adapter] of this.adapters.entries()) {
+    const toolNames = new Set([
+      ...this.adapters.keys(), ...Object.keys(toolResultsData || {}), ...Object.keys(data || {}),
+    ]);
+    for (const toolName of toolNames) {
       const rawPayload = toolResultsData?.[toolName] ?? data?.[toolName];
-      const collection = this._adaptCollection(toolName, rawPayload, adapter);
+      const collection = this._adaptCollection(toolName, rawPayload);
       if (collection) collections.push(collection);
     }
     const html = collections.map(collection => this._renderCollection(collection)).join('');
@@ -65,12 +67,15 @@ class StructuredResultsRenderer {
       this.register(toolName, payload => this._adaptWorkspace(payload));
       adapter = this.adapters.get(toolName);
     }
-    if (!adapter) return null;
     const payload = ['tmdb_movies', 'tmdb_tv_shows'].includes(toolName)
       ? this._tmdbDisplayPayload(rawPayload)
       : this._latestPayload(rawPayload);
     if (!payload) return null;
     try {
+      if (payload.contract === 'external_result_v1') {
+        return {kind: 'external', external: payload};
+      }
+      if (!adapter) return null;
       const collection = adapter(payload);
       return collection?.items?.length ? collection : null;
     } catch (error) {
@@ -139,7 +144,7 @@ class StructuredResultsRenderer {
       const occurrenceIndex = successIndexes.get(toolName) || 0;
       successIndexes.set(toolName, occurrenceIndex + 1);
       const adapter = this.adapters.get(toolName);
-      if (!adapter || this._usesDedicatedSurface(toolName)) {
+      if (this._usesDedicatedSurface(toolName)) {
         callsWithoutCards += 1;
         return;
       }
@@ -255,12 +260,18 @@ class StructuredResultsRenderer {
     // Preserve supported payloads that came back beside the explicit step
     // envelopes, but keep them inside the same workflow surface. This is the
     // compatibility fallback for older or provider-specific workflow results.
-    for (const [toolName, adapter] of this.adapters.entries()) {
+    const toolNames = new Set([
+      ...this.adapters.keys(),
+      ...[toolResultsData, workflow, data].flatMap(container => (
+        Object.keys(container || {}).filter(key => container !== workflow || key !== 'results')
+      )),
+    ]);
+    for (const toolName of toolNames) {
       if (representedTools.has(toolName) || this._workflowUsesDedicatedSurface(toolName)) continue;
       const rawPayload = toolResultsData?.[toolName]
         ?? workflow?.[toolName]
         ?? data?.[toolName];
-      const collection = this._adaptCollection(toolName, rawPayload, adapter);
+      const collection = this._adaptCollection(toolName, rawPayload);
       if (collection) sections.push({toolName, step: null, collection});
     }
     return sections;
@@ -696,7 +707,7 @@ class StructuredResultsRenderer {
     if (Array.isArray(raw)) {
       if (!raw.length) return null;
       const looksLikeRepeatedRuns = raw.some(item => item && typeof item === 'object' && (
-        item.data || item.results || item.top_results || item.candidates
+        item.contract === 'external_result_v1' || item.data || item.results || item.top_results || item.candidates
         || item.engine || item.provider || item.destination || item.find_loc
       ));
       if (!looksLikeRepeatedRuns) return { results: raw };
@@ -1347,7 +1358,221 @@ class StructuredResultsRenderer {
     return Utils.escapeHtml(String(value ?? ''));
   }
 
+  _externalNode(tag, attributes = {}, text = null, children = []) {
+    return {tag, attributes, text, children};
+  }
+
+  _externalNodeHtml(model) {
+    const attributes = Object.entries(model.attributes).map(([key, value]) => (
+      value === true ? ` ${key}` : ` ${key}="${this._escape(value)}"`
+    )).join('');
+    return `<${model.tag}${attributes}>${model.text === null ? '' : this._escape(model.text)}${model.children.map(child => this._externalNodeHtml(child)).join('')}</${model.tag}>`;
+  }
+
+  _externalNodeDom(model) {
+    const element = document.createElement(model.tag);
+    for (const [key, value] of Object.entries(model.attributes)) {
+      if (key === 'class') element.className = value;
+      else element.setAttribute(key, value === true ? '' : String(value));
+    }
+    if (model.text !== null) element.textContent = model.text;
+    for (const child of model.children) element.appendChild(this._externalNodeDom(child));
+    return element;
+  }
+
+  appendExternalResults(parent, data, mode = null) {
+    // Late replies cannot enter an HTML parser. Both surfaces use the same
+    // bounded contract model, with DOM writes for live/restored continuations.
+    const handled = new WeakSet();
+    const external = value => value && typeof value === 'object'
+      && value.contract === 'external_result_v1'
+      && value.source && typeof value.source === 'object'
+      && value.result && typeof value.result === 'object';
+    const values = external(data) ? [data] : Object.entries(data || {})
+      .filter(([key]) => !key.startsWith('_')).slice(0, 100).map(([, value]) => value);
+    let panels = 0;
+    for (const value of values) {
+      for (const entry of (Array.isArray(value) ? value.slice(0, 20) : [value])) {
+        const payload = external(entry?.data) ? entry.data : entry;
+        if (!external(payload)) continue;
+        const seen = handled.has(payload);
+        if (entry && typeof entry === 'object') handled.add(entry);
+        handled.add(payload);
+        if (seen || panels >= 8) continue;
+        parent.appendChild(this._externalNodeDom(this._externalCollectionModel(payload, {mode})));
+        panels += 1;
+      }
+    }
+    return handled;
+  }
+
+  _externalJsonTree(value, budget, depth = 0, label = 'Result') {
+    const node = (tag, text, className = '', children = []) => this._externalNode(
+      tag, className ? {class: className} : {}, text, children
+    );
+    if (budget.remaining-- <= 0) return node('span', 'Preview limit reached', 'external-result-note');
+    const object = value !== null && typeof value === 'object';
+    if (!object) {
+      const text = typeof value === 'string' ? JSON.stringify(value.slice(0, 1200)) : String(value);
+      return node('div', null, 'external-result-leaf', [
+        node('span', `${label}: `), node('code', text + (typeof value === 'string' && value.length > 1200 ? '…' : '')),
+      ]);
+    }
+    const entries = Object.entries(value);
+    const summary = `${label} · ${entries.length} ${Array.isArray(value) ? 'items' : 'fields'}`;
+    if (depth >= 5) {
+      return node('div', `${summary} · depth limit reached`, 'external-result-leaf');
+    }
+    const children = [];
+    let shown = 0;
+    for (const [key, child] of entries.slice(0, 30)) {
+      if (budget.remaining <= 0) break;
+      children.push(this._externalJsonTree(child, budget, depth + 1, key.slice(0, 200)));
+      shown += 1;
+    }
+    if (shown < entries.length) {
+      children.push(node('div', `${entries.length - shown} more entries omitted from preview`, 'external-result-note'));
+    }
+    return node('details', null, 'external-result-tree', [node('summary', summary), ...children]);
+  }
+
+  _externalCell(value) {
+    if (value === undefined) return '—';
+    if (value !== null && typeof value === 'object') {
+      return Array.isArray(value) ? `[${value.length} items]` : `{${Object.keys(value).length} fields}`;
+    }
+    return this._compactText(String(value), 200);
+  }
+
+  _externalStashLinks(payload, fallbackMode) {
+    const candidates = [
+      {ref: payload.raw_ref, name: 'Raw response', raw: true},
+      ...(Array.isArray(payload.artifacts) ? payload.artifacts.slice(0, 8) : []),
+    ];
+    const seen = new Set();
+    return candidates.map(artifact => {
+      if (!artifact || typeof artifact !== 'object') return null;
+      const ref = artifact.ref || artifact.stash_ref;
+      const match = typeof ref === 'string' && ref.match(/^stash:\/\/(space_[A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)$/);
+      const mode = artifact.mode || payload.source?.mode || fallbackMode;
+      if (!match || !['cloud', 'local'].includes(mode) || seen.has(ref)) return null;
+      seen.add(ref);
+      const href = `/api/stash/${match[1]}/${match[2]}?mode=${mode}`;
+      const name = this._compactText(artifact.name || 'Saved result', 160);
+      const label = artifact.raw ? 'Download raw response' : `Download ${name}`;
+      return this._externalNode('a', {class: 'structured-results-action', href, download: true}, label);
+    }).filter(Boolean);
+  }
+
+  _externalCollectionModel(payload, options = {}) {
+    const node = (tag, text, className = '', children = []) => this._externalNode(
+      tag, className ? {class: className} : {}, text, children
+    );
+    const source = payload.source || {};
+    const execution = payload.execution || {};
+    const result = payload.result || {};
+    const limits = payload.limits || {};
+    const rows = Array.isArray(result.sample_items) ? result.sample_items
+      : Array.isArray(result.items) ? result.items : null;
+    const sample = rows?.slice(0, 20);
+    const count = value => {
+      if (Number.isSafeInteger(value) && value >= 0) return BigInt(value);
+      return typeof value === 'string' && /^(0|[1-9][0-9]{0,127})$/.test(value)
+        ? BigInt(value) : null;
+    };
+    const offset = count(result.offset) ?? 0n;
+    const total = count(result.total_items);
+    const returned = count(result.returned_count);
+    const pagination = result.pagination || {};
+    const metadata = [];
+    if (sample) {
+      metadata.push(sample.length
+        ? `Rows ${offset + 1n}–${offset + BigInt(sample.length)}${total !== null ? ` of ${total}` : ' · total unknown'}`
+        : `0 rows${total !== null ? ` of ${total}` : ' · total unknown'}`);
+      if (returned !== null) metadata.push(`Page returned ${returned} item${returned === 1n ? '' : 's'}`);
+    }
+    metadata.push(result.complete === true ? 'Complete result'
+      : result.complete === false ? 'Partial result' : 'Completeness unknown');
+    if (pagination.has_more === true) metadata.push('More pages available');
+    if (limits.truncated === true || limits.sample_truncated === true || rows?.length > sample?.length) {
+      metadata.push('Preview shortened');
+    }
+    if (limits.raw_retention_error) metadata.push('Raw download unavailable');
+    if (limits.integer_strings === true) metadata.push('Large integers shown as exact text');
+    const provenance = [
+      execution.status ? `Status: ${execution.status}` : '',
+      execution.actor_id ? `Actor: ${execution.actor_id}` : '',
+      execution.run_id ? `Run: ${execution.run_id}` : '',
+      result.dataset_id ? `Dataset: ${result.dataset_id}` : '',
+    ].filter(Boolean).map(value => this._compactText(value, 220)).join(' · ');
+    const budget = {remaining: 180};
+    const content = [];
+    if (sample?.length) {
+      const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+      const keys = [...new Set(sample.filter(record).flatMap(value => Object.keys(value)))];
+      const columns = keys.slice(0, 8);
+      const mixed = sample.some(value => !record(value));
+      const head = columns.map(key => this._externalNode('th', {scope: 'col'}, key.slice(0, 160)));
+      const body = sample.map((value, index) => {
+        const cells = columns.map(key => {
+          const field = record(value) && Object.prototype.hasOwnProperty.call(value, key) ? value[key] : undefined;
+          return node('td', this._externalCell(field));
+        });
+        if (mixed) cells.push(node('td', record(value) ? '—' : this._externalCell(value)));
+        return node('tr', null, '', [
+          this._externalNode('th', {scope: 'row'}, String(offset + BigInt(index) + 1n)), ...cells,
+        ]);
+      });
+      const details = sample.map((value, index) => this._externalJsonTree(
+        value, budget, 0, `Row ${offset + BigInt(index) + 1n}`
+      ));
+      const headers = [this._externalNode('th', {scope: 'col'}, 'Row'), ...head];
+      if (mixed) headers.push(this._externalNode('th', {scope: 'col'}, 'Value'));
+      content.push(this._externalNode('div', {class: 'external-result-table-scroll', role: 'region',
+        'aria-label': 'Result sample table', tabindex: '0'}, null, [
+        node('table', null, 'external-result-table', [
+          node('thead', null, '', [node('tr', null, '', headers)]), node('tbody', null, '', body),
+        ]),
+      ]));
+      if (keys.length > columns.length) content.push(node('p', `${keys.length - columns.length} fields omitted from the table. JSON details are also bounded.`, 'external-result-note'));
+      content.push(node('details', null, 'external-result-details', [node('summary', 'Inspect sample JSON'), ...details]));
+    } else if (sample) {
+      content.push(node('p', 'No items in this page.', 'external-result-note'));
+    } else if (typeof result.text === 'string') {
+      content.push(node('pre', result.text.slice(0, 12000) + (result.text.length > 12000 ? '\n… Text preview shortened' : ''), 'external-result-text'));
+    } else if (Object.prototype.hasOwnProperty.call(result, 'value')) {
+      content.push(this._externalJsonTree(result.value, budget));
+    } else {
+      content.push(node('p', 'No result preview available.', 'external-result-note'));
+    }
+    const orchestration = options.embedded === true && options.surface === 'orchestration';
+    const embedded = options.embedded === true;
+    const surface = orchestration ? 'orchestration' : 'workflow';
+    const position = orchestration ? options.call : options.step;
+    const attributes = {'aria-label': 'External result'};
+    if (embedded && options.toolName) attributes[`data-${surface}-tool`] = options.toolName;
+    if (embedded && position != null) attributes[`data-${surface}-${orchestration ? 'call' : 'step'}`] = position;
+    if (orchestration && options.occurrence != null) attributes['data-orchestration-occurrence'] = options.occurrence;
+    const embeddedClass = embedded
+      ? ` structured-results-workflow-section${orchestration ? ' structured-results-orchestration-section' : ''}` : '';
+    const children = [node('div', null, 'structured-results-header', [node('div', null, '', [
+      node('div', this._compactText(source.provider || 'External', 100), 'structured-results-eyebrow'),
+      node('div', this._compactText(source.tool || 'External result', 180), 'structured-results-heading'),
+      node('div', metadata.join(' · '), 'structured-results-subtitle'),
+    ])])];
+    if (provenance) children.push(node('p', provenance, 'external-result-note'));
+    children.push(...content, node('div', null, 'external-result-downloads', this._externalStashLinks(payload, options.mode)));
+    return this._externalNode('section', {
+      class: `structured-results-preview structured-results-external${embeddedClass}`, ...attributes,
+    }, null, children);
+  }
+
+  _renderExternalCollection(payload, options = {}) {
+    return this._externalNodeHtml(this._externalCollectionModel(payload, options));
+  }
+
   _renderCollection(collection, options = {}) {
+    if (collection.kind === 'external') return this._renderExternalCollection(collection.external, options);
     const kind = ['product', 'hotel', 'local', 'flight', 'video', 'weather', 'image', 'sport', 'bookmark'].includes(collection.kind)
       ? collection.kind
       : 'generic';

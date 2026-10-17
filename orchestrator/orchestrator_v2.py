@@ -3037,6 +3037,12 @@ Mode: {self.mode}
                         break
             
             # Use LLM to synthesize a proper answer
+            duplicate_notice = (
+                "A duplicate call was blocked. Follow each saved external result's remote "
+                "status and coverage; a successful call does not prove remote work finished."
+                if ContextAssembler.has_external_results(accumulated_data)
+                else "The task completed but tried to call a duplicate tool."
+            )
             context = f"""User asked: "{user_query}"
 
 Tools executed: {', '.join(set(tools_used))}
@@ -3046,7 +3052,7 @@ GATHERED DATA:
 
 {f"CANVAS CONTENT (research results):{chr(10)}{canvas_content}" if canvas_content else ""}
 
-IMPORTANT: The task completed but tried to call a duplicate tool. 
+IMPORTANT: {duplicate_notice}
 You MUST synthesize a proper answer using the data above.
 
 CRITICAL RULES:
