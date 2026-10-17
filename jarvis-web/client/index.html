@@ -148,11 +148,17 @@
                title="Click to copy conversation ID">
             <span id="convIdText"></span>
           </div>
-          <!-- Token/Cost Counter (bottom right) -->
-          <div class="token-counter" id="tokenCounter" style="display: none;">
-          <span class="token-count" id="tokenCount">0 tokens</span>
+          <!-- Context/Cost Counter (bottom right) -->
+          <button type="button" class="token-counter" id="tokenCounter" style="display: none;"
+                  aria-expanded="false" aria-controls="tokenDetails">
+          <span class="token-count" id="tokenCount">Context: 0</span>
           <span class="token-cost" id="tokenCost"></span>
-        </div>
+          </button>
+          <div class="token-details" id="tokenDetails" role="region" tabindex="0"
+               aria-labelledby="tokenDetailsTitle" hidden>
+            <div class="token-details-title" id="tokenDetailsTitle">Context &amp; usage</div>
+            <div class="token-details-content" id="tokenDetailsContent"></div>
+          </div>
         <div class="chat-messages" id="chatMessages">
           <!-- Welcome message - Awakened -->
           <div class="message assistant">

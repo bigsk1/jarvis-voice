@@ -503,6 +503,7 @@ button.tool-item:focus-visible {
 
 /* Token Counter (bottom right of chat area) */
 .token-counter {
+  appearance: none;
   position: absolute;
   bottom: 90px;  /* Above input area */
   right: 20px;
@@ -520,7 +521,7 @@ button.tool-item:focus-visible {
   z-index: 10;
   transition: opacity 0.2s ease;
   pointer-events: auto;
-  cursor: help;
+  cursor: pointer;
 }
 
 .token-counter .token-count,
@@ -530,6 +531,42 @@ button.tool-item:focus-visible {
 
 .token-counter:hover {
   opacity: 1;
+}
+
+.token-counter[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.token-counter:focus-visible,
+.token-details:focus-visible {
+  outline: 2px solid var(--text-accent, #93c5fd);
+  outline-offset: 3px;
+}
+
+.token-details {
+  position: fixed;
+  box-sizing: border-box;
+  z-index: 1100;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 16px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.token-details-title {
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.token-details-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .token-count {

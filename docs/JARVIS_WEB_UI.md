@@ -732,6 +732,7 @@ not keep showing the startup mode's catalog.
 - **Header**: Logo, mode selector, audio toggle, settings button
 - **Sidebar**: Chat/Tools tabs, conversation history, new chat button
 - **Main Area**: Chat messages, tool cards, input field
+- **Context badge**: Shows the latest request's context count and its capacity warning colors. Hover, or tap/click for a details panel with cumulative processed tokens, input/output totals, model calls, cache details, and cost. Tap outside, tap the badge again, or press Escape to dismiss the panel. The details also show the recent-message history window and how many older messages fall outside it. Both user and Jarvis messages count; messages outside the window remain saved in the conversation.
 - **Modals**: Settings panel, image lightbox
 
 ### Tool Cards

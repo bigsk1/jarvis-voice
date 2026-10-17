@@ -2129,6 +2129,7 @@ class JarvisApp {
         // Populate Conversation History Limit
         const historyLimit = s.conversation?.history_limit || 20;
         document.getElementById('setting-history-limit').value = historyLimit;
+        this.chat.updateHistoryWindow({limit: historyLimit});
         
         // Populate API Keys status (note names the ACTIVE mode's env file)
         const apiKeysEnvFile = document.getElementById('api-keys-env-file');
@@ -3862,6 +3863,8 @@ class JarvisApp {
         const convs = data.conversations;
         const previousActive = this._conversations?.find(conv => conv.id === this.socket.conversationId);
         this._conversations = convs;
+        const active = convs.find(conv => conv.id === this.socket.conversationId);
+        if (active) this.chat.updateHistoryWindow({messageCount: active.message_count});
         const renderKey = JSON.stringify([convs, this.socket.conversationId, this._archivedExpanded]);
         if (renderKey === this._historyRenderKey) {
           this._refreshConversationTimes();
@@ -4467,6 +4470,7 @@ class JarvisApp {
     const rebuild = !reconcile || clearedElsewhere;
     const clearedSources = rebuild && this.chat.clearChat({ preserveAttachments: !switched, preservePreparation: reconcile });
     if (rebuild) this._feedbackRevision = undefined;
+    this.chat.updateHistoryWindow({messageCount: (conversation.messages || []).length});
     if (clearedSources) Utils.toast('Attached sources cleared for this conversation.', 'info', 3000);
     
     // Calculate cumulative token usage from historical messages

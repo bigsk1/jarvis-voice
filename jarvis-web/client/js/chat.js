@@ -84,11 +84,15 @@ class ChatUI {
     this.tokenCounterEl = document.getElementById('tokenCounter');
     this.tokenCountEl = document.getElementById('tokenCount');
     this.tokenCostEl = document.getElementById('tokenCost');
+    this.tokenDetailsEl = document.getElementById('tokenDetails');
+    this.tokenDetailsContentEl = document.getElementById('tokenDetailsContent');
     this.cumulativeTokens = { input: 0, output: 0, total: 0 };
     this.cumulativeModelCalls = 0;
     this.modelCallCountComplete = true;
     this.currentContextTokens = 0;
     this.currentContextEstimated = false;
+    this.historyMessageCount = 0;
+    this.historyMessageLimit = null;
     this.cumulativeCost = 0;
     this.cumulativeCache = {
       read: 0,
@@ -121,6 +125,7 @@ class ChatUI {
     this._composerHintTimer = null;
     
     this._setupEventListeners();
+    this._setupTokenDetails();
     this._setupComposerHints();
     this._setupSocketListeners();
     this._setupVoiceRecording();
@@ -299,6 +304,7 @@ class ChatUI {
       if (res.ok) {
         const data = await res.json();
         const settings = data.settings || {};
+        this.updateHistoryWindow({limit: settings.conversation?.history_limit});
         
         // Get effective provider from settings (includes UI overrides)
         const provider = settings.llm?.provider?.value || 'xai';
@@ -6934,15 +6940,71 @@ class ChatUI {
     if (usage.input_estimated === true) this.cumulativeInputEstimated = true;
   }
 
-  /**
-   * Render the token count, prefixing "~" when the input tokens were estimated
-   * (provider omitted prompt_eval_count, e.g. Ollama Cloud).
-   */
+  _setupTokenDetails() {
+    if (!this.tokenCounterEl || !this.tokenDetailsEl || !this.tokenDetailsContentEl) return;
+
+    this.tokenCounterEl.addEventListener('click', () => {
+      if (!this.tokenDetailsEl.hidden) {
+        this._hideTokenDetails();
+        return;
+      }
+      this._renderTokenTooltip();
+      this.tokenDetailsEl.hidden = false;
+      this.tokenCounterEl.setAttribute('aria-expanded', 'true');
+      this.tokenCounterEl.title = '';
+      this._positionTokenDetails();
+    });
+    document.addEventListener('pointerdown', (event) => {
+      if (!this.tokenDetailsEl.hidden && !this.tokenCounterEl.contains(event.target)
+          && !this.tokenDetailsEl.contains(event.target)) this._hideTokenDetails();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !this.tokenDetailsEl.hidden) {
+        event.preventDefault();
+        event.stopPropagation();
+        this._hideTokenDetails();
+        this.tokenCounterEl.focus();
+      }
+    }, true);
+    window.addEventListener('resize', () => this._hideTokenDetails());
+    window.visualViewport?.addEventListener('resize', () => this._hideTokenDetails());
+  }
+
+  _hideTokenDetails() {
+    if (!this.tokenDetailsEl) return;
+    this.tokenDetailsEl.hidden = true;
+    this.tokenCounterEl.setAttribute('aria-expanded', 'false');
+    this.tokenCounterEl.title = this.tokenDetailsContentEl.textContent;
+  }
+
+  _positionTokenDetails() {
+    const rect = this.tokenCounterEl.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const left = viewport?.offsetLeft || 0;
+    const top = viewport?.offsetTop || 0;
+    const width = viewport?.width || window.innerWidth;
+    const height = viewport?.height || window.innerHeight;
+    const panelWidth = Math.min(420, width - 24);
+    const anchorTop = Math.min(Math.max(rect.top, top + 12), top + height - 12);
+    const anchorBottom = Math.min(Math.max(rect.bottom, top + 12), top + height - 12);
+    const above = anchorTop - top - 20;
+    const below = top + height - anchorBottom - 20;
+    const openAbove = above >= below;
+    Object.assign(this.tokenDetailsEl.style, {
+      width: `${panelWidth}px`,
+      maxHeight: `${Math.max(0, openAbove ? above : below)}px`,
+      left: `${Math.max(left + 12, Math.min(rect.right - panelWidth, left + width - panelWidth - 12))}px`,
+      top: openAbove ? 'auto' : `${anchorBottom + 8}px`,
+      bottom: openAbove ? `${window.innerHeight - anchorTop + 8}px` : 'auto',
+    });
+  }
+
+  /** Render the current context count used by the tooltip and warning colors. */
   _renderTokenCount() {
     if (!this.tokenCountEl) return;
-    const tokenStr = this.cumulativeTokens.total.toLocaleString();
-    const prefix = this.cumulativeInputEstimated ? '~' : '';
-    this.tokenCountEl.textContent = `${prefix}${tokenStr} tokens`;
+    const tokenStr = this.currentContextTokens.toLocaleString();
+    const prefix = this.currentContextEstimated ? '~' : '';
+    this.tokenCountEl.textContent = `Context: ${prefix}${tokenStr}`;
   }
 
   /**
@@ -6970,12 +7032,23 @@ class ChatUI {
     return model ? `${providerLabel} / ${model}` : providerLabel;
   }
 
+  updateHistoryWindow({messageCount, limit} = {}) {
+    if (Number.isInteger(messageCount) && messageCount >= 0) {
+      this.historyMessageCount = messageCount;
+    }
+    if (Number.isInteger(limit) && limit > 0) {
+      this.historyMessageLimit = limit;
+    }
+    this._renderTokenTooltip();
+  }
+
   _renderTokenTooltip() {
     if (!this.tokenCounterEl) return;
 
     const lines = [];
+    lines.push(`Chat processed: ${this.cumulativeTokens.total.toLocaleString()} tokens`);
     lines.push(
-      `Chat processed: ${this.cumulativeTokens.input.toLocaleString()} input | ${this.cumulativeTokens.output.toLocaleString()} output`
+      `Input: ${this.cumulativeTokens.input.toLocaleString()} | Output: ${this.cumulativeTokens.output.toLocaleString()}`
     );
     if (this.modelCallCountComplete) {
       lines.push(`Model calls: ${this.cumulativeModelCalls.toLocaleString()}`);
@@ -6983,6 +7056,17 @@ class ChatUI {
       lines.push(`Model calls: at least ${this.cumulativeModelCalls.toLocaleString()} (older history unavailable)`);
     } else {
       lines.push('Model calls: unavailable for older history');
+    }
+
+    if (Number.isInteger(this.historyMessageLimit) && this.historyMessageLimit > 0) {
+      const count = this.historyMessageCount || 0;
+      const limit = this.historyMessageLimit;
+      lines.push(`Recent history: up to ${Math.min(count, limit)} of ${limit} saved messages (you + Jarvis)`);
+      if (count > limit) {
+        lines.push(`Older messages outside this window: ${count - limit} (still saved)`);
+      } else {
+        lines.push(`Space before older messages leave the window: ${limit - count} messages`);
+      }
     }
 
     const contextWindow = this.tokenStatsMeta.provider
@@ -7046,7 +7130,9 @@ class ChatUI {
       lines.push(`Mode: ${this.tokenStatsMeta.mode}`);
     }
 
-    this.tokenCounterEl.title = lines.join('\n');
+    const details = lines.join('\n');
+    if (this.tokenDetailsContentEl) this.tokenDetailsContentEl.textContent = details;
+    this.tokenCounterEl.title = this.tokenDetailsEl && !this.tokenDetailsEl.hidden ? '' : details;
   }
 
   _renderContextUsageState() {
@@ -7057,11 +7143,16 @@ class ChatUI {
    * Reset token counter (for new chat)
    */
   _resetTokenCounter() {
+    if (this.tokenDetailsEl) {
+      this._hideTokenDetails();
+      this.tokenDetailsContentEl.textContent = '';
+    }
     this.cumulativeTokens = { input: 0, output: 0, total: 0 };
     this.cumulativeModelCalls = 0;
     this.modelCallCountComplete = true;
     this.currentContextTokens = 0;
     this.currentContextEstimated = false;
+    this.historyMessageCount = 0;
     this.cumulativeCost = 0;
     this.cumulativeCache = {
       read: 0,
@@ -7087,7 +7178,7 @@ class ChatUI {
       this.tokenCounterEl.title = '';
     }
     if (this.tokenCountEl) {
-      this.tokenCountEl.textContent = '0 tokens';
+      this.tokenCountEl.textContent = 'Context: 0';
     }
     if (this.tokenCostEl) {
       this.tokenCostEl.textContent = '';
