@@ -3,6 +3,10 @@
   "name": "craft_image",
   "description": "Edit an existing image or layered PhotoCraft project: add meme text, captions or watermarks ON the supplied photo; revise an existing text layer; crop, resize, rotate or place another image/logo. Use action edit with ordered edits. Returns PNG preview, editable project reference and layer IDs for follow-ups. Requires sources; preserves the base photo. Do not substitute craft_motion for text on a photo. Invert/grayscale also supported. For AI synthesis use generate_image.",
   "script": "craft_image.py",
+  "complementary_tools": [
+    "stash",
+    "canvas"
+  ],
   "parameters": {
     "type": "object",
     "properties": {

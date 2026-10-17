@@ -3,6 +3,14 @@
   "name": "craft_pdf",
   "description": "Edit existing PDFs through an optional self-hosted PdfCraft gateway: rotate selected pages, extract pages, combine PDFs, or render a selected page. Page numbers start at 1. Use pdf_read for ordinary extraction and pdf_create for document creation.",
   "script": "craft_pdf.py",
+  "complementary_tools": [
+    "stash",
+    "craft_inspect",
+    "canvas",
+    "pdf_read",
+    "pdf_create",
+    "docling_convert"
+  ],
   "parameters": {
     "type": "object",
     "properties": {

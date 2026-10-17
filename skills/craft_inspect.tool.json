@@ -3,6 +3,10 @@
   "name": "craft_inspect",
   "description": "Inspect optional Craft Gateway capabilities, project/artifact IDs, or jobs; collect completed outputs into Stash, or request cancellation. Cancelling an observer does not cancel remote work. Inspect saved job_id/request_id after disconnects instead of resubmitting. Use action jobs to find recent accepted work when an observer stopped before returning its job ID.",
   "script": "craft_inspect.py",
+  "complementary_tools": [
+    "stash",
+    "canvas"
+  ],
   "parameters": {
     "type": "object",
     "properties": {

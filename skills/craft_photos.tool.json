@@ -3,6 +3,11 @@
   "name": "craft_photos",
   "description": "Develop an existing raster photo using optional self-hosted LightCraft: adjust exposure and export full-size PNG. Sources are required. First adapter accepts PNG/JPEG/WebP; RAW and batch library operations are not exposed.",
   "script": "craft_photos.py",
+  "complementary_tools": [
+    "stash",
+    "craft_inspect",
+    "convert_file"
+  ],
   "parameters": {
     "type": "object",
     "properties": {

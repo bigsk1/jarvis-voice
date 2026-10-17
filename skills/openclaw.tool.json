@@ -3,6 +3,11 @@
   "name": "openclaw",
   "description": "Contact a remote OpenClaw agent. ONLY use when the user explicitly asks to 'ask OpenClaw', 'have OpenClaw do', 'tell OpenClaw', or 'check with OpenClaw'. This is not the local OpenCode coding agent and not Samantha. Include the task context in the message; it cannot see this chat automatically. Never auto-delegate.",
   "script": "openclaw.py",
+  "complementary_tools": [
+    "canvas",
+    "stash",
+    "remember"
+  ],
   "parameters": {
     "type": "object",
     "properties": {

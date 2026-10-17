@@ -4,6 +4,11 @@
   "proxy_policy": "inherit",
   "description": "Local Browser Use on this machine's Chromium, not Browser Use Cloud. Use for requests such as 'browse this URL', 'read this page and follow the links', 'research this JavaScript site starting at https://example.com', or 'use local Browser Use on this page'. For a follow-up to a finished local browser job in this conversation, pass its job ID as continue_job_id instead of url; Jarvis reopens saved research in a fresh isolated browser. Requires this conversation's selected LLM. Reads pages and follows links; cannot log in, submit forms, send email, purchase, or change accounts. For a hosted Cloud browser, a saved Cloud profile, or a signed-in account action, use browser_use_cloud. Returns a receipt immediately and a sourced report later.",
   "script": "browser_use.py",
+  "complementary_tools": [
+    "mcp_fetch_fetch",
+    "stash",
+    "canvas"
+  ],
   "availability": {"all_of_commands": ["docker"], "setup_hint": "Pull the Browser Use image with docker compose -f docker-compose.browser.yml pull. See docs/BROWSER-USE.md."},
   "parameters": {
     "type": "object",

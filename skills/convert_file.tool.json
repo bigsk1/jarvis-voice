@@ -3,6 +3,9 @@
   "name": "convert_file",
   "description": "Convert media files locally, or remove a solid background from an existing image without regenerating its subject. Examples: \"make this image background transparent\", \"remove the white background from my uploaded image\", \"convert my image to PNG\", \"convert video to MP3\". Background removal uses options.remove_background=true and target_format png/webp; removes only edge-connected color and keeps enclosed matching colors. Best for plain backgrounds, not scenery or fine-hair matting. Supports image formats (jpg/png/webp/gif/tiff/bmp), raster-to-SVG tracing, video/audio conversion and video-to-audio extraction. Accepts stash:// references or local files; outputs save to Stash for inline preview and download.",
   "script": "convert_file.py",
+  "complementary_tools": [
+    "stash"
+  ],
   "execution": {
     "background": {
       "supported": true,

@@ -3,6 +3,12 @@
   "name": "craft_video",
   "description": "Edit existing videos with FilmCraft on an optional self-hosted gateway: trim source in/out ranges, assemble clips, add fitted title text ON the footage or supplied timed captions, and revise saved timeline text overlays. Retains source audio. Returns preview, optional MP4, editable_project_ref, clip/layer IDs and project/media archive. Use action edit with clips for a new cut and video_edits for text; reopen editable_project_ref with video_edits update_text to revise the same timeline. Never substitute a separate title card for text on a video. Use output mp4 for a movie. generate_video is separate AI synthesis.",
   "script": "craft_video.py",
+  "complementary_tools": [
+    "stash",
+    "canvas",
+    "craft_inspect",
+    "convert_file"
+  ],
   "parameters": {
     "type": "object",
     "properties": {

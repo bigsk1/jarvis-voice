@@ -4,7 +4,10 @@
   "description": "Extract and summarize content from a specific webpage as markdown. Use for 'summarize this URL', 'extract the text from this page', 'scrape this article', or 'read the content at this link'. For JavaScript-heavy or incomplete fetches, use stealth mode. For structured facts, prices, or entities, use extraction_type llm, cosine, or regex. Default wait is normal (all resources loaded); use fast for DOM-ready only and avoid full/network-idle on live data sites. For deep research, use extraction_type='cosine' with semantic_filter. This tool reads one page; it does not click, log in, or follow a browsing trail. For that, use browser_use or browser_use_cloud. For a picture of the page, use screenshot_url.",
   "complementary_tools": [
     "stash",
-    "canvas"
+    "canvas",
+    "brave_llm_context",
+    "mcp_fetch_fetch",
+    "browser_use"
   ],
   "script": "crawl_url.py",
   "parameters": {

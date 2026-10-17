@@ -3,6 +3,9 @@
   "name": "check_opencode_sessions",
   "description": "Fallback-only OpenCode session lookup via API. Lists recent OpenCode sessions or returns metadata for a specific session. READ-ONLY - does not trigger new builds. Use only when OpenCode produced no usable final result, timed out, or the user explicitly asks about OpenCode session status/logs. Do not call after a successful OpenCode build reply.",
   "script": "check_opencode_sessions.py",
+  "complementary_tools": [
+    "check_tool_logs"
+  ],
   "parameters": {
     "type": "object",
     "properties": {

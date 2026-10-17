@@ -3,6 +3,12 @@
   "name": "screenshot_url",
   "description": "Take a screenshot of a webpage and optionally analyze it with vision. Use for 'screenshot this page', 'what does this website look like', or 'capture this webpage'. Use when the need is visual: charts, layout, or page state. Returns a screenshot path and optional AI analysis. For page text, use crawl_url. For following links in a browser, use browser_use.",
   "script": "screenshot_url.py",
+  "complementary_tools": [
+    "stash",
+    "browser_use",
+    "analyze_image",
+    "canvas"
+  ],
   "parameters": {
     "type": "object",
     "properties": {
