@@ -29,9 +29,80 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Cron does not activate Jarvis's production environment. Use its interpreter
+# explicitly, including the JARVIS_VENV supplied by the Docker entrypoint.
+CLEANUP_PYTHON="${JARVIS_VENV:-$HOME/jarvis-venv}/bin/python"
 DRY_RUN=""
 if [[ "$1" == "--dry-run" ]]; then
     DRY_RUN="--dry-run"
+fi
+CLEANUP_STAGE="Python environment preflight"
+
+report_cleanup_failure() {
+    local exit_code="$1"
+    trap - EXIT
+    if [[ "$exit_code" -eq 0 ]]; then
+        return
+    fi
+    echo "Jarvis cleanup failed during $CLEANUP_STAGE (exit $exit_code). See logs/cleanup.log or command output." >&2
+    if [[ -n "$DRY_RUN" ]]; then
+        echo "Dry run: no failure alert was created." >&2
+        exit "$exit_code"
+    fi
+    local alert_python="$CLEANUP_PYTHON"
+    # A broken custom environment must not stop a healthy default environment
+    # from reporting the failure. This fallback never runs cleanup stages.
+    if [[ ! -x "$alert_python" ]]; then
+        alert_python="$HOME/jarvis-venv/bin/python"
+    fi
+    if [[ ! -x "$alert_python" ]]; then
+        echo "Cleanup failure alert unavailable: no Jarvis production Python environment." >&2
+        exit "$exit_code"
+    fi
+    if ! "$alert_python" - "$PROJECT_ROOT" "$CLEANUP_STAGE" "$exit_code" <<'PY'
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+root, stage, exit_code = sys.argv[1:]
+payload = {
+    "title": "Jarvis cleanup failed",
+    "source": "cleanup_all",
+    "severity": "high",
+    "speak_immediately": False,
+    "description": f"Cleanup stopped during {stage} (exit {exit_code}). "
+                   "Check logs/cleanup.log or command output for details.",
+    "metadata": {"dedupe_key": f"cleanup-all:{stage}", "failed_stage": stage,
+                 "exit_code": int(exit_code), "log_file": "logs/cleanup.log"},
+}
+try:
+    result = subprocess.run(
+        [sys.executable, str(Path(root) / "skills" / "create_alert.py"), json.dumps(payload)],
+        capture_output=True, text=True, timeout=15,
+    )
+    response = json.loads(result.stdout)
+except subprocess.TimeoutExpired:
+    print("Cleanup failure alert timed out after 15 seconds.", file=sys.stderr)
+    raise SystemExit(1)
+except (OSError, ValueError):
+    print("Cleanup failure alert failed to run or returned invalid JSON.", file=sys.stderr)
+    raise SystemExit(1)
+if result.returncode or not isinstance(response, dict) or response.get("ok") is not True:
+    print(f"Cleanup failure alert failed (tool exit {result.returncode}).", file=sys.stderr)
+    raise SystemExit(1)
+print("Cleanup failure alert recorded.", file=sys.stderr)
+PY
+    then
+        echo "Unable to deliver the cleanup failure alert; keeping original exit $exit_code." >&2
+    fi
+    exit "$exit_code"
+}
+trap 'report_cleanup_failure "$?"' EXIT
+
+if [[ ! -x "$CLEANUP_PYTHON" ]]; then
+    echo "Jarvis production environment not found: $CLEANUP_PYTHON. Run ./install.sh or set JARVIS_VENV." >&2
+    exit 2
 fi
 
 echo "╔══════════════════════════════════════════════════════════════╗"
@@ -43,26 +114,31 @@ echo "╚═══════════════════════�
 echo ""
 
 # 1. Cleanup logs (60 days)
+CLEANUP_STAGE="Logs"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 "$SCRIPT_DIR/cleanup-logs" --days 60 $DRY_RUN
 echo ""
 
 # 2. Cleanup runtime TTS/STT audio (30 days; not generated music)
+CLEANUP_STAGE="Runtime audio"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 "$SCRIPT_DIR/cleanup-audio" --days 30 $DRY_RUN
 echo ""
 
 # 3. Cleanup generated images (120 days)
+CLEANUP_STAGE="Generated images"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-"$SCRIPT_DIR/cleanup-generated-images" --days 120 $DRY_RUN
+"$CLEANUP_PYTHON" "$SCRIPT_DIR/cleanup-generated-images" --days 120 $DRY_RUN
 echo ""
 
 # 4. Cleanup web conversations (90 days, preserving pinned)
+CLEANUP_STAGE="Web conversations"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-"$SCRIPT_DIR/cleanup-web-conversations" --days 90 $DRY_RUN
+"$CLEANUP_PYTHON" "$SCRIPT_DIR/cleanup-web-conversations" --days 90 $DRY_RUN
 echo ""
 
 # 5. Cleanup unreferenced web uploads (60 days)
+CLEANUP_STAGE="Web uploads"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 UPLOADS_DIR="$PROJECT_ROOT/jarvis-web/data/uploads"
 UPLOADS_RETENTION_DAYS=60
@@ -75,13 +151,14 @@ if [[ -n "$DRY_RUN" ]]; then
 fi
 echo ""
 
-"$SCRIPT_DIR/cleanup-retention" uploads --days "$UPLOADS_RETENTION_DAYS" $DRY_RUN
+"$CLEANUP_PYTHON" "$SCRIPT_DIR/cleanup-retention" uploads --days "$UPLOADS_RETENTION_DAYS" $DRY_RUN
 echo ""
 
 # 6. Cleanup stash expired spaces (uses built-in TTL)
+CLEANUP_STAGE="Stash"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📦 Stash Spaces Cleanup (TTL-based)"
-"$SCRIPT_DIR/cleanup-retention" stash $DRY_RUN
+"$CLEANUP_PYTHON" "$SCRIPT_DIR/cleanup-retention" stash $DRY_RUN
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -89,6 +166,7 @@ echo "🎉 Cleanup complete!"
 echo ""
 
 # Show overall disk usage (only existing dirs to avoid du failures)
+CLEANUP_STAGE="Disk usage summary"
 echo "📊 Current disk usage:"
 for d in logs logs/server-side-tools audio data/generated_images data/web_conversations jarvis-web/data/uploads data/stash; do
     [[ -d "$PROJECT_ROOT/$d" ]] && du -sh "$PROJECT_ROOT/$d" 2>/dev/null

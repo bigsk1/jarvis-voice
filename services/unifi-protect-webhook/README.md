@@ -34,6 +34,14 @@ Built-in rules for different UniFi event types:
 
 - **Auto-ack = False**: Alert stays "pending" and follow-up daemon reminds you at 15/30/60 minutes (varies by severity) until acknowledged. Good for issues requiring action.
 
+If a camera alert's create or acknowledgement request times out, the receiver
+spends up to ten additional seconds retrying lookup and acknowledgement of that
+same event. It never sends another create request during recovery. A lookup
+matches the event ID, or the device, event type, and original timestamp when no
+event ID was provided. If recovery still fails, the webhook reports failure and
+the alert can remain pending for manual acknowledgement. Sensor alerts with
+auto-ack disabled keep their normal follow-up behavior.
+
 ## TTS Caching
 
 Alert phrases are automatically cached after first playback:

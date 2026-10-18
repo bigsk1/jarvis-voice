@@ -311,6 +311,21 @@ The `cleanup-all` script handles everything with appropriate retention:
 ./bin/cleanup-all --dry-run
 ```
 
+The master script uses `${JARVIS_VENV:-$HOME/jarvis-venv}/bin/python` for Python
+cleanup stages, so cron does not need to activate a virtual environment. Docker
+supplies its existing `JARVIS_VENV`. The environment is checked before any cleanup
+starts; set `JARVIS_MODE=local` when targeting Local mode.
+
+If a normal run fails, it stops and attempts to create a high-severity Jarvis
+alert through the existing local `create_alert` tool, even if the API is down.
+The alert identifies the stage and exit code and points to `logs/cleanup.log`;
+it does not speak immediately. Repeated pending failures at the same stage are
+deduplicated. Alert creation has a 15-second deadline, and failure to deliver
+never replaces the original cleanup exit code. If a configured environment is
+missing, an existing `~/jarvis-venv` may report the failure but will not run cleanup
+as a fallback. If no usable environment exists, only the log can report it.
+Dry runs never create alerts, including when the preview fails.
+
 **Retention periods:**
 
 | Directory | Retention | Purpose |

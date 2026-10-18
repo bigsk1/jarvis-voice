@@ -1,10 +1,12 @@
 """Direct price lookup API - bypasses LLM for efficiency"""
 
-from fastapi import APIRouter, HTTPException, Query
-import sys
 import json
 import subprocess
+import sys
 from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Query
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/api/prices", tags=["prices"])
 
@@ -64,7 +66,7 @@ async def get_stock_price(symbol: str):
     - /api/prices/stock/GC=F (gold futures)
     - /api/prices/stock/gold (mapped to GC=F)
     """
-    result = call_tool("stock_price", {"symbol": symbol})
+    result = await run_in_threadpool(call_tool, "stock_price", {"symbol": symbol})
     
     if not result.get("ok"):
         raise HTTPException(status_code=404, detail=result.get("error", "Failed to get price"))
@@ -85,7 +87,7 @@ async def get_crypto_price(symbol: str):
     Accepts both ticker symbols (BTC) and full names (bitcoin), case-insensitive.
     """
     # Tool expects "coin" param, lowercase for COIN_MAP lookup
-    result = call_tool("crypto_price", {"coin": symbol.lower()})
+    result = await run_in_threadpool(call_tool, "crypto_price", {"coin": symbol.lower()})
     
     if not result.get("ok"):
         raise HTTPException(status_code=404, detail=result.get("error", "Failed to get price"))
@@ -116,7 +118,7 @@ async def get_crypto_chart(
     if points_limit is not None:
         args["points_limit"] = points_limit
 
-    result = call_tool("crypto_chart", args)
+    result = await run_in_threadpool(call_tool, "crypto_chart", args)
 
     if not result.get("ok"):
         raise HTTPException(status_code=404, detail=result.get("error", "Failed to get chart"))
@@ -140,7 +142,7 @@ async def get_batch_prices(
         for symbol in stocks.split(","):
             symbol = symbol.strip()
             if symbol:
-                result = call_tool("stock_price", {"symbol": symbol})
+                result = await run_in_threadpool(call_tool, "stock_price", {"symbol": symbol})
                 if result.get("ok"):
                     results["stocks"][symbol] = {
                         "price": result["data"].get("price_usd"),
@@ -153,7 +155,9 @@ async def get_batch_prices(
     if crypto:
         crypto_symbols = [symbol.strip() for symbol in crypto.split(",") if symbol.strip()]
         if crypto_symbols:
-            result = call_tool("crypto_price", {"coins": [symbol.lower() for symbol in crypto_symbols]})
+            result = await run_in_threadpool(
+                call_tool, "crypto_price", {"coins": [symbol.lower() for symbol in crypto_symbols]}
+            )
             if result.get("ok"):
                 items = _extract_crypto_batch_items(result)
                 items_by_id = {item.get("coin_id"): item for item in items}

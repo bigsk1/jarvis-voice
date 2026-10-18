@@ -21,16 +21,16 @@ Or via systemd:
   sudo systemctl start unifi-protect-webhook
 """
 
-import os
 import json
-import time
 import logging
+import os
 import socket
+import time
 from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.request import Request, urlopen
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any, Dict, Optional
 from urllib.error import URLError
-from typing import Dict, Any, Optional
+from urllib.request import Request, urlopen
 
 # Configuration from environment
 JARVIS_ALERTS_URL = os.environ.get('JARVIS_ALERTS_URL', 'http://localhost:8880/api/alerts')
@@ -41,6 +41,8 @@ ALERT_END_HOUR = int(os.environ.get('ALERT_END_HOUR', '24'))
 DEFAULT_COOLDOWN = int(os.environ.get('COOLDOWN_SECONDS', '60'))
 CREATE_ALERT_TIMEOUT = int(os.environ.get('CREATE_ALERT_TIMEOUT_SECONDS', '10'))
 ACK_ALERT_TIMEOUT = int(os.environ.get('ACK_ALERT_TIMEOUT_SECONDS', '5'))
+AUTO_ACK_RECOVERY_SECONDS = 10.0
+AUTO_ACK_RETRY_INTERVAL = 1.0
 
 # =============================================================================
 # ALERT RULES CONFIGURATION
@@ -253,7 +255,7 @@ def _get_auth_headers() -> dict:
     return headers
 
 
-def _find_matching_pending_alert_id(alert_data: dict) -> Optional[int]:
+def _find_matching_pending_alert_id(alert_data: dict, timeout: float | None = None) -> Optional[int]:
     """
     Best-effort recovery helper.
 
@@ -264,7 +266,7 @@ def _find_matching_pending_alert_id(alert_data: dict) -> Optional[int]:
         # Reuse same base URL and auth
         list_url = f"{JARVIS_ALERTS_URL}?status=pending&source=unifi-protect&limit=25"
         req = Request(list_url, headers=_get_auth_headers(), method='GET')
-        with urlopen(req, timeout=CREATE_ALERT_TIMEOUT) as resp:
+        with urlopen(req, timeout=CREATE_ALERT_TIMEOUT if timeout is None else timeout) as resp:
             if resp.status != 200:
                 return None
             payload = json.loads(resp.read().decode('utf-8'))
@@ -280,6 +282,7 @@ def _find_matching_pending_alert_id(alert_data: dict) -> Optional[int]:
     target_event_id = target_meta.get('event_id')
     target_device = target_meta.get('device_mac')
     target_event_type = target_meta.get('event_type')
+    target_timestamp = target_meta.get('timestamp_ms')
 
     for item in alerts:
         if not isinstance(item, dict):
@@ -305,19 +308,45 @@ def _find_matching_pending_alert_id(alert_data: dict) -> Optional[int]:
         if target_event_id and raw_meta.get('event_id') == target_event_id:
             return item.get('id')
 
-        # Fallback match for payloads missing event_id
+        # Without an event id, require the original timestamp as well: an older
+        # pending detection from the same camera must not be acknowledged.
         if (
             not target_event_id
+            and target_device
+            and target_event_type
+            and target_timestamp is not None
             and raw_meta.get('device_mac') == target_device
             and raw_meta.get('event_type') == target_event_type
+            and raw_meta.get('timestamp_ms') == target_timestamp
         ):
             return item.get('id')
 
     return None
 
 
+def _recover_auto_ack(alert_data: dict, alert_id: int | None = None) -> bool:
+    """Retry only lookup/ack within a short budget; never resubmit the event."""
+    deadline = time.monotonic() + AUTO_ACK_RECOVERY_SECONDS
+    while (remaining := deadline - time.monotonic()) > 0:
+        if not alert_id:
+            alert_id = _find_matching_pending_alert_id(
+                alert_data, timeout=min(ACK_ALERT_TIMEOUT, remaining)
+            )
+        remaining = deadline - time.monotonic()
+        if alert_id and remaining > 0:
+            if _acknowledge_alert(alert_id, timeout=min(ACK_ALERT_TIMEOUT, remaining)):
+                log.info(f"  Recovered auto-ack by acknowledging alert {alert_id}")
+                return True
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(AUTO_ACK_RETRY_INTERVAL, remaining))
+    log.warning("  Could not confirm auto-acknowledgement; alert may still be pending")
+    return False
+
+
 def send_to_jarvis(alert_data: dict, auto_ack: bool = False) -> bool:
     """Send alert to Jarvis API, optionally auto-acknowledge."""
+    alert_id = None
     try:
         req = Request(
             JARVIS_ALERTS_URL,
@@ -332,25 +361,20 @@ def send_to_jarvis(alert_data: dict, auto_ack: bool = False) -> bool:
             response_data = json.loads(resp.read().decode('utf-8'))
             alert_id = response_data.get('alert_id')
             
-            if alert_id and auto_ack:
-                _acknowledge_alert(alert_id)
-            
-            return True
+            if not auto_ack:
+                return True
+            if alert_id and _acknowledge_alert(alert_id):
+                return True
     except (URLError, TimeoutError, socket.timeout) as e:
         log.error(f"Failed to send alert to Jarvis: {e}")
-        # Timeout/transport failure can occur AFTER API created the alert.
-        # For auto-ack camera events, recover by finding the pending alert and acking it.
-        if auto_ack:
-            recovered_id = _find_matching_pending_alert_id(alert_data)
-            if recovered_id:
-                if _acknowledge_alert(recovered_id):
-                    log.info(f"  Recovered timed-out auto-ack by acknowledging alert {recovered_id}")
-                    return True
-                log.warning(f"  Found pending alert {recovered_id} but failed to auto-ack")
-        return False
+        if not auto_ack:
+            return False
+    # A timed-out create can finish after the first recovery lookup. A lost ack
+    # response can also leave a known alert pending. Retry without another POST.
+    return _recover_auto_ack(alert_data, alert_id)
 
 
-def _acknowledge_alert(alert_id: int) -> bool:
+def _acknowledge_alert(alert_id: int, timeout: float | None = None) -> bool:
     """Acknowledge alert to prevent follow-up reminders."""
     try:
         ack_url = f"{JARVIS_ALERTS_URL}/{alert_id}/acknowledge"
@@ -358,7 +382,7 @@ def _acknowledge_alert(alert_id: int) -> bool:
         if JARVIS_API_KEY:
             headers['Authorization'] = f'Bearer {JARVIS_API_KEY}'
         req = Request(ack_url, headers=headers, method='PUT')
-        with urlopen(req, timeout=ACK_ALERT_TIMEOUT) as resp:
+        with urlopen(req, timeout=ACK_ALERT_TIMEOUT if timeout is None else timeout) as resp:
             if resp.status == 200:
                 log.info(f"  Auto-acknowledged alert {alert_id} (no follow-ups)")
                 return True
