@@ -475,6 +475,109 @@ EffectCraft standalone titles now use native text bounds to fit the complete
 caption inside the frame, with a fade at the end. Use PhotoCraft for text on a
 photo; a standalone title card is not a replacement for a source-image edit.
 
+## Craft meme workflow and video ideas
+
+The shared [`craft_meme_maker`](../data/workflows/craft_meme_maker.json)
+workflow is a small example built from existing tools:
+
+1. Upload **one photo** in Jarvis Web and choose **Save to Stash**. This keeps
+   the full-resolution source and lets the workflow do its own vision pass.
+2. Select **Craft Meme Maker**, or type `/craft_meme_maker`.
+3. Optionally add a theme or exact caption, then send.
+
+```text
+/craft_meme_maker
+/craft_meme_maker Make this about Monday meetings
+/craft_meme_maker Use the exact caption: TECH SUPPORT SAID TO SIT TIGHT
+```
+
+The first form needs no extra request: vision looks at the photo and invents
+one short joke. The workflow passes that caption to `craft_image`, which adds
+white, black-outlined text at the bottom and fits it inside the image. The
+photo is preserved; this recipe does not repaint the subject. For example, a
+dog sitting beside a printer might become “TECH SUPPORT SAID TO SIT TIGHT.”
+Caption wording is model-generated, including when the model is asked to copy
+supplied words. A later edit can revise the returned text layer.
+
+Use **Save to Stash** for this recipe rather than **Edit with Craft**: the
+latter adds a separate direct-tool hint. The workflow already selects Craft.
+If several photos are attached, this recipe uses the first Stash reference;
+attach one to make the choice explicit. Existing files also work:
+`/craft_meme_maker stash://YOUR_SPACE/YOUR_IMAGE Make this about coffee`.
+
+The core steps are `analyze_image` → `craft_image`, followed by optional Canvas
+publication. No image generator, extra conversion, helper-model round trip, or
+new dependency is needed. The selected mode needs working vision and a
+configured PhotoCraft gateway. Standard Craft results carry the PNG, editable
+project and layer metadata for follow-up edits. The normal Web media preview
+shows the returned image. When Canvas is available, a completed image also
+gets a `Memes/` page and links in the final response.
+If Canvas is unavailable or fails, the Craft files remain in the tool result.
+Workflows use foreground tool execution. If Craft is still running when its
+wait budget ends, completion text reports that state; inspect/collect the
+existing job instead of running the workflow again. Canvas publication requires
+both a successful render state and an actual image reference; pending jobs
+never publish a placeholder page or start a second render.
+
+### Dramatic meme trailer
+
+The [`craft_meme_trailer`](../data/workflows/craft_meme_trailer.json) recipe
+turns one photo into a silent, 10-second MP4. Upload with **Save to Stash**, then
+select **Craft Meme Trailer** or use:
+
+```text
+/craft_meme_trailer
+/craft_meme_trailer Make it about a dog running the office
+/craft_meme_trailer Use the exact punchline: THIS MEETING COULD HAVE BEEN A NAP
+```
+
+The selected mode needs working vision and a gateway with EffectCraft and
+FilmCraft available. Vision writes the punchline. EffectCraft renders two
+static title cards, then FilmCraft builds this fixed timeline:
+
+| Time | Content |
+| --- | --- |
+| 0–2 seconds | Dark blue opening card: **IN A WORLD...** |
+| 2–7 seconds | Your photo, fitted without stretching, with **BASED ON A TRUE STORY. ALLEGEDLY.** at the bottom |
+| 7–10 seconds | Matching closing card with the generated/requested punchline |
+
+The result is 1280×720 at 24 fps, with straight cuts and no soundtrack or
+subject animation. Optional direction controls the punchline; the opening and
+setup wording remain fixed. The exported MP4 has an editable FilmCraft project
+and media archive. An optional Canvas page saves the playback link.
+
+The title renders use PNG so the completed trailer is the recipe's only MP4;
+the existing Web player therefore selects the finished movie. EffectCraft's
+animated title fade is not used in this recipe. The chain uses Stash exports
+to combine independent gateway projects.
+
+Every later render requires completed source files. If a title or the final
+movie is still queued/running, the response names that stage and job ID, and
+later stages stay unsubmitted. Inspect/collect that job. Collection does not
+automatically resume a workflow: ask Jarvis to continue from the saved clips
+and photo, using the timing table above. Running the command again creates a
+new trailer. An error also retains the earlier successful files and any job
+IDs returned by the failed stage.
+
+Other practical combinations with the currently exposed tools:
+
+| Idea | Tool chain | Current boundary |
+| --- | --- | --- |
+| Dramatic meme short | `/craft_meme_trailer`: `craft_motion` title PNGs → `craft_video` title + captioned photo + punchline | Static cards; no exposed pan/zoom or transition controls. |
+| Bring a photo to life | `generate_video` with the photo's Stash reference as `image_url` → `craft_video` captions | AI motion comes from the configured video provider and can incur provider charges. |
+| Reaction cut | `analyze_video` for broad context → `craft_video` selected source ranges and timed captions | Analysis samples frames; use known timestamps or review the cuts for precise boundaries. |
+| Spoken-word subtitles | Supply timed text → `craft_video` caption overlays | Existing transcription returns text without subtitle timing; this is not automatic synchronized transcription or SRT import. |
+| Remove pauses | Supply the ranges to keep → `craft_video` | No exposed automatic silence detector; do not guess silence from sampled frames. |
+| GIF delivery | Additional conversion support would be needed | `convert_file` currently has no video-to-GIF route. Use MP4 for these recipes. |
+
+For a multi-stage video recipe, continue only after each source job has
+`state: succeeded` and a real `stash_ref`. An accepted/running job is not media
+yet. Combine independent jobs through their Stash exports; their `craft://`
+references may belong to different projects. Captions use times on the edited
+timeline, while clip ranges use source times. Current video exports are at
+most 120 seconds and fit within 1920×1080; portrait output must also fit those
+bounds, for example 608×1080.
+
 ## Service operation and maintenance
 
 ```bash

@@ -396,6 +396,8 @@ the same orchestration turn; it is not a durable background run.
 |------|---------|-------------|
 | `bookmark_search.json` | `* <query>` | Search Firefox bookmarks using the same prefix as the Firefox address bar |
 | `buying_brief.json` | `/buying_brief <product>` | Compare Google Shopping Light, Amazon, and eBay results with configured localization, optional Stash evidence, and a Canvas recommendation |
+| `craft_meme_maker.json` | `/craft_meme_maker [caption or theme]` | One uploaded/Stash photo → vision-written caption → PhotoCraft PNG with editable text, optional Canvas page; upload with **Save to Stash**; [usage and video ideas](../../jarvis-craft-tools/README.md#craft-meme-workflow-and-video-ideas) |
+| `craft_meme_trailer.json` | `/craft_meme_trailer [theme or punchline]` | One photo → EffectCraft PNG title cards → silent 10-second FilmCraft MP4 with timed caption and editable timeline; optional Canvas links; [usage](../../jarvis-craft-tools/README.md#dramatic-meme-trailer) |
 | `crypto_market_report.json` | `/crypto [coins]` | Crypto prices with canvas report |
 | `daily_status.json` | `/status` | Weather, crypto (7d charts on Canvas), stocks, alerts, system health dashboard |
 | `daily_status_visual.json` | `/status_visual` | Same as `/status` (including crypto charts) plus `generate_image` and dashboard image at top of Canvas |
