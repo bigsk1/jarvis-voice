@@ -46,8 +46,8 @@
     "auto_approve": true
   },
   "availability": {
-    "all_of_env": ["CRAWL4AI_URL"],
-    "setup_hint": "Set CRAWL4AI_URL in the active mode env file. CRAWL4AI_USER, CRAWL4AI_PASS, and CRAWL4AI_API_KEY are optional."
-  }
+    "all_of_env": ["CRAWL4AI_URL", "CRAWL4AI_API_KEY"],
+    "setup_hint": "Set CRAWL4AI_URL and CRAWL4AI_API_KEY (native Bearer token) in the active mode env."
+  },
+  "proxy_policy": "off"
 }
-

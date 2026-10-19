@@ -7,18 +7,19 @@ More powerful than basic fetch - handles JavaScript, dynamic content, and comple
 Supports advanced features:
 - Stealth mode (bypass bot detection)
 - Custom wait conditions
-- JavaScript execution
 - Content filtering
 """
-import sys
-import os
 import json
+import os
+import sys
+import time
+
 import requests
-from base64 import b64encode
 
 # Add lib to path for config_loader
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import get_config_value, load_config
+from http_client import http_request
 
 
 def main():
@@ -32,15 +33,19 @@ def main():
     except (json.JSONDecodeError, IndexError):
         return_error("Invalid JSON input")
         return 1
+    if not isinstance(input_data, dict):
+        return_error("Input must be a JSON object")
+        return 1
     
     # Get configuration from config
     crawl4ai_url = get_config_value("CRAWL4AI_URL", "").rstrip("/")
-    crawl4ai_user = get_config_value("CRAWL4AI_USER", "")
-    crawl4ai_pass = get_config_value("CRAWL4AI_PASS", "")
-    crawl4ai_api_key = get_config_value("CRAWL4AI_API_KEY", "")
+    crawl4ai_api_key = get_config_value("CRAWL4AI_API_KEY", "").strip()
     
     if not crawl4ai_url:
         return_error("CRAWL4AI_URL not configured")
+        return 1
+    if not crawl4ai_api_key:
+        return_error("CRAWL4AI_API_KEY not configured")
         return 1
     
     # Extract parameters
@@ -54,25 +59,40 @@ def main():
     if not urls:
         return_error("URL is required")
         return 1
+
+    if not isinstance(urls, list) or len(urls) > 10 or any(
+        not isinstance(item, str) or not item for item in urls
+    ):
+        return_error("Provide between 1 and 10 public HTTP(S) URLs")
+        return 1
+    try:
+        from stash_helper import SecurityError, validate_url
+    except ImportError:
+        return_error("URL security validation unavailable; crawl was not requested")
+        return 1
+    try:
+        for target in urls:
+            validate_url(target)
+    except SecurityError as exc:
+        return_error(f"URL blocked for security: {exc}")
+        return 1
+
+    if (
+        input_data.get("js_code") or input_data.get("extraction_type") == "llm"
+        or input_data.get("custom_patterns")
+    ):
+        return_error("The Crawl4AI API does not support JavaScript, LLM extraction, or custom regex patterns")
+        return 1
     
     # Build headers
     headers = {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {crawl4ai_api_key}",
     }
-    
-    # Add basic auth if configured
-    if crawl4ai_user and crawl4ai_pass:
-        auth_string = b64encode(f"{crawl4ai_user}:{crawl4ai_pass}".encode()).decode()
-        headers["Authorization"] = f"Basic {auth_string}"
-    
-    # Add API key
-    if crawl4ai_api_key:
-        headers["x-api-key"] = crawl4ai_api_key
     
     # Build request body
     body = {
         "urls": urls,
-        "priority": input_data.get("priority", 10),
     }
     
     # =========================================================================
@@ -117,20 +137,8 @@ def main():
     
     # Cache mode
     crawler_params["cache_mode"] = input_data.get("cache_mode", "bypass")
-    
-    # SECURITY: js_code parameter - only allow safe, pre-approved snippets
-    if input_data.get("js_code"):
-        SAFE_JS_SNIPPETS = {
-            "dismiss_modal": "document.querySelector('.modal-close, [data-dismiss=\"modal\"]')?.click()",
-            "scroll_down": "window.scrollTo(0, document.body.scrollHeight)",
-            "accept_cookies": "document.querySelector('[data-accept-cookies], .accept-cookies, #accept-cookies')?.click()",
-        }
-        js_code = input_data["js_code"]
-        if js_code in SAFE_JS_SNIPPETS:
-            crawler_params["js_code"] = SAFE_JS_SNIPPETS[js_code]
-        else:
-            import logging
-            logging.warning(f"Blocked arbitrary js_code execution: {js_code[:100]}")
+    if input_data.get("screenshot"):
+        crawler_params["screenshot"] = True
     
     # Exclude noisy elements
     if input_data.get("exclude_tags"):
@@ -148,27 +156,7 @@ def main():
     # =========================================================================
     extraction_type = input_data.get("extraction_type")
     
-    if extraction_type == "llm":
-        # LLM-based extraction - uses OpenAI/etc on Crawl4AI server
-        llm_params = {
-            "instruction": input_data.get("extraction_instruction", "Extract key information from this page"),
-            "extraction_type": "schema" if input_data.get("extraction_schema") else "block",
-            "apply_chunking": True,
-            "chunk_token_threshold": input_data.get("chunk_threshold", 4000),
-        }
-        # Optional: provider override (defaults to server's configured provider)
-        if input_data.get("llm_provider"):
-            llm_params["provider"] = input_data["llm_provider"]
-        # Optional: structured schema - wrap as {"type": "dict", "value": {...}}
-        if input_data.get("extraction_schema"):
-            llm_params["schema"] = {"type": "dict", "value": input_data["extraction_schema"]}
-        
-        crawler_params["extraction_strategy"] = {
-            "type": "LLMExtractionStrategy",
-            "params": llm_params
-        }
-        
-    elif extraction_type == "cosine":
+    if extraction_type == "cosine":
         # Semantic similarity filtering - focuses on relevant content
         crawler_params["extraction_strategy"] = {
             "type": "CosineStrategy",
@@ -181,10 +169,27 @@ def main():
         }
         
     elif extraction_type == "regex":
-        # Fast pattern-based extraction - custom patterns wrapped as dict
-        regex_params = {"input_format": "fit_html"}
-        if input_data.get("custom_patterns"):
-            regex_params["custom"] = {"type": "dict", "value": input_data["custom_patterns"]}
+        # Crawl4AI 0.9.5's default mask selects no built-ins. Send only the
+        # reviewed families, using its integer IntFlag wire representation.
+        builtins = {
+            "email": 1,
+            "phone": 2 | 4,
+            "url": 8,
+            "currency": 128,
+            "percentage": 256,
+            "date": 1024 | 2048,
+        }
+        patterns = input_data.get("regex_patterns", list(builtins))
+        if (
+            not isinstance(patterns, list) or not 1 <= len(patterns) <= len(builtins)
+            or any(not isinstance(name, str) or name not in builtins for name in patterns)
+        ):
+            return_error("regex_patterns must be a nonempty list of email, phone, url, currency, date, percentage")
+            return 1
+        pattern_mask = 0
+        for name in patterns:
+            pattern_mask |= builtins[name]
+        regex_params = {"input_format": "markdown", "pattern": pattern_mask}
         
         crawler_params["extraction_strategy"] = {
             "type": "RegexExtractionStrategy",
@@ -213,19 +218,15 @@ def main():
         "params": crawler_params
     }
     
-    if input_data.get("screenshot"):
-        body["screenshot"] = True
-    
-    # Track if extraction was requested (for fallback handling)
-    extraction_requested = extraction_type is not None
-    
     try:
+        deadline = time.monotonic() + 75
         # Submit crawl job
-        response = requests.post(
+        response = http_request(
+            "POST",
             f"{crawl4ai_url}/crawl",
             headers=headers,
             json=body,
-            timeout=60
+            timeout=60, deadline=deadline, allow_redirects=False, proxy_policy="off"
         )
         
         if response.status_code == 401:
@@ -236,49 +237,14 @@ def main():
             return_error("Access forbidden - check API key")
             return 1
         
-        # If extraction caused a 500 error, retry without it
-        if response.status_code == 500 and extraction_requested:
-            import logging
-            logging.warning("Extraction strategy failed (500), retrying without extraction...")
-            # Remove extraction_strategy and retry
-            if "extraction_strategy" in crawler_params:
-                del crawler_params["extraction_strategy"]
-                body["crawler_config"]["params"] = crawler_params
-            response = requests.post(
-                f"{crawl4ai_url}/crawl",
-                headers=headers,
-                json=body,
-                timeout=60
-            )
-        
+        if 300 <= response.status_code < 400:
+            return_error("Crawl4AI redirected the authenticated request; configure its final API URL")
+            return 1
         response.raise_for_status()
         result = response.json()
-        
-        # Handle async task - poll for result
-        task_id = result.get("task_id")
-        if task_id:
-            # Poll for completion
-            import time
-            max_attempts = 30  # 30 seconds max
-            for _ in range(max_attempts):
-                time.sleep(1)
-                status_resp = requests.get(
-                    f"{crawl4ai_url}/task/{task_id}",
-                    headers=headers,
-                    timeout=30
-                )
-                status_resp.raise_for_status()
-                status = status_resp.json()
-                
-                if status.get("status") == "completed":
-                    result = status.get("result", status)
-                    break
-                elif status.get("status") == "failed":
-                    return_error(f"Crawl failed: {status.get('error', 'Unknown error')}")
-                    return 1
-            else:
-                return_error("Crawl timed out after 30 seconds")
-                return 1
+        if not isinstance(result, dict) or result.get("success") is False:
+            return_error("Crawl4AI reported a failed crawl")
+            return 1
         
         # Extract markdown content
         # Handle both single result and array of results
@@ -287,20 +253,30 @@ def main():
             results = [results]
         
         all_content = []
+        failed_urls = []
         for r in results:
+            if not isinstance(r, dict):
+                continue
+            if r.get("success") is False:
+                failed_urls.append(r.get("url", "unknown"))
+                continue
             markdown = r.get("markdown") or r.get("fit_markdown") or r.get("raw_markdown", "")
             if isinstance(markdown, dict):
                 markdown = markdown.get("fit_markdown") or markdown.get("raw_markdown", "")
             
             url_crawled = r.get("url", urls[0] if urls else "unknown")
             
-            if markdown:
+            if markdown or r.get("extracted_content"):
+                metadata = r.get("metadata") or {}
                 content_item = {
                     "url": url_crawled,
                     "markdown": markdown[:10000],  # Limit size
-                    "title": r.get("title", ""),
+                    "title": r.get("title") or (metadata.get("title", "") if isinstance(metadata, dict) else ""),
                     "success": r.get("success", True)
                 }
+                if len(markdown) > 10000:
+                    content_item["truncated"] = True
+                    content_item["original_characters"] = len(markdown)
                 # Include extracted_content if extraction strategy produced results
                 if r.get("extracted_content"):
                     content_item["extracted_content"] = r.get("extracted_content")
@@ -324,7 +300,8 @@ def main():
             speech=speech,
             data={
                 "results": all_content,
-                "count": len(all_content)
+                "count": len(all_content),
+                "failed_urls": failed_urls,
             }
         )
         return 0
@@ -365,4 +342,3 @@ def return_error(speech, data=None):
 
 if __name__ == "__main__":
     sys.exit(main())
-

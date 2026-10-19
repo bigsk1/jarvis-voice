@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "crawl_url",
-  "description": "Extract and summarize content from a specific webpage as markdown. Use for 'summarize this URL', 'extract the text from this page', 'scrape this article', or 'read the content at this link'. For JavaScript-heavy or incomplete fetches, use stealth mode. For structured facts, prices, or entities, use extraction_type llm, cosine, or regex. Default wait is normal (all resources loaded); use fast for DOM-ready only and avoid full/network-idle on live data sites. For deep research, use extraction_type='cosine' with semantic_filter. This tool reads one page; it does not click, log in, or follow a browsing trail. For that, use browser_use or browser_use_cloud. For a picture of the page, use screenshot_url.",
+  "description": "Extract and summarize content from a specific webpage as markdown. Use for 'summarize this URL', 'extract the text from this page', 'scrape this article', or 'read the content at this link'. For JavaScript-heavy or incomplete fetches, use stealth mode. For structured facts, prices, or entities, use extraction_type regex or css. Cosine extraction requires optional server model dependencies. Default wait is normal (all resources loaded); use fast for DOM-ready only and avoid full/network-idle on live data sites. This tool reads one page; it does not click, log in, or follow a browsing trail. For that, use browser_use or browser_use_cloud. For a picture of the page, use screenshot_url.",
   "complementary_tools": [
     "stash",
     "canvas",
@@ -15,12 +15,14 @@
     "properties": {
       "url": {
         "type": "string",
-        "description": "Single URL to crawl"
+        "description": "Single public HTTP(S) URL to crawl"
       },
       "urls": {
         "type": "array",
         "items": {"type": "string"},
-        "description": "Multiple URLs to crawl (alternative to single url)"
+        "description": "Between 1 and 10 public HTTP(S) URLs (alternative to single url)",
+        "maxItems": 10,
+        "minItems": 1
       },
       "stealth": {
         "type": "boolean",
@@ -52,10 +54,6 @@
         "description": "Seconds to wait after page load for JS to render (default 3.0, max 10.0)",
         "default": 3.0
       },
-      "js_code": {
-        "type": "string",
-        "description": "Safe JS snippet name: 'dismiss_modal', 'scroll_down', 'accept_cookies' (arbitrary code blocked)"
-      },
       "css_selector": {
         "type": "string",
         "description": "Focus extraction on specific element (e.g., 'main.article', '#content')"
@@ -65,23 +63,10 @@
         "items": {"type": "string"},
         "description": "HTML tags to exclude from output (default: nav, footer, aside, script, style)"
       },
-      "priority": {
-        "type": "integer",
-        "description": "Crawl priority (1-10, higher = faster)",
-        "default": 10
-      },
       "extraction_type": {
         "type": "string",
-        "enum": ["llm", "cosine", "regex", "css"],
-        "description": "Extraction strategy: 'llm' (LLM extraction), 'cosine' (semantic filtering), 'regex' (pattern matching), 'css' (CSS selector schema). Omit for raw markdown."
-      },
-      "extraction_instruction": {
-        "type": "string",
-        "description": "For extraction_type=llm: instruction for what to extract (e.g., 'Extract key price factors and predictions')"
-      },
-      "extraction_schema": {
-        "type": "object",
-        "description": "For extraction_type=llm: Pydantic-style schema for structured output"
+        "enum": ["cosine", "regex", "css"],
+        "description": "Extraction strategy: 'cosine' (semantic filtering; requires optional server model dependencies), 'regex' (built-in pattern families), 'css' (CSS selector schema). Omit for raw markdown."
       },
       "semantic_filter": {
         "type": "string",
@@ -99,20 +84,17 @@
       },
       "regex_patterns": {
         "type": "array",
-        "items": {"type": "string"},
-        "description": "For extraction_type=regex: built-in patterns to use (email, phone, url, currency, date, percentage)"
-      },
-      "custom_patterns": {
-        "type": "object",
-        "description": "For extraction_type=regex: custom patterns {name: regex} (e.g., {\"price\": \"\\\\$[0-9,]+\"})"
+        "items": {
+          "type": "string",
+          "enum": ["email", "phone", "url", "currency", "date", "percentage"]
+        },
+        "minItems": 1,
+        "maxItems": 6,
+        "description": "For extraction_type=regex: select built-in families email, phone, url, currency, date, percentage. Defaults to all six; phone includes international/US formats and date includes ISO/US formats. Arbitrary regex is not accepted here."
       },
       "css_schema": {
         "type": "object",
         "description": "For extraction_type=css: JsonCssExtractionStrategy schema {baseSelector: 'article', fields: [{name, selector, type}]}"
-      },
-      "llm_provider": {
-        "type": "string",
-        "description": "For extraction_type=llm: override LLM provider (e.g., 'openai/gpt-4o-mini', 'ollama/llama2')"
       }
     },
     "required": []
@@ -125,7 +107,12 @@
     "auto_approve": true
   },
   "availability": {
-    "all_of_env": ["CRAWL4AI_URL"],
-    "setup_hint": "Set CRAWL4AI_URL in the active mode env file. CRAWL4AI_USER, CRAWL4AI_PASS, and CRAWL4AI_API_KEY are optional."
+    "all_of_env": ["CRAWL4AI_URL", "CRAWL4AI_API_KEY"],
+    "setup_hint": "Set CRAWL4AI_URL and CRAWL4AI_API_KEY (native Bearer token) in the active mode env."
+  },
+  "proxy_policy": "off",
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true
   }
 }

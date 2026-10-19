@@ -208,8 +208,8 @@ class TestAvailabilityEvaluator(EnvVarCleanupMixin, unittest.TestCase):
         manifests = {
             "ssh_remote": {"config_files": ["config/ssh.json"]},
             "send_email": {"webhook_registry": ["send_email"]},
-            "crawl_url": {"all_of_env": ["CRAWL4AI_URL"]},
-            "screenshot_url": {"all_of_env": ["CRAWL4AI_URL"]},
+            "crawl_url": {"all_of_env": ["CRAWL4AI_URL", "CRAWL4AI_API_KEY"]},
+            "screenshot_url": {"all_of_env": ["CRAWL4AI_URL", "CRAWL4AI_API_KEY"]},
             "create_social_clip": {"all_of_env": ["MONEYPRINTER_API_URL"]},
             "document_ocr": {"all_of_env": ["OVIS_OCR_URL"]},
         }

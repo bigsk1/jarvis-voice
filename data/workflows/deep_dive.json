@@ -92,9 +92,9 @@
       },
       "output_var": "page_content",
       "extract": {
-        "content": "content",
-        "crawled_url": "url",
-        "title": "title"
+        "content": "results[0].markdown",
+        "crawled_url": "results[0].url",
+        "title": "results[0].title"
       },
       "validation": {
         "type": "heuristic",

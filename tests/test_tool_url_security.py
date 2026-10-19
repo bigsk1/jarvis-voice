@@ -22,7 +22,11 @@ import send_webhook  # noqa: E402
 def isolated_services(monkeypatch):
     monkeypatch.setattr(send_webhook, "load_config", lambda: None)
     monkeypatch.setattr(send_webhook, "load_webhook_registry", lambda: {})
-    monkeypatch.setenv("CRAWL4AI_URL", "http://100.64.0.2:11235")
+    monkeypatch.setattr(screenshot_url, "load_config", lambda: None)
+    monkeypatch.setattr(screenshot_url, "get_config_value", lambda key, default="": {
+        "CRAWL4AI_URL": "http://100.64.0.2:11235",
+        "CRAWL4AI_API_KEY": "test-token",
+    }.get(key, default))
 
     def reject(*_args, **_kwargs):
         raise AssertionError("Rejected URL must not reach HTTP or rate-limit state")
@@ -112,13 +116,14 @@ def test_public_screenshot_source_can_use_configured_tailnet_service(monkeypatch
     class ReachedConfiguredService(BaseException):
         pass
 
-    def post(url, **kwargs):
+    def post(method, url, **kwargs):
+        assert method == "POST"
         assert url == "http://100.64.0.2:11235/screenshot"
         assert kwargs["json"]["url"] == "https://public.example.test/page"
         # Stop before response handling can save a screenshot to real Stash.
         raise ReachedConfiguredService
 
-    monkeypatch.setattr(screenshot_url.requests, "post", post)
+    monkeypatch.setattr(screenshot_url, "http_request", post)
     monkeypatch.setattr(sys, "argv", ["screenshot_url", json.dumps({"url": "https://public.example.test/page"})])
     with pytest.raises(ReachedConfiguredService):
         screenshot_url.main()

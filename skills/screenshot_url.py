@@ -13,17 +13,20 @@ Security:
 - SSRF protection via stash_helper.validate_url()
 - Blocks internal/private IPs
 """
-import sys
-import os
 import json
-import requests
+import os
+import sys
 import tempfile
-from base64 import b64encode, b64decode
-from pathlib import Path
+from base64 import b64decode
 from datetime import datetime
+from pathlib import Path
+
+import requests
 
 # Add lib to path for security checks
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from config_loader import get_config_value, load_config
+from http_client import http_request
 from paths import resolve_local_file_tool_output_path
 
 
@@ -43,25 +46,30 @@ def resolve_screenshot_output_path(save_path: str | None) -> Path:
 
 def main():
     """Take screenshot of URL and optionally analyze."""
+    load_config()
     try:
         input_data = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
     except (json.JSONDecodeError, IndexError):
         return_error("Invalid JSON input")
         return 1
+    if not isinstance(input_data, dict):
+        return_error("Input must be a JSON object")
+        return 1
     
     # Get configuration from environment
-    crawl4ai_url = os.environ.get("CRAWL4AI_URL", "").rstrip("/")
-    crawl4ai_user = os.environ.get("CRAWL4AI_USER", "")
-    crawl4ai_pass = os.environ.get("CRAWL4AI_PASS", "")
-    crawl4ai_api_key = os.environ.get("CRAWL4AI_API_KEY", "")
+    crawl4ai_url = get_config_value("CRAWL4AI_URL", "").rstrip("/")
+    crawl4ai_api_key = get_config_value("CRAWL4AI_API_KEY", "").strip()
     
     if not crawl4ai_url:
         return_error("CRAWL4AI_URL not configured")
         return 1
+    if not crawl4ai_api_key:
+        return_error("CRAWL4AI_API_KEY not configured")
+        return 1
     
     # Extract parameters
     url = input_data.get("url")
-    if not url:
+    if not isinstance(url, str) or not url:
         return_error("URL is required")
         return 1
     
@@ -81,16 +89,12 @@ def main():
     analyze = input_data.get("analyze", False)  # Run vision analysis
     question = input_data.get("question", "Describe what you see on this webpage. Note any key information, text, or UI elements visible.")
     save_path = input_data.get("save_path")  # Optional: save to specific path
-    
+
     # Build headers
-    headers = {"Content-Type": "application/json"}
-    
-    if crawl4ai_user and crawl4ai_pass:
-        auth_string = b64encode(f"{crawl4ai_user}:{crawl4ai_pass}".encode()).decode()
-        headers["Authorization"] = f"Basic {auth_string}"
-    
-    if crawl4ai_api_key:
-        headers["x-api-key"] = crawl4ai_api_key
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {crawl4ai_api_key}",
+    }
     
     # Build request body
     body = {
@@ -100,19 +104,29 @@ def main():
     
     try:
         # Take screenshot via crawl4ai
-        response = requests.post(
+        response = http_request(
+            "POST",
             f"{crawl4ai_url}/screenshot",
             headers=headers,
             json=body,
-            timeout=60
+            timeout=45, allow_redirects=False, proxy_policy="off"
         )
         
         if response.status_code == 401:
             return_error("Authentication failed")
             return 1
+        if response.status_code == 403:
+            return_error("Crawl4AI access forbidden; check token and enabled API features")
+            return 1
+        if 300 <= response.status_code < 400:
+            return_error("Crawl4AI redirected the authenticated request; configure its final API URL")
+            return 1
         
         response.raise_for_status()
         result = response.json()
+        if not isinstance(result, dict) or result.get("success") is False:
+            return_error("Crawl4AI reported a failed screenshot")
+            return 1
         
         # Get screenshot data (base64 PNG)
         screenshot_b64 = result.get("screenshot")
@@ -128,8 +142,9 @@ def main():
         
         # Convert to proper format and resize if needed (for vision APIs)
         try:
-            from PIL import Image
             import io
+
+            from PIL import Image
             
             # Load image
             img = Image.open(io.BytesIO(screenshot_bytes))
@@ -181,7 +196,7 @@ def main():
                 )
         else:
             return_success(
-                speech="Screenshot saved to stash.",
+                speech="Screenshot saved.",
                 data=response_data
             )
         
@@ -198,7 +213,7 @@ def main():
         return 1
 
 
-def _analyze_screenshot(image_path: str, question: str) -> str:
+def _analyze_screenshot(image_path: str, question: str) -> str | None:
     """Analyze screenshot using analyze_image tool's vision capabilities."""
     try:
         # Import analyze_image function
