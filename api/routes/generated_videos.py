@@ -11,15 +11,17 @@ Endpoints:
 - DELETE /api/generated-videos/xai-shares/revoke - Revoke public MP4
 - GET  /api/generated-videos/health       - Health check
 """
-import sys
 import json
 import subprocess
-from pathlib import Path
+import sys
 from datetime import datetime
+from pathlib import Path
+from typing import Literal, NoReturn, Optional
+
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from typing import Literal, NoReturn, Optional
+from starlette.concurrency import run_in_threadpool
 
 # Add lib and skills to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -385,7 +387,8 @@ async def generate_video(request: GenerateRequest):
         env = export_config_environment(request.mode)
         
         # Video generation can take a long time (30-120+ seconds)
-        result = subprocess.run(
+        result = await run_in_threadpool(
+            subprocess.run,
             ["python3", str(tool_path), json.dumps(args)],
             capture_output=True,
             text=True,

@@ -20,6 +20,7 @@ from typing import Literal, NoReturn, Optional
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, model_validator
+from starlette.concurrency import run_in_threadpool
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
@@ -292,7 +293,8 @@ async def generate_music(request: GenerateRequest):
     tool_path = PROJECT_ROOT / "skills" / "generate_music.py"
 
     try:
-        result = subprocess.run(
+        result = await run_in_threadpool(
+            subprocess.run,
             [sys.executable, str(tool_path), json.dumps(args)],
             capture_output=True,
             text=True,

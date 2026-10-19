@@ -29,6 +29,7 @@ from typing import Literal, Optional
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 # Add lib and skills to path before importing local modules below.
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -368,7 +369,8 @@ async def generate_image(request: GenerateRequest):
         # Set environment for mode
         env = export_config_environment(request.mode)
         
-        result = subprocess.run(
+        result = await run_in_threadpool(
+            subprocess.run,
             ["python3", str(tool_path), json.dumps(args)],
             capture_output=True,
             text=True,
@@ -405,7 +407,8 @@ async def generate_image(request: GenerateRequest):
                     try:
                         from upload_cloudflare import upload_image as cf_upload
                         
-                        upload_result = cf_upload(
+                        upload_result = await run_in_threadpool(
+                            cf_upload,
                             str(PROJECT_ROOT / filepath),
                             "file",
                             uploader="api",

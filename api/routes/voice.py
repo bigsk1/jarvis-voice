@@ -1,11 +1,13 @@
 """Voice/TTS endpoints"""
 
+import subprocess
+import sys
+from pathlib import Path
+from typing import Literal, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Literal, Optional
-import subprocess
-from pathlib import Path
-import sys
+from starlette.concurrency import run_in_threadpool
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 from config_loader import export_config_environment
@@ -97,7 +99,8 @@ async def speak(request: SpeakRequest):
             voice_used = request.voice
         
         # Execute TTS with (possibly overridden) environment
-        result = subprocess.run(
+        result = await run_in_threadpool(
+            subprocess.run,
             [str(say_script), spoken_message],
             capture_output=True,
             text=True,

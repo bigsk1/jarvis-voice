@@ -6,14 +6,16 @@ tool parameters, and system information.
 Rate limited due to CPU-intensive semantic search (~15-20s per query).
 """
 
-from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
-from typing import Literal
-import subprocess
 import json
 import re
+import subprocess
 import time
 from pathlib import Path
+from typing import Literal
+
+from fastapi import APIRouter, Request
+from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from lib.rate_limiter import get_docs_search_rate_limit_per_minute
 
@@ -187,7 +189,9 @@ async def search_docs(request: Request, body: DocsSearchRequest):
     start_time = time.time()
     
     # Run search
-    results = run_qmd_vsearch(body.query, limit=body.limit + 2, min_score=0.35)
+    results = await run_in_threadpool(
+        run_qmd_vsearch, body.query, limit=body.limit + 2, min_score=0.35
+    )
     
     # Filter by topic
     if body.topic != "all":
@@ -236,7 +240,8 @@ async def list_topics():
 async def docs_status():
     """Get QMD index status and health."""
     try:
-        result = subprocess.run(
+        result = await run_in_threadpool(
+            subprocess.run,
             ['qmd', 'status'],
             capture_output=True,
             text=True,
