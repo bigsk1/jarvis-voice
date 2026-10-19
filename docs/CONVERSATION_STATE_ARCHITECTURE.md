@@ -1,558 +1,181 @@
 # Jarvis Conversation State Architecture
 
-## Overview
+Jarvis keeps conversation state at several scopes. A tool loop remembers the work done during one request. A saved Web conversation supplies selected history to later requests. Recent conversation logs and persistent memory can provide additional context. Optional provider-native continuation helps carry tool results between model calls within an active request.
 
-Understanding how Jarvis handles conversation state between interactions is critical for grasping its architectural design. This document explains what persists, what doesn't, and why.
+These mechanisms have different lifetimes. A saved chat is not the same as the model's current input, and a provider response ID is not Jarvis's conversation store.
 
----
+## State scopes
 
-## TL;DR - Quick Answers
+| Scope | What it contains | Lifetime and selection |
+| --- | --- | --- |
+| Active request | Tool results, execution trace, duplicate-call guards, usage, and continuation handles | One `Orchestrator.process()` request, including its internal retries |
+| Saved Web conversation | User and assistant messages, attachments, and structured result data | Stored by Jarvis; a bounded recent portion is selected for each follow-up |
+| DB auto-context | Recent question/answer exchanges, tool names, and outcome metadata | Selected from the active mode's conversation log when enabled and no nonempty history is supplied |
+| Persistent memory | Saved facts, resolved preferences, and relevant retrieved memories | Stored in the mode's memory database; selected independently of the recent-message window |
+| Provider-native continuation | A provider response reference and the next structured tool result | An optional transport for later model calls in the same active request |
 
-**Q: Does Jarvis remember context between wake word cycles?**
-**A: YES (now)** - Auto-context automatically loads recent conversations when enabled.
+Cloud and local have separate memory databases. Web conversation history is selected by conversation ID; DB auto-context is a recent-log lookup rather than a Web-thread lookup. See [Dual Database System](DUAL_DATABASE_SYSTEM.md) for storage and mode boundaries.
 
-**Q: So every time I say "Hey Jarvis", it knows what I just asked?**
-**A: Yes (if within time window):**
-- `AUTO_CONTEXT_ENABLED=true` (default) - loads recent conversations automatically
-- `AUTO_CONTEXT_WINDOW=2` - how many recent conversations to include (shipped cloud; local uses `0`)
-- `AUTO_CONTEXT_MINUTES=5` - only include conversations from last N minutes (shipped cloud; local uses `0`)
+## A request and its tool loop
 
-**Q: How does the WebUI handle context?**
-**A:** WebUI maintains conversation history client-side and passes it directly to the orchestrator via `conversation_history` parameter - different from terminal auto-context.
+A normal routed request follows this sequence:
 
-**Q: Isn't that inefficient? It has to re-send the system prompt and all tools every time?**
-**A: Usually no. Prompt caching and provider-specific continuation reduce the pain:**
-- ✅ **Prompt caching** (Anthropic, OpenAI, xAI when cache hits apply) - system/tool prompts can be discounted
-- ✅ **Auto-context** provides conversation continuity from Jarvis' own saved state
-- ✅ **xAI in-flight continuation** can avoid resending the same Jarvis tool result during one multi-tool request
-- ✅ **OpenAI Responses in-flight continuation** can do the same for OpenAI when explicitly enabled
+1. The caller supplies the current request and, when available, prior conversation history.
+2. The orchestrator assembles history, relevant memory, and other enabled context.
+3. The router selects an answer or a tool call from the effective available tools.
+4. The executor runs the tool. Its result joins the active request's context.
+5. Further router turns can use those results to finish the same request.
+6. Jarvis returns the final response and records the applicable conversation and experience data.
 
-**Q: What about OpenAI's Responses API with `store=True` and `previous_response_id`?**
-**A:** OpenAI Responses is now wired as an optional routing backend, including in-flight `previous_response_id` continuation for one active Jarvis client-tool loop. It is not used as persistent Web UI conversation memory. Saved Web UI follow-ups still use Jarvis local context and follow-up extraction.
+For example, “Find the current price and make a chart” can require several model/tool turns while still being one user request. A later “Compare that with yesterday” is a new request and needs history or another source of saved evidence.
 
----
+`TurnState` owns the in-flight tool context, accumulated results, tool-call trace, duplicate guards, usage counters, and provider continuation handles. A new `process()` call creates a fresh state object. Internal failure retries reuse that request's state and turn budget rather than starting a separate conversation.
 
-## Architecture Deep Dive
+Results passed back to the model are bounded projections. Large payloads may be shortened while retaining artifact references, source IDs, and explicit truncation metadata. The full saved artifact and the model-facing preview have different scopes. Tool RAG also selects a relevant tool set rather than sending every installed tool definition on every turn.
 
-### 1. The Voice Loop (Wake Word Detection)
+Explicit workflow commands have their own pipeline entry point and can return before the normal LLM-routing loop. Durable [background tasks](BACKGROUND-TASKS.md) have a separate job store and delivery lifecycle; they are not held in a provider response ID or only in `TurnState`.
 
-```
-┌─────────────────────────────────────────────────┐
-│  Wake Word Detection (jarvis / jarvis-local)   │
-└─────────────────────────────────────────────────┘
-         │
-         │ 1. Detect "Hey Jarvis"
-         ▼
-┌─────────────────────────────────────────────────┐
-│  Transcribe Audio (question-orchestrator.sh)   │
-└─────────────────────────────────────────────────┘
-         │
-         │ 2. Call orchestrator with transcript
-         ▼
-┌─────────────────────────────────────────────────┐
-│  Orchestrator (orchestrator_v2.py)              │
-│  - NEW Orchestrator() instance                  │
-│  - Chooses web-history vs DB auto-context path  │
-│  - Fresh LLM provider                           │
-└─────────────────────────────────────────────────┘
-         │
-         │ 3. Route & Execute Tools
-         ▼
-┌─────────────────────────────────────────────────┐
-│  LLM Provider (xAI/OpenAI/Anthropic/Ollama)     │
-│  - System prompt (FULL)                         │
-│  - All tool definitions (FULL)                  │
-│  - User query (ONLY current transcript)         │
-└─────────────────────────────────────────────────┘
-         │
-         │ 4. Execute tools, get response
-         ▼
-┌─────────────────────────────────────────────────┐
-│  Log to Database (memory_db.conversations)      │
-└─────────────────────────────────────────────────┘
-         │
-         │ 5. Speak response & RETURN to wake word
-         ▼
-┌─────────────────────────────────────────────────┐
-│  Back to Wake Word Detection                    │
-│  ⚠️ ALL STATE DISCARDED                         │
-└─────────────────────────────────────────────────┘
-```
+## Saved Web conversations
 
-**Key Point:** Each cycle creates a new `Orchestrator()` instance, but it can still reload recent context on demand:
-- `conversation_history` from the web app for web chats
-- DB-backed auto-context for CLI/TUI when `AUTO_CONTEXT_ENABLED=true`
+The Web server reads the selected conversation from `ConversationStore`. It selects recent messages and passes them to the orchestrator through `conversation_history`. The browser displays the chat; server-side saved data supplies follow-up context.
 
----
+The normal Web history limit is configured in `jarvis-web/config/web_config.json`:
 
-### 2. What Gets Sent to LLM Every Cycle
-
-```python
-# Every single wake word cycle sends:
+```json
 {
-  "messages": [
-    {
-      "role": "system",
-      "content": "<FULL SYSTEM PROMPT>"  # ~2500 tokens
-    },
-    {
-      "role": "user",
-      "content": """
-        === RECENT CONVERSATION HISTORY ===
-        Last 3 conversation(s) in past 10 minutes
-
-        [1] User: What's the price of bitcoin?
-            Jarvis: Bitcoin is $103,664
-
-        [2] User: And ethereum?
-            Jarvis: Ethereum is $3,200
-
-        === CURRENT REQUEST ===
-        What about solana?
-      """  # Auto-context prepended to current question
-    }
-  ],
-  "tools": [
-    # Full tool catalog (78 manifests at last verification; profile filters apply)
-    {"name": "get_time", "description": "...", "parameters": {...}},
-    {"name": "crypto_price", "description": "...", "parameters": {...}},
-    # ... 50+ more tools ...
-  ]
+  "conversation": {
+    "history_limit": 20
+  }
 }
 ```
 
-**What's NOW Included (with auto-context):**
-- ✅ Previous user questions (from AUTO_CONTEXT_WINDOW)
-- ✅ Previous Jarvis responses (from AUTO_CONTEXT_WINDOW)
-- ✅ Time-filtered (AUTO_CONTEXT_MINUTES, shipped cloud 5 min)
+This is a message count, not a token budget. In a simple alternating conversation, 20 messages is approximately ten user/assistant exchanges. The current user message is excluded from prior history because it is already the live request.
 
-**Why This Works:**
-- ✅ **Prompt Caching** - Anthropic/OpenAI cache the system prompt + tools for 5 minutes
-  - First request: ~7500 tokens input
-  - Subsequent requests (within 5 min): ~50 tokens input (only your question + context)
-  - Cache hit rate: >90% in practice
-- ✅ **Auto-Context** - Recent conversations automatically included
-- ✅ **Configurable** - Disable if you want fully stateless behavior
+Older messages can remain saved and visible when scrolling even after they leave the model's selected history. Raising the history limit allows more prior messages to be considered; it does not guarantee that all of their original text or tool payloads are sent in full.
 
----
+### Follow-up evidence
 
-### 3. Multi-Turn Orchestration (WITHIN a Single Cycle)
+For each selected message, context assembly can include:
 
-**Important:** Multi-turn tool calling happens **WITHIN** a single wake word cycle, not between cycles.
+- User or assistant text and its timestamp.
+- Tool names and compact structured results for follow-up actions.
+- Attachment context and durable references to uploaded or generated files.
+- Timing information when the latest prior assistant timestamp is usable.
 
-```
-User: "Build a Flask API and test it"
+The Web follow-up extractor retains useful fields such as Stash references, page IDs, provider/run identifiers, candidates, and bounded source excerpts. Context formatting treats structured tool data as the source of truth and assistant prose as a display summary. Text and attachment excerpts have additional bounds and truncation labels.
 
-┌──────────────────────────────────────┐
-│ Single Wake Word Cycle:              │
-│                                      │
-│  Turn 1: Call 'opencode' tool       │
-│    ↓                                 │
-│  Turn 2: Call 'api_call' tool       │
-│    ↓                                 │
-│  Turn 3: Q&A response                │
-│    "Flask API running on port 8091"  │
-└──────────────────────────────────────┘
+This lets a follow-up such as “put those results on Canvas” use saved references without assuming the model remembers the full original tool response. A reference can still become unusable if its underlying file or external resource expires or is deleted; retaining a chat does not retain every referenced artifact indefinitely.
 
-STATE DISCARDED AFTER THIS CYCLE
-```
+See [Web UI conversation context](JARVIS_WEB_UI.md) and [Stash](STASH_SYSTEM.md) for follow-up and artifact behavior.
 
-**Within-Cycle Context:**
-```python
-# orchestrator_v2.py - process() method
-conversation_context = []  # Context WITHIN this cycle
-tools_used = []            # Tools used THIS cycle
+## Voice, CLI, and DB auto-context
 
-for turn_num in range(max_turns):
-    # Build context from previous turns (in THIS cycle)
-    turn_input = self._build_turn_context(transcript, conversation_context)
+A voice wake cycle normally starts a new question process. Continuity between those cycles comes from saved context and memory, rather than keeping the previous tool loop alive.
 
-    # Route & execute
-    route = self.router.route(turn_input)
-    result = self.executor.execute(tool_name, arguments)
+DB auto-context is useful for brief follow-ups such as “What about tomorrow?” after a weather question. It reads recent exchanges from the active mode's `conversations` table, filters them by age, and adds the qualifying questions, responses, tool names, and outcome metadata to the current request.
 
-    # Add to THIS cycle's context
-    conversation_context.append({
-        "turn": turn_num,
-        "tool": tool_name,
-        "result": result
-    })
-```
+To enable it, set positive count and age limits in the selected `config/cloud.env` or `config/local.env`:
 
-After the cycle completes:
-- `conversation_context` is discarded
-- `tools_used` is logged to database
-- Next wake word = fresh start
-
----
-
-### 4. What IS Persistent
-
-```
-┌─────────────────────────────────────────────────┐
-│  SQLite Database (data/jarvis_memory.db)        │
-├─────────────────────────────────────────────────┤
-│                                                 │
-│  1. knowledge_base table                        │
-│     - Facts, preferences, memories              │
-│     - Saved via 'remember' tool                 │
-│     - Retrieved via 'search_memory',            │
-│       'semantic_recall' tools                   │
-│                                                 │
-│  2. conversations table                         │
-│     - Full conversation history                 │
-│     - Every question + response logged          │
-│     - Retrieved via 'get_recent_conversations', │
-│       'search_conversations' tools              │
-│                                                 │
-└─────────────────────────────────────────────────┘
-```
-
-**How to Access Previous Context:**
-
-| Scenario | User Query | Tool Used | What Happens |
-|----------|-----------|-----------|--------------|
-| **Recent history** | "What did I just ask?" | `get_recent_conversations` | Gets last 10 conversations (chronological) |
-| **Topic search** | "Did I mention Bitcoin?" | `search_conversations` | Searches conversation logs for keyword |
-| **Recall facts** | "Where is my Flask API?" | `search_memory` or `semantic_recall` | Searches knowledge base |
-
----
-
-### 5. Auto-Context Feature (Added 2025)
-
-**Configuration (cloud.env / local.env):**
 ```bash
-# Enable automatic conversation context loading
 AUTO_CONTEXT_ENABLED=true
-
-# How many recent conversations to include
 AUTO_CONTEXT_WINDOW=2
-
-# Only include conversations from last N minutes
 AUTO_CONTEXT_MINUTES=5
 ```
 
-**How It Works:**
-
-1. **On each cycle**, orchestrator decides whether to use web history or DB auto-context
-2. **Loads recent conversations** from `memory_db.conversations` table
-3. **Filters by time** (only last N minutes)
-4. **Prepends to user query** as "RECENT CONVERSATION HISTORY"
-
-**WebUI vs Terminal:**
-- **WebUI:** Passes `conversation_history` directly (client maintains state)
-- **Terminal:** Uses auto-context from database (server loads state)
-
-**Web thread block (`=== RECENT CONVERSATION CONTEXT ===`):** When the web app sends history, `jarvis-web/server/sockets/chat.py` builds prior turns without duplicating the **current** user message (already the live transcript). `ContextAssembler.format_conversation_context(...)` may add optional **gap timing** (local timestamp + relative time) when the anchor is unambiguous. This header is **not** the same as DB auto-context’s `=== RECENT CONVERSATION HISTORY ===`, but current Tool RAG compact extraction recognizes both web/current-request shapes and the older HISTORY + `Instructions:` auto-context shape. See `docs/TOOL_RAG_STRATEGY.md` for `signal_source` labels such as `current_request`, `trailing_request`, `original_user_request_tail`, and `legacy_history_strip`.
-
-**Current ownership split:**
-- `orchestrator/orchestrator_v2.py` selects the context path and passes the enhanced transcript into routing
-- `orchestrator/context_assembler.py` owns context formatting, DB history assembly, turn-context construction, and preview shaping
-- `orchestrator/response_formatter.py` owns final speech condensation after the LLM/tool phase is done
-
-**Design Benefits:**
-- ✅ Context without server-side session state
-- ✅ Works across all providers (not OpenAI-specific)
-- ✅ Configurable time window prevents stale context
-- ✅ Can be disabled for fully stateless behavior
-
----
-
-### 6. Provider-side response continuation
-
-**The general pattern:**
-```python
-res1 = client.responses.create(
-    model="gpt-5",
-    input="What is the capital of France?",
-    store=True
-)
-
-res2 = client.responses.create(
-    model="gpt-5",
-    input="And its population?",
-    previous_response_id=res1.id,
-    store=True
-)
-```
-
-**What This Enables:**
-- ✅ **Automatic context chaining** - Each response references the previous one
-- ✅ **Server-side state** - OpenAI stores the conversation history
-- ✅ **Seamless multi-turn** - No need to re-send full history
-
-**Current Jarvis status:**
-
-- **OpenAI Responses API:** optional for OpenAI tool-capable routing when `OPENAI_API_MODE=responses` and `OPENAI_RESPONSES_TOOLS=true`. It can also use in-flight `previous_response_id` + `function_call_output` when `OPENAI_RESPONSES_INFLIGHT_CONTINUATION=true`.
-- **xAI SDK stored continuation:** wired only for in-flight Jarvis client-side tool loops. After Grok asks for a Jarvis tool and Jarvis executes it, the next router turn can send `previous_response_id` plus a structural `tool_result(...)`.
-- **Saved Web UI follow-ups:** do not pass persisted provider `previous_response_id` yet. They use Jarvis recent conversation context plus compact structured follow-up data from `followup_extractor.py`.
-
-**Why cross-request continuation is not the default yet:**
-
-1. **Major Refactor Required**
-   - The web conversation layer would need to persist provider response ids with provider, model, alias, timestamps, and expiry.
-   - The orchestrator would need rules for when a same-conversation follow-up should trust provider state, when to ignore it, and when to fall back to local context.
-
-2. **Provider Compatibility**
-   - OpenAI Responses continuation is OpenAI-specific
-   - xAI stored continuation is SDK-specific and time-limited
-   - Anthropic doesn't have equivalent
-   - Ollama doesn't support it
-   - Would fragment code into provider-specific paths
-
-3. **Cost/Benefit**
-   - Prompt caching already makes current approach efficient
-   - Jarvis local follow-up extraction is provider-neutral and inspectable
-   - Added complexity may not justify benefit
-   - Current approach works well for voice UX
-
-4. **Loss of Control**
-   - Server-side state = less transparency
-   - Can't easily inspect what's in context
-   - Harder to debug "why did it say that?"
-
----
-
-### 7. Practical Examples
-
-#### Example 1: Auto-Context in Action
-
-```
-Cycle 1:
-You: "Hey Jarvis, what's Bitcoin price?"
-Jarvis: "Bitcoin is $91,711"
-[Logged to conversations table]
-
-Cycle 2 (within 10 minutes):
-You: "Hey Jarvis, what about Ethereum?"
-Jarvis: [Auto-context loads: "User asked about Bitcoin → $91,711"]
-        [Understands crypto context]
-        [Calls crypto_price for Ethereum]
-        "Ethereum is $3,200"
-```
-
-**After time window expires (10+ minutes later):**
-```
-Cycle 3:
-You: "Hey Jarvis, what about Solana?"
-Jarvis: [Auto-context is empty - too old]
-        [Still calls crypto_price - tool handles it]
-        "Solana is $148"
-```
-
-#### Example 2: Multi-Turn WITHIN Cycle
-
-```
-You: "Hey Jarvis, build a Flask API and test it"
-
-SINGLE CYCLE (state persists WITHIN this cycle):
-  Turn 1: Call opencode → Build Flask API
-  Turn 2: Call api_call → Test endpoint
-  Turn 3: Q&A → "Flask API running on port 8091, health check passed"
-
-[All turns happen in ONE wake word cycle]
-[Context is maintained WITHIN the cycle]
-[After cycle ends, all state discarded]
-```
-
-#### Example 3: Using Memory Tools
-
-```
-Cycle 1:
-You: "Hey Jarvis, use OpenCode to build a tetris game"
-Jarvis: [Calls opencode]
-        [Calls remember: "tetris_game: Built at ~/jarvis-workspace/projects/tetris on port 8091"]
-        "Tetris game built and running on port 8091"
-[STATE DISCARDED]
-
-Cycle 2 (hours later):
-You: "Hey Jarvis, start the tetris server"
-Jarvis: [Calls search_memory with "tetris"]
-        [Finds: "Built at ~/jarvis-workspace/projects/tetris on port 8091"]
-        [No local shell tool is available; gives the saved run command to the user]
-        "I found the run command for the Tetris server"
-```
-
-**Key:** Memory tool made the information persistent across cycles.
-
----
-
-### 8. Cache Mechanics (Why This Works)
-
-**Anthropic Prompt Caching:**
-```
-Request 1 (00:00):
-  System prompt: 2500 tokens → Cache miss, store for 5 min
-  Tools: 5000 tokens → Cache miss, store for 5 min
-  User query: 50 tokens
-  Total input: 7550 tokens
-
-Request 2 (00:01):
-  System prompt: 2500 tokens → Cache HIT (free)
-  Tools: 5000 tokens → Cache HIT (free)
-  User query: 50 tokens
-  Total input: 50 tokens (7500 cached)
-
-Request 3 (00:02):
-  System prompt: 2500 tokens → Cache HIT (free)
-  Tools: 5000 tokens → Cache HIT (free)
-  User query: 50 tokens
-  Total input: 50 tokens (7500 cached)
-
-Request 4 (05:01) [after 5 minutes]:
-  System prompt: 2500 tokens → Cache miss, re-store
-  Tools: 5000 tokens → Cache miss, re-store
-  User query: 50 tokens
-  Total input: 7550 tokens
-```
-
-**Cost Comparison:**
-
-| Scenario | Input Tokens | Cached Tokens | Cost |
-|----------|--------------|---------------|------|
-| **Without caching** | 7550 per cycle | 0 | $0.003/cycle |
-| **With caching (hit)** | 50 per cycle | 7500 | $0.00005/cycle |
-| **Savings** | - | - | **98.4% reduction** |
-
-**Why Stateless Works:**
-- Cache hit rate in practice: >90%
-- Conversations typically happen in bursts (< 5 min apart)
-- Cost of stateless approach is negligible with caching
-
----
-
-### 9. Comparison: Stateful vs Stateless
-
-| Aspect | Stateful (Responses API) | Stateless (Current) |
-|--------|--------------------------|---------------------|
-| **Context between cycles** | ✅ Automatic | ❌ Manual (via tools) |
-| **Implementation complexity** | ❌ High | ✅ Low |
-| **Provider compatibility** | ❌ OpenAI only | ✅ All providers |
-| **Debugging** | ❌ Server-side state, opaque | ✅ Each cycle independent |
-| **Memory leaks** | ❌ Possible | ✅ Impossible |
-| **Cost (with caching)** | ~Same | ~Same |
-| **Voice UX fit** | ⚠️ May be too implicit | ✅ Explicit, clear |
-
----
-
-### 10. When Would You Want Stateful?
-
-**Good Use Cases:**
-1. **Long coding sessions** - "Add a login page" → "Now add password reset" (context of what was built)
-2. **Multi-step planning** - "Plan a trip to NYC" → "Add 2 more days" (context of plan)
-3. **Debugging sessions** - "Why isn't X working?" → "Try approach Y" → "That didn't work" (full troubleshooting context)
-
-**Current Workarounds:**
-```
-# Instead of automatic context:
-You: "Hey Jarvis, I just asked you to build a Flask API. Now add a /users endpoint"
+| Setting | Meaning |
+| --- | --- |
+| `AUTO_CONTEXT_ENABLED` | Enables the DB-history fallback |
+| `AUTO_CONTEXT_WINDOW` | Maximum recent conversation rows considered; each row is a question/answer exchange |
+| `AUTO_CONTEXT_MINUTES` | Age cutoff for those exchanges |
 
-# Jarvis would:
-# 1. Call search_conversations("Flask API")
-# 2. Find previous OpenCode session
-# 3. Call opencode to add endpoint
-```
+The shipped examples disable auto-context in both modes. The cloud example retains a two-exchange, five-minute window; the local example sets both limits to zero. When enabling it in local mode, set usable positive limits as well as the flag.
 
-**Trade-off:**
-- Stateful = More natural, fewer words needed
-- Stateless = More explicit, clearer intent, easier to debug
+If all three settings are absent, the implementation falls back to enabled with three exchanges over ten minutes. Those code fallbacks differ from the shipped example configuration; use explicit settings to choose the behavior you want.
 
----
+### Context selection precedence
 
-### 11. What About Sequential Thinking MCP Tool?
+For the normal routing path, the orchestrator chooses one recent-history source:
 
-**Your Observation:**
-> "ok i added a mcp tool mcp_sequentialthinking and seems to work good both local and cloud, local seems to do a bit better, cloud had one thought and then stopped before proceeding thinking it could just pick it up again later"
+1. A **nonempty** supplied `conversation_history` takes precedence.
+2. Otherwise, enabled DB auto-context is attempted.
+3. Otherwise, the request proceeds without recent conversation history.
 
-**What's Happening:**
+A Web follow-up with supplied history therefore uses its own thread's selected messages. An empty or new Web thread can still fall back to DB auto-context if it is enabled. The fallback is not restricted to CLI or voice, and its recent rows are not filtered to that Web conversation ID.
 
-The sequential thinking tool allows the LLM to break down complex problems into steps. But:
+When no recent row qualifies, auto-context leaves the current request unchanged. It is a bounded history lookup, not a summary of the user's entire conversation archive.
 
-1. **Cloud (Anthropic/OpenAI):**
-   - May use fewer thinking steps due to higher confidence
-   - Optimizes for efficiency (fewer turns = faster/cheaper)
-   - May assume it can "pick up later" (expecting stateful behavior)
+## Persistent memory is separate
 
-2. **Local (Ollama):**
-   - More cautious, uses more thinking steps
-   - Less confident, wants to plan more before acting
-   - Better fit for complex reasoning tasks
+Recent history and persistent memory answer different needs. Recent history can resolve “that chart” or “the previous question.” Memory can retain a preference or fact after the recent-history window has passed.
 
-**Implication for State Management:**
+When enabled, automatic memory injection retrieves relevant saved information before routing across CLI, Web, and voice requests. Canonical preferences have their own resolution and injection rules. Tools such as `search_memory` and `semantic_recall` can retrieve saved facts explicitly; conversation-history tools can search prior exchanges when older details are needed.
 
-If the cloud provider expects to "pick up later", it's assuming **stateful context** exists. In current architecture:
-- ❌ It CAN'T pick up later (state is discarded)
-- ✅ It MUST complete thinking within current cycle
+Disabling `AUTO_CONTEXT_ENABLED` disables the recent-DB-history fallback. It does not disable saved Web history, automatic memory injection, or explicit memory tools. Likewise, a message leaving the Web history window does not delete its saved conversation or convert it into a persistent memory automatically.
 
-**Solution:**
-- System prompt could be enhanced to emphasize "complete your thinking NOW, you won't remember it next cycle"
-- OR: Implement some form of state persistence (big change)
+Relevant memories are selected and bounded; they do not reproduce every old conversation. [Memory System](MEMORY_SYSTEM.md) explains memory retrieval and configuration. Response style and speech condensation are another separate layer: the shorter speech output is not evidence that the model received no history.
 
----
+## Provider-side response continuation
 
-### 12. Recommendations
+Jarvis supports provider-native continuation for eligible OpenAI Responses and xAI SDK tool loops. After the model requests a Jarvis tool, the next model call can send a `previous_response_id` and a structured result for that tool call instead of rebuilding the whole loop as text.
 
-#### If Staying Stateless (Current Approach):
+| Provider path | Required configuration and runtime support |
+| --- | --- |
+| OpenAI Responses | `OPENAI_API_MODE=responses`, `OPENAI_RESPONSES_TOOLS=true`, and `OPENAI_RESPONSES_INFLIGHT_CONTINUATION=true` |
+| xAI SDK | `XAI_SEARCH=true`, `XAI_STORE_MESSAGES=true`, `XAI_NATIVE_CONTINUATION=true`, structural continuation mode, and an available search-enabled SDK client |
 
-**Pros:**
-- ✅ Works well for voice UX
-- ✅ Simple and reliable
-- ✅ Provider-agnostic
-- ✅ Easy to debug
+OpenAI returns the tool result as a `function_call_output` tied to its call ID. The xAI path uses its structural tool-result message. Both retain Jarvis's local result context for fallback.
 
-**Enhancements:**
-1. **Better system prompt** - Emphasize that context doesn't persist
-2. **Auto-context tool** - Create a tool that automatically loads recent conversation context when beneficial
-3. **Session tracking** - Group related wake word cycles into "sessions" for better conversation retrieval
+These settings are opt-in paths with their own storage behavior. In particular, enabling OpenAI in-flight continuation uses `OPENAI_RESPONSES_STORE_CONTINUE` (default `true`) for chainable responses; `OPENAI_RESPONSES_STORE=false` alone does not turn off that continuation storage. Review [OpenAI Provider](OPENAI_PROVIDER.md) and [xAI Provider](XAI_PROVIDER.md) before enabling provider-side storage.
 
-#### If Going Stateful (Responses API):
+### Scope and fallback
 
-**Pros:**
-- ✅ More natural conversation flow
-- ✅ Better for complex multi-step tasks
-- ✅ Less explicit "remember what I just said" needed
+The continuation handles used for routing belong to the active request. A new user message in a saved Web conversation does not resume a persisted provider chain. Jarvis reconstructs that follow-up from its saved local history and compact result data.
 
-**Cons:**
-- ❌ Major refactor of `llm_provider.py`, `orchestrator_v2.py`
-- ❌ OpenAI-specific (breaks Anthropic, Ollama)
-- ❌ More complex state management
-- ❌ Harder to debug
+Continuation can be bypassed when configuration or request policy disables it, duplicate recovery needs local context, metadata is incomplete, the model differs, or a handle is too old. A recognized provider continuation error allows a bounded retry using the normal text context. That retry is a model-routing fallback; it does not rerun the already completed Jarvis tool merely to reconstruct context.
 
-**Effort:** ~5-10 hours of development + testing
+Other provider paths still use Jarvis's local context assembly. This describes the integrations implemented in Jarvis, rather than claiming that every provider has identical APIs or storage behavior.
 
----
+## Prompt caching and context size
 
-### 13. Summary
+Prompt caching is separate from conversation history and response continuation. It can reduce repeated-prefix processing or billing when supported by the provider and the request qualifies. It does not make missing older messages visible, preserve a Jarvis tool loop between requests, or remove cached text from the logical context window.
 
-**Current State (Updated 2026):**
-- 🟢 **Auto-context** loads recent conversations automatically (configurable)
-- 🟢 **Context persists** within multi-turn tool execution (single cycle)
-- 🟢 **WebUI** maintains conversation history client-side
-- 🟢 **Prompt caching** makes approach efficient (98%+ cost reduction)
-- 🟢 **Provider-agnostic** - works with OpenAI, Anthropic, Ollama
+Jarvis keeps stable instructions ahead of changing request context where its prompt assembly allows. Clock updates, tool selection, history, and other request-specific data can change the payload. Cache hits and savings must come from reported usage; they are not guaranteed by the presence of a saved conversation.
 
-**Configuration:**
-```bash
-AUTO_CONTEXT_ENABLED=true   # Enable auto-context
-AUTO_CONTEXT_WINDOW=2       # Recent conversations to include
-AUTO_CONTEXT_MINUTES=5      # Time window
-```
+A chat's cumulative processed-token total adds usage across model calls and requests. It can be much larger than any single prompt because the same context may be processed repeatedly. The recent-message limit and the model's token context limit are also different bounds: messages can leave the selected history even when the model has token space remaining.
 
-**Bottom Line:**
+## Practical boundaries
 
-The architecture now provides **automatic context** via the auto-context feature while remaining provider-agnostic. The WebUI maintains its own conversation history, while terminal mode uses database-backed auto-context.
+| Question | Current behavior |
+| --- | --- |
+| Can one request use several tools? | Yes. Its active tool loop carries results forward within that request. |
+| Does reopening a saved Web chat replay its entire archive? | No. Follow-ups use selected recent messages and compact evidence. |
+| Does a new wake cycle automatically know the last question? | Only when relevant saved history or memory is supplied; DB auto-context must be enabled for its recent-log path. |
+| Does a high cumulative token count mean that entire amount is sent next time? | No. Cumulative usage and the next prompt's selected context are different. |
+| Does turning off auto-context make Jarvis fully stateless? | No. Web history, memory, tools, and saved artifacts have separate controls and lifetimes. |
+| Does provider-native continuation replace the Web conversation store? | No. It is used within an eligible active tool loop. |
+| Does a planning MCP tool make a later request resume automatically? | No. An external tool may own state, but Jarvis still needs the appropriate saved context and handles to use it. |
 
-For voice assistant use, "Hey Jarvis" within the time window will have context from recent conversations. After the time window expires, it's a fresh start - which matches natural voice UX expectations.
+## Implementation map
 
----
+| Component | Responsibility |
+| --- | --- |
+| `orchestrator/orchestrator_v2.py` | Select history source, retrieve relevant context, route/execute, and select continuation or fallback |
+| `orchestrator/turn_state.py` | Request-local tool-loop bookkeeping and continuation handles |
+| `orchestrator/context_assembler.py` | Format supplied history, build DB auto-context, and bound tool-result previews |
+| `jarvis-web/server/services/conversation_store.py` | Persist Web conversations and their message data |
+| `jarvis-web/server/sockets/chat.py` | Select the recent Web message window and pass history to the orchestrator |
+| `jarvis-web/server/services/followup_extractor.py` | Produce compact structured evidence for later Web turns |
+| `lib/memory_db.py` | Store memory and conversation-log records for the active mode |
+| `lib/openai_responses_adapter.py`, `lib/llm_provider.py` | Provider request conversion and continuation transport |
+| `orchestrator/response_formatter.py` | Final response-style and speech formatting |
 
-**Related Docs:**
-- `docs/MULTI_TURN_ORCHESTRATION.md` - Multi-turn within a cycle
-- `docs/MEMORY_SYSTEM.md` - Persistent memory tools
-- `docs/DUAL_DATABASE_SYSTEM.md` - Database architecture
-- `docs/CASUAL_VS_DETAILED_MODE.md` - Response style modes
+## Related guides
 
----
-
-*Last updated: 2026-02-02*
-*Major update: Added auto-context documentation, WebUI conversation handling*
+- [Multi-Turn Orchestration](MULTI_TURN_ORCHESTRATION.md)
+- [Auto-Context System](AUTO_CONTEXT_SYSTEM.md)
+- [Web UI](JARVIS_WEB_UI.md)
+- [Memory System](MEMORY_SYSTEM.md)
+- [Dual Database System](DUAL_DATABASE_SYSTEM.md)
+- [Tool RAG Strategy](TOOL_RAG_STRATEGY.md)
+- [OpenAI Provider](OPENAI_PROVIDER.md)
+- [xAI Provider](XAI_PROVIDER.md)

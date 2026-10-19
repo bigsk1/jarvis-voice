@@ -14,23 +14,21 @@
 ./bin/jarvis-api --local
 ```
 
-### 2. Run Comprehensive Tests
+### 2. Run isolated regression checks
+
+For contributor checks that do not contact the running Jarvis instance:
 
 ```bash
-./tests/test-api-endpoints.sh
+./bin/test-suite
 ```
 
-**This tests:**
-- ✅ Health check
-- ✅ System status
-- ✅ Create alerts (low, high, medium severity)
-- ✅ List alerts (all, pending, by severity)
-- ✅ Get specific alert
-- ✅ Acknowledge alerts (single and bulk)
-- ✅ Create reminders
-- ✅ List reminders
-- ✅ Manual TTS
-- ✅ Auto-resolve functionality
+The [testing guide](../TESTING.md) explains the repository environment, focused
+checks, and fixture permissions. The suite uses controlled providers and
+temporary state; it does not require the production API to be running.
+
+The manual requests below target a real instance. Some create or delete records,
+speak notifications, or call providers. Use an isolated test instance or disposable
+records, and add the authentication headers required by your API configuration.
 
 ### 3. Manual Tests
 
@@ -358,7 +356,7 @@ curl -s http://localhost:8880/api/memory/273 | jq '.memory'
 curl -s http://localhost:8880/api/memory/99999 | jq
 ```
 
-### 17. Test Create Memory (Non-destructive)
+### 17. Create a disposable test memory
 
 ```bash
 # Create a test memory
@@ -643,11 +641,11 @@ chmod +x test-new-apis.sh
 
 ## Success Criteria
 
-✅ All 14 original tests pass in `test-api-endpoints.sh`  
+✅ The deterministic core regression suite passes
 ✅ TTS works for high/critical alerts  
 ✅ Alerts stored in database  
 ✅ Query filters work  
-✅ Auto-sync works between modes  
+✅ Cloud/local requests use their intended separate data
 ✅ Interactive docs accessible  
 ✅ Both cloud and local modes work  
 
@@ -669,13 +667,18 @@ chmod +x test-new-apis.sh
 
 ---
 
-**Ready to test?** Run:
+**Isolated regression checks:**
 ```bash
-./bin/jarvis-api
-./tests/test-api-endpoints.sh
+./bin/test-suite
 ```
 
-**Test new APIs:**
+**Manual requests:** start the API in a separate terminal and leave it running:
+
+```bash
+./bin/jarvis-api
+```
+
+Then run requests from another terminal:
 ```bash
 # Quick memory test
 curl -s http://localhost:8880/api/memory/stats | jq '.total_memories'

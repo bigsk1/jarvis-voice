@@ -2,12 +2,24 @@
 
 The [Firefox companion](../jarvis-firefox-extension/README.md#hands-free-talk) supports the same hands-free conversation loop as [Web Talk](WEB_TALK.md), with microphone capture and playback in its sidebar or pop-out.
 
-1. For local iteration, temporarily load `jarvis-firefox-extension/manifest.json` in `about:debugging#/runtime/this-firefox`. Reload that temporary add-on after source edits. Load the updated Jarvis Web process through your usual workflow. No ZIP or version bump is needed for this test.
-2. Connect the extension to that Web server and choose local/cloud mode. Both STT and TTS must already work in that mode.
-3. In the sidebar, open **Settings → Microphone setup**, click **Allow microphone**, and approve Firefox's prompt. Leave the setup tab open. Finish or clear the current draft and attachments, then click **Talk**, speak, and pause. Check that transcription, tool progress, reply, playback, and the return to Listening happen in order.
-4. Ask a follow-up. Both turns stay in the same conversation and use the configured response word limits.
-5. Check Pause/Resume, Interrupt, End, and Esc. With **Speak to interrupt** off, capture stops during work/playback. Enable it and speak naturally over a longer reply: playback should stop, the complete utterance should become one next turn, and the conversation and tool routing should remain the same. The microphone indicator must clear on Pause/End. Closing or hiding the view ends Talk while accepted work can finish in chat.
-6. Open a second sidebar/pop-out. Talk can only run in one view. Reloading or reconnecting must leave the microphone off.
+## Start a conversation
+
+1. Install the [Firefox companion](../jarvis-firefox-extension/README.md) and
+   connect it to your Jarvis Web server. Choose cloud or local mode; STT and TTS
+   must be configured for that mode.
+2. In the sidebar, open **Settings → Microphone setup**, click **Allow
+   microphone**, and approve Firefox's prompt. Leave the setup tab open.
+3. Finish or clear the current draft and attachments, click **Talk**, speak, and
+   pause. Jarvis transcribes the utterance, runs the request, plays the answer,
+   and returns to Listening in the same conversation.
+4. Use **Pause/Resume**, **Interrupt**, **End**, or **Esc** to control the session.
+   With **Speak to interrupt** off, capture stops during work/playback. Enable it
+   to speak over a reply. Completed tool actions cannot be undone.
+
+Only one extension view can own Talk. Closing or hiding the view ends its
+session while accepted work can finish in chat. Reloading or reconnecting leaves
+the microphone off. For browser/device checks after source changes, see the
+[maintainer reference](development/firefox-talk-delivery.md).
 
 Firefox's microphone permission is separate from add-on/data consent and server access. Existing grants are reused. **Microphone setup** is available in Settings and in preparing/paused Talk controls. Its **Allow microphone** check immediately releases capture and sends nothing. Accept and remember the grant, then return and Resume or start Talk again.
 

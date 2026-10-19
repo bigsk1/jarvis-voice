@@ -9,13 +9,13 @@ Every background tool uses the same admission, saved job, card, late-answer, all
 | Adapter | Who observes completion? | Current examples |
 | --- | --- | --- |
 | `local_skill_v1` | The task worker starts a reviewed local skill and supervises its process group until it exits. | `convert_file` |
-| `remote_skill_v1` | The worker runs the same kind of skill, but that skill calls an external API and waits or polls for a result. The worker is still the observer; stopping its process does not prove the provider stopped. | `generate_image`, `generate_video`, `generate_music`, `create_social_clip`, [Browser Use Cloud](BROWSER-USE-CLOUD.md), [Craft editing tools](../jarvis-craft-tools/README.md) |
+| `remote_skill_v1` | The worker runs the same kind of skill, but that skill calls an external API and waits or polls for a result. The worker is still the observer; stopping its process does not prove the provider stopped. | `generate_image`, `generate_video`, `generate_music`, `create_social_clip`, [Browser Use Cloud](BROWSER-USE-CLOUD.md), [Craft editing tools](../jarvis-craft-tools/README.md), [Docling](tools/docling-tool/README.md) |
 | `apify_actor_v1` | The worker submits one ordinary Actor, durably saves its native run ID, and polls that same run. A replacement worker can resume observation without submitting again. | Optional [Apify Actors](mcp/APIFY.md) |
 | `http_callback_v1` | The worker submits once and stops waiting. A separate service keeps the job identity and later POSTs an authenticated progress or final event to Jarvis. | Local Browser Use; optionally, an owner-installed remote agent over HTTPS |
 
 These adapters share the same chat system and differ in who owns completion. A compatible local or remote skill needs reviewed manifest settings and a trusted binding to the shared runner. A callback tool also needs a real submit/receipt service, a configured source and credential, and a reviewed binding; adding a manifest flag or a URL alone cannot make a tool runnable. [Task callbacks](TASK-CALLBACKS.md) documents that protocol.
 
-Progress is separate from completion. The callback protocol accepts `task.progress`, but a service must actually send it; the expanded Web task card shows the latest short phase, not a full activity stream. Browser Use sends phase updates, while a service that only sends a final callback will appear idle until it finishes. OpenCode keeps its existing foreground tool card with richer live status; moving it to a background adapter is not planned.
+Progress is separate from completion. The callback protocol accepts `task.progress`, but a service must actually send it; the expanded Web task card shows the latest short phase, not a full activity stream. Browser Use sends phase updates, while a service that only sends a final callback will appear idle until it finishes. OpenCode uses a foreground tool card with richer live status and has no background binding.
 
 **Both Browser Use tools are Web-only and background-only.** Local `browser_use` requires the saved allowlist, worker and callback service. Hosted `browser_use_cloud` requires the saved allowlist, worker and a Browser Use Cloud API key; its V4 observer polls in the worker, so Jarvis's incoming callback receiver is not needed. Unmet requirements hide either tool from model selection; stale or forced calls fail without starting browser work. Voice, Talk, Firefox Companion, query API, CLI and workflows cannot run either tool; there is no foreground fallback.
 
@@ -23,40 +23,13 @@ For tools declaring `execution.background.required`, runtime discovery adds unme
 
 **Background admission and incoming webhooks default off; the saved tool list starts empty.** Execution requires a running Linux worker and saved Web preferences. The native start-all and UI groups start that worker; admission remains opt-in. Importing the package creates no storage or service. Missing workers affect background readiness only. An enabled background call reports unavailability rather than silently running foreground; unrelated chat and foreground tools keep working.
 
-Local conversion needs no Tailscale network, VPS, or public endpoint. [Task callbacks](TASK-CALLBACKS.md) add an optional authenticated inbox and **Settings → Integrations** controls, proven with a separate local HTTP service. The opt-in [Browser Use](BROWSER-USE.md) tool is the first public callback binding. A private long-task integration may be installed separately; it is absent from public clones. The existing short foreground `openclaw` tool is separate. The standalone relay and `/api/alerts` remain outside this work. Firefox source compatibility is tested in-tree; packaging and AMO release remain separate steps.
+Local conversion needs no Tailscale network, VPS, or public endpoint. [Task callbacks](TASK-CALLBACKS.md) provide an optional authenticated inbox and **Settings → Integrations** controls. The opt-in [Browser Use](BROWSER-USE.md) tool uses that inbox; private callback integrations can be installed separately and are absent from public clones. The short foreground `openclaw` tool, standalone relay, and `/api/alerts` are separate systems. Firefox clients can view task updates but cannot admit background work.
 
-## Run the isolated proof
-
-From the repository root:
-
-```bash
-.venv/bin/python -m pytest tests/test_web_startup_imports.py tests/test_background_tasks.py tests/test_background_task_delivery.py tests/test_background_task_management.py tests/test_background_task_deployment.py tests/test_background_task_workflow.py tests/test_background_conversion.py tests/test_background_local_skill.py tests/test_web_background_tasks.py tests/test_web_background_handoff.py tests/test_web_background_context.py tests/test_web_background_tasks_ui.py tests/test_mode_plumbing_scripts.py -q
-.venv/bin/python -m pytest tests/test_web_continuation_rendering.py tests/test_web_assistant_message_rendering.py tests/test_web_response_actions.py tests/test_web_task_recovery.py tests/test_web_task_recovery_ui.py tests/test_completion_guard_server_side_tools.py -q
-.venv/bin/python -m pytest tests/test_background_review_regressions.py tests/test_background_remote_skill.py tests/test_web_background_media.py -q
-node --test jarvis-firefox-extension/tests/client.test.js jarvis-firefox-extension/tests/ui-rendering.test.js jarvis-firefox-extension/tests/talk.test.js
-```
-
-The Python tests use temporary SQLite databases, conversation JSON, configuration, and artifact directories. A real Flask-SocketIO test client drives the actual Web handler, orchestrator loop, executor, conversation lease, and local worker process. The model's routing decisions and summary are scripted; no provider credentials, live services, or network listener are used. Browser state/rendering tests execute the shipped JavaScript in a Node VM; they are not a manual browser acceptance run.
-
-The worker startup tests cover normal and `python -I` launches from outside the checkout, including health, singleton ownership, and clean shutdown. The Web startup tests also run the complete Web launcher and app factory in fresh isolated Python processes from outside the checkout. They exercise real route imports and handler construction without pytest's repository import path; configuration, storage, logs, and the network listener are isolated.
-
-The principal journey runs in both cloud and local modes:
-
-1. Save the inert fixture in the background tool list and send the first Web message without a per-message selection.
-2. Persist its acceptance answer and pending card; finish the source run and release its lease before the worker starts.
-3. Send a second message that calls an actual local foreground subprocess.
-4. Finish the background fixture while that second tool is active. Its original card updates immediately; its follow-up answer waits for the conversation lease.
-5. Finish the foreground turn, append exactly one late assistant answer, and reconnect to recover both the card and answer. No synthetic user message is added.
-
-The explicit Convert test sends known PNG→JPEG arguments without constructing the orchestrator, settles its receipt, and runs another foreground tool while a real conversion child is paused. It then releases ImageMagick and decodes the resulting JPEG. A separate test pauses late answer generation, sends a new foreground turn, and verifies that stale prose is regenerated against the new history. Both use isolated storage and scripted model responses.
+## Conversation context
 
 Each subsequent chat turn receives a bounded task-store snapshot for its conversation generation across both modes, including after new admissions are disabled. Each job retains its original execution mode; switching chat mode does not hide its status or change execution/delivery authorization. Evidence includes the last reported progress, update time, and attention reason when available. Execution state and answer-delivery state stay separate: a finished tool can still have a pending follow-up answer. Current facts supersede old receipt prose; unrelated replies should not recap jobs. Foreground context and late answers share explicitly labeled input arguments and returned results, so a newly created output artifact is not mistaken for a mismatched input solely because its stash identifiers differ.
 
 The eight-job snapshot prioritizes unfinished/uncertain work, then pending answer delivery, then recent terminal outcomes. Cancelled and expired jobs have terminal rank; they do not displace newer successes as unfinished work. Expiry means a job missed its admission deadline without dispatch; result archival is a separate retention flag.
-
-Failure tests cover missing receipt writes, unsaved source outcomes, source-history recovery during a successor turn, stale ownership, summary/projection failure, restart, deletion fencing, retention, disabled admission, authentication, and isolation from Completion Guard and unsupported callers. Each crash scenario has its own database; uncertain work never gets replayed to make a test pass.
-
-`tests/fixtures/background_task_worker.py` is absent from tool discovery and production profiles. The test harness supplies its trusted adapter binding and output root. Its exclusive `.started` artifact detects repeat execution.
 
 ## Admission and execution
 
@@ -105,17 +78,17 @@ The reviewed Apify adapter separates submission from observation. Its immutable
 native checkpoint lets another worker acquire a new attempt and fence for the
 same running slot, mode and deadline. Recovery calls only the observer; it never
 repeats submission. This does not change `remote_skill_v1` or its media tools.
-No saved native handle, an expired deadline, or a disposed conversation still
-takes the uncertainty path. See [Apify recovery and limits](mcp/APIFY.md).
+Missing native handles, expired deadlines, and disposed conversations remain
+ineligible for observation recovery. See [Apify recovery and limits](mcp/APIFY.md).
 
 Tool timeouts and uncertain outcomes also queue a durable notice in the same
 conversation. A remote observer reaching its waiting limit does not prove the
 provider failed or stopped. The notice says what Jarvis can confirm and that no
 automatic retry was started; it remains visible after reconnect or reload.
 Timeout/uncertainty notices do not depend on an LLM summary call. They use the
-existing delivery outbox, source settlement and conversation-generation fences,
-with no new service or database migration. Previously silent uncertain jobs
-receive one notice when the store next reconciles, unless their conversation
+existing delivery outbox, source settlement and conversation-generation fences.
+Older uncertain jobs without a notice receive one when the store next reconciles,
+unless their conversation
 was cleared or deleted.
 
 When a skill returns unconfirmed results, the worker preserves its bounded
@@ -156,7 +129,7 @@ After a delivery transaction commits or defers, Web republishes the source card 
 
 Normal chat status questions receive the current delivery state separately from the tool's execution state. Late-answer generation omits that internal delivery state: the answer being composed is itself the result delivery message, so it must not describe its own result as still awaiting delivery. This does not mark delivery complete early; the outbox changes to `delivered` only when projection commits.
 
-The schema update removes legacy query copies from authorization payloads without changing accepted job identities or execution fingerprints. Clear/delete removes authorizations for the disposed generation. Result retention also removes old orphan authorizations and authorizations whose referencing results have all been archived; active work and pending follow-ups keep the metadata they need. Restart both Web and worker when applying this schema update.
+Authorization records retain execution metadata without a copy of the user query. Clear/delete removes authorizations for the disposed generation. Result retention also removes old orphan authorizations and authorizations whose referencing results have all been archived; active work and pending follow-ups keep the metadata they need. Restart Web and worker together after an upgrade that changes the task schema.
 
 A continuation has its own delivery lease (30 seconds, renewed every five), stable ID, parent job/request, and `kind=continuation`. It snapshots idle conversation history under the mode gate, then generates with the original provider/model and all tools disabled **without holding the chat lease**. New foreground messages can run while generation is in progress. It takes the conversation lease only for the brief append/settlement step. It does not invoke the orchestrator or repair loop. At most two deliveries generate concurrently, with one per conversation.
 
@@ -164,7 +137,7 @@ The generated answer is cached in the outbox before JSON projection. Projection 
 
 `task:updated` revises the original card; `chat:continuation` appends the late answer. They use a separate authenticated `tasks:<conversation>` subscription and never emit legacy `tool:*` or `chat:response` events. Revision and generation checks reject stale events. Web and Firefox preserve foreground progress, Stop state, drafts, attachments, and Talk audio. Saved conversation history restores missed events.
 
-Live and restored Web continuations use a separate DOM renderer. Markdown formatting remains readable; raw HTML is literal text, and links accept HTTP(S) or fully parsed, encoded stash references. Successful tool results with saved media now show inline image previews (with the existing lightbox), video controls, or audio controls, plus Open/Download actions. The shared media renderer uses the existing media styles and builds DOM nodes from structured results; it never feeds late data into legacy HTML widgets or rich-content hydration. Media loads only from encoded same-origin stash URLs, with no autoplay or provider URL fallback. Unsupported files retain viewer links, and failed previews keep their file actions.
+Live and restored Web continuations use a separate DOM renderer. Markdown formatting remains readable; raw HTML is literal text, and links accept HTTP(S) or fully parsed, encoded stash references. Successful tool results with saved media show inline image previews (with the existing lightbox), video controls, or audio controls, plus Open/Download actions. The shared media renderer uses the existing media styles and builds DOM nodes from structured results; it never feeds late data into legacy HTML widgets or rich-content hydration. Media loads only from encoded same-origin stash URLs, with no autoplay or provider URL fallback. Unsupported files retain viewer links, and failed previews keep their file actions.
 
 New continuations persist their job's execution mode for stash URLs. Older saved replies recover it from the source receipt card without rewriting conversation history, so a later chat-mode switch does not select the wrong stash. Each continuation has response-only Copy; it preserves the current foreground action rail. Trailing continuations do not change that answer's reaction eligibility, while a later user message still invalidates it.
 
@@ -221,7 +194,7 @@ To inspect status or run the worker in a terminal:
 "${JARVIS_VENV:-$HOME/jarvis-venv}/bin/python" bin/jarvis-task-worker run
 ```
 
-**Tmux is the current native development and operating workflow.** It makes it easy to start, stop, attach to, and debug the whole application while features are evolving. Systemd is an optional future installation path once the system is stable; it is not required or installed by the normal startup commands.
+**Tmux is the standard native service supervisor.** It supports starting, stopping, attaching to, and debugging the application. A systemd user-unit generator is available for an alternative manual deployment; normal startup commands do not install or enable systemd units.
 
 The normal native `bin/start`, `bin/start --ui-only`, and `bin/start --no-api` groups also start **jarvis-task-worker** and an already-configured **jarvis-browser-use** helper in tmux. Existing aliases for those commands need no changes. Browser Use is skipped quietly until its one-time Settings setup has been completed. `bin/start --stop` stops both with the other sessions. One worker serves both cloud and local jobs, including when Web changes modes. Starting a worker never enables admission or adds tools to the saved allowlist.
 
@@ -286,11 +259,11 @@ For a future Grafana deployment, a collector can tail
 [`loki.source.file`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.file/)
 supports file collection. Keep job IDs as searchable JSON fields and use stable
 labels such as service/component/mode. No collector, endpoint, or external log
-upload is enabled by this feature. Restart Web and worker to load the logging code.
+upload is enabled by this feature.
 
-### Optional future systemd installation
+### Optional systemd installation
 
-Keep the unit generator available for a future stable deployment. These are manual opt-in installation commands, not steps required for the current tmux workflow. To use automatic restarts independent of tmux, generate and inspect the portable systemd user unit, then install it:
+To use automatic restarts independent of tmux, generate and inspect the portable systemd user unit, then install it. Stop any tmux-managed or manually started worker first; run only one supervisor for a task database.
 
 ```bash
 "${JARVIS_VENV:-$HOME/jarvis-venv}/bin/python" bin/jarvis-task-worker unit > /tmp/jarvis-task-worker.service
@@ -326,8 +299,6 @@ docker compose stop jarvis-task-worker
 
 The worker uses the same image, UID, config/data mounts and tool profile as Jarvis. It exposes no ports and has no daemon dependencies. It reads the Web tool-block configuration through a read-only bind; start the normal Web deployment first so `jarvis-web/config/web_config.json` exists. Its entrypoint skips initialization/tool synchronization and its healthcheck reports durable worker presence. `init: true` reaps children; a 20-second stop grace and `unless-stopped` policy provide isolated supervision. Start/stop of this service does not start/stop Web, API, Canvas, or existing daemons.
 
-Compose rendering and isolation are tested; building/running this optional container remains an operator deployment step. Native worker execution is exercised with real disposable stores.
-
 The stock Compose stack does not run the managed Browser Use helper: its setup and
 callback submission are currently native-loopback paths. The Docker worker can
 serve reviewed local/remote skill bindings, but Browser Use needs a separate
@@ -336,11 +307,11 @@ cross-container transport and lifecycle design. See the
 
 ## Shared local skill runner
 
-`local_skill_v1` is the policy for process-contained work; `convert_file` remains its only production tool binding. The same runner also serves the three media generators, social clips, hosted Browser Use Cloud, and the optional Craft editing clients under `remote_skill_v1` (see below). The [implementation plan](personal/background-tasks-and-webhook-integrations-plan.md#phase-2-follow-up-generic-local-skill-runner) tracks the extraction and its gate. The inert local probe lives only in `tests/fixtures/local_skill_probe.*` and runs from a temporary installation, with no production discovery or saved preference changes.
+`local_skill_v1` is the policy for process-contained work; `convert_file` is its production tool binding. The same runner also serves the three media generators, social clips, hosted Browser Use Cloud, Docling, and the optional Craft editing clients under `remote_skill_v1` (see below).
 
 A compatible local skill needs its ordinary manifest/script, reviewed execution metadata, and one `TRUSTED_BINDINGS` entry in `lib/background_tasks/production.py`. No new Python execution wrapper is needed. The tool name binds to its same-named `.py` or `.sh` sibling in `skills/`; manifests cannot select arbitrary paths, dynamic imports, MCP, workflow, or discovery handlers. A durable Web authorization binds the original request, mode, conversation generation, selected tool, and exact manifest/script digests. Before launching, the runner checks these again, current profile/availability, and Web blocks. Those checks do not remove foreground tools from discovery.
 
-Child processes receive the job's mode file as ordinary environment keys. Only reviewed deployment overrides (`STASH_DIR`, `JARVIS_TOOL_PROFILE`) and background limits (`JARVIS_BACKGROUND_DEADLINE`, `JARVIS_BACKGROUND_MAX_INPUT_BYTES`) are stamped as `JARVIS_OVERRIDE_*`. Mode secrets such as API keys stay at normal precedence and are not promoted above `export_config_environment`.
+Child environments are assembled from the job's mode. Tools with a trusted `CHILD_ENVIRONMENT_POLICIES` entry receive only their reviewed keys; tools without one inherit the exported worker environment. Reviewed deployment overrides (`STASH_DIR`, `JARVIS_TOOL_PROFILE`) and background limits (`JARVIS_BACKGROUND_DEADLINE`, `JARVIS_BACKGROUND_MAX_INPUT_BYTES`) use `JARVIS_OVERRIDE_*`. Mode secrets such as API keys stay at normal precedence and are not promoted above `export_config_environment`.
 
 For example, a reviewed local skill can declare:
 
@@ -372,23 +343,17 @@ The local policy requires `dangerous: false`, `auto_approve: true`, and `network
 
 Workers advertise supervision capability even if a particular conversion backend is missing; the requested skill then reports its backend failure. Restart both Web and any running worker after updating, so new admissions and worker capability use the same adapter identity. Ensure the selected runtime environment has the updated requirements. Native tmux runs use `JARVIS_VENV` (default `~/jarvis-venv`); the repository `.venv` is a development/test environment and is not required by the launcher.
 
-### Existing conversion jobs
+### Upgrading with existing jobs
 
-The pre-extraction conversion alias and fingerprint bridge have been removed after verifying the installation has no legacy jobs. Supervised skill jobs use `local_skill_v1` or `remote_skill_v1`. Worker upgrades never rewrite accepted policy fingerprints or replay started submissions. Finish pending work before changing skill scripts; queued jobs whose reviewed script/manifest changed fail closed before launch.
+Supervised skill jobs use `local_skill_v1` or `remote_skill_v1`. The older conversion-specific adapter is not supported. Worker upgrades never rewrite accepted policy fingerprints or replay started submissions. Finish pending work before changing skill scripts; queued jobs whose reviewed script/manifest changed fail closed before launch.
 
 ## Remote media generation
 
-Restart Web **and the task worker** after installing this change, then enable the desired media tools in **Settings → Tools → Background tasks**. Existing preferences are preserved; adding production bindings never selects tools automatically. Settings reports readiness per tool, so an older worker that only supports conversion cannot claim media readiness. Typed chat uses the same saved policy. Existing single-attempt-per-message guards for `generate_image`, `generate_video`, and `generate_music` remain; `create_social_clip` uses the existing exact-duplicate guard and may receive distinct arguments in separate calls.
-
-Run the isolated media proof from the repository root:
-
-```bash
-.venv/bin/python -m pytest tests/test_background_remote_skill.py tests/test_web_background_media.py -q
-```
+Enable the desired media tools in **Settings → Tools → Background tasks**. Adding a production binding never selects it automatically. Settings reports readiness per tool; keep Web and the task worker on the same code and restart both after upgrades. Typed chat uses the same saved policy. Existing single-attempt-per-message guards for `generate_image`, `generate_video`, and `generate_music` apply; `create_social_clip` uses the exact-duplicate guard and may receive distinct arguments in separate calls.
 
 These are still local skill subprocesses, sharing the same executor, supervision, argument validation, policy fingerprints, deadlines and durable delivery. Their manifests select `remote_skill_v1`, `completion_scope: "remote_work"`, and `network: true`; the trusted binding must independently select the same policy. There is one shared runner, not a Python wrapper for each generator. The original scripts retain their provider calls, generated-media catalogs, stash references and memory writes. Provider polling, where used, happens inside the worker's skill process while Web chat is free.
 
-| Reviewed tool | Total background budget | Provider boundary reviewed |
+| Tool | Total background budget | Completion boundary |
 | --- | --- | --- |
 | `generate_image` | 900 seconds | Gemini/OpenAI/xAI requests return generated images, then the script saves files and references. |
 | `generate_video` | 1200 seconds | xAI SDK polling and Gemini operations/interactions can keep generating after the observing process exits; the script waits for output and saves it. |
@@ -396,9 +361,9 @@ These are still local skill subprocesses, sharing the same executor, supervision
 | `create_social_clip` | 2100 seconds | MoneyPrinterTurbo owns a submitted job; the script polls its task ID, downloads the first completed video, and saves it to stash. A local stop cannot cancel the server job. |
 | `craft_image`, `craft_pdf`, `craft_photos`, `craft_video`, `craft_motion` | 1500 seconds | Craft Gateway owns durable jobs. The client observes for up to 1200 seconds and saves verified outputs. Inspect/collect or cancel through `craft_inspect`; stopping the observer does not cancel remote work. |
 
-Queue time counts toward these budgets. All four use a 4 GiB process address-space ceiling, 512 MiB per output file and 2 MiB captured-output limit. `save: false` is rejected for background media so successful replies can retain artifacts. Input resource metadata does not itself validate every reference/download; the existing skill loaders and process ceilings still apply. No provider API, price, model default or foreground timeout changes are part of this binding review.
+Queue time counts toward these budgets. The three generators and social clips use a 4 GiB process address-space ceiling, 512 MiB per output file and 2 MiB captured-output limit. `save: false` is rejected for background media so successful replies can retain artifacts. Input resource metadata does not itself validate every reference/download; the skill loaders and process ceilings still apply. Background selection does not extend an individual provider request timeout.
 
-Social clips require `MONEYPRINTER_API_URL` in the selected mode. Background arguments require a nonempty subject, cap subject/script at 20,000 characters, validate the documented 1–10 paragraphs and positive clip duration, and restrict `video_count` to 1 because the skill only saves the first returned video. The 35-minute budget allows room for its default 20-minute poll, creation waits and download; increasing `MONEYPRINTER_MAX_WAIT_SEC` does not extend the admitted budget. Existing queue-full (429) submission retries remain inside the skill. Jarvis never replays an uncertain attempt. These four media tools, Browser Use Cloud, and the five Craft editing clients share the `remote_skill_v1` capacity bucket; uncertain attempts also occupy global running capacity, including capacity otherwise available for conversion.
+Social clips require `MONEYPRINTER_API_URL` in the selected mode. Background arguments require a nonempty subject, cap subject/script at 20,000 characters, validate the documented 1–10 paragraphs and positive clip duration, and restrict `video_count` to 1 because the skill only saves the first returned video. The 35-minute budget allows room for its default 20-minute poll, creation waits and download; increasing `MONEYPRINTER_MAX_WAIT_SEC` does not extend the admitted budget. Existing queue-full (429) submission retries remain inside the skill. Jarvis never replays an uncertain attempt. These four media tools, Browser Use Cloud, Docling, and the five Craft editing clients share the `remote_skill_v1` capacity bucket; uncertain attempts also occupy global running capacity, including capacity otherwise available for conversion.
 
 These are upper observation budgets, not extensions of a provider/SDK's individual request timeouts. Existing provider waits still apply; a lost response after launch takes the uncertain-outcome path below.
 
@@ -410,9 +375,7 @@ The outcome contract is deliberately conservative:
 - `lib/remote_completion.py` carries this evidence from reviewed provider boundaries. Background xAI video uses separate SDK submission/polling calls with SDK resubmission disabled. Background Gemini Interactions uses public HTTP hooks to stop error responses before SDK retries and refuse a second submission after a lost response; polling remains independent. Gemini submission errors and explicit terminal results, synchronous image/music HTTP rejections, and MoneyPrinterTurbo rejected submissions/failed tasks provide evidence. Unclassified failures remain conservative.
 - Queued cancellation prevents dispatch. Running remote jobs have no Cancel action/API permission because process-group termination only proves the local observer stopped. Operator reconciliation requires evidence that the provider operation has settled; stopping Jarvis alone is insufficient.
 
-The shared remote skill policy does not resume remote job IDs, implement provider cancellation, or receive callbacks. Those require a separately reviewed completion/recovery contract; [Apify](mcp/APIFY.md) has one under `apify_actor_v1`, without changing these remote skill bindings. `transcribe_audio`, `document_ocr`, `analyze_video`, and `analyze_image` are not added to the background allowlist by this review.
-
-`tests/test_background_remote_skill.py` checks policy separation, uncertain outcomes, prelaunch rejection (including tool blocks changed after admission) and an independent provider fixture that completes after its local observer stops. `tests/test_web_background_media.py` runs the actual three generator CLI/save paths and social-clip submit/poll/download/stash path with scripted providers in both modes, using temporary artifacts/catalogs/stash and a live-write guard. It proves receipt → second foreground tool → saved artifact/late answer, plus mode-specific profile, ENV, manifest and Web blocking. The video bytes are fixture responses, not encoded provider videos. No paid API calls are used.
+The shared remote skill policy does not resume remote job IDs, implement provider cancellation, or receive callbacks. Those require a separately reviewed completion/recovery contract; [Apify](mcp/APIFY.md) has one under `apify_actor_v1`, without changing these remote skill bindings. `transcribe_audio`, `document_ocr`, `analyze_video`, and `analyze_image` have no background bindings.
 
 ## Concurrent artifacts and operator revisions
 
@@ -420,11 +383,11 @@ Image, video and audio catalogs use one shared cross-process lock around complet
 
 Canvas gallery labels hide the generation timestamp and UUID. The stored filename remains the catalog/CDN key and is used unchanged for file URLs, downloads, sharing and deletion; formatting a label never renames a file or migrates a catalog.
 
-Schema migration 7 makes job revisions track semantic changes instead of heartbeat/lease renewal. A heartbeat does not invalidate a Cancel token or rewrite a task card; progress, state, read status and delivery changes still advance revisions. Restart Web and worker together to apply the migration. Restart Canvas/API as well when deploying the shared catalog lock so every writer participates.
+Job revisions track semantic changes rather than heartbeat/lease renewal. A heartbeat does not invalidate a Cancel token or rewrite a task card; progress, state, read status and delivery changes still advance revisions. Keep Web, worker, Canvas and API on the same version so every catalog writer participates in the shared lock.
 
-Continuation stash links, media previews and the stash viewer carry the original job's mode through raw/open/download requests. Legacy links with no explicit mode retain their previous behavior. Refresh Web after deploying these scripts.
+Continuation stash links, media previews and the stash viewer carry the original job's mode through raw/open/download requests. Legacy links with no explicit mode retain their previous behavior.
 
-Provider protocol references: [Gemini structured errors](https://ai.google.dev/gemini-api/docs/api-errors) and [xAI deferred video generation](https://docs.x.ai/developers/model-capabilities/video/generation). Tests use scripted providers; no live provider requests are needed for these changes.
+Provider protocol references: [Gemini structured errors](https://ai.google.dev/gemini-api/docs/api-errors) and [xAI deferred video generation](https://docs.x.ai/developers/model-capabilities/video/generation).
 
 ## Conversion boundary and limits
 
@@ -436,15 +399,11 @@ Background conversion uses the remaining admitted job budget (900 seconds by def
 
 These are process/file ceilings, not a container-wide memory quota. Configure container/host quotas separately for aggregate limits. Files already created in stash may survive an uncertain execution and must not be inferred absent from a cancelled/failed card. A killed worker can leave an isolated temporary workspace; inspect its recorded process group before cleaning that job's workspace. Never delete the task database to clear an uncertain slot.
 
-An optional long-encode check uses a generated looping video, paces real ffmpeg, and verifies that the job is still running past 180 seconds before checking its completed 185-second output:
-
-```bash
-JARVIS_TEST_LONG_ENCODE=1 .venv/bin/python -m pytest tests/test_background_conversion.py::test_background_video_encode_survives_foreground_timeout -q -s
-```
-
-Portable tests generate audio and images and decode actual converted output. They exercise ordinary foreground conversion too, cancellation during real ffmpeg, lease loss, killed workers, output/input limits, and policy changes. Optional `JARVIS_TEST_VIDEO` / `JARVIS_TEST_IMAGE` paths enable representative-media tests using temporary copies and disposable outputs; no private media is committed. PDF conversion is not supported by this adapter.
-
-Incoming callbacks pass the separate [Phase 3a local HTTP gate](TASK-CALLBACKS.md#isolated-acceptance-proof), covering middleware, body limits, authentication, durable inbox and one saved answer after another Web tool turn. A private long-task binding can be installed only after its completion POST contract is packaged and verified for that deployment. The optional public relay remains future work as a separate deployable service; none of these integrations is required for local background execution.
+PDF conversion is not supported by this adapter. Incoming callbacks have a
+separate authenticated [service protocol](TASK-CALLBACKS.md#self-hosted-protocol).
+A private long-task binding needs a packaged and verified completion POST
+contract for that deployment. A public relay is not included or required for
+local background execution.
 
 ### Optional Craft editing clients
 
@@ -458,3 +417,30 @@ Lost submissions query their persisted request ID instead of replaying a POST;
 unknown outcomes retain existing remote-task uncertainty semantics. Each client
 has a separate trusted restricted background environment; no other provider
 credentials are passed. See [Craft setup and troubleshooting](../jarvis-craft-tools/README.md).
+
+## Contributor checks
+
+From the repository root:
+
+```bash
+.venv/bin/python -m pytest tests/test_background_tasks.py tests/test_background_task_delivery.py tests/test_background_conversion.py tests/test_background_local_skill.py tests/test_background_remote_skill.py tests/test_web_background_tasks.py tests/test_web_background_handoff.py tests/test_web_background_context.py tests/test_web_background_media.py -q
+.venv/bin/python -m pytest tests/test_background_task_management.py tests/test_background_task_deployment.py tests/test_background_task_workflow.py tests/test_background_review_regressions.py tests/test_web_background_tasks_ui.py tests/test_web_continuation_rendering.py -q
+```
+
+These checks use disposable storage and scripted model/provider responses.
+Conversion checks exercise real local conversion binaries. JavaScript checks use
+Node and do not replace a browser/device check. Use [the full core suite](TESTING.md)
+for cross-component regression checks; Firefox extension tests have their own
+command.
+
+An optional long-encode check paces a generated looping video beyond the
+foreground tool timeout and validates its output:
+
+```bash
+JARVIS_TEST_LONG_ENCODE=1 .venv/bin/python -m pytest tests/test_background_conversion.py::test_background_video_encode_survives_foreground_timeout -q -s
+```
+
+Optional `JARVIS_TEST_VIDEO` / `JARVIS_TEST_IMAGE` paths enable representative
+media checks using temporary copies and disposable outputs. See
+[callback contributor checks](TASK-CALLBACKS.md#isolated-acceptance-proof) for the
+local HTTP protocol fixture and its socket permission requirement.

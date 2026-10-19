@@ -1,12 +1,18 @@
 # Intent-Based Testing Strategy
 
-> **Philosophy**: Test like a human would speak, not like a keyword matcher would parse.
+This design reference describes natural-language routing experiments. Its sample
+harnesses and implementation stages are proposals, not the installed regression
+runner. For routine contributor checks, use `./bin/test-suite` and the
+[testing guide](TESTING.md). Real-model routing experiments require explicit
+provider configuration and can incur costs.
+
+> **Philosophy**: Exercise natural phrasing as well as exact tool names.
 
 ---
 
 ## Table of Contents
 
-1. [The Problem with Current Testing](#the-problem-with-current-testing)
+1. [The Problem with Current Testing](#limits-of-exact-phrase-routing-tests)
 2. [Intent-Based Testing Approach](#intent-based-testing-approach)
 3. [Natural Language Test Cases](#natural-language-test-cases)
 4. [Temperature Settings Strategy](#temperature-settings-strategy)
@@ -16,9 +22,9 @@
 
 ---
 
-## The Problem with Current Testing
+## Limits of exact-phrase routing tests
 
-### Current Test Pattern (Keyword Matching)
+### Exact-phrase examples
 
 ```bash
 # Purpose-built queries that match tool descriptions exactly
@@ -103,7 +109,7 @@ ambiguous_tests = [
 
 ## Natural Language Test Cases
 
-### Category 1: Conversation History (The Regression We Just Fixed)
+### Category 1: Conversation History
 
 **Intent**: User wants to see recent conversation history
 
@@ -178,7 +184,7 @@ reminder_tests = {
         "Show reminders",
         
         # Natural variations
-        "When is my next reminder?",           # ← We just fixed this!
+        "When is my next reminder?",
         "What reminders do I have?",
         "Do I have any reminders?",
         "Did I set any reminders?",
@@ -835,7 +841,7 @@ detector.report(regressions)
 
 ## Implementation
 
-### Phase 1: Intent Test Suite (Week 1)
+### Proposed stage 1: Intent test suite
 
 **Goal**: Create comprehensive intent-based test suite
 
@@ -852,7 +858,7 @@ detector.report(regressions)
 
 ---
 
-### Phase 2: Temperature Implementation (Week 2)
+### Proposed stage 2: Temperature evaluation
 
 **Goal**: Implement dynamic temperature settings
 
@@ -870,7 +876,7 @@ detector.report(regressions)
 
 ---
 
-### Phase 3: Regression Detection (Week 3)
+### Proposed stage 3: Regression detection
 
 **Goal**: Automated regression detection
 
@@ -887,7 +893,7 @@ detector.report(regressions)
 
 ---
 
-### Phase 4: Continuous Improvement (Ongoing)
+### Maintaining experiment coverage
 
 **Goal**: Learn from production and add tests
 
@@ -903,7 +909,11 @@ detector.report(regressions)
 
 ---
 
-## Quick Start
+## Proposed experiment commands
+
+The paths below illustrate the proposed harness layout. `tests/intent/`,
+`tests/regression/auto_detect.py`, and `tests/temperature/` are not installed
+test entry points. Use the [maintained suite](TESTING.md) for current checks.
 
 ### Run Intent Tests
 

@@ -152,15 +152,15 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - Effective order: manifest → profile override → mode/config availability → live registry → Web/request blocks → Tool RAG shortlist
   - See [`docs/TOOL_RAG_STRATEGY.md`](docs/TOOL_RAG_STRATEGY.md)
 - **Versioned Router Prompts**: selectable `v1`-`v4` system prompts for routing
-  - `v1` is the current checkout's pinned full-context recovery baseline; `v2`, `v3`, and `v4` reduce router prompt size while preserving production routing contracts
+  - `v1` provides the full routing instructions; `v2`, `v3`, and `v4` use more compact prompts with the same routing responsibilities
   - `v4` is the local-mode default in `config/local.env.example`; cloud examples stay on `v1` unless changed in env or Web Settings
   - See [`orchestrator/router_prompts/README.md`](orchestrator/router_prompts/README.md)
 - **Advanced Tool Calling**: LLM-powered routing with 100+ tools
 - **OpenAI Responses API support**: Optional `/v1/responses` routing for OpenAI tool-capable turns, in-flight client-tool continuation, hosted-tool gates, prompt-cache hints, and safe Chat Completions fallback
 - **Multi-Turn Orchestration**: Chains multiple tools to complete complex tasks
-- **Auto-Context System**: Automatic short-term memory of recent conversations
-  - Remembers what you just discussed without needing explicit "remember" commands
-  - Catches contradictions, continues workflows seamlessly, learns from failures
+- **Optional Auto-Context**: Short-term recall of recent conversations
+  - When enabled, supplies recent exchanges without requiring an explicit recall tool call
+  - Configurable independently of saved Web conversation history and long-term memory
   - See [`docs/AUTO_CONTEXT_SYSTEM.md`](docs/AUTO_CONTEXT_SYSTEM.md)
 - **Intelligent Memory**: Semantic search + conversation history with auto-save
 - **OpenCode Integration**: Autonomous coding agent for building projects
@@ -179,7 +179,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 - **Background Services**: 24/7 daemons for follow-ups, healing, reminders, and scheduled task execution
 - **Scheduled Tasks**: Native scheduler for one-time or recurring Jarvis queries and workflows
   - Natural schedule parsing like `tomorrow at 1pm`, `April 4th at 4pm`, `4/4 at 4pm`, and `every weekday at 9am`
-  - Durable task registry with run history, `run_now`, cancel/delete, and cloud/local DB sync
+  - Mode-specific task registry with run history, `run_now`, and cancel/delete controls
   - Managed by `scheduled_task_runner` alongside the other background services
   - Full task management in the Memory Browser UI Scheduled tab
   - See [`docs/tools/scheduled-tasks/scheduled-tasks.md`](docs/tools/scheduled-tasks/scheduled-tasks.md)
@@ -402,7 +402,7 @@ Dedicated **read-only** log triage inside Jarvis Web (`./bin/jarvis-web`): open 
 ![jarvis-logs](docs/images/jarvis-logs-viewer.png)
 
 Full detail: [Logging guide](docs/logging/README.md#web-ui-log-viewer) and
-[Web UI guide](docs/JARVIS_WEB_UI.md#logs-read-only-browser-new).
+[Web UI guide](docs/JARVIS_WEB_UI.md#logs-read-only-browser).
 
 ---
 
@@ -1373,7 +1373,7 @@ LIMIT 7;"
 - [`docs/tools/spotify/SPOTIFY.md`](docs/tools/spotify/SPOTIFY.md) - **Spotify Integration** (playback control, search, multi-device)
 - [`docs/tools/generate-music-tool/README.md`](docs/tools/generate-music-tool/README.md) - **Music Generation** (providers, parameters, storage, Audio Gallery, FastAPI)
 - [`docs/STASH_SYSTEM.md`](docs/STASH_SYSTEM.md) - **Artifact storage** (multi-step workflows, URL downloads, SSRF protection)
-- [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md) - **Self-learning system** (Phase 1: positive/negative constraints)
+- [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md) - **Self-learning system** (reflection, reusable insights, and maintenance)
 - [`docs/AUTO_CONTEXT_SYSTEM.md`](docs/AUTO_CONTEXT_SYSTEM.md) - Short-term conversation memory
 - [`docs/JARVIS_WORKFLOW.md`](docs/JARVIS_WORKFLOW.md) - Complete request flow with examples
 - [`docs/TOOL_CALLING_SYSTEM.md`](docs/TOOL_CALLING_SYSTEM.md) - How tool routing works

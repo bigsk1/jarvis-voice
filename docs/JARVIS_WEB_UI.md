@@ -1,28 +1,17 @@
 # Jarvis Web UI
 
-> **Status**: Implemented and actively maintained
-> **Last Updated**: September 23, 2026
+Jarvis Web is the browser interface for chat, tools, workflows, attachments,
+and voice conversations. It shares the core orchestrator, memory, and
+Intelligence layer with the CLI and native voice interfaces, while keeping
+its own saved conversations and per-mode settings.
 
----
+Use it to:
 
-## 🎯 Overview
-
-A **standalone web application** (`jarvis-web`) providing the full Jarvis experience through a modern chat interface.
-
-- 🔌 **Pluggable**: Auto-discovers tools from `skills/*.tool.json` + MCP tools from `memory_db`
-- 🔄 **Real-time**: WebSocket-first architecture with status streaming
-- ⚙️ **Configurable**: Settings UI with provider/model dropdowns, on-the-fly switching
-- 🎨 **Beautiful**: Modern dark theme with tool cards and image lightbox
-- 📦 **Modular**: Separate from core - doesn't break terminal/TUI
-- 🔮 **Future-proof**: Web overrides don't affect cloud.env
-- 🧠 **Full Intelligence**: Uses same orchestrator → insights/feedback/self-learning works
-- 💬 **Intentional Chat**: Sticky `#chat_only` mode removes tool schemas and hosted tools when the user wants conversation only
-
-**This is NOT a replacement** - it's a new interface alongside:
-- Terminal (`orchestrator_v2.py`) - Dev/testing
-- Voice loop (`jarvis`) - Hands-free interaction
-- Dashboard TUI (`bin/jarvis-dashboard`) - Terminal control surface
-- **Web UI (`jarvis-web`)** - Full-featured chat interface ✅
+- Chat with a configured cloud or local model and follow tool progress live.
+- Attach images, documents, audio, and video, then ask follow-up questions.
+- Run workflows, use saved prompts, and choose tool hints from the composer.
+- Listen to responses, dictate a draft, or use hands-free Talk.
+- Browse saved chats, generated media, notifications, and execution logs.
 
 ![jarvis-web](images/jarvis-web-ui.png)
 
@@ -30,104 +19,115 @@ For private HTTPS access from your other devices, see the
 [Tailscale HTTPS guide](TAILSCALE_HTTPS.md). It covers Serve commands for all five
 UIs, optional navigation URLs, browser microphone checks, and troubleshooting.
 
+## 🚀 Running
+
+After [setup](INSTALL_GUIDE.md), start the Web server from the repository root:
+
+```bash
+./bin/jarvis-web         # Cloud/default startup mode
+./bin/jarvis-web local   # Explicit local startup mode
+```
+
+Open `http://localhost:5001` on the server, or use its reachable hostname/IP
+from another device. Browser microphone features require HTTPS or localhost.
+Use the configured login when Web authentication is enabled.
+
 ---
 
-## ✅ Implemented Features
+## Features
 
-### Phase 1: Foundation - COMPLETE ✅
+### Chat and tool execution
 
-| Feature | Status | Details |
-|---------|--------|---------|
-| Project structure | ✅ | `jarvis-web/` with server/client separation |
-| Flask + SocketIO backend | ✅ | Real-time WebSocket communication |
-| Basic chat UI | ✅ | Send messages, receive responses |
-| WebSocket events | ✅ | `chat:send`, `chat:response`, `chat:status`, `tool:*` |
-| Tool execution streaming | ✅ | Tool cards show progress and results |
-| Tool approval | ✅ | Foreground Web calls for tools with explicit `auto_approve: false` pause before execution; Allow once or Don't run in chat, Talk, or Firefox Companion |
-| Mode selection | ✅ | Cloud/Local toggle in header |
-| Tool discovery | ✅ | Auto-loads from `skills/*.tool.json` |
-| Dark theme | ✅ | CSS variables, modern styling |
+| Feature | Details |
+|---------|---------|
+| Project structure | `jarvis-web/` with server/client separation |
+| Flask + SocketIO backend | Real-time WebSocket communication |
+| Basic chat UI | Send messages, receive responses |
+| WebSocket events | `chat:send`, `chat:response`, `chat:status`, `tool:*` |
+| Tool execution streaming | Tool cards show progress and results |
+| Tool approval | Foreground Web calls for tools with explicit `auto_approve: false` pause before execution; Allow once or Don't run in chat, Talk, or Firefox Companion |
+| Mode selection | Cloud/Local toggle in header |
+| Tool discovery | Auto-loads from `skills/*.tool.json` |
+| Dark theme | CSS variables, modern styling |
 
-### Phase 2: Features - COMPLETE ✅
+### Conversations and settings
 
-| Feature | Status | Details |
-|---------|--------|---------|
-| Conversation history | ✅ | Save/load/delete, sidebar list |
-| [Task recovery](WEB_TASK_RECOVERY.md) | ✅ | Restore running work and Stop after reload; recover missed answers; reject overlapping turns |
-| Tool execution cards | ✅ | Expandable with args/results |
-| Image display | ✅ | Thumbnails + lightbox with download |
-| Settings panel | ✅ | Six-tab modal: General, AI Config, Tools, System, API Keys, Profile |
-| Provider dropdowns | ✅ | xAI/Anthropic/OpenAI/Ollama with model options |
-| Error handling | ✅ | Toast notifications, error messages |
-| Status updates | ✅ | Non-blocking deadline/fallback stream to browser, not local speaker |
-| Duplicate-call recovery status | ✅ | Blocked duplicate tool attempts surface as red status text, not fake failed tool cards |
+| Feature | Details |
+|---------|---------|
+| Conversation history | Save/load/delete, sidebar list |
+| [Task recovery](WEB_TASK_RECOVERY.md) | Restore running work and Stop after reload; recover missed answers; reject overlapping turns |
+| Tool execution cards | Expandable with args/results |
+| Image display | Thumbnails + lightbox with download |
+| Settings panel | General, AI Config, Tools, Prompts, Integrations, System, API Keys, and Profile tabs |
+| Provider dropdowns | xAI/Anthropic/OpenAI/Ollama with model options |
+| Error handling | Toast notifications, error messages |
+| Status updates | Non-blocking deadline/fallback stream to browser, not local speaker |
+| Duplicate-call recovery status | Blocked duplicate tool attempts surface as red status text, not fake failed tool cards |
 
-### Phase 3: Voice - COMPLETE ✅
+### Browser voice and audio
 
-| Feature | Status | Details |
-|---------|--------|---------|
-| TTS playback | ✅ | Toggle audio, plays responses in browser |
-| Mode-aware TTS | ✅ | Cloud=ElevenLabs, Local=Kokoro or Qwen3-TTS via provider-specific URL settings |
-| Status TTS | ✅ | Cached, cancellable status speech when enabled; final audio has priority |
-| **Voice dictation** | ✅ | Click mic → speak → stop → review/edit transcript → Send |
-| **[Hands-free Talk](WEB_TALK.md)** | ✅ | Separate Talk button: speak → pause to send → hear answer → listen again; desktop and mobile |
-| **Mode-aware STT** | ✅ | Cloud=OpenAI, Local=faster-whisper; compatible endpoint opt-in in either mode |
-| **Audio playback controls** | ✅ | Speaker button with pause/resume/stop, progress animation  |
-| Wake word | ⏳ | Planned - browser-based VAD |
+| Feature | Details |
+|---------|---------|
+| TTS playback | Toggle audio, plays responses in browser |
+| Mode-aware TTS | Uses the selected mode’s configured TTS provider and Web override |
+| Status TTS | Cached, cancellable status speech when enabled; final audio has priority |
+| **Voice dictation** | Click mic → speak → stop → review/edit transcript → Send |
+| **[Hands-free Talk](WEB_TALK.md)** | Separate Talk button: speak → pause to send → hear answer → listen again; desktop and mobile |
+| **Mode-aware STT** | Cloud=OpenAI, Local=faster-whisper; compatible endpoint opt-in in either mode |
+| **Audio playback controls** | Speaker button with pause/resume/stop, progress animation  |
 
-### Phase 4: Advanced - COMPLETE ✅
+### Configuration and media
 
-| Feature | Status | Details |
-|---------|--------|---------|
-| Web blocked tools | ✅ | `tools.blocked` in web_config.json, UI to manage |
-| Blocked tools UI | ✅ | Settings → Tools tab to add/remove |
-| Conversation context | ✅ | Configurable limit (default 20) passed to LLM |
-| Settings persistence | ✅ | `web_config.json` with per-mode overrides |
-| Reset to defaults | ✅ | Button to clear web overrides for current mode |
-| Dynamic LLM switching | ✅ | Change provider/model on-the-fly, takes effect immediately |
-| Dynamic media provider | ✅ | Switch image, video, and music providers on-the-fly |
-| Response style overrides | ✅ | Per-mode overrides for response style, Q&A word limit, and multi-turn word limit |
-| MCP tool discovery | ✅ | Reads from memory_db, shows in Tools tab |
-| System config view | ✅ | Mode-specific .env values plus lazy SerpApi quota in Settings → System |
-| Per-mode settings | ✅ | `cloud`/`local` sections in web_config.json |
-| Dynamic Ollama models | ✅ | Fetches available models from Ollama server |
-| Clean mode switching | ✅ | Resets Intelligence singleton on mode change |
-| Proactive alerts | ✅ | Polls jarvis-api for alerts/reminders |
-| Browser notifications | ✅ | Notifications API for new alerts/reminders |
-| **Image upload** | ✅ | Drag-drop/paste/click to attach images |
-| **Vision analysis** | ✅ | Mode-aware: Cloud=Grok/Claude, Local=llava |
-| **Expand details button** | ✅ | Show full LLM response before voice shortening |
-| **Auto-stash uploads** | ✅ | Uploaded images auto-stash + memory_db entry |
-| **analyze_image tool** | ✅ | Analyze URLs, files, stash refs with vision |
-| **🔄 File Conversion** | ✅ | Convert images/video/audio between formats |
-| **Convert modal** | ✅ | Format selector with preview, descriptions, and advanced options |
-| **Advanced convert options** | ✅ | Resize, quality, bitrate, FPS, etc. per format type |
-| **Inline converted media** | ✅ | Shows image/video/audio with download button |
-| Tool enable/disable | ⏳ | Planned (per-tool granular control) |
+| Feature | Details |
+|---------|---------|
+| Web blocked tools | `tools.blocked` in web_config.json, UI to manage |
+| Blocked tools UI | Settings → Tools tab to add/remove |
+| Conversation context | Configurable limit (default 20) passed to LLM |
+| Settings persistence | `web_config.json` with per-mode overrides |
+| Reset to defaults | Button to clear web overrides for current mode |
+| Dynamic LLM switching | Change provider/model on-the-fly, takes effect immediately |
+| Dynamic media provider | Switch image, video, and music providers on-the-fly |
+| Response style overrides | Per-mode overrides for response style, Q&A word limit, and multi-turn word limit |
+| MCP tool discovery | Reads from memory_db, shows in Tools tab |
+| System config view | Mode-specific .env values plus lazy SerpApi quota in Settings → System |
+| Per-mode settings | `cloud`/`local` sections in web_config.json |
+| Dynamic Ollama models | Fetches available models from Ollama server |
+| Mode switching | Keeps cloud/local settings and learning data separate |
+| Proactive alerts | Polls jarvis-api for alerts/reminders |
+| Browser notifications | Notifications API for new alerts/reminders |
+| **Image upload** | Drag-drop/paste/click to attach images |
+| **Vision analysis** | Uses the configured vision provider/model for the selected mode |
+| **Expand details button** | Show full LLM response before voice shortening |
+| **Auto-stash uploads** | Uploaded images auto-stash + memory_db entry |
+| **analyze_image tool** | Analyze URLs, files, stash refs with vision |
+| **🔄 File Conversion** | Convert images/video/audio between formats |
+| **Convert modal** | Format selector with preview, descriptions, and advanced options |
+| **Advanced convert options** | Resize, quality, bitrate, FPS, etc. per format type |
+| **Inline converted media** | Shows image/video/audio with download button |
 
-### Phase 5: Input Enhancement - COMPLETE ✅
+### Composer controls
 
-| Feature | Status | Details |
-|---------|--------|---------|
-| **Slash commands** | ✅ | `/canvas`, `/search`, `/recall`, etc. - modify behavior |
-| **@prompts** | ✅ | `@research`, `@quick`, `@compare` - inject methodologies |
-| **#tool hints** | ✅ | `#weather`, `#youtube_transcript`, etc. - softly prefer one or more tools |
-| **Chat only policy** | ✅ | `#chat_only` enables a sticky, explicitly selected no-tools mode |
-| **Command autocomplete** | ✅ | Type `/`, `@`, or standalone `#` to see suggestions |
-| **✨ Enhance with AI** | ✅ | Magic button transforms rough input into optimal prompt |
-| **Tool exclusion** | ✅ | Commands can exclude tools (force native search) |
+| Feature | Details |
+|---------|---------|
+| **Slash commands** | `/canvas`, `/search`, `/recall`, etc. - modify behavior |
+| **@prompts** | `@research`, `@quick`, `@compare` - inject methodologies |
+| **#tool hints** | `#weather`, `#youtube_transcript`, etc. - softly prefer one or more tools |
+| **Chat only policy** | `#chat_only` enables a sticky, explicitly selected no-tools mode |
+| **Command autocomplete** | Type `/`, `@`, or standalone `#` to see suggestions |
+| **✨ Enhance with AI** | Magic button transforms rough input into optimal prompt |
+| **Tool exclusion** | Commands can exclude tools (force native search) |
 
-### Phase 6: Conversation Management - COMPLETE ✅
+### Saved conversations
 
-| Feature | Status | Details |
-|---------|--------|---------|
-| **Quick filter** | ✅ | Filter conversations by title in sidebar |
-| **Deep search** | ✅ | Search across all message content with snippets |
-| **Export JSON** | ✅ | Download conversation as JSON file |
-| **Export Markdown** | ✅ | Download conversation as formatted Markdown |
-| **Import JSON** | ✅ | Upload JSON to restore conversation |
-| **Live sidebar sync** | ✅ | Conversations created or updated through Firefox, mobile, or another Web tab appear automatically on connected Web clients |
-| **Pinned-safe cleanup** | ✅ | `cleanup-all` removes unpinned chats older than 90 days; pinned chats are preserved |
+| Feature | Details |
+|---------|---------|
+| **Quick filter** | Filter conversations by title in sidebar |
+| **Deep search** | Search across all message content with snippets |
+| **Export JSON** | Download conversation as JSON file |
+| **Export Markdown** | Download conversation as formatted Markdown |
+| **Import JSON** | Upload JSON to restore conversation |
+| **Live sidebar sync** | Conversations created or updated through Firefox, mobile, or another Web tab appear automatically on connected Web clients |
+| **Pinned-safe cleanup** | `cleanup-all` removes unpinned chats older than 90 days; pinned chats are preserved |
 
 Sidebar updates use the existing authenticated Socket.IO connection. A short
 debounce combines changes into a list refresh without adding a polling loop.
@@ -138,57 +138,57 @@ using the same Jarvis Web server; it does not watch files edited by external pro
 Relative timestamps refresh locally once a minute while the page is visible and
 when returning to the tab, without fetching conversations or rebuilding the list.
 
-### Phase 7: Developer Tools - COMPLETE ✅
+### Logs and diagnostics
 
-| Feature | Status | Details |
-|---------|--------|---------|
-| **Server Logs Panel** | ✅ | Real-time log streaming at bottom of UI  |
-| **LLM call logs** | ✅ | Model, tokens, cost, duration, tool called  |
-| **Tool call logs** | ✅ | Tool name, duration, success/error, result preview  |
-| **Source toggles** | ✅ | Enable/disable LLM, Tools, OpenCode, Feedback  |
-| **Expandable details** | ✅ | Click entry to see full parsed JSON  |
-| **Resizable panel** | ✅ | Drag to resize, state persisted  |
-| **`/logs` browser** | ✅ | Read-only log explorer for `.jsonl`, `.log`, and `.md` with search, lazy loading, and mobile drill-down |
+| Feature | Details |
+|---------|---------|
+| **Server Logs Panel** | Real-time log streaming at bottom of UI  |
+| **LLM call logs** | Model, tokens, cost, duration, tool called  |
+| **Tool call logs** | Tool name, duration, success/error, result preview  |
+| **Source toggles** | Enable/disable LLM, Tools, OpenCode, Feedback  |
+| **Expandable details** | Click entry to see full parsed JSON  |
+| **Resizable panel** | Drag to resize, state persisted  |
+| **`/logs` browser** | Read-only log explorer for `.jsonl`, `.log`, and `.md` with search, lazy loading, and mobile drill-down |
 
-### Phase 8: Manual Feedback - COMPLETE ✅
+### Response feedback
 
-| Feature | Status | Details |
-|---------|--------|---------|
-| **Feedback toggle** | ✅ | 📊 button to enable LLM feedback analysis |
-| **`--feedback` inline** | ✅ | Type `--feedback` in message to trigger |
-| **Feedback card** | ✅ | Purple tool card shows rating, summary, issues |
-| **Feedback gating** | ✅ | Explicit Web feedback waits for Completion Guard settlement before grading |
-| **Random feedback coordination** | ✅ | Orchestrator random feedback can emit cards normally, but is disabled while Web Completion Guard is active |
-| **Expand/collapse** | ✅ | Click header to toggle details |
-| **Toast notification** | ✅ | 6-second toast with rating summary |
-| **Always logged** | ✅ | Manual feedback always saved to logs |
+| Feature | Details |
+|---------|---------|
+| **Feedback toggle** | 📊 button to enable LLM feedback analysis |
+| **`--feedback` inline** | Type `--feedback` in message to trigger |
+| **Feedback card** | Feedback card shows rating, summary, and issues |
+| **Feedback gating** | Explicit Web feedback waits for Completion Guard settlement before grading |
+| **Random feedback coordination** | Orchestrator random feedback can emit cards normally, but is disabled while Web Completion Guard is active |
+| **Expand/collapse** | Click header to toggle details |
+| **Toast notification** | 6-second toast with rating summary |
+| **Always logged** | Manual feedback always saved to logs |
 
-### Phase 9: Completion Guard - COMPLETE ✅
+### Completion Guard
 
-| Feature | Status | Details |
-|---------|--------|---------|
-| **Completion Guard card** | ✅ | Inline `Completed correctly?` card on assistant responses |
-| **Manual prompt countdown** | ✅ | Active manual cards show a small countdown and default to 10 minutes |
-| **Stale prompt settlement** | ✅ | Expired cards settle as `expired`; older unanswered cards settle as `superseded` when the conversation continues |
-| **Manual repair pass** | ✅ | Clicking `No` runs one bounded repair pass |
-| **Repair status updates** | ✅ | Repair emits normal Jarvis thinking/status/tool events |
-| **Repair tickets** | ✅ | Unresolved failures write markdown tickets to `logs/completion-guard/` |
-| **Tool-aware exclusions** | ✅ | Skips workflows and fire-and-forget/sensitive tools |
-| **Conversation export metadata** | ✅ | Markdown export includes Completion Guard status/note/ticket data when present |
-| **Prompt/runtime repair context** | ✅ | Repair uses original query, raw LLM response, tool outputs, and user note |
-| **Auto mode evaluator** | ✅ | Background evaluator can auto-trigger repair using the raw final answer |
-| **`tighten_only` outcome** | ✅ | After a **repair** pass, wording-only settlement without a second assistant message; judge JSON `tighten_only` (no repair) settles as `auto_accepted` |
-| **Visible repair delta-gating** | ✅ | Separate repaired answers now require a real evidence or tool-path delta |
-| **Repair cancel support** | ✅ | Stop button now cleanly cancels an in-flight repair pass |
-| **Auto threshold override** | ✅ | AI Config exposes per-mode threshold override for auto mode |
-| **Accepted state persistence** | ✅ | Clicking `Yes` now persists to conversation history and exports |
-| **Intelligence bridge** | ✅ | Accepted/repaired/ticketed/cancelled outcomes feed back into reflection data; expired/superseded settle neutrally |
-| **Corrected-path learning** | ✅ | Repaired answers, tools, and tool results are folded back into the original experience for reflections |
-| **Feedback-aware settlement** | ✅ | Final web feedback runs on the settled Completion Guard outcome and includes CG metadata in grading |
-| **Chat-only repair policy** | ✅ | Manual/Auto evaluation remains available, but repairs inherit no-tools policy and use QA-only answer deltas |
-| **Provider-split auto evaluator** | ✅ | Auto eval can run on a different provider/model than the main chat response |
-| **Eval provider/model overrides** | ✅ | AI Config exposes per-mode Completion Guard eval provider/model controls |
-| **Ollama cloud judge support** | ✅ | Cloud Ollama eval uses cloud-only model lists and defensive JSON parsing/budgeting for auto eval |
+| Feature | Details |
+|---------|---------|
+| **Completion Guard card** | Inline `Completed correctly?` card on assistant responses |
+| **Manual prompt countdown** | Active manual cards show a small countdown and default to 10 minutes |
+| **Stale prompt settlement** | Expired cards settle as `expired`; older unanswered cards settle as `superseded` when the conversation continues |
+| **Manual repair pass** | Clicking `No` runs one bounded repair pass |
+| **Repair status updates** | Repair emits normal Jarvis thinking/status/tool events |
+| **Repair tickets** | Unresolved failures write markdown tickets to `logs/completion-guard/` |
+| **Tool-aware exclusions** | Skips workflows and fire-and-forget/sensitive tools |
+| **Conversation export metadata** | Markdown export includes Completion Guard status/note/ticket data when present |
+| **Prompt/runtime repair context** | Repair uses original query, raw LLM response, tool outputs, and user note |
+| **Auto mode evaluator** | Background evaluator can auto-trigger repair using the raw final answer |
+| **`tighten_only` outcome** | After a **repair** pass, wording-only settlement without a second assistant message; judge JSON `tighten_only` (no repair) settles as `auto_accepted` |
+| **Visible repair delta-gating** | Separate repaired answers require a real evidence or tool-path delta |
+| **Repair cancel support** | Stop button cancels an in-flight repair pass |
+| **Auto threshold override** | AI Config exposes per-mode threshold override for auto mode |
+| **Accepted state persistence** | Clicking `Yes` persists to conversation history and exports |
+| **Intelligence bridge** | Accepted/repaired/ticketed/cancelled outcomes feed back into reflection data; expired/superseded settle neutrally |
+| **Corrected-path learning** | Repaired answers, tools, and tool results are folded back into the original experience for reflections |
+| **Feedback-aware settlement** | Final web feedback runs on the settled Completion Guard outcome and includes CG metadata in grading |
+| **Chat-only repair policy** | Manual/Auto evaluation remains available, but repairs inherit no-tools policy and use QA-only answer deltas |
+| **Provider-split auto evaluator** | Auto eval can run on a different provider/model than the main chat response |
+| **Eval provider/model overrides** | AI Config exposes per-mode Completion Guard eval provider/model controls |
+| **Ollama cloud judge support** | Cloud Ollama eval uses cloud-only model lists and defensive JSON parsing/budgeting for auto eval |
 
 Completion Guard's evaluator selection is independent of the main chat model.
 Web uses its per-mode evaluator provider/model overrides; unset values use ENV
@@ -196,6 +196,7 @@ defaults. If Web selects a different evaluator provider and leaves the model at
 default, that model comes from the selected provider's configuration. The ENV's
 dedicated evaluator model applies when its provider matches. Settings and runtime
 resolve the same pair, and evaluator calls disable provider-native search.
+
 
 ### Tool Cards, Status, and Reload Behavior
 
@@ -261,8 +262,8 @@ resolve the same pair, and evaluator calls disable provider-native search.
 ### Large Tool Result Context
 
 - The orchestrator may truncate large prior tool payloads before sending them back to the LLM on later turns.
-- Jarvis now marks these previews with explicit metadata such as `result_truncated`, `result_chars_shown`, and `result_chars_total`.
-- When truncation is needed, later routing turns now receive a valid JSON `Result Preview:` block instead of a raw sliced JSON fragment.
+- Jarvis marks these previews with explicit metadata such as `result_truncated`, `result_chars_shown`, and `result_chars_total`.
+- When truncation is needed, later routing turns receive a valid JSON `Result Preview:` block instead of a raw sliced JSON fragment.
 - When the full prior result fits in budget, the turn context still shows `Result:` with the full serialized payload.
 - `ok=true` still means the tool succeeded even if the LLM only sees a preview of the payload in later turns.
 - This helps reduce redundant rereads of large transcript- or stash-based results during multi-turn recovery.
@@ -538,7 +539,7 @@ socket.on('feedback:complete', {
 
 ## ⚙️ Configuration
 
-### Two Config Worlds
+### Core settings and Web overrides
 
 | Config | Source | Affects | Editable |
 |--------|--------|---------|----------|
@@ -572,6 +573,10 @@ values. AI Config separately shows whether a per-mode Web override is active.
 
 ### web_config.json
 
+Copy the complete [example configuration](../jarvis-web/config/web_config.json.example)
+when setting up Jarvis Web. This abbreviated example shows the main settings;
+`null` leaves an override unset so the selected mode's configuration applies.
+
 ```json
 {
   "server": {
@@ -579,21 +584,21 @@ values. AI Config separately shows whether a per-mode Web override is active.
     "port": 5001
   },
   "defaults": {
-    "mode": "cloud"      // Default mode on startup
+    "mode": "cloud"
   },
   "audio": {
-    "tts_enabled": true,
+    "tts_enabled": false,
     "tts_autoplay": true
   },
   "cloud": {
-    "llm_provider": null,    // null = use cloud.env default (xai)
-    "llm_model": null,       // null = use cloud.env model
+    "llm_provider": null,
+    "llm_model": null,
     "router_prompt_version": null,
-    "image_provider": null,  // null = use cloud.env IMAGE_TOOL_PROVIDER
-    "image_models": {},      // provider -> model; absent = env/catalog default
-    "video_provider": null,  // null = use cloud.env VIDEO_TOOL_PROVIDER
-    "video_models": {},      // provider -> model; absent = env/catalog default
-    "music_provider": null,  // null = use cloud.env MUSIC_TOOL_PROVIDER
+    "image_provider": null,
+    "image_models": {},
+    "video_provider": null,
+    "video_models": {},
+    "music_provider": null,
     "tts_provider": null,
     "response_style": null,
     "tool_rag_limit": null,
@@ -601,14 +606,14 @@ values. AI Config separately shows whether a per-mode Web override is active.
     "multi_turn_word_limit": null
   },
   "local": {
-    "llm_provider": null,    // null = use local.env default (ollama)
-    "llm_model": null,       // null = use local.env model
+    "llm_provider": null,
+    "llm_model": null,
     "router_prompt_version": null,
-    "image_provider": null,  // null = use local.env IMAGE_TOOL_PROVIDER
-    "image_models": {},      // provider -> model; absent = env/catalog default
-    "video_provider": null,  // null = use local.env VIDEO_TOOL_PROVIDER
-    "video_models": {},      // provider -> model; absent = env/catalog default
-    "music_provider": null,  // null = use local.env MUSIC_TOOL_PROVIDER
+    "image_provider": null,
+    "image_models": {},
+    "video_provider": null,
+    "video_models": {},
+    "music_provider": null,
     "tts_provider": null,
     "response_style": null,
     "tool_rag_limit": null,
@@ -616,7 +621,7 @@ values. AI Config separately shows whether a per-mode Web override is active.
     "multi_turn_word_limit": null
   },
   "conversation": {
-    "history_limit": 20      // Messages to include as LLM context
+    "history_limit": 20
   },
   "tools": {
     "blocked": ["get_recent_conversations"],
@@ -625,7 +630,7 @@ values. AI Config separately shows whether a per-mode Web override is active.
 }
 ```
 
-> **Note**: Settings are per-mode! Cloud and local have separate overrides. Thresholds are read-only from the active .env file.
+Cloud and local have separate overrides. Thresholds are read from the active mode’s env file.
 
 ### Request Scopes and `JARVIS_OVERRIDE_` Child Exports
 
@@ -640,13 +645,13 @@ forced into that tool call and is not written back to AI Config. For ordinary
 tool calls, an explicit `model` argument wins; when omitted, the tool uses the
 request-scoped Web/ENV pin and then the catalog default.
 
-**The Problem:**
+**Child configuration loading:**
 Child tool scripts (for example `generate_image.py`) call `load_config()` in
 their own process. An ordinary unprefixed provider value would be replaced by
 the selected env file during that reload, so scoped values need an
 authoritative child-export form.
 
-**The Solution:**
+**Override propagation:**
 ```
 chat.py scope:    IMAGE_TOOL_PROVIDER=gemini
                   GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
@@ -740,32 +745,16 @@ not keep showing the startup mode's catalog.
 - Show: tool name, status, duration
 - Expanded: arguments, full result, images
 
-### Settings Panel (6 Tabs)
+### Settings Panel
 - **General Tab**: Mode (cloud/local), TTS toggle, mode-aware help text
 - **AI Config Tab**: LLM provider/model dropdowns (per-mode), Image provider, Video provider, Music provider, History limit, Reset button
 - **Tools Tab**: Blocked tools list, add/remove UI, blocked/MCP visual indicators
+- **Prompts Tab**: Browse shared prompts and create or edit personal overrides
+- **Integrations Tab**: Configure supported integrations and inspect their availability
 - **System Tab**: Mode-specific .env values (thresholds, TTS settings, features), plus a SerpApi quota card fetched only when the tab is opened. The card stays absent when the selected mode has no valid `SERP_API_KEY`; SerpApi does not count Account API lookups against monthly search quota.
 - **API Keys Tab**: Status indicators (configured/missing)
 - **Profile Tab**: Current version linked to GitHub releases, auth/mode status, and a safe rendered view/editor for `jarvis-intel/user-profile.md`. **Save & ingest** uses the existing FastAPI Intel CRUD route; the Profile Card cache refreshes immediately for the selected mode plus an already-existing, configured sibling while background ingestion updates Profile Reference facts in those same modes.
 - **Profile Appearance**: Set a display name and upload a PNG, JPEG, or WebP avatar (up to 5 MB and 16 million pixels), then **Save appearance**. The server crops the image to 256×256, removes metadata, and stores it with the name in the ignored `data/web_profile_appearance.json`. **Use default image** restores the existing Jarvis image; a blank name restores **Administrator**. Appearance is shared across modes and connected Firefox companions through the authenticated `/api/profile-appearance` endpoint. It changes display only; login credentials and the Intelligence Profile Card are separate.
-
----
-
-## 🚀 Running
-
-### Start Server
-
-```bash
-# From project root
-./bin/jarvis-web
-
-# The launcher also accepts an explicit startup mode
-./bin/jarvis-web local
-```
-
-### Access
-- **Local**: http://localhost:5001
-- **Network**: http://YOUR_IP:5001
 
 ---
 
@@ -902,7 +891,7 @@ def text_to_speech():
         return call_cloud_tts(text)
 ```
 
-### Audio Playback Controls (NEW)
+### Audio Playback Controls
 
 A speaker button appears in the input bar when audio is playing, providing visual feedback and playback control:
 
@@ -1086,14 +1075,14 @@ The web UI has **native image upload** - this is NOT a tool call, it's built dir
 5. For simple questions ("what is this?") → returns analysis directly
 6. For complex requests ("save to canvas") → passes analysis to orchestrator
 
-**Vision Models (Mode-Aware):**
+**Vision provider and model:**
 
-| Mode | Provider | Model | Config |
-|------|----------|-------|--------|
-| **Cloud** | xAI Grok | `VISION_MODEL` | cloud.env |
-| **Cloud** | Anthropic | Claude with vision | cloud.env |
-| **Cloud** | OpenAI | GPT-4o | cloud.env |
-| **Local** | Ollama | `OLLAMA_VISION_MODEL` | local.env (default: llava:latest) |
+Cloud mode uses the selected provider/model, including Web overrides where
+present; choose a model that accepts images. Ollama cloud vision uses
+`OLLAMA_CLOUD_MODEL` or an explicit Web model override. Local mode uses Ollama
+with `OLLAMA_VISION_MODEL`, falling back to `OLLAMA_MODEL`. See
+[Ollama vision configuration](ollama/README.md#vision-and-image-analysis) for
+the model-selection rules.
 
 **Simple vs Complex Questions:**
 
@@ -1124,42 +1113,21 @@ Action keywords: "create", "save", "canvas", "generate", "similar", "search"
 
 ---
 
-### generate_music Tool (NEW)
+### generate_music Tool
 
-ElevenLabs music generation integrated into Jarvis with automatic stash storage and web UI playback:
+Ask Jarvis to create music, then play or download the result inline. The tool
+uses the configured music provider, saves audio and Stash references, and records
+metadata for later follow-up requests. Provider capabilities and duration limits
+differ; choose the provider in **Settings → AI Config** or the selected mode’s env
+file.
 
-See the canonical [`generate_music` tool guide](tools/generate-music-tool/README.md)
-for the current provider, storage, Audio Gallery, and FastAPI boundaries.
-
-**How It Works:**
-1. User requests music generation (e.g., "Create an epic intro for my podcast")
-2. Tool calls ElevenLabs Music API with prompt, genre, mood, tempo, duration
-3. Generated audio saved to `data/generated_music/`
-4. Stash reference created for artifact management
-5. Memory entry saved for future recall
-6. Web UI renders inline audio player
-
-**Parameters:**
-- `prompt` (required): Music description/concept
-- `genre` (optional): Electronic, Cinematic, Rock, Jazz, Classical, Hip-Hop, etc.
-- `mood` (optional): Epic, Mysterious, Uplifting, Dark, Energetic, Calm, etc.
-- `tempo` (optional): Slow, Medium, Fast, or BPM number
-- `instrumental` (optional): Whether vocals should be excluded (default: false)
-- `duration_seconds` (optional): 3-600 seconds (default: 60)
-
-**Web UI Integration:**
-- Audio player renders in tool result card
-- Uses `/api/music/<filename>` or `/api/stash/<space>/<file>` endpoints
-- Supports both direct file paths and stash references
-
-**@generate_music Prompt:**
-A dedicated prompt (`jarvis-web/data/prompts/generate_music.md`) provides best practices for music prompts based on ElevenLabs guidelines.
-
-**Timeout:** Extended to 10 minutes (600s) for longer generations.
+Use `@generate_music` to apply the shared music-prompt guidance before your own
+request. See the [`generate_music` tool guide](tools/generate-music-tool/README.md)
+for supported parameters, provider limits, storage, Audio Gallery, and FastAPI use.
 
 ---
 
-### analyze_image Tool (NEW)
+### analyze_image Tool
 
 A dedicated tool for analyzing images from various sources:
 
@@ -1200,7 +1168,7 @@ These are outbound download checks. They do not restrict browser/extension acces
 
 ---
 
-### 🔄 File Conversion (NEW)
+### 🔄 File Conversion
 
 A dedicated **🔄 button** in the input bar for converting files between formats. This bypasses vision analysis and goes directly to the `convert_file` tool.
 
@@ -1289,7 +1257,7 @@ Each assistant message may have a **"▶ Show details"** button to reveal the fu
 **What it shows:**
 - `raw_llm_response`: Original LLM output before voice formatting
 - `vision_analysis`: Full image description before summarization
-- Tool results and reasoning that didn't make it to speech
+- Additional response detail and tool results omitted from the shortened display text
 
 ---
 
@@ -1299,7 +1267,7 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 
 **What Gets Notified:**
 - **Alerts**: From Uptime Kuma, Coolify, cron scripts, UniFi Protect, etc.
-- **Reminders**: Scheduled reminders, Google Calendar synced events
+- **Reminders**: Triggered Jarvis reminders; optional Calendar synchronization is configured separately
 
 **How It Works:**
 1. Web UI polls every 10 seconds:
@@ -1314,7 +1282,7 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 - Click badge to open notification panel
 - Reminder timestamps show the scheduled notification time in your browser's local timezone; an appointment time stays in the title or description.
 - Click ✓ to acknowledge items
-- Items are removed from both jarvis-api and UI
+- Acknowledged items leave the pending list; the saved alert or reminder remains available in Memory
 
 **Requirements:**
 - `jarvis-api` must be running for notifications to work
@@ -1323,45 +1291,35 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 
 ---
 
-## 🔍 Gaps: Web vs Terminal/TUI
+## Interface capabilities and limits
 
-### What Web CAN'T Do (Yet)
+Jarvis Web provides browser playback, visual results, conversation management,
+and hands-free [Talk](WEB_TALK.md). The native voice loop remains the interface
+for host wake-word detection. Canvas, Memory, and Intelligence run as separate
+applications and open through the shared navigation links.
 
-| Gap | Why | Priority |
-|-----|-----|----------|
-| **Wake word detection** | Needs browser VAD (voice activity detection) | Medium |
-| **Continuous voice loop** | listen → respond → listen cycle | Medium |
-| **Local speaker volume** | Hardware control is local-only | N/A (by design) |
-| **Audio device selection** | Browser uses system default | Low |
-| **Memory sync on startup** | Terminal does auto-sync, web doesn't | Low |
-| **Canvas viewer integration** | Canvas runs separately on :8890 | Medium |
+| Boundary | What to expect |
+|----------|----------------|
+| Browser microphone | Requires browser permission and a secure context (HTTPS or localhost) |
+| Server speakers | Browser playback and host speech are separate outputs |
+| Conversation history | Web uses saved JSON chats and its history limit; CLI and native voice use their own context path |
+| Multiple clients | Clients on the same Web server share saved chats; there are no separate per-user chat namespaces |
+| Service availability | Notifications require the FastAPI service; Canvas and other dashboards require their own running services |
 
-### What Terminal/TUI CAN'T Do
+See [Task recovery](WEB_TASK_RECOVERY.md) for reload/reconnect behavior and
+[Background tasks](BACKGROUND-TASKS.md) for tools that can finish after the
+initial response.
 
-| Gap | Web Advantage |
-|-----|---------------|
-| **Visual tool cards** | See tool args, results, timing inline |
-| **Image preview** | Lightbox with download, no file manager needed |
-| **Conversation management** | Save/load/delete/search history |
-| **On-the-fly settings** | Change LLM/model without restart |
-| **Remote access** | Access from any device on network |
-| **No TTS cutoff** | Browser audio cleaner than speaker wake-up |
-| **Visual status updates** | See progress without audio |
-
----
-
-## 🚀 Web-Unique Features to Leverage
+## Composer and connected applications
 
 ### Canvas Integration
 
-| Feature | Status | Description |
-|---------|--------|-------------|
-| **Canvas header icon** | ✅ Done | 📄 button opens Canvas in new tab |
-| **`/canvas` command** | ✅ Done | Type `/canvas query` to research + save to Canvas |
-| **Send to Canvas button** | ✅ Done | Second icon in the consolidated latest-response action rail; creates a Canvas page from that response and its supporting conversation context |
-| **Inline Canvas preview** | ✅ Done | Show a compact clickable page thumbnail; the preview and matching reply links use the current host's configured Canvas origin |
-
----
+| Feature | Description |
+|---------|-------------|
+| **Canvas header icon** | Opens Canvas in a new tab |
+| **`/canvas` command** | Researches the supplied query and saves a Canvas page |
+| **Send to Canvas button** | Creates a Canvas page from the latest response and supporting conversation context |
+| **Inline Canvas preview** | Opens the saved page; previews and matching reply links use the configured browser-reachable Canvas origin |
 
 ### @Prompts
 
@@ -1392,7 +1350,7 @@ Type `@` in the chat input to see available prompt guidance.
 The former shared `@ssh` prompt is operator-specific. Use `#ssh_remote` directly
 or keep host-specific SSH guidance in a private personal prompt.
 
-**Context-First Injection (v2.0):**
+**Prompt guidance in the request:**
 Prompts are injected **BEFORE** the user's message as saved guidance:
 ```
 [CONTEXT - Saved prompt @prompt_name]
@@ -1605,7 +1563,7 @@ Replaces input field text
 ```
 
 **Key Points:**
-- Uses direct LLM call (fast, ~1-2 seconds)
+- Uses a separate LLM call; response time depends on the configured provider
 - Does NOT go through orchestrator (no tool execution)
 - Receives descriptions, not tool parameter schemas
 - Only enhances text - the SEND goes through full orchestrator
@@ -1631,73 +1589,31 @@ Replaces input field text
 
 ### Input Enhancement Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     INPUT ENHANCEMENT FLOW                       │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  User types: "/canvas @research kubernetes security"             │
-│                 │                                                │
-│                 ▼                                                │
-│  ┌─────────────────────────────────────────┐                    │
-│  │        Frontend Parser (chat.js)        │                    │
-│  │  • Detects /canvas → loads command.json │                    │
-│  │  • Detects @research → loads prompt.md  │                    │
-│  │  • Extracts message: "kubernetes..."    │                    │
-│  └─────────────────────────────────────────┘                    │
-│                 │                                                │
-│                 ▼                                                │
-│  ┌─────────────────────────────────────────┐                    │
-│  │      Backend Handler (chat.py)          │                    │
-│  │  • Combines command + prompt instruc.   │                    │
-│  │  • APPENDS instruction AFTER message    │                    │
-│  │  • Applies exclude_tools to router      │                    │
-│  └─────────────────────────────────────────┘                    │
-│                 │                                                │
-│                 ▼                                                │
-│  ┌─────────────────────────────────────────┐                    │
-│  │    Orchestrator (with insights/feedback) │                    │
-│  │  • Full intelligence system applied      │                    │
-│  │  • Tools excluded per command config     │                    │
-│  │  • Native search preferred when enabled  │                    │
-│  └─────────────────────────────────────────┘                    │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+The composer sends the clean task text and selected prompt/tool metadata to the
+server. The server validates selections against the active mode’s available
+tools, places reusable prompt guidance and tool hints before the request, and
+passes history to the shared orchestrator. Explicit workflows follow their
+workflow execution path.
 
-┌─────────────────────────────────────────────────────────────────┐
-│                   ✨ ENHANCE FLOW (Separate)                     │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  User types: "bitcoin news" → clicks ✨                          │
-│                 │                                                │
-│                 ▼                                                │
-│  ┌─────────────────────────────────────────┐                    │
-│  │   POST /api/enhance-prompt              │                    │
-│  │  • Direct LLM call (bypasses orchestr.) │                    │
-│  │  • Tool descriptions + validated hints  │                    │
-│  │  • Returns enhanced text only           │                    │
-│  └─────────────────────────────────────────┘                    │
-│                 │                                                │
-│                 ▼                                                │
-│  Input field updated → User reviews → Sends normally            │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+```text
+Draft + optional @prompt / #tool hints
+  → server validation
+  → prompt guidance + task text + conversation history
+  → orchestrator → response and artifacts
+
+✨ Enhance
+  → separate LLM call → revised draft
+  → user reviews and sends normally
 ```
 
-**Canvas + Stash + Web UI Flow:**
-```
-Web UI → Upload image → Stash (temp) → /canvas → Canvas (permanent)
-                                    ↓
-                            Phone call ends → Auto-save transcript to Canvas
-                                    ↓
-                            generate_image → Image + prompt to Canvas
-```
+The saved user message retains the clean task text and selector badges.
+Enhancing a draft does not execute tools or send the chat request.
 
 ---
 
-### Server Logs Panel (NEW)
+### Server Logs Panel
 
-A collapsible panel at the bottom of the UI that streams server logs in real-time. Simpler than Grafana for quick debugging!
+A collapsible panel at the bottom of the UI streams new server log entries for inspection during a request.
 
 **UI Layout:**
 ```
@@ -1724,7 +1640,9 @@ A collapsible panel at the bottom of the UI that streams server logs in real-tim
 - **Clear** - Clears UI only (disk logs preserved)
 - **Persisted state** - Height, collapsed state, enabled sources saved to localStorage
 
-### `/logs` Read-Only Browser (NEW)
+<a id="logs-read-only-browser-new"></a>
+
+### `/logs` Read-Only Browser
 
 A dedicated page at `/logs` for browsing structured and plain-text logs without leaving Jarvis Web UI.
 
@@ -1770,7 +1688,7 @@ A dedicated page at `/logs` for browsing structured and plain-text logs without 
 
 ---
 
-### Manual Feedback Analysis (NEW)
+### Manual Feedback Analysis
 
 Trigger LLM-as-QA feedback directly from the WebUI to analyze response quality.
 
@@ -1819,179 +1737,49 @@ feedback flag for `tool_policy=none`. Passive thumbs reactions are unaffected.
 
 ---
 
-## 📋 TODO / Gaps
-
-### High Priority (Do First)
-- [x] **Browser STT** - Push-to-talk with mic button ✅ DONE
-  - Click-to-toggle: click to start, click again to stop
-  - Mode-aware defaults plus OpenAI-compatible endpoint opt-in in either mode
-  - Visual states: preparing (blue), recording (red), processing (yellow)
-  - Appends transcript to the draft for review before Send
-- [x] **Proactive integration** - Show alerts/reminders in UI ✅ DONE
-  - Polls jarvis-api every 10 seconds for pending alerts/triggered reminders
-  - Browser notifications (Notifications API) for new items
-  - TTS playback when audio is enabled
-  - Notification panel with acknowledge buttons
-
-### Medium Priority
-- [x] Conversation search (filter by keyword/date) ✅ DONE
-- [x] Export conversations (JSON/Markdown) ✅ DONE
-- [x] Import conversations (JSON) ✅ DONE
-- [ ] Tool enable/disable per-tool in UI
-- [ ] MCP server status indicator (running/stopped/error)
-- [ ] Canvas integration (embed pages or link)
-
-### Low Priority
-- [x] Authentication (JWT token-based) ✅ DONE
-- [ ] Multi-user support (separate conversation namespaces)
-- [ ] PWA manifest (installable app)
-- [ ] Light theme option
-- [ ] Keyboard shortcuts (Ctrl+Enter send, etc.)
-
-### ✅ Recently Completed (v2.0)
-- [x] MCP tool discovery (reads from memory_db)
-- [x] Settings UI for blocked tools
-- [x] Dynamic LLM provider/model switching
-- [x] System config tab (mode-specific .env values)
-- [x] Conversation history limit setting
-- [x] Config cache reload on settings save
-- [x] Mode-aware TTS - Cloud=ElevenLabs, Local=Kokoro
-- [x] Per-mode settings - cloud/local sections in web_config.json
-- [x] Dynamic Ollama models - fetches from server in local mode
-- [x] Clean mode switching - resets Intelligence singleton
-- [x] Push-to-talk STT - Click-to-toggle voice input
-- [x] Mode-aware STT - Cloud=OpenAI, Local=faster-whisper, compatible endpoint opt-in
-- [x] Recording visual states - Blue/green/yellow feedback
-- [x] Proactive notifications - Polls jarvis-api for alerts/reminders
-- [x] Browser notifications - Notifications API integration
-- [x] Notification panel - View/acknowledge alerts & reminders
-- [x] Local audio fix - Now serves from audio/local/tts too
-- [x] **Audio playback controls** - Speaker button with pause/resume/stop
-- [x] **Progress animation** - Visual pulse during playback
-- [x] **Smart auto-hide** - 10s after audio ends, instant on new message
-- [x] **ElevenLabs music generation** - `generate_music` tool with stash integration
-- [x] **Music playback in web UI** - Generated music plays inline
-- [x] **@prompts system** - Context-first injection for LLM guidance
-- [x] **deep_memory_search tool** - Multi-source search across all data
-- [x] **Image upload** - Drag-drop/paste/click, auto-resize to 1024px
-- [x] **Mode-aware vision** - Cloud=Grok/Claude, Local=llava
-- [x] **Expand details button** - Show full LLM response, tool results
-- [x] **Tool cards show results** - Fixed data.data nesting bug
-- [x] **Native search prompt** - Tells LLM to prefer built-in search
-- [x] **Config loading fix** - load_jarvis_config before Orchestrator
-- [x] **Auto-stash uploaded images** - Images saved to stash + memory_db
-- [x] **analyze_image tool** - Analyze URLs, files, stash refs with SSRF protection
-- [x] **generate_image memory fix** - Now saves source + metadata for semantic recall
-- [x] **Safe URL downloads** - Uses stash_helper's safe_download + sanitize_filename
-- [x] **Slash commands** - `/canvas`, `/search`, `/recall`, `/detailed`, etc.
-- [x] **@prompts system** - `@research`, `@quick`, `@compare`, etc.
-- [x] **#tool hints** - Soft per-request tool preferences with chips, full autocomplete, and ambient suggestions
-- [x] **Command autocomplete** - Type `/`, `@`, or standalone `#` for suggestions
-- [x] **✨ Enhance with AI** - Transform rough input into optimal prompts
-- [x] **Tool exclusion** - Commands can exclude tools to force native search
-- [x] **Canvas command** - `/canvas` researches + saves to Canvas viewer
-- [x] **Conversation quick filter** - Filter by title in sidebar
-- [x] **Deep search modal** - Search all message content with highlighted snippets
-- [x] **Export conversations** - JSON and Markdown formats
-- [x] **Import conversations** - Restore from JSON files
-- [x] **Server Logs Panel** - Real-time streaming at bottom of UI
-- [x] **LLM + Tool logs** - Parsed, color-coded, expandable details
-- [x] **Log source toggles** - Enable/disable LLM, Tools, OpenCode, Feedback
-- [x] **Resizable log panel** - Drag to resize, state persisted in localStorage
-- [x] **`/logs` browser** - Read-only log explorer with folder search, YAML-style JSONL rendering, markdown viewing, and mobile drill-down
-- [x] **Manual Feedback Analysis** - 📊 button + `--feedback` inline trigger
-- [x] **Feedback Card** - Purple tool card with rating, summary, issues, tool ratings
-- [x] **Feedback Toast** - 6-second notification with rating summary
-- [x] **Always-log manual feedback** - Manual triggers always saved to logs
-- [x] **🔄 File Conversion button** - Convert images/video/audio between formats
-- [x] **Conversion modal** - Format selector with preview and descriptions
-- [x] **Stash upload endpoint** - `/api/stash/upload` for direct stash uploads
-- [x] **Inline converted media** - Images/video/audio display with ⬇️ Download button
-- [x] **SVG/BMP/ICO/FLAC support** - Extended stash MIME types
-- [x] **Advanced convert options** - Resize, quality, bitrate, FPS, etc. in collapsible panel
-- [x] **Video provider dropdown** - Switch video generation between xAI Grok and Google Gemini on the fly
-- [x] **Image provider xAI option** - Added xAI Grok as image provider alongside Gemini and OpenAI
-- [x] **JARVIS_OVERRIDE_ mechanism** - Provider overrides survive tool subprocess `load_config()` via prefixed env vars
-- [x] **Image gallery provider badges** - Shows xAI/Gemini/OpenAI badges on generated images in Canvas gallery
-
----
-
 ## ⚠️ Known Issues & Gotchas
 
-### 🔥 CRITICAL: Config Loading Order
+### Configuration and mode selection
 
-**The #1 source of "it works in terminal but not web" bugs!**
+Web requests use the selected mode’s configuration with request-local overrides.
+If behavior differs between Web and CLI, compare **Settings → AI Config** with
+that mode’s env defaults, and check **Settings → Tools** for Web-specific blocks.
+Reset Web overrides to use the env defaults again.
 
-**How Terminal Works:**
-```python
-# jarvis command loads config FIRST, before any imports
-load_config('cloud')  # Line 25 - BEFORE orchestrator import
-# Then imports happen
-from orchestrator_v2 import Orchestrator
-```
-
-**How Web Works:**
-```python
-# jarvis-web imports modules, THEN loads config per-request
-from orchestrator_v2 import Orchestrator  # Imports happen at startup
-# Later, in _process_message:
-load_jarvis_config(mode)  # Must be called BEFORE creating Orchestrator
-orchestrator = Orchestrator(mode=mode)
-```
-
-**The Gotcha:**
-If `load_jarvis_config(mode)` is NOT called before the Orchestrator is created, settings like `XAI_SEARCH`, `LLM_PROVIDER`, `TTS_PROVIDER` etc. will have WRONG values (stale from previous mode or missing).
-
-**Always ensure this order in web handlers:**
-1. `load_jarvis_config(mode)` - Load .env for current mode
-2. Import/create Orchestrator
-3. Process message
-
-**Debug tip:** Add logging to verify config loaded correctly:
-```python
-xai_search = get_jarvis_setting('XAI_SEARCH', 'false')
-print(f"[CHAT] Config loaded: XAI_SEARCH={xai_search}")
-```
-
----
+For contributors, preserve the request-local configuration scope before creating
+or invoking the orchestrator. Read settings through the shared config helpers;
+child tools receive exported overrides. See
+[Request scopes](#request-scopes-and-jarvis_override_-child-exports).
 
 ### Native Search (XAI_SEARCH / ANTHROPIC_SEARCH)
 
-**Gotcha:** Even when `XAI_SEARCH=true`, Grok might use `mcp_fetch` instead of native search!
-
-**Why:** Grok in "auto" mode sees both options and might prefer tools.
-
-**Fix:** The router now adds system prompt instruction when native search is enabled:
-```
-NATIVE SEARCH ENABLED:
-Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
-```
-
-**Verify it's working:** Check for `tools=[]` in response (no tool calls = native search used).
-
----
+Provider-native search requires a supporting model, enabled provider settings,
+and a request that allows tools. Jarvis supplies routing guidance when the
+capability is enabled, but the model may still choose a Jarvis search tool.
+Inspect native-tool metadata in the LLM logs to confirm which path ran; an empty
+Jarvis `tools_used` list alone does not prove a native search happened.
 
 ### Mode Switching
-| Issue | Workaround |
-|-------|------------|
-| Embedding dimension mismatch after switch | Page refresh resets all singletons cleanly |
-| Intelligence insights from wrong mode | Fixed in v1.2 (singleton reset), but refresh is safer |
-| Settings show stale values | Click Settings tab again to reload |
-| Config not loaded for new mode | Fixed - `load_jarvis_config(mode)` now called before Orchestrator |
+
+| Issue | Check |
+|-------|-------|
+| Settings appear stale | Reopen Settings and verify the selected mode |
+| Expected tool is absent | Check the mode’s profile, required configuration, and Web block list |
+| Semantic retrieval is unavailable | Check embedding health; both modes must match the shared embedding contract |
 
 ### TTS
 | Issue | Workaround |
 |-------|------------|
 | Local TTS fails silently | Check the selected provider server is running at `KOKORO_TTS_URL` or `QWEN3_TTS_URL` |
 | Audio doesn't play | Check browser autoplay policy, click somewhere first |
-| TTS too slow | Status updates have 1s delay by design |
+| TTS too slow | Check provider latency; status speech has its own deadline and cache, separate from final-answer audio |
 
 ### Tools
 | Issue | Workaround |
 |-------|------------|
 | Tool not found | Refresh tools list, check if blocked |
 | MCP tool missing | Ensure MCP server ran at least once (registers to memory_db) |
-| `generate_image` timeout | Increased to 5 min, but grounding can be slow |
+| `generate_image` timeout | Check tool logs and provider status before retrying; a timeout does not prove remote work stopped |
 
 ### Conversations
 | Issue | Workaround |
@@ -2004,44 +1792,8 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 | Issue | Workaround |
 |-------|------------|
 | Slow in local mode | Ollama model loading takes time on first query |
-| WebSocket disconnects | Auto-reconnects, but may lose in-flight message |
+| WebSocket disconnects | Reconnect and reopen the conversation to recover server-owned work; see [Task recovery](WEB_TASK_RECOVERY.md) |
 | Memory usage grows | Refresh page periodically for long sessions |
-
----
-
-## 🔮 Future Feature Ideas
-
-### Voice (Phase 3 completion)
-- ✅ **Push-to-talk**: Click to record → speak → click to send (DONE)
-- **Continuous mode**: Optional always-listening with VAD
-- **Wake word**: "Hey Jarvis" in browser (privacy implications)
-- **Auto-listen after response**: Automatically start recording after TTS finishes
-
-### Proactive Integration
-- ✅ **Alert notifications**: Browser notification when alert triggers (DONE) -doesnt work!
-- ✅ **Reminder popup**: Browser notification when reminder fires (DONE) - doesnt work!
-- **Follow-up prompts**: "Your task is ready, want to review?"
-- **Health status**: Show API/services health in header
-
-### Memory & Intelligence
-- **Memory browser**: View/search/edit/delete memories
-- **Intelligence dashboard**: Insights, confidence scores, decay status
-- **Learning history**: See what Jarvis learned from interactions
-- **Manual insight creation**: Teach Jarvis directly via UI
-
-### Developer Features
-- ✅ **Server Logs Panel**: Real-time LLM + Tool logs at bottom of UI (DONE!)
-- ✅ **LLM call inspector**: Model, tokens, cost, duration, tool called (DONE!)
-- ✅ **Tool logs viewer**: See tool executions with expandable details (DONE!)
-- ✅ **`/logs` browser**: Dedicated auth-protected viewer for `.jsonl`, `.log`, and `.md` (DONE!)
-- 🔮 **Cost tracker**: Daily/weekly/monthly spend summary
-
-### UX Improvements
-- **Keyboard shortcuts**: Ctrl+Enter send, Ctrl+N new chat, etc.
-- ✅ **Drag-drop files**: Upload images/files directly (DONE)
-- ✅ **Paste images**: Paste from clipboard (DONE)
-- ✅ **Latest-response action rail**: Copy Markdown, Send to Canvas, and conditional positive/negative Intelligence feedback share one compact mobile-friendly row
-- **Message editing**: Edit sent messages
 
 ---
 
@@ -2049,16 +1801,16 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 
 | Aspect | Terminal/TUI/Jarvis | Web UI |
 |--------|---------------------|--------|
-| **Conversation History** | `memory_db` + `AUTO_CONTEXT_*` (cloud.env, local.env) | JSON files + `conversation.history_limit` (web_config.json) - **COMPLETELY SEPARATE SYSTEMS** |
+| **Conversation History** | `memory_db` + `AUTO_CONTEXT_*` (cloud.env, local.env) | JSON files + `conversation.history_limit` (web_config.json) |
 | **LLM Provider** | `.env` file (restart to change) | `web_config.json` per-mode (on-the-fly) |
-| **Blocked Tools** | None (all tools available) | `tools.blocked` array |
+| **Tool availability** | Active manifest/profile and mode configuration | Same gates plus Web `tools.blocked` restrictions |
 | **Status Updates** | Local speaker with cancellable cached playback | Browser WebSocket + optional cancellable cached TTS |
 | **TTS** | Mode-specific shell scripts | Direct provider API; status cache is separate from final TTS |
-| **Intelligence/Insights** | ✅ Full (same orchestrator) | ✅ Full (singleton resets on mode switch) |
+| **Intelligence/Insights** | ✅ Full (same orchestrator) | ✅ Shared learning system; mode-specific data |
 | **Tool RAG** | ✅ Full | ✅ Full |
 | **Chat only** | Not exposed as a sticky composer mode | ✅ `#chat_only` request policy |
 | **Memory System** | ✅ Full (mode-specific DB) | ✅ Full (mode-specific DB) |
-| **MCP Tools** | Started on demand | Pre-registered in memory_db |
+| **MCP Tools** | Configured runtime servers and effective tool catalog | Same catalog and mode/profile gates, with Web-specific blocking |
 
 ### What's Shared (Same Code Path)
 - `orchestrator/orchestrator_v2.py` - Core processing
@@ -2075,32 +1827,3 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 - `data/web_conversations/` - Saved chat history (repo root; one JSON file per conversation + `index.json`)
 
 ---
-
-*Created: December 2025*
-*MVP Complete: December 17, 2025*
-*v1.1: Settings improvements, dynamic LLM switching - December 17, 2025*
-*v1.2: Mode-aware TTS, per-mode settings, clean mode switching - December 17, 2025*
-*v1.3: Push-to-talk STT with mode-aware providers (OpenAI/faster-whisper) - December 17, 2025*
-*v1.4: Proactive notifications (alerts/reminders from jarvis-api) - December 17, 2025*
-*v1.5: Image upload with vision analysis, expand details, config loading fixes - December 17, 2025*
-*v1.6: Auto-stash uploads, analyze_image tool, SSRF-protected downloads - December 18, 2025*
-*v1.7: Slash commands, @prompts, ✨ Enhance with AI, Canvas command - December 19, 2025*
-*v1.8: Conversation search, export (JSON/Markdown), import - December 19, 2025*
-*v1.9: Server Logs Panel - Real-time LLM + Tool streaming - December 19, 2025*
-*v2.0: Audio playback controls, ElevenLabs music generation, deep_memory_search tool - December 31, 2025*
-*v2.1: Manual Feedback Analysis - 📊 toggle, --feedback inline, feedback cards - January 23, 2026*
-*v2.2: 🔄 File Conversion - convert button, format modal, inline media display with download - February 5, 2026*
-*v2.3: Provider switching - Video provider dropdown, xAI image option, JARVIS_OVERRIDE_ mechanism, gallery provider badges - February 6, 2026*
-*v2.5: AI Config response-style overrides - Per-mode `JARVIS_RESPONSE_STYLE`, `JARVIS_QA_WORD_LIMIT`, and `JARVIS_MULTI_TURN_WORD_LIMIT` with live prompt/runtime alignment - March 29, 2026*
-*v2.6: Completion Guard - inline completion card, one-pass manual repair loop, tool-aware exclusions, repair tickets, and export metadata - March 30, 2026*
-*v2.7: Completion Guard auto mode - background evaluator, threshold override, persisted accept state, and intelligence-layer outcome tracking - March 30, 2026*
-*v2.8: Completion Guard learning model - repair cancel support, structured learning on the original experience, and corrected-path reflection context - March 30, 2026*
-*v2.9: Completion Guard tighten-only path, visible repair delta-gating, evaluator/provider split, and provider-error formatter fallback - April 2, 2026*
-*v2.10: Completion Guard eval provider/model overrides, cloud/local Ollama model separation in AI Config, and Ollama cloud auto-eval JSON compatibility fixes - April 3, 2026*
-*v2.11: Duplicate-tool recovery status, explicit large-result truncation metadata, and retry-state-preserving tool-card behavior - April 10, 2026*
-*v2.12: Dedicated `/logs` browser with auth protection, folder search, YAML-style JSONL rendering, markdown viewing, and mobile drill-down - April 12, 2026*
-*v2.13: Completion Guard manual countdown, expired/superseded neutral settlement, and random-feedback coordination docs - April 17, 2026*
-*v2.14: `#tool` hints for soft per-request tool preference, full enabled-tool autocomplete, server validation, and ✨ Enhance preservation - April 20, 2026*
-*v2.15: Tool hint chips and ambient tool suggestions for optional per-request tool preferences - April 20, 2026*
-*v2.16: Mode-aware tool/prompt/workflow discovery, autonomous foreground workflow tool cards/follow-up context, and workflow Completion Guard exclusion - July 23, 2026*
-*v2.17: Sticky `#chat_only` composer policy, no-schema/hosted-tool enforcement, QA-only Completion Guard repairs, and Chat-only Intelligence/feedback handling - August 11, 2026*

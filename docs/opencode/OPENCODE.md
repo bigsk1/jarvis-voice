@@ -390,33 +390,33 @@ OpenCode receives this system prompt with every task:
 
 ---
 
-## Implementation Status
+## Integration capabilities
 
-### ✅ Phase 1 Complete
-- [x] OpenCode server setup (systemd service)
-- [x] Python client wrapper (`lib/opencode_client.py`)
-- [x] Jarvis tool integration (`skills/opencode.py`)
-- [x] Workspace structure (`~/jarvis-workspace`)
-- [x] Voice command routing
-- [x] Basic testing
+### Core integration
+- OpenCode server setup (systemd service)
+- Python client wrapper (`lib/opencode_client.py`)
+- Jarvis tool integration (`skills/opencode.py`)
+- Workspace structure (`~/jarvis-workspace`)
+- Voice command routing
+- Basic testing
 
-### ✅ Additional Features (Added)
-- [x] Systemd service for auto-start
-- [x] Detailed logging system
-- [x] Session conversation viewer
-- [x] Model selection (cloud/local)
-- [x] Integration tests
-- [x] OpenCode identifies as "OpenCode" (not "Claude Code")
-- [x] Workspace isolation configured
-- [x] Fallback-only session verification (`check_opencode_sessions`)
-- [x] Build-result-first response path (successful OpenCode output should win over session status text)
-- [x] `agent_mode` forwarding (`build` / `plan`)
-- [x] Stop/cancel handling improved for long-running local tool execution
+### Runtime and observability
+- Systemd service for auto-start
+- Detailed logging system
+- Session conversation viewer
+- Model selection (cloud/local)
+- Integration tests
+- OpenCode identifies as "OpenCode" (not "Claude Code")
+- Workspace isolation configured
+- Fallback-only session verification (`check_opencode_sessions`)
+- Build-result-first response path (successful OpenCode output should win over session status text)
+- `agent_mode` forwarding (`build` / `plan`)
+- Stop/cancel handling improved for long-running local tool execution
 
-### 🚧 Phase 2 In Progress
-- [x] **Workspace enforcement** - Verify OpenCode respects boundaries (DONE Confirmed works)
+### Workspace controls and planned extensions
+- **Workspace enforcement** - Configured workspace boundaries for OpenCode tasks
 - [ ] **Supervised agent loop** - OpenCode asks Jarvis when blocked, Jarvis answers or escalates to user
-- [x] **Live progress streaming** - Surface real build steps/permission states with SSE and polling fallback
+- **Live progress streaming** - Surface real build steps/permission states with SSE and polling fallback
 - [ ] **Memory strategy** - Decide when Jarvis should inject memory vs keep OpenCode task-only
 - [ ] **Structured artifact reporting** - Return created files, run commands, and test status in a more machine-usable way
 - [ ] **Resume existing OpenCode sessions from follow-up requests** - Use `jarvis_session`, optional `web_conversation_id`, and prior `session_id` context so requests like "add keyboard support" continue the existing OpenCode project/session instead of starting fresh when appropriate
@@ -441,9 +441,9 @@ Desired future behavior:
 - Jarvis can detect when a new user request is really a continuation of the last OpenCode build and resume that same session/project deliberately
 
 That supervision loop is not fully implemented yet, but the current workspace-isolated model is the foundation for it.
-- [x] **Context injection** - Pass user preferences, credentials to OpenCode (We already have .env in ~/.config/opencode/jarvis-env.env)
+- **Context injection** - Pass user preferences, credentials to OpenCode (configured through `~/.config/opencode/jarvis-env.env`)
 - [ ] **Session persistence** - Resume long-running tasks across separate Jarvis requests; the current request remains supervised until its configured OpenCode deadline
-- [x] **Improved condensation** - Better voice response formatting - works fine currently
+- **Improved condensation** - Voice response formatting for OpenCode results
 
 ---
 

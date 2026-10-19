@@ -2,51 +2,56 @@
 
 ![jarvis-info-graph](images/jarvis-info-graph.jpeg)
 
+Start with the [installation guide](INSTALL_GUIDE.md) or
+[Docker guide](docker/README.md), then choose a feature guide below.
+Current setup and usage are separate from contributor references and explicitly
+labeled research or historical documents.
+
 ## 📚 Core Documentation
 
 ### Getting Started
-- **[JARVIS_WORKFLOW.md](JARVIS_WORKFLOW.md)** - 🆕 **Complete workflow guide with visual flowcharts** (START HERE!)
+- **[JARVIS_WORKFLOW.md](JARVIS_WORKFLOW.md)** - **Complete workflow guide with visual flowcharts** (request flow and architecture)
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick setup guide
-- **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** - 🆕 **Complete installation guide** (clone to `~/jarvis-voice`, run `./install.sh`, then configure keys/audio) ⭐ CRITICAL
+- **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** - **Complete installation guide** (clone to `~/jarvis-voice`, run `./install.sh`, then configure keys/audio)
 - **[docker/README.md](docker/README.md)** - 🐳 **Docker guide** — run Web UIs + API in containers (commands, `.env`, hybrid mode)
 - **[TAILSCALE_HTTPS.md](TAILSCALE_HTTPS.md)** - Private HTTPS for the UIs and Firefox extension: Serve setup, navigation, troubleshooting, and rollback
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
 - **[tools/external-network-intel-tool/README.md](tools/external-network-intel-tool/README.md)** - **Passive public IP/domain intelligence** (RDAP, routing, DNS, official cloud ranges, Shodan InternetDB, optional AbuseIPDB; no scanning)
 - **[SPEECH_TO_TEXT.md](SPEECH_TO_TEXT.md)** - **Speech-to-text guide** (OpenAI, Faster-Whisper, self-hosted compatible endpoints, browser/wake-word STT, and long-file `transcribe_audio` policy)
-- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.7` recommended default; also `grok-4.6`, `grok-4.5`, `grok-4.3`, `grok-build-0.1`, native search/TTS, in-flight continuation) ⭐ RECOMMENDED
-- **[OPENAI_PROVIDER.md](OPENAI_PROVIDER.md)** - 🆕 **OpenAI provider** (Chat Completions default, optional Responses API routing, hosted tools, in-flight continuation)
+- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - **xAI Grok provider** (`grok-4.7` recommended default; also `grok-4.6`, `grok-4.5`, `grok-4.3`, `grok-build-0.1`, native search/TTS, in-flight continuation)
+- **[OPENAI_PROVIDER.md](OPENAI_PROVIDER.md)** - **OpenAI provider** (Chat Completions default, optional Responses API routing, hosted tools, in-flight continuation)
 - **[ollama/README.md](ollama/README.md)** - **Ollama local + Ollama Cloud guide** (`OLLAMA_MODEL` vs `OLLAMA_CLOUD_MODEL`, vision uses cloud model in cloud mode / `OLLAMA_VISION_MODEL` in local mode, signed-in daemon, Docker addressing, troubleshooting)
 - **[ollama/JARVIS_EMBEDDING_MODEL.md](ollama/JARVIS_EMBEDDING_MODEL.md)** - Pinned Jarvis Embedding registry artifact, exact digests, host verification, and immutable version policy
 
 ### Main Features
-- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface** (sticky Chat only, mode-scoped settings, Completion Guard, multi-image vision, server logs) ⭐ ENHANCED
+- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface** (sticky Chat only, mode-scoped settings, Completion Guard, multi-image vision, server logs)
 - **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations)
-- **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence, Intel, Voice) ⭐ ENHANCED
+- **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence, Intel, Voice)
 - **[api/VOICES.md](api/VOICES.md)** - 🔊 **Voice API** (TTS playback with multi-agent voice identity support)
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search + auto-injection
 - **[SOURCE_LIBRARY.md](SOURCE_LIBRARY.md)** - Retained original documents, passage search, citations, and the Web source library
 - **[tools/phone/PHONE_CALLS.md](tools/phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts)
 - **[tools/spotify/SPOTIFY.md](tools/spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device)
-- **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, **Memory+Stash architecture**, **stash.remember with PDF/LLM summarization** ⭐ ENHANCED)
-- **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (tool traces, feedback metadata, Completion Guard outcomes, trigger-gated negative constraints) ⭐ ENHANCED
+- **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, **Memory+Stash architecture**, **stash.remember with PDF/LLM summarization**)
+- **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (tool traces, feedback metadata, Completion Guard outcomes, trigger-gated negative constraints)
 - **[CANVAS_SYSTEM.md](CANVAS_SYSTEM.md)** - 🎨 **Visual knowledge viewer** (rich content display, research results)
 - **[JARVIS_HEAD.md](JARVIS_HEAD.md)** - Optional on-host matrix face kiosk (rain + wake/TTS mouth)
 - **[CANVAS_PDF_SHARING.md](CANVAS_PDF_SHARING.md)** - 📄 **Canvas PDF export and optional xAI public URLs** (preview, safety scan, expiry, history, revoke)
 - **[api/IMAGES.md](api/IMAGES.md)** - 🖼️ **Cloudflare CDN Upload** (permanent image hosting, multi-agent sharing, metadata tracking)
 - **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions, intelligence outcome updates)
-- **[COMPLETION_GUARD.md](COMPLETION_GUARD.md)** - 🛡️ **Completion Guard** (same-runtime repair loop, completion check, escalation tickets) 🆕
-- **[tools/scheduled-tasks/scheduled-tasks.md](tools/scheduled-tasks/scheduled-tasks.md)** - ⏱️ **Scheduled Tasks** (implemented foundation for recurring queries, workflows, parser, API, and runner) 🆕
+- **[COMPLETION_GUARD.md](COMPLETION_GUARD.md)** - 🛡️ **Completion Guard** (bounded repair, completion checks and escalation tickets)
+- **[tools/scheduled-tasks/scheduled-tasks.md](tools/scheduled-tasks/scheduled-tasks.md)** - ⏱️ **Scheduled Tasks** (recurring queries and workflows, schedules, run history, and API)
 - **[BACKGROUND-TASKS.md](BACKGROUND-TASKS.md)** - Plain-English overview of local, remote-wait, and callback jobs; Web task management, worker setup, diagnostics, and recovery
 - **[BROWSER-USE-CLOUD.md](BROWSER-USE-CLOUD.md)** - Optional hosted Browser Use V4 research, live viewer, cost cap, and background result delivery
-- **[TASK-CALLBACKS.md](TASK-CALLBACKS.md)** - Optional authenticated task callbacks, integration controls, credential/key lifecycle, and the isolated local HTTP proof
-- **[BROWSER-USE.md](BROWSER-USE.md)** - Opt-in browser research, Docker Chromium isolation, saved Stash evidence, and the first local callback tool binding
+- **[TASK-CALLBACKS.md](TASK-CALLBACKS.md)** - Optional authenticated task callbacks, integration controls, credential/key lifecycle, and the local HTTP test fixture
+- **[BROWSER-USE.md](BROWSER-USE.md)** - Opt-in browser research, Docker Chromium isolation, saved Stash evidence, and local task callbacks
 - **[DUAL_DATABASE_SYSTEM.md](DUAL_DATABASE_SYSTEM.md)** - Cloud/local DB architecture
 - **[SEMANTIC_THRESHOLD_TUNING.md](SEMANTIC_THRESHOLD_TUNING.md)** - Tune search sensitivity
 - **[WEBHOOK_SYSTEM.md](WEBHOOK_SYSTEM.md)** - Modular webhook system (email, n8n, external APIs with auth)
 - **[opencode/OPENCODE.md](opencode/OPENCODE.md)** - Autonomous coding agent
-- **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system + `tool_search` and autonomous `workflow` discovery flows ⭐ ENHANCED
-- **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - 🔄 **Multi-tool workflow system** (slash/API/scheduled plus autonomous foreground execution, required-tool availability with explicit optional degradation, follow-up context) ⭐ IMPLEMENTED
+- **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system + `tool_search` and autonomous `workflow` discovery flows
+- **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - 🔄 **Multi-tool workflow system** (slash/API/scheduled plus autonomous foreground execution, required-tool availability with explicit optional degradation, follow-up context)
 - **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Manifest/profile/mode/Web precedence; enabled vs credential **available** status (`--mode`)
 - **[Email command inbox](tools/email-inbox-tool/README.md)** - Opt-in Gmail requests from approved senders, scheduled polling and threaded replies; published [sequence](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-email-inbox-sequence.html) and [data-flow](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-email-inbox-dataflow.html) charts.
 - **[../skills/README.md](../skills/README.md)** - **Tool profile overlays** (`JARVIS_TOOL_PROFILE`, `skills/profiles/<name>.json`, `bin/manage-tools.py profile …`); git tracks `default.json` and `skills/profiles/examples/*.json` (copy to `profiles/<name>.json` for use). After changing profile: restart services, then `./bin/sync-tools.py local` or `cloud`
@@ -72,9 +77,9 @@
 - **[DEEP_MEMORY_SEARCH.md](DEEP_MEMORY_SEARCH.md)** - 🔍 **Deep Memory Search** (unified search across all data sources)
 - **[qmd/README.md](qmd/README.md)** - 📚 **Internal Knowledge Search** (Q&A about Jarvis capabilities via QMD semantic search)
 
-### Monitoring & Observability ⭐ ENHANCED
+### Monitoring & Observability
 - **[../monitoring/README.md](../monitoring/README.md)** - Grafana + Prometheus + Loki stack
-- **[../jarvis-intelligence/README.md](../jarvis-intelligence/README.md)** - 📊 **Intelligence Dashboard** ⭐ ENHANCED
+- **[../jarvis-intelligence/README.md](../jarvis-intelligence/README.md)** - 📊 **Intelligence Dashboard**
   - Experience sorting (date, turns, tool count) & filtering (success/fail, tool count, specific tool)
   - Insight sorting (applied, helpful, preferred/avoided tools, confidence, updated)
   - 5-tier confidence filtering (Elite 96%+, High 85-95%, Good 75-84%, Medium 50-74%, Low 0-49%)
@@ -157,7 +162,7 @@
 ### Tool System
 | Document | Purpose |
 |----------|---------|
-| **WORKFLOW_ORCHESTRATION.md** | 🔄 **Workflow system** - Deterministic pipelines plus autonomous foreground discovery/execution ⭐ IMPLEMENTED |
+| **WORKFLOW_ORCHESTRATION.md** | 🔄 **Workflow system** - Deterministic pipelines plus autonomous foreground discovery/execution |
 | **[../data/workflows/AGENTS.md](../data/workflows/AGENTS.md)** | 📖 **Workflow building guide** - Tool outputs, extract rules, testing |
 | **TOOL_RAG_STRATEGY.md** | Tool RAG system - Dynamic retrieval, ghost tools, `tool_search`/`workflow` discovery, and compact query tuning |
 | **[archive/TOOL_RAG_IMPLEMENTATION_SUMMARY.md](archive/TOOL_RAG_IMPLEMENTATION_SUMMARY.md)** | Historical Tool RAG implementation record |
@@ -201,8 +206,8 @@
 | **JARVIS_WORKFLOW.md** | Complete workflow with visual flowcharts |
 | **AUTO_CONTEXT_SYSTEM.md** | Short-term conversation memory  |
 | **CONVERSATION_STATE_ARCHITECTURE.md** | State management between cycles  |
-| **[api/INTEL.md](api/INTEL.md)** | 🆕 **Intel API** - CRUD operations for jarvis-intel files |
-| **api/READY_TO_USE.md** | Proactive API (Phase 1 COMPLETE) - Webhook system for alerts |
+| **[api/INTEL.md](api/INTEL.md)** | **Intel API** - CRUD operations for jarvis-intel files |
+| **api/READY_TO_USE.md** | Proactive API setup, alerts, mode selection, and background services |
 | **[service/PROACTIVE_ASSISTANT_SYSTEM.md](service/PROACTIVE_ASSISTANT_SYSTEM.md)** | Proactive assistant architecture |
 
 ### Configuration & Setup
@@ -236,12 +241,12 @@
 ### Intelligence & Learning
 | Document | Purpose |
 |----------|---------|
-| **INTELLIGENCE_LAYER.md** | Self-learning system (Phase 1.5 - COMPLETE) ⭐ ENHANCED |
-| **COMPLETION_GUARD.md** | Completion validation + same-runtime repair + ticket escalation |
-| **ADVANCED_AI_TECHNIQUES.md** | 🚀 **AGI Roadmap** - Tool builder, self-play, parallel subagents ⭐ ENHANCED |
+| **INTELLIGENCE_LAYER.md** | Self-learning, reflection, insight review, and maintenance |
+| **COMPLETION_GUARD.md** | Completion checks, one bounded repair attempt, and ticket escalation |
+| **ADVANCED_AI_TECHNIQUES.md** | 🚀 **Design reference** - Current foundations and proposed self-play/subagent techniques |
 | **TOOL_BUILDER.md** | 🔧 **Dynamic Tool Creation** - Autonomous tool building with safety checks  |
 | **JARVIS_PLAYGROUND.md** | 🎮 **Playground Design** - Self-play, Docker, VM workspace, Carvis twin  |
-| **Psychological-Profile-Ideas.md** | **Phase 2 Roadmap** - User modeling, style reflection, behavioral intelligence ⭐ FUTURE |
+| **Psychological-Profile-Ideas.md** | **Proposal** - User modeling, style reflection, and behavioral intelligence |
 | **SYNC_ARCHITECTURE.md** | Memory, tool, and intelligence sync systems |
 
 ### Developer Tools
@@ -254,7 +259,7 @@
 | **Tool Builder** | Optional terminal starter for a basic tool; finish the integration in an IDE - `./bin/build-tool --mode cloud build "..."` |
 | **[Prompt Validator](SYSTEM_PROMPT_VALIDATOR.md)** | Debug unexpected behavior - `./bin/validate-system-prompt --issue "..."`  |
 
-**Intelligence Features (Phase 1.5):**
+**Intelligence maintenance:**
 - Insight tracking (times_applied, times_helpful, times_failed)
 - Decay job (prunes stale insights)
 - Anomaly detection (flags unusual experiences)
@@ -269,7 +274,7 @@
 | **JARVIS_INTEL_SYSTEM.md** | Intel file ingestion |
 | **FUTURE_ENHANCEMENTS.md** | Planned features |
 | **[STATUS_UPDATES.md](STATUS_UPDATES.md)** | Current latency-aware status behavior, configuration, caching, and delivery |
-| **[DOCS_STATUS.md](DOCS_STATUS.md)** | Documentation health and maintenance checklist |
+| **[DOCS_STATUS.md](DOCS_STATUS.md)** | Audience, ownership, and documentation maintenance guidance |
 | **archive/** | Historical docs, changelogs, and phase milestones |
 | **[archive/thinking/](archive/thinking/)** | Thinking-mode branch notes (see `EXTENDED_THINKING.md`) |
 | **[archive/XAI_NATIVE_CONTINUATION_PLAN.md](archive/XAI_NATIVE_CONTINUATION_PLAN.md)** | Implemented historical design; live guide: `XAI_PROVIDER.md` |
@@ -361,4 +366,4 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-10-16 (v2.56.1)
+[Documentation maintenance guidance](DOCS_STATUS.md)

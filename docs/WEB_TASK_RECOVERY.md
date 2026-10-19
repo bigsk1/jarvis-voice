@@ -5,6 +5,10 @@ to its saved messages and current task state. A disconnected browser does not
 cancel the task. Reopening the conversation restores **Stop** while work is
 running; results received while away appear in history without replaying speech.
 
+This guide covers ordinary Web chat turns and Completion Guard repairs. Durable
+tool jobs that release the chat use the separate
+[background-task lifecycle](BACKGROUND-TASKS.md).
+
 ## Behavior
 
 | State | What it means |
@@ -30,8 +34,8 @@ existing authenticated socket. Successful index writes notify subscribers after
 the store locks are released; the client coalesces bursts and serializes list
 fetches. Subscribing again after reconnect also triggers a refresh. This updates
 only the sidebar, including chats started by Firefox or another device, and never
-broadcasts the initiating client's `conversation:created` navigation event. No new
-polling loop is added; the existing active-run lease recovery check remains.
+broadcasts the initiating client's `conversation:created` navigation event.
+Active-task refreshes and lease checks continue independently of these events.
 
 A **socket reconnect** preserves the displayed transcript, expanded tool cards,
 feedback, reaction controls, draft, and ongoing attachment preparation. It adds
@@ -118,13 +122,14 @@ Stop path. Browser changes in
 [chat.js](../jarvis-web/client/js/chat.js) scope events to the displayed
 conversation and reconcile full history before accepting later live events.
 
-Existing conversation JSON remains readable. New metadata is additive:
+Run ownership is stored as additive metadata in conversation JSON:
 `conversation.run`, user `data._request_id` / `data._run`, assistant
 `data._run_status`, and parent-answer `data._repair_run`. Import preserves message
 metadata but marks imported active runs and repairing prompts Interrupted; it
-never restores an executable run. There are no new settings,
-dependencies, provider protocols, or database migrations. Older code can read the
-chats but does not enforce task ownership; avoid downgrading during active work.
+never restores an executable run. This recovery path uses conversation JSON and
+file locks rather than the background-tool queue database. Older code can read
+the chats but does not enforce task ownership; avoid downgrading during active
+work.
 
 This supports the existing **single Web server process**, hosted natively or in
 Docker, with cloud and local execution. It does not coordinate multiple Web
@@ -135,105 +140,38 @@ the DOM, but cannot recreate intermediate events it never received. F5 restores
 the latest status and saved answer data. Browser session storage is optional; when disabled, open the
 conversation from the sidebar.
 
-## Why this improvement
+## Contributor checks
 
-The verified gap affected every long Web task: threads already survived browser
-disconnects, but reconnect only rejoined a room, missed final events were lost to
-the UI, reload discarded the active Stop target, and Stop acknowledgement unlocked
-the composer before execution actually ended. Concurrent JSON updates could also
-overwrite each other. Fixing this makes existing assistant capabilities usable
-across browser interruptions, without introducing a second job system.
-
-The strongest alternatives were broader source intake, generic tool-result
-hydration, and voice continuation. Mixed-source intake and durable source references
-already existed at the starting revision; tool-result hydration had a narrower
-gap alongside existing previews; voice already had automatic context and required
-hardware validation for interaction changes. Task recovery offered the broadest
-demonstrated reliability benefit with a contained Web/storage boundary.
-
-## Verification
-
-Run each group in a fresh process from the repository root:
+From the repository root, run the maintained full core suite for cross-component
+regressions:
 
 ```bash
-timeout 120 .venv/bin/python tests/run_web_recovery_checks.py core
-timeout 120 .venv/bin/python tests/run_web_recovery_checks.py guard
-timeout 120 .venv/bin/python tests/run_web_recovery_checks.py adjacent
-timeout 120 .venv/bin/python tests/run_web_recovery_checks.py settings
-timeout 120 .venv/bin/python tests/run_web_recovery_checks.py executors
-timeout 90 .venv/bin/python -m pytest -q tests/test_docs_integrity.py
+./bin/test-suite
 ```
 
-Implementation verification results (2026-09-09): core **173 passed**; guard
-**19 passed and 7 subtests passed**; adjacent **32 passed**; executors **93 passed**;
-settings **44 passed**; documentation **4 passed**. The executor group passed in
-the initial implementation; its unchanged paths were not rerun for the review
-follow-up. Before implementation, the reconnect, mixed-attachment
-chat, conversation-title, and workflow-roundtrip group passed all **35** tests.
-
-The full monolithic suite subsequently passed **3,390 tests and 145 subtests**
-in **121.22 seconds**, with no skips. It ran as `.venv/bin/python -m pytest tests -q`
-inside a disposable Bubblewrap checkout using the same repository environment;
-host data, credentials, audio devices, and external networking were inaccessible.
-Four test files now supply temporary local config, mock the embedding preflight,
-and check shipped profile templates instead of operator-installed copies.
-For comparison, unmodified pre-feature `a924250` reproduced the exact same five
-failures under identical isolation (**3,295 passed, 5 failed, 145 subtests passed**);
-the feature before those fixture corrections had **3,381 passed, 5 failed, 145
-subtests passed**. Those five failures came from existing environment assumptions.
-
-Syntax and scoped lint checks:
+For a focused recovery check:
 
 ```bash
-node --check jarvis-web/client/js/app.js
-node --check jarvis-web/client/js/chat.js
-node --check jarvis-web/client/js/socket.js
-.venv/bin/ruff check jarvis-web/server/services/chat_runs.py jarvis-web/server/services/conversation_store.py tests/test_web_task_recovery.py tests/test_web_task_recovery_ui.py tests/run_web_recovery_checks.py
-.venv/bin/ruff check --select E9,F63,F7,F82 jarvis-web/server/app.py jarvis-web/server/sockets/chat.py jarvis-web/server/routes/api.py jarvis-web/server/services/chat_runs.py jarvis-web/server/services/conversation_store.py
-git diff --check
+.venv/bin/python -m pytest tests/test_web_task_recovery.py tests/test_web_task_recovery_ui.py tests/test_web_socket_reconnect.py tests/test_conversation_store.py -q
 ```
 
-These checks pass. Full Ruff output for the existing large socket/API modules was
-also compared with the starting revision: 30 and 40 existing diagnostics
-respectively, with no new diagnostic counts by code and message (ignoring moved
-line references). Those preexisting lint issues were left outside this change.
+The tests use disposable configuration, conversation files, and logs, with
+scripted providers. They cover reconnect, duplicate requests, concurrent stores,
+execution-lock release, interrupted-run reconciliation, persistence failures,
+and browser state methods in Node. They do not establish real provider
+cancellation timing or rendering on physical devices. See [Testing](TESTING.md)
+for environment setup, isolation, and the separate Firefox extension suite.
 
-The [runner](../tests/run_web_recovery_checks.py) uses disposable configuration,
-stash paths, conversation files, and logs, and blocks Python network connections.
-The core group includes real Flask-SocketIO in-memory clients and a bounded real
-worker thread with a fake provider, concurrent store instances, storage fault
-injection, a real child-process lock-release check, restart reconciliation, and production browser methods in a
-Node VM. Fault tests include missing index admission/orphan rows, unrelated corrupt
-documents, uncertain assistant outcomes, unsaved failures surviving sidebar and
-retention reads, slow fsync and mode reload alongside other tasks, and repair
-admission/announcement/launch/execution failure/ticketing. The other groups cover Completion Guard, usage metadata, mode scoping,
-chat-only policy, PDF/vision failures, cancellation, and pipelines.
-
-Startup tests also exercise the vendored Socket.IO client's event buffer. Its
-session-ready event can arrive before the public connect callback; the wrapper
-must already accept history-load and receipt-resume requests at that point. These
-cases reproduce the hard-refresh bug where a selected chat stayed blank until
-clicked again, and verify both handshake orders without opening a network connection.
-
-Keep these groups separate: the existing Completion Guard test module installs
-global Flask stubs that conflict with other modules during combined collection.
-No paid APIs, live databases, host audio devices, listening servers, or production
-service restarts are needed. Browser rendering on actual devices and real provider
-cancellation timing remain manual checks.
-
-For manual review, use a disposable Web instance with temporary data/config/log
-paths and a local model already available there. Start a harmless task that takes
-a few seconds:
+For a manual browser check, use a disposable Web instance with temporary data,
+configuration, and logs. Start harmless work that takes a few seconds:
 
 1. Reload while it runs. Confirm history, status, and Stop return.
-2. Disconnect only the socket during PDF/audio/image preparation, during tools,
-   and while feedback, Guard, and thumbs are visible. Confirm preparation and
-   existing cards survive; missed answers and feedback arrive once, without speech.
-3. Start again, switch conversations, return, and press Stop. Confirm Send stays
-   disabled while Stopping, and Clear/Delete explain why they are blocked.
-4. Open that conversation in another tab. Check overlap rejection and draft
-   restoration; check that other-mode work is rejected until the active task ends.
-5. In the disposable instance only, stop its server during work and restart it.
-   Refresh the sidebar: it should show interruption without opening the thread.
-   Open it and verify no work is resent. Retention dry runs should include an old,
-   unpinned abandoned thread while preserving a live task.
+2. Disconnect only the socket during attachment preparation or tool execution.
+   Confirm existing cards and drafts survive, and missed answers arrive once
+   without replaying speech.
+3. Switch conversations, return, and press Stop. Confirm Send stays disabled
+   while Stopping, and Clear/Delete explain why they are blocked.
+4. Open the conversation in another tab. Check overlap rejection and draft
+   restoration. Check that other-mode work is rejected until the active task ends.
+5. Stop and restart only the disposable server during work. Refresh the sidebar
+   and confirm the conversation is interrupted without resubmitting work.

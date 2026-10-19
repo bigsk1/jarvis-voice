@@ -1,34 +1,38 @@
 # Task callbacks
 
-For the plain-English overview of all three ways a background job can finish,
-see [How background work finishes](BACKGROUND-TASKS.md#how-background-work-finishes).
-
-Phase 3a adds authenticated completion callbacks for explicitly bound services.
-Jarvis saves each accepted event to a durable inbox, the task worker applies it to
-the matching execution attempt, and Web delivers the existing task card and late
-answer. A service can respond after the submitting worker exits; no polling child
-or long-lived chat turn is required.
+Task callbacks let a trusted service report progress or completion after Jarvis
+submits a background job. Jarvis saves each authenticated event to a durable
+inbox, the task worker applies it to the matching execution attempt, and Web
+updates the task card and adds the late answer. A service can respond after the
+submitting worker exits; no polling child or long-lived chat turn is required.
 The authenticated completion summary is the late answer itself. Web renders it
 as a safe Markdown report card without asking a second model to condense it;
 the callback result remains in conversation history for later inspection.
 
-**Incoming callbacks default off.** [Browser use](BROWSER-USE.md) is the first opt-in
-production binding; it requires explicit local service provisioning and runs only
+For the other completion methods, see
+[How background work finishes](BACKGROUND-TASKS.md#how-background-work-finishes).
+
+**Incoming callbacks default off.** [Browser Use](BROWSER-USE.md) is an opt-in
+binding; it requires explicit local service provisioning and runs only
 through authorized Web text chat background admission. It has no foreground mode.
-The existing conversion and media bindings keep their current runners. Adding a
-source in Settings does not authorize it to run tools or create conversations.
+For its normal guided setup, use **Settings → Tools → Background tasks → Set up
+and enable**. The controls below are for advanced source administration and
+reviewed service integrations. Adding a source in Settings does not authorize it
+to run tools or create conversations. Conversion and media tools use their own
+background adapters.
+
 An optional owner-installed personal callback binding can use the same adapter;
-no remote tool or bridge is included in a public clone. Third-party signature
-formats, remote cancellation, and the public relay remain separate work.
-`/api/alerts` and outgoing webhooks are unchanged.
+no private remote agent or bridge is bundled in a public clone. Third-party signature
+formats and a public relay are not included. Browser Use supports verified
+per-job cancellation; other callback bindings have no remote cancellation by
+default. Alerts (`/api/alerts`) and outgoing webhooks are separate integrations.
 
 ## Setup and controls
 
-Restart Web, API, and the task worker together after updating. Task-store migration
-8 preserves existing jobs and preferences and adds the inbox and credential tables.
-Older processes cannot use the newer schema; do not mix worker versions. Install
-the updated dependencies using the normal project workflow (`cryptography==49.0.0`
-is now a direct dependency; other packages were not upgraded).
+Run Web, API, and the task worker from the same checkout version with the project's
+installed dependencies. Restart them together after upgrades that change the
+task-store schema; older processes cannot use a newer schema. Initialization
+applies migrations while preserving existing jobs and preferences.
 
 In **Settings → Integrations → Task callbacks**:
 
@@ -212,9 +216,11 @@ no running Cancel control by default. A valid cancellation acknowledgment update
 the card with suppressed delivery, matching local cancellation;
 it does not schedule an assistant follow-up.
 
-Phase 3a accepts **text results only**, up to 32,000 characters. `artifacts` must be
-absent or empty. URLs, caller-selected stash references, tool names, conversation
-IDs, provider settings, repeated JSON keys and undeclared fields are rejected.
+Callbacks accept **text summaries**, up to 32,000 characters, plus the optional
+reviewed presentation metadata described above. `artifacts` must be absent or
+empty. Caller-selected URL/artifact fields, Stash references, tool names,
+conversation IDs, provider settings, repeated JSON keys and undeclared fields
+are rejected.
 No artifact is fetched or inline HTML rendered by the receiver.
 
 ## Delivery, limits and failure behavior
@@ -273,7 +279,9 @@ all modes sharing the database must use the same keyring. It must be
 an owner-only regular file owned by the process user. Keep it separate from database
 exports and back it up separately. Web needs write access for bootstrap/rotation;
 API and worker need read access. Existing Compose data mounts share the default
-path, but **the loopback adapter proof is native**, not a cross-container deployment.
+path. The managed Browser Use helper and generic loopback submission path require
+native networking; the stock Compose stack does not provision a cross-container
+callback service. See [Docker deployment](docker/README.md#background-tasks-and-task-callbacks).
 Do not run simultaneous tmux and systemd workers; normal supervision is unchanged.
 
 Local operator commands (using the normal runtime environment):
@@ -297,21 +305,24 @@ once and shortens the old credential to a bounded overlap (UI: 5 minutes; API:
 0–60 minutes). Ordinary credentials default to 90-day expiry. Setup probes use
 short-lived, test-only credentials and revoke them immediately after the test.
 
-## Isolated acceptance proof
+<a id="isolated-acceptance-proof"></a>
+
+## Contributor checks
 
 ```bash
 .venv/bin/python -m pytest tests/test_task_callbacks.py tests/test_task_callback_http.py tests/test_task_callback_journey.py tests/test_task_integration_controls.py tests/test_task_integration_ui.py tests/test_private_callback_bindings.py -q
 ```
 
-All state, logs, credentials and conversations are temporary. The journey starts
-`tests/fixtures/task_callback_service.py` as a separate process plus an ephemeral
+The protocol tests use temporary state, logs, credentials and conversations. The
+journey starts `tests/fixtures/task_callback_service.py` as a separate process plus an ephemeral
 localhost API server using the real auth/logging/rate/body middleware classes.
 It exercises Web admission and receipt settlement, another foreground tool, one
 authenticated completion plus its duplicate, and exactly one saved late answer.
-Model decisions are scripted. This isolated receiver proof does not exercise the
-production Browser Use binding, a live provider, real service configuration, or
-installation data. The separate Browser Use tests cover that binding. The fixture
-requires permission for local sockets.
+Model decisions are scripted. These checks exercise the receiver protocol, not
+a live Browser Use provider or an installation's private service configuration.
+Browser Use has separate binding tests. The local HTTP fixture requires permission
+for local sockets; see [Testing](TESTING.md) for sandbox restrictions and the full
+core suite.
 
 The HTTP tests also verify middleware order on the actual API application. This
 matters because [Starlette middleware order](https://starlette.dev/middleware/)

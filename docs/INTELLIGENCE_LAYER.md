@@ -1,9 +1,8 @@
 # Jarvis Intelligence Layer
 
-**Status**: Active / Phase 1.5 Complete + 2026 operational bridges
-**Created**: 2025-11-27
-**Updated**: 2026-09-19 (background-task reflection boundary)
-**Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`, `jarvis-intelligence/` (dashboard)
+Intelligence records eligible Jarvis interactions and learns reusable guidance
+for later requests. Use its dashboard to inspect experiences, review pending
+reflections, manage learned insights, and check learning health.
 
 ## Overview
 
@@ -13,17 +12,28 @@ The Intelligence Layer is Jarvis's self-learning system. It observes interaction
 
 See the [Intelligence Layer infographic](images/intelligence-info-graph.jpeg) for the learning architecture.
 
-**Key Principles**:
-- Everything is continuous (vectors), not discrete rules
-- Learning generalizes through semantic similarity
-- **Phase 1**: Positive AND negative constraints (what to do AND what NOT to do)
-- Negative constraints with structured triggers apply only when the current user request contains one of those trigger signals
-- **Phase 1**: Fact vs Procedural classification (only skills stored, not facts)
-- **Phase 1**: Generalizability filtering (low-value insights filtered out)
+**Key principles:**
+
+- Semantic similarity finds candidate lessons; confidence and applicability checks decide which can influence a request.
+- Positive guidance recommends approaches, while negative guidance identifies approaches to avoid in a specific context.
+- Procedural lessons belong here; factual memory has a [separate system](MEMORY_SYSTEM.md).
+- Reflection is on demand. Recording an experience does not immediately call a reflection model or guarantee that an insight will be created.
 
 ---
 
 ## Quick Start
+
+Start the dashboard from the repository root:
+
+```bash
+./bin/jarvis-intelligence         # Cloud/default mode
+./bin/jarvis-intelligence local   # Local mode
+```
+
+Open `http://localhost:5003`. Select **Experiences** to inspect recorded requests,
+**Reflection** to review or process the pending queue, and **Insights** to inspect
+what Jarvis learned. Each reflection is a separate model request and uses the
+configured provider; review the queue before processing test or sensitive tasks.
 
 ### Default and Emergency Opt-Out
 
@@ -32,8 +42,6 @@ declaration is required. To disable it temporarily for testing or recovery:
 
 ```bash
 JARVIS_INTELLIGENCE=false
-
-# Uses current LLM_PROVIDER and related MODEL when you run it
 ```
 
 When disabled:
@@ -45,9 +53,8 @@ When disabled:
 ### Check Status
 
 ```bash
-source ~/jarvis-venv/bin/activate
-cd ~/jarvis-voice
-python3 -c "
+# Run from the repository root with the development environment.
+.venv/bin/python -c "
 from lib.intelligence import get_intelligence_layer
 import json
 print(json.dumps(get_intelligence_layer().get_stats(), indent=2))
@@ -56,11 +63,11 @@ print(json.dumps(get_intelligence_layer().get_stats(), indent=2))
 
 ---
 
-## Phase 1 Features (Implemented)
+## Learning capabilities
 
-### 1. Positive & Negative Constraints
+### Positive & Negative Constraints
 
-The system now learns BOTH what to do AND what NOT to do:
+Insights describe approaches to prefer and approaches to avoid:
 
 ```
 === LEARNED STRATEGIES (WHAT TO DO) ===
@@ -78,31 +85,31 @@ The system now learns BOTH what to do AND what NOT to do:
   ❌ AVOID: search_memory (-0.31)
 ```
 
-### 2. Fact vs Procedural Classification
+### Fact vs Procedural Classification
 
-The reflection engine now classifies insights:
-- **Factual** (e.g., "Server IP is 10.0.0.1") → Sent to Memory DB, NOT stored here
+Reflection classifies candidate lessons:
+- **Factual** (e.g., "Server IP is 10.0.0.1") → Not stored as an Intelligence insight; use the memory tools to save facts
 - **Procedural** (e.g., "Use fetch for status queries") → Stored in Intelligence DB
 
-### 3. Generalizability Filtering
+### Generalizability Filtering
 
 Insights are scored for generalizability:
 - **High**: "Always use crypto_price for price queries" → Stored
 - **Medium**: "Use X for Y in context Z" → Stored with lower weight
 - **Low**: "The weather was rainy today" → NOT stored (too specific)
 
-### 4. Decay Tracking (ACTIVE)
+### Insight usage and confidence
 
-Fields that track insight health are now **actively updated**:
-- `times_applied` - How often this insight is used ✅ Updated automatically
-- `times_helpful` - Success count when applied ✅ Updated automatically
-- `times_failed` - Failure count when applied ✅ Updated automatically
-- `consecutive_failures` - Rapid decay trigger ✅ Updated automatically
-- `last_outcome` - Most recent result (`success` / `failure` / `unused`) ✅ Updated automatically
+Insight health fields update as guidance is applied and outcomes are recorded:
+- `times_applied` - How often this insight is used
+- `times_helpful` - Success count when applied
+- `times_failed` - Failure count when applied
+- `consecutive_failures` - Rapid decay trigger
+- `last_outcome` - Most recent result (`success` / `failure` / `unused`)
 
-### 5. Feedback → Intelligence Bridge (Enhanced 2026-04-18)
+### Feedback → Intelligence Bridge
 
-The feedback system now **retroactively enriches and corrects** experience outcomes based on LLM grading:
+Optional LLM feedback enriches the recorded experience and can correct its outcome:
 
 ```
 Flow:
@@ -118,12 +125,9 @@ Rating Logic:
 - Rating 1-2 → FAILURE (retroactively corrected)
 ```
 
-**Why this matters**: Previously, `ok: True` was set whenever the LLM responded, even if:
-- No tools were called for an action request
-- The LLM hallucinated information
-- The task wasn't actually completed
-
-Now the feedback system (the nuanced judge with full context) makes the final call on success/failure and preserves the QA reason for reflection.
+Feedback evaluates whether the answer completed the task, rather than relying
+only on a tool’s `ok` flag. Low ratings can mark an experience as failed even
+when the tools ran successfully.
 
 Feedback is stored alongside, not instead of, Completion Guard metadata:
 
@@ -149,7 +153,7 @@ The bridge is conservative around Completion Guard:
 - High feedback (`4-5`) can mark satisfaction but does not erase `had_to_retry`, repaired status, or Completion Guard notes.
 - Hard guard outcomes (`unresolved`, `ticket_created`, `error`) are not softened by later high feedback.
 
-### 6. Completion Guard → Intelligence Bridge (2026)
+### Completion Guard → Intelligence Bridge
 
 When Jarvis Web runs [Completion Guard](./COMPLETION_GUARD.md), outcomes are written back onto the **same** experience row (no duplicate “repair-only” experiences). `lib/intelligence_hooks.py` provides `update_experience_from_completion_guard()`:
 
@@ -160,9 +164,9 @@ When Jarvis Web runs [Completion Guard](./COMPLETION_GUARD.md), outcomes are wri
 
 Explicit feedback collection in Web UI is **gated** until guard settlement so grades align with this record. Orchestrator-side random feedback sampling is temporarily disabled while Web Completion Guard is active to avoid pre-collected random feedback racing the guard state. See also [FEEDBACK_SYSTEM.md](./FEEDBACK_SYSTEM.md).
 
-### 7. Tool Trace + Argument Recovery in Reflection (2026-04-18)
+### Tool Trace + Argument Recovery in Reflection
 
-Experience context now stores a sanitized `tool_trace` so reflection can inspect attempted tool calls, not just final tool names.
+Experience context stores a sanitized `tool_trace` so reflection can inspect attempted tool calls, not just final tool names.
 
 Captured per attempt:
 
@@ -182,7 +186,7 @@ Tool argument values must be concrete user/query values, not JSON schema objects
 
 It also improves insight scoring: a positive insight that recommends a tool is not counted as helpful when that preferred tool failed and a later tool recovered the task.
 
-### 8. Autonomous Workflow Attribution in Reflection (2026-07-23)
+### Autonomous Workflow Attribution in Reflection
 
 Autonomous workflow orchestration records a compact `workflow_execution` block
 alongside the ordinary outer tool trace. It identifies:
@@ -227,9 +231,9 @@ workflow ran.
 Reflections already queued before this field existed reconstruct the same
 summary from their stored workflow result and tool trace when possible.
 
-### 9. Presentation Artifact Learning (2026-04-18)
+### Presentation Artifact Learning
 
-Experience context now records response presentation metadata:
+Experience context records response presentation metadata:
 
 - `response_style`
 - `qa_word_limit`
@@ -254,17 +258,17 @@ Use the spoken response for a concise summary and save full structured details t
 
 Guardrail: reflection may only recommend artifact tools that were actually available to the original route. This avoids learning “use canvas” from experiences where `canvas` was not in Tool RAG/ghost tools.
 
-### 10. Provider-Native Tool Metadata in Reflection (2026-04-04)
+### Provider-Native Tool Metadata in Reflection
 
-When providers use native server-side tools such as xAI `x_search` / `web_search` or native code execution, the intelligence layer now treats that as **evidence metadata**, not as Jarvis routing behavior.
+When providers use native server-side tools such as xAI `x_search` / `web_search` or native code execution, the Intelligence layer treats that as **evidence metadata**, not as Jarvis routing behavior.
 
 - Reflection can see provider-native tool usage so it does **not** misread an empty `tools_used` list as a zero-tool hallucination.
 - Completion Guard also treats those native tools as real evidence during audits.
 - These native provider tools are **not** converted into `preferred_tool` / `avoided_tool` insights, so Jarvis does not start preferring provider-specific internals over normal Jarvis tools.
 
-### 11. Reflection Usage Tracking (2026-04-18)
+### Reflection Usage Tracking
 
-Reflection LLM calls now preserve their own observability metadata on generated insights:
+Reflection LLM calls preserve their own observability metadata on generated insights:
 
 - `reflection_provider`
 - `reflection_model`
@@ -277,9 +281,9 @@ The Intelligence UI shows a compact badge on insight cards, for example `35,303 
 
 **Cumulative vs. latest semantics**: insights can be updated by many reflection runs over time, so the token and cost columns are *additive* — every new reflection that updates an insight adds its own tokens and cost onto the running totals. The `reflection_provider` and `reflection_model` columns, by contrast, are overwritten on each update and reflect only the most recent reflection run. The UI labels this explicitly as "Lifetime Reflection Cost / Tokens" and "Last Reflection Provider" so the card badge (`🧾 5,391 tok $0.0012`) is understood as a lifetime rollup, not the cost of the most recent run.
 
-### 11. Insight Provenance and Soft Tool Sequences (2026-04-21)
+### Insight Provenance and Soft Tool Sequences
 
-Insights now keep an auditable link back to the experience that created them:
+Insights keep an auditable link back to the experience that created them:
 
 - `source_experience_id`
 - `source_web_conversation_id`
@@ -299,9 +303,9 @@ Multi-tool lessons can store:
 
 Important: `preferred_tool_sequence` is **advisory evidence**, not a hard workflow contract. Reflection should set `sequence_required=true` only when the exact order is essential for correctness. Non-required sequences are stored for audit/UI visibility but are not injected into the live routing prompt. Normal routing and Tool RAG remain free to choose a different combination when the user's current intent is different.
 
-Similar insight text no longer merges automatically when the preferred/avoided tool association conflicts. The new reflection is stored as a separate insight so an old tool preference does not survive under a freshly reinforced but semantically different lesson.
+Similar insight text does not merge automatically when the preferred/avoided tool association conflicts. The reflection is stored as a separate insight so an old tool preference does not survive under a freshly reinforced but semantically different lesson.
 
-### 12. Secret Redaction for Intelligence Records (2026-04-21)
+### Secret Redaction for Intelligence Records
 
 Before interaction data is stored in the Intelligence DB or sent into reflection, Jarvis redacts credential-like material:
 
@@ -316,9 +320,9 @@ Before interaction data is stored in the Intelligence DB or sent into reflection
 
 Normal personal/contact data such as email addresses is not redacted by this layer because it can be legitimate task context. The Intelligence dashboard also redacts on read so older records are less likely to display credential material, but historical DB rows created before this redaction pass may still need a one-time scrub if they are known to contain secrets.
 
-### 13. Intelligence Dashboard Pagination (2026-04-21)
+### Intelligence Dashboard Pagination
 
-The Intelligence Dashboard no longer loads large card lists eagerly on first paint.
+The Intelligence Dashboard loads Experiences and Insights in pages.
 
 - Experiences and Insights are fetched in 50-row pages.
 - Infinite scroll loads the next page automatically when the user nears the bottom of the list.
@@ -327,11 +331,11 @@ The Intelligence Dashboard no longer loads large card lists eagerly on first pai
 
 This keeps the default Experiences tab responsive as the intelligence DB grows while preserving detail-modal behavior: raw experience data is still fetched only when opening a single record.
 
-### 14. Request-Scoped Negative Insight Applicability (2026-08-11)
+### Request-Scoped Negative Insight Applicability
 
 Semantic similarity discovers possible insights; it does not, by itself, prove
 that a narrow prohibition applies to the current request. Before Intelligence
-retrieval, Jarvis now derives the clean current user request and excludes
+retrieval, Jarvis derives the clean current user request and excludes
 Jarvis-added tool-hint, learned-strategy, memory, and prior-result wrappers from
 the embedding query. Those blocks remain available to the appropriate routing
 layers and to the LLM; they are simply not mistaken for user-authored intent by
@@ -364,8 +368,8 @@ This safeguard is intentionally asymmetric:
 - Positive insights retain semantic generalization.
 - Negative insights with trigger metadata require an explicit trigger match
   because `INTELLIGENCE_NEGATIVE_WEIGHT` makes their consequences stronger.
-- Legacy negative insights with no `trigger_signals` retain their established
-  semantic-only behavior for backward compatibility.
+- Legacy negative insights with no `trigger_signals` are excluded from retrieval
+  until they have a usable applicability boundary.
 - An explicit Web UI tool hint remains current-turn user intent and still
   outranks a learned negative preference for Tool RAG schema inclusion.
 
@@ -374,7 +378,7 @@ insight payload for provenance and debugging. This applicability guard is a
 correctness rule, not another tuning parameter; it does not alter confidence,
 learning rate, negative weight, or decay behavior.
 
-### 15. Web Chat-Only Learning Semantics (2026-08-11)
+### Web Chat-Only Learning Semantics
 
 Jarvis Web's sticky `#chat_only` mode preserves normal experience recording and
 reflection while removing tool-routing pressure from that turn:
@@ -405,11 +409,11 @@ that deliberately unavailable tools were either missing or suboptimal. See
 
 ---
 
-## Phase 1.5 Features (Implemented 2025-11-28)
+## Reflection evidence and maintenance
 
-### 1. Enhanced Reflection Context
+### Enhanced Reflection Context
 
-The reflection LLM now receives **complete context** about each interaction:
+The reflection model receives bounded evidence captured for each interaction. This illustrative excerpt shows its main inputs:
 
 ```
 **User Query**: Is my server running?
@@ -437,11 +441,11 @@ CRITICAL EVALUATION:
 3. Did the response actually answer the user's question? YES/NO
 ```
 
-**Why this matters**: The reflection LLM can now evaluate **content quality**, not just tool success.
+Reflection evaluates answer quality as well as tool execution. Missing or truncated evidence limits what it can conclude.
 
-### 2. Content Quality Evaluation
+### Content Quality Evaluation
 
-New reflection output fields:
+Content-evaluation fields include:
 ```json
 {
   "tool_returned_relevant_data": true,
@@ -451,7 +455,7 @@ New reflection output fields:
 }
 ```
 
-### 3. Insight Tracking (Now Active!)
+### Recording insight outcomes
 
 When an insight matches a query:
 1. `times_applied` incremented
@@ -460,9 +464,9 @@ When an insight matches a query:
    - Failure → `times_failed` +1, `consecutive_failures` +1
    - `last_outcome` updated to `success` or `failure`
 
-### 4. Maintenance Jobs
+### Maintenance Jobs
 
-Three automated maintenance jobs keep the intelligence layer healthy:
+Three maintenance jobs can be run manually or scheduled by the operator:
 
 #### Decay Job
 ```bash
@@ -505,7 +509,7 @@ INTELLIGENCE_ANOMALY_THRESHOLD=2.5  # Z-score threshold
 - **Learning quality**: Low avg confidence, unused insights
 - Stores findings in `meta_knowledge` table for analysis
 
-### 5. New Log Events
+### Maintenance Log Events
 
 All logged to `logs/intelligence/intelligence-YYYY-MM-DD.jsonl`:
 
@@ -519,178 +523,48 @@ All logged to `logs/intelligence/intelligence-YYYY-MM-DD.jsonl`:
 
 ---
 
-## How It Works (Detailed Architecture)
+## How It Works
 
-### Overview Flow (Simple)
-
-```
-USER QUERY → Check Insights → Route & Execute → Record Experience → Reflect (async)
-                                                      ↑
-                                            Feedback / Completion Guard updates?
-                                                      ↓
-                                            Attach metadata and correct outcome when needed
-```
-
-### Detailed Flow: Python vs LLM Calls
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              USER ASKS QUESTION                                 │
-│                          "Is my server running?"                                │
-└────────────────────────────────┬────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  1. CHECK LEARNED INSIGHTS (Python + Embedding API)                             │
-│  ────────────────────────────────────────────────────────────────────────────── │
-│  [PYTHON] get_routing_insights(query)                                           │
-│     │                                                                           │
-│     ├─▶ [PYTHON] Extract clean current user request                              │
-│     │      Excludes Jarvis-added hint/memory/intelligence wrappers               │
-│     │                                                                           │
-│     ├─▶ [EMBEDDING API] get_embedding(clean_request) ← verified Ollama host      │
-│     │      Returns: 768D Jarvis Embedding vector                                │
-│     │                                                                           │
-│     ├─▶ [PYTHON] Cosine similarity search in insights DB                        │
-│     │      Finds: matching insights by pattern_embedding                        │
-│     │                                                                           │
-│     ├─▶ [PYTHON] Gate structured negative insights by trigger_signals            │
-│     │      No trigger match → no prompt instruction and no negative bias         │
-│     │                                                                           │
-│     └─▶ [LOG] logs/intelligence/intelligence-YYYY-MM-DD.jsonl                   │
-│            Event: "insights_applied"                                            │
-│                                                                                 │
-│  Output: { tool_biases: {mcp_fetch: +0.85, search_memory: -0.53}, ... }        │
-└────────────────────────────────┬────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  2. INJECT INTO ROUTING CONTEXT (Python)                                        │
-│  ────────────────────────────────────────────────────────────────────────────── │
-│  [PYTHON] format_insights_for_prompt(insights)                                  │
-│     │                                                                           │
-│     └─▶ Prepends to transcript:                                                 │
-│         "=== LEARNED STRATEGIES ===                                             │
-│          ✅ Use mcp_fetch for status queries                                    │
-│          === KNOWN FAILURES ===                                                 │
-│          ❌ Avoid search_memory for real-time data"                             │
-└────────────────────────────────┬────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  3. ROUTE & EXECUTE (Main LLM - same provider as config)                        │
-│  ────────────────────────────────────────────────────────────────────────────── │
-│  [LLM CALL] router.route(enhanced_transcript)  ← xAI/Anthropic/OpenAI/Ollama   │
-│     │       Uses: LLM_PROVIDER from config                                      │
-│     │       This is the MAIN routing LLM (same as normal Jarvis)                │
-│     │                                                                           │
-│     ├─▶ [LOG] logs/llm-calls-YYYY-MM-DD.jsonl                                   │
-│     │                                                                           │
-│     └─▶ Tool execution → Result                                                 │
-│                                                                                 │
-│  Output: { intent: "tool", tool: "mcp_fetch_fetch", ... }                      │
-└────────────────────────────────┬────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  4. RECORD EXPERIENCE (Python + Embedding API)                                  │
-│  ────────────────────────────────────────────────────────────────────────────── │
-│  [PYTHON] record_experience(query, tools_used, outcome)                         │
-│     │                                                                           │
-│     ├─▶ [EMBEDDING API] get_embedding(query)                                    │
-│     ├─▶ [EMBEDDING API] get_embedding(outcome_description)                      │
-│     │      (This is why you see 2 embedding calls!)                             │
-│     │                                                                           │
-│     ├─▶ [PYTHON] INSERT INTO experiences (SQLite)                               │
-│     ├─▶ [PYTHON] INSERT INTO reflection_queue                                   │
-│     │                                                                           │
-│     └─▶ [LOG] Event: "experience_recorded"                                      │
-│                                                                                 │
-│  Output: experience_id = 8                                                      │
-└────────────────────────────────┬────────────────────────────────────────────────┘
-                                 │
-                                 ▼  (async/on-demand)
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  5. REFLECT ON EXPERIENCE (SEPARATE LLM CALL - same provider)                   │
-│  ────────────────────────────────────────────────────────────────────────────── │
-│  [PYTHON] reflect_on_experience(experience_id)                                  │
-│     │                                                                           │
-│     ├─▶ [LOG] Event: "reflection_started"                                       │
-│     ├─▶ [LOG] Event: "reflection_prompt" (preview of what's sent)               │
-│     │                                                                           │
-│     ├─▶ [LLM CALL] provider.chat(reflection_prompt)  ← SEPARATE LLM SESSION    │
-│     │      Provider: Same as LLM_PROVIDER (xAI/Anthropic/OpenAI/Ollama)         │
-│     │      System: "You are a self-reflective AI analyzing your behavior..."    │
-│     │      Prompt: "Analyze this interaction... Was first tool optimal?..."     │
-│     │                                                                           │
-│     ├─▶ [LOG] Event: "reflection_response" (provider, model, JSON result)       │
-│     │                                                                           │
-│     └─▶ [PYTHON] Parse JSON response → Store insight                            │
-│                                                                                 │
-│  Output: { constraint_type: "positive", insight: "Use mcp_fetch...", ... }     │
-└────────────────────────────────┬────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  6. STORE INSIGHT (Python + Embedding API)                                      │
-│  ────────────────────────────────────────────────────────────────────────────── │
-│  [PYTHON] _store_insight(reflection, experience)                                │
-│     │                                                                           │
-│     ├─▶ [PYTHON] Filter: is_procedural? generalizability != 'low'?              │
-│     │      If factual → [LOG] "insight_skipped" → return                        │
-│     │                                                                           │
-│     ├─▶ [EMBEDDING API] get_embedding(insight_text)                             │
-│     ├─▶ [EMBEDDING API] get_embedding(pattern_text)                             │
-│     │                                                                           │
-│     ├─▶ [PYTHON] INSERT INTO insights (SQLite)                                  │
-│     │                                                                           │
-│     └─▶ [LOG] Event: "insight_created" or "insight_updated"                     │
-│                                                                                 │
-│  Output: insight_id = 5                                                         │
-└─────────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│  7. META-COGNITION (Python only - NO LLM)                                       │
-│  ────────────────────────────────────────────────────────────────────────────── │
-│  [PYTHON] evaluate_learning_quality()                                           │
-│     │                                                                           │
-│     ├─▶ [PYTHON] Query insights table for stats                                 │
-│     │      - Average confidence                                                 │
-│     │      - Evidence counts                                                    │
-│     │      - Pattern diversity                                                  │
-│     │                                                                           │
-│     └─▶ [PYTHON] Return analysis with potential_issues                          │
-│                                                                                 │
-│  Output: { avg_confidence: 0.85, potential_issues: [...] }                     │
-│  NOTE: This is PURE PYTHON - no LLM call! Just database analysis.              │
-└─────────────────────────────────────────────────────────────────────────────────┘
+```text
+Current request → applicable learned guidance → routing and execution
+                                             ↓
+                                      recorded experience
+                                             ↓
+                            operator-triggered reflection
+                                             ↓
+                               reusable insight, if any
 ```
 
-### Summary: What Calls What
+1. **Retrieve guidance.** Jarvis embeds the clean current request, finds similar
+   insights, and applies confidence, trigger, conflict, and tool-availability
+   checks. Chat-only turns skip learned tool-routing guidance.
+2. **Route and execute.** The normal orchestrator uses eligible insights as
+   guidance. Current user instructions and the tools actually available for the
+   request remain authoritative.
+3. **Record an experience.** An eligible foreground turn records its request,
+   attempted tools, outcome, and bounded evidence. Feedback, user reactions, or
+   Completion Guard can enrich the same record afterward.
+4. **Reflect on demand.** A separate model request reviews one queued experience
+   at a time. It uses the active mode’s configured provider/model, rather than
+   reopening the original conversation’s model session.
+5. **Store and evaluate lessons.** Reusable procedural insights receive
+   embeddings and provenance links. Usage outcomes update their confidence;
+   maintenance can retire weak or obsolete guidance and report learning issues.
 
-| Step | Python | Embedding API | LLM Call | Log Event |
-|------|--------|---------------|----------|-----------|
-| 1. Check insights | ✅ | ✅ (1 call) | ❌ | `insights_applied` |
-| 2. Format prompt | ✅ | ❌ | ❌ | - |
-| 3. Route & execute | ✅ | ❌ | ✅ **Main LLM** | `llm-calls-*.jsonl` |
-| 4. Record experience | ✅ | ✅ (2 calls) | ❌ | `experience_recorded` |
-| 5. Reflect | ✅ | ❌ | ✅ **Reflection LLM** | `reflection_*` |
-| 6. Store insight | ✅ | ✅ (2 calls) | ❌ | `insight_created` |
-| 7. Meta-cognition | ✅ | ❌ | ❌ | `meta_cognition` |
-| 8. Decay job | ✅ | ❌ | ❌ | `maintenance_run`, `decay_applied` |
-| 9. Anomaly detection | ✅ | ❌ | ❌ | `maintenance_run`, `anomaly_detected` |
+### Model calls and cost
 
-**Key Insight**: The reflection uses the **same LLM provider** as your main config, but it's a **separate session/call** with a different system prompt focused on self-analysis.
+| Operation | External work |
+|-----------|---------------|
+| Retrieve applicable insights | Embedding request, followed by local similarity and applicability checks |
+| Route the user’s task | Normal chat/tool model calls; count depends on the request |
+| Record an experience | Persisted experience embeddings when the embedding service is available |
+| Reflect on an experience | Separate configured-model request; retained insights also receive embeddings |
+| Decay, anomaly detection, meta-cognition | Local Python and SQLite analysis; no reflection-model call |
 
-### Cost Analysis
-
-| Operation | LLM Calls | Embedding Calls | DB Operations |
-|-----------|-----------|-----------------|---------------|
-| Per user query | 1 main LLM | 1 (query embed) | 2 reads, 2 writes |
-| Per reflection | 1 reflection LLM | 2 (insight + pattern) | 1-2 writes |
-| Per maintenance run | 0 | 0 | N reads/writes |
-
-**Tip**: Batch reflections (trigger 5-10 at a time) to reduce overhead. Maintenance jobs are pure Python—no external API calls.
+Processing a batch still reflects on each experience separately. It does not
+combine the entries into one provider batch request or guarantee cheaper tokens.
+The Insights view records lifetime reflection tokens/cost and the latest
+reflection provider/model when usage data is available.
 
 ---
 
@@ -710,18 +584,23 @@ data/jarvis_intelligence_local.db
 history. Both databases use the same fingerprinted Ollama Jarvis Embedding
 contract (768 dimensions), independently of chat-provider selection.
 
-### Database Recreation
+### Resetting learning
 
-If the database is deleted or doesn't exist, it will be **automatically created** on next run with empty tables. No data loss to the main system—Jarvis continues to work, just without learned insights.
+A missing Intelligence database is initialized with empty tables. Deleting it
+removes that mode’s experiences, insights, evidence, and pending reflections;
+ordinary memory data lives in a separate database.
+
+For an intentional reset, stop services using the target mode’s Intelligence
+database, then use the maintenance command that creates a backup before removal:
 
 ```bash
-# Backup
-cp data/jarvis_intelligence.db data/jarvis_intelligence.db.backup
-
-# Reset (start fresh)
-rm data/jarvis_intelligence.db
-# Next query will recreate it empty
+./bin/sync-intelligence-db.py --reset cloud
+# Or choose local explicitly:
+# ./bin/sync-intelligence-db.py --reset local
 ```
+
+The next use initializes the empty database. Resetting learning is not required
+for ordinary configuration changes or for clearing the pending reflection queue.
 
 ---
 
@@ -747,7 +626,7 @@ rm data/jarvis_intelligence.db
 | Disable MCP server | ✅ Works | MCP tools unavailable, learning continues |
 | Add new MCP server | ✅ Works | New tools discovered, learning includes them |
 
-**Why it's resilient**: Insights are stored as **semantic embeddings**, not exact tool names. If a tool is removed, similar tools may still match the learned patterns.
+Insights combine semantic patterns with explicit tool references. Runtime availability checks prevent a learned preference from making an unavailable tool callable.
 
 #### Tool Blocklist (BLOCKED_TOOLS)
 
@@ -836,7 +715,7 @@ When a new query comes in:
 lib/
 ├── intelligence.py         # Core intelligence layer
 ├── intelligence_hooks.py   # Orchestrator integration hooks
-├── embeddings.py           # Embedding generation (with fallback)
+├── embeddings.py           # Fingerprinted provider embeddings
 
 bin/
 ├── check-intelligence-health.py    # Health check script
@@ -900,7 +779,7 @@ INTELLIGENCE_NEGATIVE_WEIGHT=1.5        # Recommended; code default if unset: 1.
 | `ANOMALY_THRESHOLD` | 1.5 (flag more) | 3.5 (flag less) | 2.5 catches outliers |
 | `MIN_CONFIDENCE` | 0.1 (use weak insights) | 0.5 (only strong) | 0.40 is the current recommendation |
 | `RELEVANCE_THRESHOLD` | 0.15 (broader semantic matches) | 0.35 (narrow matches) | Start at 0.20 and tune per embedding model |
-| `NEGATIVE_WEIGHT` | 1.0 (equal to positive) | 2.0 (strong penalty) | 1.5 makes negatives win |
+| `NEGATIVE_WEIGHT` | 1.0 (equal bias scale) | 2.0 (strong penalty) | Applies after conflict resolution |
 
 **NEGATIVE_WEIGHT explained**: Conflict resolution happens first. This multiplier controls the routing-bias strength of a negative insight that survives that resolution; it does not decide which side wins a conflict.
 
@@ -916,12 +795,12 @@ decay, or deleting the insight.
 ### In Orchestrator (`orchestrator_v2.py`)
 
 ```python
-# BEFORE routing (line ~90)
+# Before routing (illustrative integration)
 learning_context = self._get_learning_insights(transcript)
 if learning_context:
     enhanced_transcript = f"{learning_context}\n\n{enhanced_transcript}"
 
-# AFTER completion (line ~300)
+# After an eligible completed turn
 self._record_learning_experience(transcript, tools_used, response, conversation_context)
 ```
 
@@ -940,30 +819,9 @@ from intelligence_hooks import (
 )
 ```
 
-**Note**: `record_interaction()` now returns the `experience_id` (int) instead of bool. This enables linking feedback ratings back to experiences for retroactive correction.
-
----
-
-## Benefits
-
-### With Intelligence Layer
-
-| Aspect | Benefit |
-|--------|---------|
-| **Tool Selection** | Learns which tools work for which query types |
-| **Efficiency** | Reduces multi-turn loops by learning optimal paths |
-| **Personalization** | Adapts to YOUR query patterns |
-| **Resilience** | Gracefully handles outliers/bad sessions |
-| **Transparency** | Can inspect what was learned |
-
-### Without Intelligence Layer
-
-| Aspect | Impact |
-|--------|--------|
-| **Tool Selection** | Always starts fresh, no memory |
-| **Efficiency** | May repeat same mistakes |
-| **Personalization** | Same behavior for everyone |
-| **Resources** | Slightly lower (no embedding calls for learning) |
+`record_interaction()` returns the recorded experience ID, or `-1` when it
+cannot record the interaction. Feedback and Completion Guard use that ID to
+update the same experience.
 
 ---
 
@@ -971,20 +829,15 @@ from intelligence_hooks import (
 
 ### When Does Reflection Happen?
 
-Currently: **On-demand** via `trigger_reflection()`
-
-Future options:
-- After every N interactions
-- At end of session
-- Background async process
-- Scheduled (cron)
+Reflection runs when explicitly triggered through the dashboard, Python helper,
+maintenance command, or HTTP API. Jarvis does not automatically process the queue
+after each chat. Operators can schedule the maintenance command if desired.
 
 ### Manual Reflection
 
 ```bash
-source ~/jarvis-venv/bin/activate
-cd ~/jarvis-voice
-python3 -c "
+# Run from the repository root with the development environment.
+.venv/bin/python -c "
 from lib.intelligence_hooks import trigger_reflection
 processed = trigger_reflection(batch_size=5)
 print(f'Processed {processed} reflections')
@@ -1022,8 +875,7 @@ The Intelligence dashboard provides compact, expandable pending rows with the
 user request, source, local time, tools and priority. Expanding shows the full
 request and one **Recorded answer**, labeled when it is an excerpt.
 **Open experience** uses the existing Experience viewer for deeper inspection.
-The queue adds no diagnostic panels or extra conversation/tool/attachment capture,
-and does not change the reflection prompt.
+Use the Experience viewer or Logs Viewer for tool payloads and execution diagnostics.
 
 New experience metadata stores the original user request and explicit Web,
 Voice, CLI, API, or Scheduled task source. Dashboard TUI commands travel through
@@ -1062,13 +914,13 @@ When triggered (manual, cron, or maintenance):
   → for each: separate LLM reflection call → insights table → processed=1
 ```
 
-**Why on-demand:** each reflection is a paid LLM call (~2–5s each). Batching controls cost and load.
+Each reflection uses the configured model and may incur provider charges. Processing entries on demand gives you control over cost and load.
 
 **Trigger options:**
 
 ```bash
 # Python
-python3 -c "from lib.intelligence_hooks import trigger_reflection; print(trigger_reflection(5))"
+.venv/bin/python -c "from lib.intelligence_hooks import trigger_reflection; print(trigger_reflection(5))"
 
 # Main API (port 8880)
 curl -X POST "http://localhost:8880/api/intelligence/reflect?batch_size=5"
@@ -1080,7 +932,7 @@ curl -X POST "http://localhost:5003/api/maintenance/reflect?batch_size=5"
 ./bin/run-intelligence-maintenance.py --reflect
 ```
 
-**Future automation options** (not implemented): after every N interactions, end-of-session batch, hourly cron, or background daemon. Phase 2 **reflection gate** would skip trivial queries before spending an LLM call — see [Future Enhancements](#future-enhancements).
+There is no built-in automatic reflection gate that screens trivial requests before processing. Discard unwanted entries from the pending queue before starting a batch.
 
 ---
 
@@ -1347,7 +1199,7 @@ report the missing row; Jarvis never substitutes deterministic hash vectors.
 ls -la data/jarvis_intelligence*.db
 
 # Check stats
-python3 -c "
+.venv/bin/python -c "
 from lib.intelligence import get_intelligence_layer
 print(get_intelligence_layer().get_stats())
 "
@@ -1357,7 +1209,7 @@ print(get_intelligence_layer().get_stats())
 
 ```bash
 # Check if insights exist
-python3 -c "
+.venv/bin/python -c "
 from lib.intelligence import get_intelligence_layer
 intel = get_intelligence_layer()
 cursor = intel.conn.cursor()
@@ -1368,7 +1220,7 @@ print(f'Pending reflections: {cursor.fetchone()[0]}')
 "
 
 # Process pending reflections
-python3 -c "
+.venv/bin/python -c "
 from lib.intelligence_hooks import trigger_reflection
 trigger_reflection(batch_size=10)
 "
@@ -1403,16 +1255,9 @@ boundary; those settings affect every insight.
 
 ### Reset Learning
 
-```bash
-# Backup first
-cp data/jarvis_intelligence.db data/jarvis_intelligence.db.backup
-
-# Delete to start fresh
-rm data/jarvis_intelligence.db
-
-# Or clear specific tables
-sqlite3 data/jarvis_intelligence.db "DELETE FROM experiences; DELETE FROM insights; DELETE FROM reflection_queue;"
-```
+Use [Resetting learning](#resetting-learning) for an intentional, backed-up reset
+of one mode. To discard only queued reflections, use **Clear All** on the
+Reflection tab; this retains experiences and existing insights.
 
 ---
 
@@ -1549,7 +1394,7 @@ WHERE id = 42;
 sqlite3 data/jarvis_intelligence.db "SELECT id, description, length(insight_embedding) FROM insights WHERE id = 42"
 ```
 
-### Bottom Line
+### Editing checklist
 
 **Safe to edit directly (no re-embed needed):**
 - `preferred_tools`, `avoided_tools`, `confidence`, `reasoning`, `trigger_concept`, `trigger_signals`, `primary_intent`
@@ -1708,10 +1553,10 @@ curl http://localhost:8880/api/intelligence/insights | jq '.insights'
 curl -X POST "http://localhost:8880/api/intelligence/reflect?batch_size=5"
 ```
 
-or use to run manually
+Or run from the repository root with the development environment:
 
 ```bash
-python3 -c "from lib.intelligence_hooks import trigger_reflection; trigger_reflection(10)"
+.venv/bin/python -c "from lib.intelligence_hooks import trigger_reflection; trigger_reflection(10)"
 ```
 
 ### Grafana / Prometheus metrics
@@ -1726,11 +1571,11 @@ jarvis_intelligence_avg_confidence
 jarvis_intelligence_helpful_ratio{mode="cloud"}
 ```
 
-**Note:** There is **no** checked-in `monitoring/grafana/dashboards/jarvis-intelligence.json` today. Use the **Intelligence Dashboard** at port **5003** for interactive monitoring, or build a Grafana dashboard from the Prometheus metrics above.
+There is no checked-in `monitoring/grafana/dashboards/jarvis-intelligence.json`. Use the **Intelligence Dashboard** at port **5003** for interactive monitoring, or build a Grafana dashboard from the Prometheus metrics above.
 
 ### Intelligence Dashboard (primary UI)
 
-See [jarvis-intelligence/README.md](../jarvis-intelligence/README.md). Key panels equivalent to the old Grafana plan:
+See [jarvis-intelligence/README.md](../jarvis-intelligence/README.md) for interactive views:
 
 **Stats row:** enabled flag, experience/insight counts, pending reflections, avg confidence, helpful ratio
 
@@ -1740,12 +1585,12 @@ See [jarvis-intelligence/README.md](../jarvis-intelligence/README.md). Key panel
 
 **Pending queue alert:** Reflection tab — investigate when pending > 10 (also surfaced in `/api/intelligence/health`)
 
-**Panel 6: Intelligence Event Logs** (Loki)
+**Intelligence event logs** (optional Loki view)
 ```logql
 {job="jarvis", log_type="intelligence"} | json
 ```
 
-**Panel 7: Event Type Distribution** (Bar Chart)
+**Event type distribution** (optional Grafana bar chart)
 ```logql
 sum by (event) (count_over_time({job="jarvis", log_type="intelligence"} | json [24h]))
 ```
@@ -1784,9 +1629,10 @@ sum by (event) (count_over_time({job="jarvis", log_type="intelligence"} | json [
 | meta_type="learning_quality"
 ```
 
-### After Enabling Intelligence
+### After changing the optional monitoring configuration
 
-Restart promtail to pick up new log config:
+If you use the separate monitoring stack, restart promtail after changing its
+log collection configuration:
 ```bash
 cd ~/jarvis-voice/monitoring
 docker compose restart promtail
@@ -1819,9 +1665,9 @@ cat logs/intelligence/*.jsonl | jq 'select(.event == "anomaly_detected")'
 cat logs/intelligence/*.jsonl | jq 'select(.event == "meta_cognition")'
 ```
 
-### Real Log Examples
+### Illustrative Log Examples
 
-**Insights Applied** (every query):
+**Insights Applied** (when guidance is retrieved):
 ```json
 {
   "timestamp": "2025-11-28T19:54:11.212759",
@@ -1916,25 +1762,21 @@ cat logs/intelligence/*.jsonl | jq 'select(.event == "meta_cognition")'
 
 ## Known Limitations
 
-### 1. "Last Tool = Success" Assumption ⚠️
+### Tool attribution
 
-Currently, the system assumes the **last tool used** before task completion was the "successful" one. This is **not always accurate**:
+Reflection can inspect attempted calls and outcomes, but there is no complete
+content-attribution system that proves which tool supplied each part of the
+final answer. For ordinary non-workflow experiences, an insight that names no
+preferred tool can fall back to the recorded `final_tool`. That fallback can
+associate a lesson with the last call even when an earlier call supplied the
+useful evidence. Chat-only and workflow experiences suppress that fallback.
 
-```
-Example: User asks "What movies are playing?"
-  Turn 1: brave_search → gets showtimes ← THIS was the answer!
-  Turn 2: mcp_fetch → tries to get more details → fails
-  Turn 3: brave_search → different query → partial results
+Inspect the insight's source experience and tool trace when its preferred tool
+looks wrong; a successful overall answer does not prove every call helped.
 
-Current behavior: Scores Turn 3's tool highest
-Reality: Turn 1 had the answer
-```
+### User preferences — partial support
 
-**Future fix**: Track which tool's output actually appeared in the final response (content attribution).
-
-### 2. User preferences — partial support (2026)
-
-**Implemented today:**
+**Available:**
 
 - **Profile Card** — `user_model` table + `lib/user_profile.py` injects stable prefs at routing time. See [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md).
 - **Intelligence insights** — learned `preferred_tool` / `avoided_tools` from reflection.
@@ -1946,7 +1788,7 @@ Reality: Turn 1 had the answer
 - Dedicated config file for static tool bias (e.g. `ALWAYS_USE=crypto_price` without learning)
 - UI panel for editing Profile Card fields (dashboard is read/edit for experiences/insights, not full profile CRUD)
 
-### 3. Behavioral learning — partial
+### Behavioral learning — partial
 
 Intelligence **does** learn tool routing and negative constraints. It **does not yet** learn:
 
@@ -1954,9 +1796,9 @@ Intelligence **does** learn tool routing and negative constraints. It **does not
 - Response verbosity defaults
 - Communication style (formal/casual) as first-class insights
 
-Profile Card and feedback bridge cover some of this manually; Phase 3 below tracks automated behavioral learning.
+Use explicit response settings and the Profile Card for these preferences; they are not inferred as first-class behavioral insights.
 
-### 4. Selective decay and rare-but-valid protection
+### Selective decay and rare-but-valid protection
 
 Maintenance is evidence-aware rather than applying the same multiplier to every old insight:
 
@@ -1973,7 +1815,9 @@ At retrieval time, unscoped legacy negative rules are ignored. Conflict resoluti
 
 ---
 
-## Cross-turn correction learning (2026)
+<a id="cross-turn-correction-learning-2026"></a>
+
+## Cross-turn correction learning
 
 Detects when the user **corrects** Jarvis across turns (e.g. "no, use the other tool", "that's wrong") and links the correction to the prior experience.
 
@@ -1989,11 +1833,11 @@ USER_CORRECTION_LEARNING_MODE=apply    # downgrade linked experience + optional 
 
 **Code path:** `orchestrator_v2.py` post-response hook → `lib/intelligence_hooks.py` correction handlers.
 
-**Related:** [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md), [FUTURE_ENHANCEMENTS.md](FUTURE_ENHANCEMENTS.md) (Strategic Direction — cross-turn correction learning).
+**Related:** [User Profile](USER_PROFILE_SYSTEM.md) and [Feedback](FEEDBACK_SYSTEM.md).
 
 ---
 
-## Profile Card and response-preference boundary (2026)
+## Profile Card and response-preference boundary
 
 The Profile Card is a curated baseline injected through `lib/user_profile.py`:
 
@@ -2046,7 +1890,9 @@ Sync between machines: `./bin/sync-intelligence-db.py`. Health: `./bin/check-int
 
 ## Main API endpoints (port 8880)
 
-Monitoring and maintenance via `api/routes/intelligence.py` (no auth on local LAN — lock down in production):
+Monitoring and maintenance are exposed by `api/routes/intelligence.py`.
+Authentication follows the FastAPI configuration; see the
+[API overview](api/API_OVERVIEW.md) before exposing the service outside the host:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -2069,7 +1915,7 @@ Monitoring and maintenance via `api/routes/intelligence.py` (no auth on local LA
 
 ---
 
-## Completion Guard bridge (operational notes)
+## Completion Guard outcome reference
 
 When Completion Guard (CG) is enabled, experiences store CG metadata in `raw_data`:
 
@@ -2077,7 +1923,8 @@ When Completion Guard (CG) is enabled, experiences store CG metadata in `raw_dat
 |-----------|------------------------|
 | `accepted` / `auto_accepted` | Normal success path |
 | `repaired` | Outcome may still succeed; reflection sees repair context |
-| `ticketed` / `expired` / `superseded` | Often treated as soft failures for learning |
+| `unresolved` / `ticket_created` / `error` | Failed outcome with elevated reflection priority |
+| `expired` / `superseded` | Neutral settlement; existing outcome and priority remain unchanged |
 | `tighten_only` | Guard adjusted phrasing without full reject — not a hard failure |
 | `operational_correction` | User-facing correction — pairs with correction learning mode |
 
@@ -2085,148 +1932,22 @@ Dashboard filters expose CG facets on the Experiences tab. See [COMPLETION_GUARD
 
 ---
 
-## Future Enhancements
+<a id="future-enhancements"></a>
 
-### Phase 1 (Complete) ✅
-- [x] Negative constraints (what NOT to do)
-- [x] Fact vs Procedural classification
-- [x] Generalizability filtering
-- [x] Decay tracking fields
-- [x] Schema migration for existing DBs
-- [x] Separate positive/negative in prompt formatting
-- [x] Health check script (`check-intelligence-health.py`)
-- [x] Sync script (`sync-intelligence-db.py`)
-- [x] Embedding fallback with logging
+## Current scope
 
-### Phase 1.5 (Complete) ✅ - 2025-11-28
-- [x] **Enhanced reflection context** - LLM response, tool results, available tools in prompt
-- [x] **Content quality evaluation** - Reflection evaluates data relevance, not just tool success
-- [x] **Insight tracking (active)** - times_applied, times_helpful, times_failed now updated
-- [x] **Selective decay job** - Protect proven guidance and retire weak/unsafe insights
-- [x] **Anomaly detection** - Flag unusual experiences (high turns, failed multi-turn)
-- [x] **Meta-cognition** - Blind spot detection, over-generalization, learning quality
-- [x] **meta_knowledge table** - Store learning system findings
-- [x] **Maintenance CLI** - `run-intelligence-maintenance.py`
-- [x] **Maintenance API** - REST endpoints for all maintenance jobs
-- [x] **Comprehensive logging** - All events for Grafana visibility
+Intelligence primarily learns reusable routing and recovery procedures. It does
+not provide automatic parameter tuning, a static tool-bias configuration file,
+or automatic learning of every communication preference. Use the Profile Card
+and explicit response settings for stable personal preferences.
 
-### Phase 2 (Planned)
-- [ ] **Reflection gate / auto-processing mode** - Before running full reflection, classify whether an experience is worth learning from. Use cheap rules first, then optional low-cost LLM gating for ambiguous cases. Skip obvious non-learning experiences (`hello`, `thanks`, dev test messages, cancelled runs, duplicate low-value failures) while writing an auditable `reflection_skipped` event with `experience_id`, reason, confidence, and query preview.
-- [ ] **Implicit failure detection** - Detect when user rewords query within 60s
-- [ ] **Tool trashing detection** - When Tool A fails → Tool B succeeds, create negative constraint
-- [ ] ~~**The Reaper service** - Periodic pruning of low-confidence insights~~ ✅ (now in decay job)
-- [ ] **Conflict resolution** - When new insight contradicts old one
-- [ ] **Content attribution** - Track which tool's output actually answered the query
-- [ ] **User bias injection** - Allow user to specify tool preferences in config
+The pending reflection queue is operator-controlled. There is no automatic
+pre-reflection gate for test messages or greetings, and no guarantee that an
+LLM-generated lesson is correct. Review provenance, triggers, and outcomes when
+an insight appears too broad or starts influencing unrelated requests.
 
-**Reflection gate config sketch**:
-
-```bash
-INTELLIGENCE_REFLECTION_GATE_ENABLED=true
-INTELLIGENCE_REFLECTION_GATE_MODE=rules_then_llm
-INTELLIGENCE_REFLECTION_GATE_LOG_SKIPS=true
-INTELLIGENCE_REFLECTION_GATE_MIN_QUERY_CHARS=12
-INTELLIGENCE_REFLECTION_AUTO_PROCESS=true
-```
-
-Example skip reasons:
-
-- `trivial_greeting`
-- `test_message`
-- `no_actionable_pattern`
-- `duplicate_low_value`
-- `tool_dev_failure`
-- `user_cancelled`
-- `insufficient_signal`
-- `private_or_sensitive`
-
-### Phase 3 (User Profile Learning) 🧠 — partially shipped
-- [x] **Profile Card** — `user_model` + injection at routing ([USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md))
-- [x] **Correction learning** — cross-turn `USER_CORRECTION_LEARNING_MODE`
-- [ ] **Config-file tool bias** — static preferences without reflection
-- [ ] **Behavioral learning** — verbosity, auto-memory, "the usual" patterns
-- [ ] **Communication style learning** — tone, humor, terminology
-- [ ] **Auto-parameter tuning** — `INTELLIGENCE_LEARNING_RATE`, decay tuning from measured performance
-
-### Phase 4 (Advanced)
-- [ ] **Chain caching / Macro-skills** - Learn entire workflows, not just tool preferences
-- [x] **Metrics exposition** - `/api/intelligence/metrics` (Prometheus); interactive UI at port 5003
-- [ ] **Grafana dashboard JSON** - Not checked in; build from metrics or use port 5003 UI
-- [ ] **A/B testing** - Compare learned vs naive routing
-
----
-
-## Vision: Beyond Tool Selection
-
-### The Bigger Picture
-
-Current intelligence focuses narrowly on **tool routing**. But true "intelligence" means understanding:
-
-| Current Scope | Future Scope |
-|---------------|--------------|
-| Which tool to use | How to respond (style, tone) |
-| Avoid bad tools | Remember what's important to user |
-| Learn from tool failures | Learn user's communication preferences |
-| - | Understand vague/shorthand requests |
-| - | Know when to be verbose vs concise |
-
-### User Profile Learning (Exploration)
-
-Imagine Jarvis learning:
-
-```
-User says: "Check the thing"
-Jarvis knows: User means "Ollama server status" because:
-  - User frequently asks about Ollama
-  - "the thing" in server context = status check
-  - User's jarvis-intel mentions Ollama server
-
-User says: "Give me the rundown"
-Jarvis knows: User wants verbose mode because:
-  - User is catching up after being away
-  - Previous context was complex task
-  - User profile says "rundown = detailed summary"
-```
-
-### How This Could Work
-
-1. **User Preference File** (`jarvis-intel/user_preferences.md`):
-   ```markdown
-   ## Communication Style
-   - Default: concise (under 20 words)
-   - "Give me details" → switch to verbose
-   - "Quick" → extra concise, just facts
-
-   ## Shortcuts
-   - "the server" → Ollama at localhost
-   - "the usual" → Bitcoin + Ethereum prices
-   - "morning routine" → weather + reminders + calendar
-
-   ## Tool Preferences
-   - Server checks: prefer network_tools for HTTP or port checks
-   - Prices: always use crypto_price tool
-   - Never: search_memory for real-time data
-   ```
-
-2. **Behavioral Learning Database**:
-   - Track response style that got positive signals
-   - Learn what user considers "important" to save
-   - Model communication preferences over time
-
-3. **Test Scenarios for Auto-Tuning**:
-   ```bash
-   pytest -q tests/test_intelligence_mode_cache.py \
-     tests/test_intelligence_server_side_tools.py
-   # Runs deterministic Intelligence mode and learning-signal regressions.
-   # There is no automatic --tune command in the current implementation.
-   ```
-
-### Why This Matters
-
-The goal isn't just "call the right tool" - it's:
-> **An assistant that knows YOU and adapts to YOUR way of working**
-
-This is the difference between a tool and a true assistant.
+For project changes and release history, see the
+[GitHub releases](https://github.com/bigsk1/jarvis-voice/releases).
 
 ---
 

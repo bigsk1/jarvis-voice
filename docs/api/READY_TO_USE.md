@@ -1,222 +1,120 @@
-# ✅ Jarvis Proactive Assistant - Ready to Use!
+# Start using the proactive API
 
-## What's Working RIGHT NOW
+Jarvis's REST API accepts alerts from monitoring systems, scripts, and other
+applications. It also provides reminder, query, workflow, memory, and media
+endpoints. The background services handle reminder delivery, alert follow-ups,
+URL recovery checks, and scheduled tasks.
 
-### 🎯 Core Functionality (Phase 1 Complete)
+This guide assumes Jarvis is installed and the selected mode is configured.
+For initial setup, see the [Install Guide](../INSTALL_GUIDE.md).
 
-| Feature | Status | Command |
-|---------|--------|---------|
-| **API Server** | ✅ Ready | `./bin/jarvis-api` or `./bin/jarvis-api --local` |
-| **Receive Webhooks** | ✅ Ready | POST to `http://localhost:8880/api/alerts` |
-| **Proactive TTS** | ✅ Ready | Auto-speaks high/critical alerts |
-| **Store Alerts** | ✅ Ready | Saved to database |
-| **Query Alerts** | ✅ Ready | GET `/api/alerts` with filters |
-| **Acknowledge** | ✅ Ready | PUT `/api/alerts/{id}/acknowledge` |
-| **Reminders** | ✅ Ready | POST `/api/reminders` (stored; `services/reminder_scheduler.py` auto-triggers every 60s) |
-| **Cloud/Local Mode** | ✅ Ready | `--local` flag for offline operation |
-| **Database Sync** | ✅ Ready | Auto-syncs between cloud/local |
-| **Auto-Resolve** | ✅ Ready | Checks URLs, auto-cancels alerts |
-| **Interactive Docs** | ✅ Ready | http://localhost:8880/docs |
+## Start the API and services
 
----
-
-## 🚀 Quick Start (3 Commands)
+Run these commands from the repository root. If the normal Jarvis stack is
+already running, check its status before starting another instance. Start the
+API in one terminal and leave that terminal running:
 
 ```bash
-# 1. Start API server (choose one)
-./bin/jarvis-api         # Cloud mode (OpenAI TTS)
-./bin/jarvis-api --local # Local mode (Kokoro TTS)
+./bin/jarvis-api
+# Use --local instead for local configuration
+# ./bin/jarvis-api --local
+```
 
-# 2. Run comprehensive tests
-./tests/test-api-endpoints.sh
+Start the background services from a second terminal:
 
-# 3. Send a test alert
+```bash
+./bin/jarvis-services
+# ./bin/jarvis-services --local
+```
+
+The API listens on port **8880** by default. The Web chat server is a separate
+application on port **5001**. Starting the API alone does not start the reminder
+scheduler or the other background daemons.
+
+```bash
+# In another terminal, check the running components
+./bin/jarvis-api --status
+./bin/jarvis-services --status
+curl http://localhost:8880/api/health
+```
+
+Open [interactive API documentation](http://localhost:8880/docs) to inspect the
+running server's request schemas and available endpoints. A dark version is
+available at [Docs Dark](http://localhost:8880/docs/dark).
+
+## Configure client access
+
+Review [API security settings](../SECURITY_HARDENING.md) before connecting remote
+clients. The API supports bearer-token authentication and access controls; add
+the required authorization header when authentication applies to your client.
+The localhost examples below use the default port. From another device, use the
+server's reachable address and configured access method.
+
+## Send an alert
+
+This request creates a real alert and may speak it through the host's configured
+TTS provider:
+
+```bash
 curl -X POST http://localhost:8880/api/alerts \
   -H "Content-Type: application/json" \
-  -d '{"title": "Test", "source": "test", "severity": "high"}'
+  -d '{
+    "title": "Backup failed",
+    "description": "The scheduled backup did not finish.",
+    "severity": "high",
+    "source": "backup_monitor"
+  }'
 ```
 
-**Expected:** Jarvis speaks "Boss, urgent alert! Test"
+Use a stable `source` name to identify the integration. The response includes an
+`alert_id` for later inspection and acknowledgement. To see pending alerts:
 
----
-
-## 📖 Documentation
-
-| Doc | Purpose |
-|-----|---------|
-| **`TEST_API.md`** | Testing guide with examples |
-| **[Phase 1 milestone](../archive/service/PHASE_1_COMPLETE.md)** | Historical implementation record |
-| **[API_QUICK_START.md](API_QUICK_START.md)** | API endpoints and integration examples |
-| **[QUERY.md](QUERY.md)** | Per-request cloud/local mode selection |
-| **[Proactive Assistant System](../service/PROACTIVE_ASSISTANT_SYSTEM.md)** | Full architecture |
-
----
-
-## 🎯 Real-World Use Cases (Working Now)
-
-### 1. Uptime Kuma Integration
-Configure webhook: `http://localhost:8880/api/alerts`
-
-**Payload:**
-```json
-{
-  "title": "{{name}} is {{status}}",
-  "description": "{{msg}}",
-  "severity": "high",
-  "source": "uptime_kuma",
-  "auto_resolve_url": "{{url}}"
-}
-```
-
-**Result:** Jarvis speaks when servers go down, auto-checks every 5 minutes
-
-### 2. Cron Job Monitoring
 ```bash
-#!/bin/bash
-# /etc/cron.hourly/disk-check
-
-USAGE=$(df -h / | awk 'NR==2 {print $5}' | sed 's/%//')
-
-if [ "$USAGE" -gt 90 ]; then
-  curl -X POST http://localhost:8880/api/alerts \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"title\": \"Disk Space Low\",
-      \"description\": \"Root at ${USAGE}%\",
-      \"severity\": \"medium\",
-      \"source\": \"cron_disk_check\"
-    }"
-fi
+curl 'http://localhost:8880/api/alerts?status=pending'
 ```
 
-### 3. Coolify Deployment Webhooks
-```json
-{
-  "title": "Deployment Failed",
-  "description": "myapp failed to deploy",
-  "severity": "high",
-  "source": "coolify"
-}
-```
+To acknowledge one, replace `ALERT_ID` with the returned identifier:
 
-### 4. Custom Backup Notifications
 ```bash
-curl -X POST http://localhost:8880/api/alerts \
-  -d '{"title": "Backup Complete", "severity": "low", "source": "backup_cron"}'
+curl -X PUT http://localhost:8880/api/alerts/ALERT_ID/acknowledge
 ```
 
----
+Alerts and reminders are also visible in the [Memory UI](../../jarvis-memory/README.md)
+and the Web notification panel. Acknowledging an alert stops its pending
+follow-ups; reaching the follow-up limit does not itself acknowledge the alert.
 
-## 🔧 Configuration
+## Choose how an alert clears
 
-### Cloud Mode (Default)
-- **TTS**: OpenAI/Anthropic (via `say.sh`)
-- **Database**: `data/jarvis_memory.db`
-- **Config**: `config/cloud.env`
-- **Command**: `./bin/jarvis-api`
+- **Manual acknowledgement:** dismiss the alert through the API or UI.
+- **URL recovery:** provide an `auto_resolve_url` for the self-healing daemon to
+  check. A healthy response can resolve the alert automatically.
+- **Integration-driven recovery:** the originating system can report recovery
+  through the alert API.
 
-### Local Mode (Offline)
-- **TTS**: Kokoro (via `say-local.sh`)
-- **Database**: `data/jarvis_memory_local.db`
-- **Config**: `config/local.env`
-- **Command**: `./bin/jarvis-api --local`
+A successful later scheduled task does not automatically clear every failure
+alert from an earlier occurrence. Use the lifecycle appropriate to the source.
+See [Alert scenarios](code-examples/ALERT_SCENARIOS.md) for integration examples.
 
-### Security
-- **Binds to**: `0.0.0.0:8880` (all interfaces)
-- **CORS**: `*` (all origins)
-- **Auth**: None (local network only)
+## Select a mode
 
-**For public internet**: Add API key auth (see architecture doc)
+| Setting | Cloud | Local |
+| --- | --- | --- |
+| Launcher option | Default | `--local` |
+| Configuration | `config/cloud.env` | `config/local.env` |
+| Default memory and operational database | `data/jarvis_memory.db` | `data/jarvis_memory_local.db` |
+| Host speech | Configured cloud-mode TTS | Configured local-mode TTS |
 
----
+Mode selects configuration and data; the configured providers determine whether
+a request uses external services. Local mode alone does not make every enabled
+tool offline. Alerts, reminders, and scheduled tasks stay mode-specific; memory
+sync is not automatic synchronization of those operational records.
+See [dual database behavior](../DUAL_DATABASE_SYSTEM.md) and
+[query mode selection](QUERY.md).
 
-## ✅ Testing
+## Related guides
 
-### Automated Test Suite
-```bash
-./tests/test-api-endpoints.sh
-```
-
-**Tests 14 scenarios:**
-- Health check
-- System status
-- Create alerts (all severities)
-- List/filter alerts
-- Acknowledge (single + bulk)
-- Reminders
-- Manual TTS
-- Auto-resolve
-- Error handling
-
-### Manual Tests
-See `TEST_API.md` for detailed examples.
-
----
-
-## 📊 System Status
-
-### Check if running:
-```bash
-curl http://localhost:8880/api/health
-curl http://localhost:8880/api/status
-```
-
-### Interactive docs:
-http://localhost:8880/docs
-
-### Query database:
-```bash
-sqlite3 data/jarvis_memory.db "SELECT * FROM alerts ORDER BY created_at DESC LIMIT 5"
-```
-
----
-
-## 🔮 What's NOT Done (Phase 2 - Optional)
-
-These are **future enhancements**, not required for basic usage:
-
-| Feature | Status | Why Not Critical |
-|---------|--------|------------------|
-| **Intel Management Tool** | Pending | Can manually create intel files |
-| **Voice Control Tools** | Pending | Have REST API endpoints |
-| **Follow-Up Daemon** | Pending | Can manually check alerts |
-| **Self-Healing Daemon** | Pending | Can manually trigger checks |
-| **Reminder Scheduler** | Done | `services/reminder_scheduler.py` auto-triggers due reminders every 60s |
-
-**You can use Phase 1 indefinitely** - it's production-ready!
-
----
-
-## 🎉 Summary
-
-**You now have:**
-- ✅ Generic webhook endpoint (works with ANY monitoring system)
-- ✅ Proactive TTS notifications
-- ✅ Alert tracking and acknowledgement
-- ✅ Cloud and local mode support (fully offline capable)
-- ✅ Database sync between modes
-- ✅ Auto-resolve for alerts
-- ✅ Interactive API documentation
-
-**Start using it:**
-```bash
-# Choose mode
-./bin/jarvis-api         # Cloud (online)
-./bin/jarvis-api --local # Local (offline)
-
-# Configure your monitoring systems
-# Point webhooks to: http://localhost:8880/api/alerts
-
-# Done! Jarvis will proactively alert you.
-```
-
-**Want Phase 2?** (Intel tool, voice controls, background daemons)
-Let me know when ready - Phase 1 works great on its own! 🚀
-
----
-
-**Questions?**
-- **Testing**: `./tests/test-api-endpoints.sh`
-- **Examples**: `docs/api/API_QUICK_START.md`
-- **Architecture**: `docs/service/PROACTIVE_ASSISTANT_SYSTEM.md`
-- **Modes**: `docs/api/API_OVERVIEW.md` (cloud vs local)
+- [API reference](README.md): endpoint guides for queries, workflows, memory, and media.
+- [Background services](../service/README.md): lifecycle, schedules, logging, and cleanup.
+- [Proactive system architecture](../service/PROACTIVE_ASSISTANT_SYSTEM.md): how alerts and scheduled work fit together.
+- [Manual API checks](TEST_API.md): requests against a running instance.
+- [Testing guide](../TESTING.md): the isolated regression suite for contributors.
