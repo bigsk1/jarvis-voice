@@ -1600,4 +1600,4 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.56.1 (October 2026)
+**Current Version:** v2.56.2 (October 2026)
