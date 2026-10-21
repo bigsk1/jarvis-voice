@@ -364,6 +364,15 @@ environment, so unrelated packages are not removed. Routine updates change
 `uv.lock`; the minimum versions in `pyproject.toml` and `requirements.txt`
 should only be raised when an older yt-dlp release must be disallowed.
 
+Security updates may also require changing a directly pinned dependency before
+running the helper. The [2026.10.21 release](https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.21)
+requires `certifi>=2026.10.19`. Its trust bundle removes the affected emSign ECC
+Root CA - G3 after an intermediate-key compromise and retains unaffected emSign
+roots. Jarvis pins the patched version in both
+dependency files; verify the production environment's `certifi` version as well
+as yt-dlp and EJS. This helper installs through uv/pip rather than an older
+yt-dlp executable's self-updater. See the [certificate advisory](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2).
+
 ### Automatic yt-dlp release watch
 
 The `yt_dlp_release_watch` workflow checks PyPI's structured release API for a
