@@ -1,0 +1,12 @@
+enabled: true
+description: "minimax-m3.1-flash thinking support and reminder routing"
+
+thinking:
+  supported: true
+  disable_supported: true
+  levels:
+    - low
+    - high
+    - max
+  default_level: high
+  disabled_fallback_level: low
