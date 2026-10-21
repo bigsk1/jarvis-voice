@@ -1,6 +1,6 @@
 """Normalize Workspace MCP receipts and preserve bounded follow-up handles.
 
-Upstream v2.1.1 mostly returns human-readable text, not Google API objects.
+Upstream v2.1.2 mostly returns human-readable text, not Google API objects.
 Keep its actual response and explicitly labeled IDs; never invent an API receipt.
 """
 
@@ -24,7 +24,9 @@ _REQUEST_KEYS = frozenset({
     "page_token", "full", "attachment_id", "attachment_index", "sheet_name", "to", "start_time", "end_time", "script_id",
     "deployment_id", "version_number", "response_id", "permission_id", "role",
     "email_address", "body_format", "time_min", "time_max", "stash", "stash_space_id", "stash_ref",
+    "tab_id", "replace_existing", "copy_comments",
 })
+_REQUEST_ID_LISTS = frozenset({"message_ids", "thread_ids", "add_label_ids", "remove_label_ids"})
 _LINK = re.compile(r"https?://[^\s<>\"'\[\]]+")
 _HANDLE = re.compile(
     r"(?im)\b((?:File|Document|Spreadsheet|Presentation|Form|Message|Thread|Draft|"
@@ -50,6 +52,66 @@ def _bounded(value: Any, depth: int = 0) -> Any:
     if value is None or isinstance(value, (bool, int, float)):
         return value
     return str(value)[:200]
+
+
+def _workspace_request(arguments: dict) -> tuple[dict, dict, dict]:
+    """Keep explicit follow-up handles, with separate original counts and omissions."""
+    request = {key: value for key, value in arguments.items()
+               if key in _REQUEST_KEYS and isinstance(value, (str, int, bool))
+               and len(str(value)) <= 1000}
+    counts, truncated = {}, {}
+    remaining = 3000
+    for key in sorted(_REQUEST_ID_LISTS):
+        values = arguments.get(key)
+        if not isinstance(values, list):
+            continue
+        counts[key] = len(values)
+        shown = []
+        for value in islice(values, 20):
+            if not isinstance(value, str) or not 0 < len(value) <= 512:
+                continue
+            cost = len(json.dumps(value, ensure_ascii=True)) + 2
+            if len(shown) == 20 or cost > remaining:
+                break
+            shown.append(value)
+            remaining -= cost
+        request[key] = shown
+        truncated[key] = len(shown) != len(values)
+    return request, counts, truncated
+
+
+def _gmail_label_outcomes(text: str, arguments: dict) -> tuple[dict, bool]:
+    """Parse only the pinned batch-label receipt, never ordinary email content.
+
+    Counts are verified outcomes reported by upstream, not inferred successes or
+    a reason to replay writes. Detail excerpts retain upstream's own ID limits.
+    """
+    reports = {}
+    complete = True
+    headers = list(re.finditer(r"(?m)^Label changes for (\d{1,9}) (message|thread) ID\(s\):[^\n]*\nApplied: (\d{1,9})/(\d{1,9})$", text))
+    for index, match in enumerate(headers):
+        total, kind, applied, denominator = int(match[1]), match[2], int(match[3]), int(match[4])
+        section = text[match.end():headers[index + 1].start() if index + 1 < len(headers) else len(text)]
+        categories = {}
+        for detail in re.finditer(r"(?m)^(No such message|No such thread|Unchanged|Could not verify|Failed) \((\d{1,9})\): ([^\n]*)$", section):
+            label = detail[1]
+            if label in categories:
+                complete = False
+            categories[label] = {"count": int(detail[2]), "details": detail[3][:1000],
+                                 "details_truncated": len(detail[3]) > 1000 or "… (+" in detail[3]}
+        valid = (kind not in reports and total > 0 and denominator == total and 0 <= applied <= total
+                 and applied + sum(value["count"] for value in categories.values()) == total)
+        reports[kind] = {"total": total, "applied": applied, "outcomes": categories, "valid": valid}
+        complete = complete and valid and applied == total and not categories
+    # Unverified and malformed receipts cannot establish a completed write.
+    complete = (complete and bool(reports) and "NOT VERIFIED:" not in text
+                and len(headers) == len(re.findall(r"(?m)^Label changes for ", text))
+                and len(headers) == len(re.findall(r"(?m)^Applied:", text)))
+    for kind in ("message", "thread"):
+        requested = arguments.get(kind + "_ids")
+        if isinstance(requested, list) and requested:
+            complete = complete and reports.get(kind, {}).get("total") == len(requested)
+    return reports, complete
 
 
 _PROVIDER_HOSTS = frozenset({
@@ -134,11 +196,14 @@ def normalize_workspace_result(tool_name: str, result: dict, arguments: dict | N
          "**ACTION REQUIRED: Google Authentication", "**ACTION REQUIRED: Google sign-in")
     )
     failed = not text or bool(result.get("isError")) or auth_required or head.startswith(("Error:", "**Error:**"))
+    batch_outcomes = None
+    if tool_name == "batch_modify_gmail_message_labels":
+        batch_outcomes, batch_complete = _gmail_label_outcomes(text, arguments or {})
+        failed = failed or not batch_complete
+    request, request_counts, request_truncated = _workspace_request(arguments or {})
     data: dict[str, Any] = {
         "source": "google_workspace", "tool": tool_name,
-        "request": {key: value for key, value in (arguments or {}).items()
-                    if key in _REQUEST_KEYS and isinstance(value, (str, int, bool))
-                    and len(str(value)) <= 1000},
+        "request": request,
         "response_text": text[:16000], "response_truncated": len(text) > 16000,
         "links": workspace_links(text, content_links_untrusted=tool_name not in _RECEIPT_LINK_TOOLS, auth_required=auth_required),
         "content_links_untrusted": tool_name not in _RECEIPT_LINK_TOOLS,
@@ -146,6 +211,11 @@ def normalize_workspace_result(tool_name: str, result: dict, arguments: dict | N
                        for m in islice(_HANDLE.finditer(text), 30)],
         "external_content_trust": "untrusted",
     }
+    if request_counts:
+        data["request_list_counts"] = request_counts
+        data["request_lists_truncated"] = request_truncated
+    if batch_outcomes is not None:
+        data["batch_outcomes"] = batch_outcomes
     if tool_name == "get_gmail_message_content" and (arguments or {}).get("body_format", "text") == "text":
         data["gmail_attachments"] = gmail_attachment_metadata(text, (arguments or {}).get("message_id", ""))
     if structured is not None:
@@ -173,6 +243,10 @@ def normalize_workspace_result(tool_name: str, result: dict, arguments: dict | N
     normalized = {"ok": not failed, "speech": text[:500] or "Google Workspace returned an empty response", "data": data}
     if failed:
         normalized["error"] = text[:16000] or "Google Workspace request failed"
+        if batch_outcomes is not None and not result.get("isError") and not auth_required:
+            summary = "Google label changes were not fully confirmed; inspect the receipt before any further action."
+            normalized["speech"] = summary
+            normalized["error"] = summary + "\n" + text[:16000]
     return normalized
 
 
@@ -211,10 +285,30 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
     projected = {key: _bounded(payload[key]) for key in (
         "source", "tool", "ok", "authentication_required", "configuration_required", "request", "references",
         "links", "artifacts", "stash_error", "google_ok", "response_truncated", "external_content_trust",
-        "content_links_untrusted",
+        "content_links_untrusted", "batch_outcomes", "google_export_ok", "download_ok", "download_error",
+        "request_list_counts", "request_lists_truncated",
     ) if key in payload}
     projected = deepcopy(projected)
     trimmed = any(projected[key] != payload[key] for key in projected)
+    # Revalidate old persisted requests too; generic list clipping loses original
+    # counts and cannot distinguish a complete list from its first 20 entries.
+    if isinstance(payload.get("request"), dict):
+        request, counts, omitted = _workspace_request(payload["request"])
+        trimmed = trimmed or request != payload["request"]
+        projected["request"] = request
+        if counts:
+            previous_counts = payload.get("request_list_counts", {})
+            previous_omitted = payload.get("request_lists_truncated", {})
+            for key in counts:
+                old_count = previous_counts.get(key) if isinstance(previous_counts, dict) else None
+                if isinstance(old_count, int) and not isinstance(old_count, bool) and old_count > counts[key]:
+                    counts[key] = old_count
+                    omitted[key] = True
+                if isinstance(previous_omitted, dict):
+                    omitted[key] = omitted[key] or bool(previous_omitted.get(key))
+            projected["request_list_counts"] = counts
+            projected["request_lists_truncated"] = omitted
+            trimmed = trimmed or any(omitted.values())
     artifacts = projected.get("artifacts") or []
     download_url = None
     for artifact in artifacts:
@@ -225,6 +319,13 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
             artifact["download_url"] = browser_url
             download_url = download_url or browser_url
     original_text = str(payload.get("response_text") or result.get("error") or result.get("speech") or "")
+    if payload.get("tool") == "batch_modify_gmail_message_labels" and "batch_outcomes" not in payload:
+        saved_request = payload.get("request")
+        outcomes, complete = _gmail_label_outcomes(original_text, saved_request if isinstance(saved_request, dict) else {})
+        projected["batch_outcomes"] = _bounded(outcomes)
+        # Old saved receipts predate outcome normalization. Downgrade an
+        # unconfirmed receipt, but never upgrade a persisted tool failure.
+        projected["ok"] = bool(payload.get("ok", result.get("ok", True))) and complete
     text = _workspace_display_text(original_text, download_url)
     projected["response_excerpt"] = text[:2200]
     trimmed = trimmed or len(text) > 2200
@@ -258,13 +359,16 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
             projected[key].pop()
             trimmed = True
     while size() > max_chars and projected.get("request"):
-        projected["request"].popitem()
+        removed, _ = projected["request"].popitem()
+        if removed in _REQUEST_ID_LISTS and "request_lists_truncated" in projected:
+            projected["request_lists_truncated"][removed] = True
         trimmed = True
     # Small parent budgets and unusually large diagnostic fields must not
     # escape the bound after collections have been reduced.
-    for key in ("stash_error", "configuration_required", "response_excerpt", "links", "references", "artifacts",
+    for key in ("stash_error", "download_error", "configuration_required", "response_excerpt", "links", "references", "artifacts",
                 "request", "external_content_trust", "tool", "source", "content_links_untrusted",
-                "response_truncated", "authentication_required", "google_ok", "ok"):
+                "response_truncated", "authentication_required", "google_ok", "google_export_ok", "download_ok",
+                "request_list_counts", "request_lists_truncated", "batch_outcomes", "ok"):
         if size() <= max_chars:
             break
         if key in projected:
@@ -474,8 +578,13 @@ def download_workspace_file(client, result: dict, *, max_bytes=None) -> dict:
         if response.status_code != 200:
             raise ValueError("Google attachment is unavailable or expired")
         declared = response.headers.get("Content-Length")
-        if declared and int(declared) > max_bytes:
-            raise ValueError(f"Google download exceeds {max_bytes} bytes")
+        declared_size = None
+        if declared is not None:
+            if not re.fullmatch(r"[0-9]{1,20}", str(declared)):
+                raise ValueError("Invalid Google download Content-Length")
+            declared_size = int(declared)
+            if declared_size > max_bytes:
+                raise ValueError(f"Google download exceeds {max_bytes} bytes")
         body = bytearray()
         for chunk in response.iter_content(chunk_size=65536):
             _check_remote_call_budget()
@@ -483,6 +592,11 @@ def download_workspace_file(client, result: dict, *, max_bytes=None) -> dict:
                 raise ValueError(f"Google download exceeds {max_bytes} bytes")
             body.extend(chunk)
         _check_remote_call_budget()
+        # requests decodes compressed transfer bodies, so the advertised wire
+        # length is comparable only for identity content encoding.
+        if (declared_size is not None and response.headers.get("Content-Encoding", "identity").lower() == "identity"
+                and len(body) != declared_size):
+            raise ValueError("Google download was incomplete: Content-Length does not match received bytes")
         disposition = Message()
         disposition["content-disposition"] = response.headers.get("Content-Disposition", "")
         name = sanitize_filename(disposition.get_filename() or "google_attachment")
@@ -503,8 +617,12 @@ def stash_workspace_download(client, result: dict, space_id=None) -> dict:
     if not result.get("ok"):
         return result
     data = result["data"]
+    data["google_export_ok"] = True
+    data["download_ok"] = False
+    data["google_ok"] = False
     try:
         downloaded = download_workspace_file(client, result)
+        data["download_ok"] = data["google_ok"] = True
         body, name, mime = downloaded["body"], downloaded["name"], downloaded["mime_type"]
         import time
         budget = _check_remote_call_budget()
@@ -535,9 +653,13 @@ def stash_workspace_download(client, result: dict, space_id=None) -> dict:
         data["response_text"] += f"\nStashed file: {artifact['ref']}"
         result["speech"] = "Google file downloaded and saved to Jarvis Stash."
     except Exception as exc:
-        data["google_ok"] = True
-        data["stash_error"] = str(exc)
+        data.pop("artifacts", None)
         data["ok"] = result["ok"] = False
-        result["error"] = f"Google download succeeded, but Stash transfer failed: {exc}"
+        if data["download_ok"]:
+            data["stash_error"] = str(exc)
+            result["error"] = f"Google download succeeded, but Stash save failed: {exc}"
+        else:
+            data["download_error"] = str(exc)
+            result["error"] = f"Google export returned a receipt, but the file download failed: {exc}"
         result["speech"] = result["error"]
     return result

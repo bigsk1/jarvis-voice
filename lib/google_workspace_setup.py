@@ -137,15 +137,18 @@ def check(live: bool = False):
                     "protocolVersion": "2024-11-05", "capabilities": {},
                     "clientInfo": {"name": "jarvis-auth-probe", "version": "1"},
                 }}}, 401),
+            ("GET", _service_url(connection, "/health"), {"headers": {
+                "Host": "untrusted.invalid", "Origin": "http://untrusted.invalid",
+            }}, 403),
         )
         for method, url, options, expected in probes:
             response = connection._http_request(method, url, timeout=5, allow_redirects=False, **options)
             try:
                 if response.status_code != expected:
-                    raise SetupError("Google service health/auth boundary check failed")
+                    raise SetupError("Google service health/auth/Host boundary check failed")
             finally:
                 response.close()
-        print("HTTP boundary: public health healthy; unauthenticated MCP rejected")
+        print("HTTP boundary: public health healthy; unauthenticated MCP and unexpected Host rejected")
         connection.start()
         tools = connection.list_tools()
         print("MCP connection: healthy; tools discovered:", len(tools))

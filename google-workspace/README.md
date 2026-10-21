@@ -2,7 +2,7 @@
 
 Jarvis can use a dedicated **consumer Gmail account** through
 [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp).
-The pinned v2.1.1 container exposes 111 tools in its complete tier for Gmail,
+The pinned v2.1.2 container exposes 111 tools in its complete tier for Gmail,
 Drive, Calendar, Docs, Sheets, Slides, Forms, Tasks, Contacts and Apps Script.
 This standalone Compose project is optional. A fresh clone has the MCP ENV
 gate off and never connects to or starts this service.
@@ -218,6 +218,15 @@ Jarvis's server policy is `off` so this local service token is never sent throug
 `LOCAL_PROXY` or process HTTP proxies. The service makes its own outbound HTTPS
 requests directly to Google.
 
+The HTTP Host allowlist is `localhost,127.0.0.1,google-workspace`, covering
+native loopback requests and the Docker service name. Upstream
+`WORKSPACE_MCP_ALLOWED_HOSTS` takes bare hostnames or IP addresses, without a
+scheme or port; it checks the host while allowing that host's ports. A matching
+browser Origin does not authorize an unlisted Host. This check also applies to
+public health and callback routes; the Bearer check still protects MCP and
+attachments. If you customize the service hostname, review both the allowlist
+and endpoint configuration rather than disabling the Host check.
+
 OAuth grants, cached attachments and logs are inside `google-workspace/data/`,
 which is ignored by Git and excluded from both Docker build contexts. The
 upstream image is fixed by tag **and digest**. It runs as the host operator's
@@ -254,13 +263,69 @@ Local `tool_metadata.<upstream_tool_name>.description_prefix` supplements an
 upstream description with practical wording and example requests. The original
 upstream description and schema are retained. Change these local prefixes and
 sync Tool RAG to tune discovery without modifying the upstream Docker image.
-The Drive search/download and Docs PDF export tools have these supplements.
+Gmail, Drive, Docs and Sheets tools have these supplements.
 
 `prerequisite_tools` in the same metadata declares companion schemas needed to
 resolve required inputs. The Drive download tool includes Drive search so a
 request naming a file can obtain its ID. Existing router bounds, active-profile
 filtering and exclusions still apply; this does not force a search call when a
 valid file ID is already available.
+
+### Formatted documents, sheets and Gmail
+
+These operations use existing tool names; upgrading does not add a separate
+application or workflow. Use `mcp_google_workspace_` before the names below
+when calling them through Jarvis.
+
+- **New Markdown document:** `import_to_google_doc` accepts inline `content`
+  with `source_format="md"` or a `file_name` ending in `.md`. `create_doc`
+  inserts plain text, so Markdown syntax in its content remains literal.
+- **Markdown in an existing document:** inspect the document for its `tab_id`,
+  then call `manage_doc_tab(action="populate_from_markdown", markdown_text=...,
+  tab_id=..., document_id=..., replace_existing=false)` to append. The default
+  `replace_existing=true` clears the target tab body. Top-level pipe tables
+  become native tables; tables nested in lists or blockquotes, or above the
+  converter's size limits, fall back to text. Unknown tabs now fail instead of
+  silently targeting the first tab. `debug_table_structure` also accepts `tab_id`.
+- **Recovery copy before a large rewrite:** `copy_drive_file` creates a separate
+  file. Use the original's parent folder ID, a recognizable snapshot name and
+  optional `copy_comments=true` for open comments. Keep the returned copy ID.
+  Search before retrying an uncertain copy because Drive permits duplicate
+  names. Copies do not preserve revision history or the original's direct
+  sharing. Restoring content into the original preserves its ID and links;
+  switching to the copy requires reviewing sharing and updating links. This is
+  a recovery copy, not a named revision or automatic undo.
+- **Sheet formatting:** `format_sheet_range` adds `borders`, dropdown choices
+  through `dropdown_values`, and `merge_cells`/`merge_type`. Inspect the sheet
+  and read affected cells first: merging retains only each merged group's
+  top-left value. `clear_dropdown=true` removes every validation rule in the
+  range, including checkboxes. `manage_sheet_tab(action="style")` sets
+  `tab_color` and `show_gridlines`; gridlines apply to GRID sheets.
+- **Gmail composition:** send and draft support `direction="auto"`, `"ltr"`
+  or `"rtl"`. Use `thread_id` for a reply and `quote_original=true` when the
+  previous message should appear; quoting defaults to false. Forward with
+  `forward_message_id` so upstream carries the original content and attachments.
+  Attachment-free composition uses the new Gmail-style MIME builder; ordinary
+  compose/reply with attachments retains the existing builder. HTML input must
+  contain real markup: an entity-escaped opening tag with no real HTML tags is
+  rejected before sending or drafting. Do not unescape arbitrary message text
+  to work around this validation.
+- **Whole Gmail conversations:** `batch_modify_gmail_message_labels` accepts
+  `thread_ids` as well as individual `message_ids`. Remove `INBOX` to archive
+  a conversation or `UNREAD` to mark it read. Read the Applied, missing and
+  Failed outcomes before reporting success; a partial result does not establish
+  that every conversation changed.
+
+Omit `from_email` unless a sending alias is requested. Upstream checks aliases
+against readable Gmail Send As identities, but this is best-effort validation:
+regular sends/replies skip it when `include_signature=false`, regular drafts
+skip it for an explicit alias with signatures disabled, and missing settings
+authorization skips validation. Forward sends check explicit aliases regardless
+of the signature flag; forward drafts look up the identity. The settings-list
+API accepts `gmail.readonly`, so an optional `gmail:readonly+send` scope union
+does not inherently lose alias/signature lookup. This setup retains its full
+permission policy; changing scopes would require reviewing lost tools and the
+existing grant separately. See the [Google Send As scope reference](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.settings.sendAs/list).
 
 Account binding uses discovered tool properties that survive a transport cache
 reset. The pinned account-independent `generate_trigger_code` helper also works
@@ -353,14 +418,19 @@ stored vector below the dense threshold does not gain this exception. `BLOCKED_T
 excluded. Changing enablement, credentials or profiles still needs the normal
 registry reload; temporary downtime no longer requires restarting Jarvis.
 
-## Upgrading from 2.0.1 to 2.1.1
+## Upgrading to 2.1.2
 
 The [2.1.0](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.1.0)
 and [2.1.1](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.1.1)
-releases retain this setup's transport, OAuth scopes, CLI flags and 111-tool
+releases, followed by [2.1.2](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.1.2),
+retain this setup's transport, OAuth scopes, CLI flags and 111-tool
 catalog. Existing OAuth grants and the private service token can be reused.
 The Dockerfile pins the reviewed upstream source and image digest; rebuilding
 keeps the existing `data/` bind mount.
+The reviewed v2.1.2 source is
+`49e5e29bc1202ebf4e7218419cd8ff501de556f3`. The container includes the newer
+Google API Python client required for Drive's `copy_comments` option; Jarvis
+does not need that dependency in its own Python environment.
 
 ```bash
 bin/jarvis-google start
@@ -372,6 +442,10 @@ source "$HOME/jarvis-venv/bin/activate"
 
 Sync each enabled Jarvis mode separately. For a Docker Jarvis deployment, use
 the existing stack and Google overlay command instead of the standalone helper.
+The refreshed schemas carry optional Gmail direction, conversation label IDs,
+Sheets formatting/tab-style arguments, Docs table tab IDs and Drive comment
+copying. Local discovery guidance adds the appropriate inspection schemas
+within the existing router bounds; exclusions and profiles still apply.
 
 Gmail sends and forwards now make only one send attempt. A timeout, connection
 drop or server error can mean delivery already happened: inspect Sent before
@@ -384,7 +458,7 @@ search labels, attachment-name handling, Docs table-border validation and Apps
 Script deployment updates. The upstream Google API socket timeout returns to
 60 seconds. Jarvis configures a 90-second per-call Google MCP budget through
 `tool_call_timeout_seconds` in `config/mcp-servers.json`; its executor allows
-that budget plus a short cleanup margin. Other MCP servers keep their existing
+95 seconds, including the cleanup margin. Other MCP servers keep their existing
 timeouts. Tools making several Google requests can still exceed the overall
 budget; a timeout is not proof a write failed.
 
@@ -393,6 +467,10 @@ identity attribution are optional and are not enabled by this Compose setup.
 The existing Stash staging bridge continues to supply container-local paths;
 the stricter refusal of local files in stateless/disabled-local-file modes does
 not require changing this stateful service.
+The new OAuth proxy `WORKSPACE_MCP_OAUTH_PROXY_REQUIRE_CONSENT=remember`
+option applies to OAuth 2.1 proxy deployments. This setup uses legacy HTTP
+with `MCP_ENABLE_OAUTH21=false` and its own Bearer wrapper, so that option does
+not replace or simplify the documented Google browser consent flow.
 
 ## Stop, disable, troubleshoot
 
@@ -435,7 +513,8 @@ An already configured service can be enabled for another matching-account mode
 through `enable` without changing the service's OAuth client configuration.
 
 `bin/jarvis-google check` includes a live HTTP smoke: unauthenticated `/mcp` must
-return 401, `/health` must return 200, and authorized discovery must succeed.
+return 401, `/health` must return 200, an unlisted Host with matching Origin
+must return 403, and authorized discovery must succeed.
 The downloaded `client_secret*.json` filenames are ignored by Git and excluded
 from application build archives. The entire standalone `google-workspace/`
 folder is excluded from the Jarvis application image; its own image uses the

@@ -3,7 +3,7 @@ name: jarvis-google-workspace
 services:
   google-workspace:
     build: .
-    image: jarvis-google-workspace:2.1.1
+    image: jarvis-google-workspace:2.1.2
     restart: unless-stopped
     init: true
     user: "${GOOGLE_WORKSPACE_UID:-1000}:${GOOGLE_WORKSPACE_GID:-1000}"
@@ -19,6 +19,8 @@ services:
       WORKSPACE_ATTACHMENT_DIR: /app/store_creds/attachments
       WORKSPACE_MCP_LOG_DIR: /app/store_creds/logs
       WORKSPACE_MCP_HOST: 0.0.0.0
+      # Hostnames only: native access, OAuth tunnel, and the Docker overlay.
+      WORKSPACE_MCP_ALLOWED_HOSTS: localhost,127.0.0.1,google-workspace
       WORKSPACE_MCP_PORT: "8000"
       WORKSPACE_MCP_PORT_FALLBACK_COUNT: "0"
       WORKSPACE_EXTERNAL_URL: http://localhost:8765

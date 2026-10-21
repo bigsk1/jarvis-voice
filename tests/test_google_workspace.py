@@ -538,7 +538,7 @@ def test_stash_bridge_uses_configured_origin_and_canonical_root_and_preserves_fo
 
 
 @pytest.mark.parametrize('kind', ['redirect', 'oversize-header', 'oversize-stream', 'bad-path'])
-def test_stash_failures_preserve_google_success_and_never_save_files(bridge, monkeypatch, kind):
+def test_download_failures_preserve_export_receipt_and_never_save_files(bridge, monkeypatch, kind):
     import google_workspace
     connection, request, reply, root = bridge
     if kind == 'redirect':
@@ -551,8 +551,10 @@ def test_stash_failures_preserve_google_success_and_never_save_files(bridge, mon
         monkeypatch.setattr(connection, '_send_request', lambda *a: {'content': [{'text': 'Download URL: http://elsewhere/credentials/secret'}]})
     result = connection.call_tool('get_drive_file_download_url', {'file_id': 'drive-id', 'stash': True})
     assert not result['ok']
-    assert result['data']['google_ok']
-    assert result['data']['stash_error']
+    assert result['data']['google_export_ok']
+    assert result['data']['google_ok'] is False
+    assert result['data']['download_ok'] is False
+    assert result['data']['download_error']
     assert not root.exists()
     if kind == 'bad-path':
         request.assert_not_called()
@@ -738,7 +740,9 @@ def test_cancelled_stash_stream_never_publishes_a_file(bridge, monkeypatch):
     response.iter_content.side_effect = chunks
     result = connection.call_tool('get_drive_file_download_url', {'file_id': 'drive-id', 'stash': True})
     assert not result['ok']
-    assert result['data']['google_ok']
+    assert result['data']['google_ok'] is False
+    assert result['data']['download_ok'] is False
+    assert result['data']['google_export_ok']
     assert not root.exists()
 
 
@@ -989,7 +993,7 @@ def test_operator_health_check_tests_real_http_boundary_before_authorized_discov
     from unittest.mock import Mock
     setup = _load(ROOT / 'lib/google_workspace_setup.py', 'google_operator_smoke_test')
     connection = Mock(url='http://localhost:8765/mcp')
-    connection._http_request.side_effect = [Mock(status_code=200), Mock(status_code=401)]
+    connection._http_request.side_effect = [Mock(status_code=200), Mock(status_code=401), Mock(status_code=403)]
     connection.list_tools.return_value = [{'name': 'example'}]
     monkeypatch.setattr(setup, 'service_config', lambda: {'GOOGLE_ACCOUNT': 'dedicated@gmail.com'})
     monkeypatch.setattr(setup, 'client', lambda: connection)
@@ -999,6 +1003,8 @@ def test_operator_health_check_tests_real_http_boundary_before_authorized_discov
     assert calls[0].args == ('GET', 'http://localhost:8765/health')
     assert calls[1].args == ('POST', 'http://localhost:8765/mcp')
     assert 'Authorization' not in calls[1].kwargs['headers']
+    assert calls[2].args == ('GET', 'http://localhost:8765/health')
+    assert calls[2].kwargs['headers'] == {'Host': 'untrusted.invalid', 'Origin': 'http://untrusted.invalid'}
     connection.start.assert_called_once()
     connection.stop.assert_called_once()
 
