@@ -2,7 +2,7 @@
 
 Jarvis can use a dedicated **consumer Gmail account** through
 [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp).
-The pinned v2.0.1 container exposes 111 tools in its complete tier for Gmail,
+The pinned v2.1.1 container exposes 111 tools in its complete tier for Gmail,
 Drive, Calendar, Docs, Sheets, Slides, Forms, Tasks, Contacts and Apps Script.
 This standalone Compose project is optional. A fresh clone has the MCP ENV
 gate off and never connects to or starts this service.
@@ -352,6 +352,47 @@ active registry/profile/allowlist visibility still governs callable tools. A
 stored vector below the dense threshold does not gain this exception. `BLOCKED_TOOLS` remains
 excluded. Changing enablement, credentials or profiles still needs the normal
 registry reload; temporary downtime no longer requires restarting Jarvis.
+
+## Upgrading from 2.0.1 to 2.1.1
+
+The [2.1.0](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.1.0)
+and [2.1.1](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.1.1)
+releases retain this setup's transport, OAuth scopes, CLI flags and 111-tool
+catalog. Existing OAuth grants and the private service token can be reused.
+The Dockerfile pins the reviewed upstream source and image digest; rebuilding
+keeps the existing `data/` bind mount.
+
+```bash
+bin/jarvis-google start
+bin/jarvis-google check --live
+source "$HOME/jarvis-venv/bin/activate"
+./bin/sync-tools.py cloud
+# Restart Jarvis processes to load updated tool schemas and descriptions.
+```
+
+Sync each enabled Jarvis mode separately. For a Docker Jarvis deployment, use
+the existing stack and Google overlay command instead of the standalone helper.
+
+Gmail sends and forwards now make only one send attempt. A timeout, connection
+drop or server error can mean delivery already happened: inspect Sent before
+trying again. Jarvis's HTTP transport also avoids replaying ambiguous failures.
+The corrected destructive annotation on `send_gmail_message` does not change
+this setup's configured autonomous approval policy.
+
+Other changes include forwarded-message drafts, Calendar pagination, Gmail
+search labels, attachment-name handling, Docs table-border validation and Apps
+Script deployment updates. The upstream Google API socket timeout returns to
+60 seconds. Jarvis configures a 90-second per-call Google MCP budget through
+`tool_call_timeout_seconds` in `config/mcp-servers.json`; its executor allows
+that budget plus a short cleanup margin. Other MCP servers keep their existing
+timeouts. Tools making several Google requests can still exceed the overall
+budget; a timeout is not proof a write failed.
+
+Attachment storage stays local; GCS storage, Valkey and OpenTelemetry
+identity attribution are optional and are not enabled by this Compose setup.
+The existing Stash staging bridge continues to supply container-local paths;
+the stricter refusal of local files in stateless/disabled-local-file modes does
+not require changing this stateful service.
 
 ## Stop, disable, troubleshoot
 

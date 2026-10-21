@@ -3,7 +3,7 @@ name: jarvis-google-workspace
 services:
   google-workspace:
     build: .
-    image: jarvis-google-workspace:2.0.1
+    image: jarvis-google-workspace:2.1.1
     restart: unless-stopped
     init: true
     user: "${GOOGLE_WORKSPACE_UID:-1000}:${GOOGLE_WORKSPACE_GID:-1000}"

@@ -7,6 +7,7 @@ Communicates with MCP servers via JSON-RPC over multiple transports:
 - http: Streamable HTTP (JSON-RPC over HTTP POST)
 """
 import json
+import math
 import os
 import queue
 import re
@@ -15,7 +16,7 @@ import sys
 import time
 from contextvars import ContextVar, copy_context
 from dataclasses import dataclass, field
-from threading import Event, Lock, RLock, Thread
+from threading import TIMEOUT_MAX, Event, Lock, RLock, Thread
 from typing import Any, Union
 from uuid import uuid4
 
@@ -33,6 +34,21 @@ from http_client import (
 from mcp_docker import owner_labels, reap_orphans
 
 
+def _validate_remote_tool_timeout(value: Any) -> float | None:
+    """Validate an optional remote call budget before creating worker threads."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("tool_call_timeout_seconds must be a positive finite number")
+    try:
+        timeout = float(value)
+    except OverflowError:
+        raise ValueError("tool_call_timeout_seconds exceeds the supported timeout range") from None
+    if not math.isfinite(timeout) or timeout <= 0 or timeout > TIMEOUT_MAX - 5:
+        raise ValueError("tool_call_timeout_seconds must be positive, finite, and within the supported timeout range")
+    return timeout
+
+
 def server_configuration_status(server_config: dict) -> tuple[bool, str]:
     """Check selected-mode gates without starting a server or exposing values."""
     if not server_config.get("enabled", True):
@@ -45,6 +61,11 @@ def server_configuration_status(server_config: dict) -> tuple[bool, str]:
         return False, "invalid required_env"
     if server_config.get("result_contract") not in (None, "external_result_v1"):
         return False, "invalid result_contract"
+    if str(server_config.get("type", "")).lower() in {"http", "sse"}:
+        try:
+            _validate_remote_tool_timeout(server_config.get("tool_call_timeout_seconds"))
+        except ValueError:
+            return False, "invalid tool_call_timeout_seconds"
     missing = [key for key in required if not get_config_value(key, None)]
     if missing:
         return False, "missing configuration: " + ", ".join(missing)
@@ -919,7 +940,8 @@ class MCPRemoteClient:
     """
     
     def __init__(self, name: str, url: str, transport_type: str, headers: dict[str, str] | None = None,
-                 proxy_policy: str = "inherit", result_contract: str | None = None):
+                 proxy_policy: str = "inherit", result_contract: str | None = None,
+                 tool_call_timeout_seconds: float | None = None):
         """
         Initialize remote MCP client.
         
@@ -930,6 +952,7 @@ class MCPRemoteClient:
             headers: Optional HTTP headers (e.g., for API keys)
                      SECURITY: Only these explicit headers are sent - no os.environ leakage
             proxy_policy: Per-server routing; inherit preserves existing behavior.
+            tool_call_timeout_seconds: Optional budget for tool execution only.
         """
         self.name = name
         self.url = url.rstrip('/')
@@ -937,6 +960,7 @@ class MCPRemoteClient:
         self.headers = headers or {}
         self.proxy_policy = normalize_proxy_policy(proxy_policy)
         self.result_contract = result_contract
+        self.tool_call_timeout_seconds = _validate_remote_tool_timeout(tool_call_timeout_seconds)
         self._proxy_route: dict[str, Any] = {}
         self._call_budgets: dict[int, _RemoteCallBudget] = {}
         # SSE initialization and reconnect both re-enter _send_request() while
@@ -957,6 +981,12 @@ class MCPRemoteClient:
         self._sse_thread = None
         self._sse_stop_event = Event()
         self._sse_connected = Event()
+
+    def _request_timeout(self, method: str) -> float | tuple[float, float]:
+        """Extend opted-in tool reads while retaining bounded connection setup."""
+        if method == "tools/call" and self.tool_call_timeout_seconds is not None:
+            return (min(30, self.tool_call_timeout_seconds), self.tool_call_timeout_seconds)
+        return 30
 
     def _http_request(self, method: str, url: str, **kwargs):
         """Apply this server's policy without changing process-wide settings."""
@@ -1045,7 +1075,8 @@ class MCPRemoteClient:
                 **self.headers
             }
             
-            response = self._http_request("GET", self.url, headers=headers, stream=True, timeout=30)
+            response = self._http_request("GET", self.url, headers=headers, stream=True,
+                                          timeout=self._request_timeout("tools/call"))
             response.raise_for_status()
             
             event_type = None
@@ -1245,7 +1276,7 @@ class MCPRemoteClient:
                 "POST", self._sse_endpoint,
                 json=request,
                 headers=headers,
-                timeout=30
+                timeout=self._request_timeout(request["method"])
             )
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
@@ -1281,8 +1312,13 @@ class MCPRemoteClient:
     
     def _wait_for_sse_response(self, request: dict) -> Any:
         """Wait for response from SSE stream after sending a request."""
-        deadline = time.monotonic() + 30
+        timeout = self.tool_call_timeout_seconds if request["method"] == "tools/call" and self.tool_call_timeout_seconds is not None else 30
+        deadline = time.monotonic() + timeout
+        budget = _check_remote_call_budget()
+        if budget is not None:
+            deadline = min(deadline, budget.deadline)
         while True:
+            _check_remote_call_budget()
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise Exception(f"Timeout waiting for SSE response from {self.name}")
@@ -1328,7 +1364,7 @@ class MCPRemoteClient:
             "POST", self.url,
             json=request,
             headers=headers,
-            timeout=30,
+            timeout=self._request_timeout(request["method"]),
             stream=True  # Enable streaming for potential SSE responses
         )
         # A rejected session has not executed this request. Only that explicit
@@ -1523,7 +1559,9 @@ class MCPRemoteClient:
             # Strict provider schemas may send null for an optional property.
             if arguments.get(key) is None:
                 arguments[key] = default
-        timeout_seconds = int(os.environ.get("MCP_TOOL_CALL_TIMEOUT_SECONDS", "35"))
+        timeout_seconds = self.tool_call_timeout_seconds
+        if timeout_seconds is None:
+            timeout_seconds = int(os.environ.get("MCP_TOOL_CALL_TIMEOUT_SECONDS", "35"))
         response_holder: dict[str, Any] = {}
         budget = _RemoteCallBudget(time.monotonic() + timeout_seconds)
         self._call_budgets[id(budget)] = budget
@@ -1716,6 +1754,7 @@ class MCPManager:
                     name, url, transport_type, headers,
                     proxy_policy=server_config.get("proxy_policy", "inherit"),
                     result_contract=server_config.get("result_contract"),
+                    tool_call_timeout_seconds=server_config.get("tool_call_timeout_seconds"),
                 )
                 self.servers[name].tool_defaults = self._substitute_env_vars(
                     server_config.get("tool_defaults", {})

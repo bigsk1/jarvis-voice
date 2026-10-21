@@ -74,6 +74,11 @@ Jarvis now supports three MCP transport types:
 - `url` (required): Server endpoint URL
 - `headers` (optional): HTTP headers (supports `${VAR}` substitution)
 - `enabled` (optional): Enable/disable the server (default: true)
+- `tool_call_timeout_seconds` (optional): Positive, finite per-server tool-call
+  budget. Overrides `MCP_TOOL_CALL_TIMEOUT_SECONDS` for this remote client and
+  permits a longer tool-response read. Initialization and discovery keep their
+  existing limits. The executor allows the configured budget plus five seconds
+  for cleanup; servers without this setting retain their existing timeouts.
 
 ## Streamable HTTP Protocol
 

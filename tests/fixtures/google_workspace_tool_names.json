@@ -1,6 +1,6 @@
 {
-  "image": "ghcr.io/taylorwilsdon/google_workspace_mcp:2.0.1",
-  "upstream_commit": "25dc59d7e045c79b3f60a40782d071a664562c86",
+  "image": "ghcr.io/taylorwilsdon/google_workspace_mcp:2.1.1",
+  "upstream_commit": "7096dd9dba5f169cd466e0f2ffc26bfd0ff16e1d",
   "tools": [
     "append_table_rows",
     "batch_modify_gmail_message_labels",

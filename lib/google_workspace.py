@@ -1,6 +1,6 @@
 """Normalize Workspace MCP receipts and preserve bounded follow-up handles.
 
-Upstream v2.0.1 mostly returns human-readable text, not Google API objects.
+Upstream v2.1.1 mostly returns human-readable text, not Google API objects.
 Keep its actual response and explicitly labeled IDs; never invent an API receipt.
 """
 
@@ -451,6 +451,7 @@ def cleanup_workspace_transfer(client, staged_id):
 def download_workspace_file(client, result: dict, *, max_bytes=None) -> dict:
     """Bounded download from the configured authenticated origin; no Stash write."""
     from email.message import Message
+
     from mcp_client import _check_remote_call_budget
     from stash_helper import sanitize_filename
 

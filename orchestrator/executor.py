@@ -824,7 +824,13 @@ class ToolExecutor:
                 }
 
             # Strict outer timeout guard: prevents WebUI "thinking forever"
-            mcp_timeout = int(os.environ.get("MCP_EXECUTOR_TIMEOUT_SECONDS", "45"))
+            server_timeout = getattr(mcp_client, "tool_call_timeout_seconds", None)
+            if isinstance(server_timeout, (int, float)) and not isinstance(server_timeout, bool):
+                # Explicit remote budgets must fit inside this guard, including
+                # a short allowance for cancellation and client cleanup.
+                mcp_timeout = server_timeout + 5
+            else:
+                mcp_timeout = int(os.environ.get("MCP_EXECUTOR_TIMEOUT_SECONDS", "45"))
             pool = ThreadPoolExecutor(max_workers=1)
             try:
                 future = pool.submit(copy_context().run, mcp_client.call_tool, mcp_tool_name, args)

@@ -22,6 +22,7 @@
       "url": "http://127.0.0.1:8765/mcp",
       "url_env": "GOOGLE_WORKSPACE_MCP_URL",
       "proxy_policy": "off",
+      "tool_call_timeout_seconds": 90,
       "enabled": true,
       "enabled_env": "GOOGLE_WORKSPACE_MCP_ENABLED",
       "retry_discovery": true,

@@ -105,8 +105,10 @@ def client() -> MCPRemoteClient:
     token = service_config().get("GOOGLE_WORKSPACE_MCP_TOKEN", "")
     if len(token) < 32:
         raise SetupError("Run bin/jarvis-google prepare first")
+    server = json.loads((ROOT / "config/mcp-servers.json").read_text())["mcpServers"]["google_workspace"]
     return MCPRemoteClient("google_workspace", URL, "http",
-                           {"Authorization": f"Bearer {token}"}, proxy_policy="off")
+                           {"Authorization": f"Bearer {token}"}, proxy_policy="off",
+                           tool_call_timeout_seconds=server.get("tool_call_timeout_seconds"))
 
 
 def stored_grant_status(config: dict[str, str]) -> dict:

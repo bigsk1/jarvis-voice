@@ -120,6 +120,14 @@ it may finish in the background. The executor's separate outer timeout defaults
 to 45 seconds (`MCP_EXECUTOR_TIMEOUT_SECONDS`) and no longer waits for a timed-out
 future during pool shutdown. Socket timeout values are not wall-clock guarantees.
 
+A remote server can explicitly set a positive, finite
+`tool_call_timeout_seconds` in `config/mcp-servers.json`. This replaces its
+tool-call deadline and allows a matching tool-response read timeout. The
+executor allows at least that budget plus five seconds; initialization and
+discovery keep their shorter bounds. Google Workspace uses 90 seconds to allow
+the upstream 60-second Google API socket timeout. Other servers retain the
+global defaults unless configured separately.
+
 The request's cloud/local configuration context is copied into executor, MCP
 tool-call, and SSE listener threads. Header substitution still resolves only
 configured placeholders at client creation; proxy selection uses the current
