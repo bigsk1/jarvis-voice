@@ -1,5 +1,10 @@
 # OpenCode Plugin Ideas for Jarvis Integration
 
+> Historical V1 design notes. Code examples, model names, APIs, and safety
+> assumptions below are not the current V2 integration contract. See
+> [OPENCODE.md](OPENCODE.md) and [the V2 plugin README](plugin/README.md) for
+> maintained setup and behavior.
+
 > **Architecture Philosophy**: Jarvis is the top-level orchestrator ($$$ model), OpenCode is a specialized subordinate agent ($$ model). Plugins should **enhance capabilities** and **enforce boundaries**, not blur the hierarchy.
 
 **Last Updated**: November 15, 2025

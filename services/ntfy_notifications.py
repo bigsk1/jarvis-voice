@@ -5,7 +5,7 @@ import argparse
 import logging
 import signal
 import sys
-import threading
+import time
 from pathlib import Path
 
 from filelock import FileLock, Timeout
@@ -23,7 +23,30 @@ from lib.ntfy_notifications import (  # noqa: E402
 LOCK_RETRY_SECONDS = 15
 
 
-def acquire_delivery_lock(lock: FileLock, stop: threading.Event, *, once: bool) -> bool:
+class ShutdownSignal:
+    """Single-threaded stop flag safe to set from a Python signal handler."""
+
+    def __init__(self):
+        self._requested = False
+
+    def set(self) -> None:
+        # A signal can interrupt wait() at any bytecode. Do not acquire a lock.
+        self._requested = True
+
+    def is_set(self) -> bool:
+        return self._requested
+
+    def wait(self, timeout: float) -> bool:
+        deadline = time.monotonic() + timeout
+        while not self._requested:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(remaining, 0.1))
+        return self._requested
+
+
+def acquire_delivery_lock(lock: FileLock, stop: ShutdownSignal, *, once: bool) -> bool:
     """Keep a competing daemon alive without scanning or publishing events."""
     waiting = False
     while not stop.is_set():
@@ -49,7 +72,7 @@ def main():
     parser.add_argument("--once", action="store_true", help="Scan/deliver once and exit")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    stop = threading.Event()
+    stop = ShutdownSignal()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
     (PROJECT_ROOT / "data").mkdir(parents=True, exist_ok=True)

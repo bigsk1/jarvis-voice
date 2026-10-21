@@ -227,9 +227,11 @@ OpenCode normally serves plain HTTP on port `4096`. From an HTTPS Web page, a
 link to `https://jarvis.example.ts.net:4096` fails because that port does not
 speak TLS. Binding OpenCode to `0.0.0.0` makes its HTTP listener reachable on
 more interfaces; it does not add HTTPS. The Web tool card uses OpenCode's actual
-HTTP scheme and the current browser hostname by default, so a direct tailnet
-link is `http://jarvis.example.ts.net:4096/Lw/session/<session_id>` when that
-port is allowed. Keep `OPENCODE_BASE_URL` pointed at Jarvis's internal OpenCode
+HTTP scheme and the current browser hostname by default. OpenCode V2 session
+links use `/server/<encoded-origin>/session/<session_id>`, where the origin is
+encoded as UTF-8 base64url without padding. Jarvis constructs the link using
+the browser-reachable OpenCode origin; the V1 `/Lw/session/` route no longer
+applies. Keep `OPENCODE_BASE_URL` pointed at Jarvis's internal OpenCode
 API address; it is not the browser-facing HTTPS setting.
 
 For an HTTPS session link, give OpenCode its own unused Serve port while keeping

@@ -1,226 +1,98 @@
 /**
- * OpenCode Workspace Protection Plugin
+ * OpenCode 2 workspace guard. File tools may read source outside the workspace,
+ * but may only mutate workspace files. The systemd unit supplies the filesystem
+ * write boundary for arbitrary shell commands and Code Mode execution.
  *
- * Purpose: Enforce strict workspace boundaries for OpenCode operations
- *
- * Safety Rules:
- * 1. BLOCK write/edit/delete outside $HOME/jarvis-workspace (override: JARVIS_WORKSPACE_ROOT)
- * 2. BLOCK all access to $HOME/jarvis-voice (override: JARVIS_VOICE_ROOT)
- * 3. BLOCK system directories (/etc, /usr, /bin, /sys, /proc, etc.)
- * 4. Keep OpenCode focused on generated projects; Jarvis should provide any codebase context it needs.
- *
- * Defaults match a clone at ~/jarvis-voice and workspace at ~/jarvis-workspace (see lib/paths.py).
+ * V2 accepts this dependency-free { id, setup } definition directly; the public
+ * Plugin.define helper returns the same object (packages/plugin/src/promise/plugin.ts).
  */
-
+import { realpathSync, lstatSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-export const WorkspaceProtection = async ({ project, client, $, directory, worktree }) => {
-  const HOME = homedir();
-  const JARVIS_ROOT = path.resolve(process.env.JARVIS_VOICE_ROOT || path.join(HOME, "jarvis-voice"));
-  const WORKSPACE_ROOT = path.resolve(
-    process.env.JARVIS_WORKSPACE_ROOT || path.join(HOME, "jarvis-workspace"),
-  );
-  const CURRENT_DIRECTORY = path.resolve(directory || process.cwd());
-
-  const SYSTEM_DIRS = [
-    "/etc",
-    "/usr",
-    "/bin",
-    "/sbin",
-    "/lib",
-    "/lib64",
-    "/sys",
-    "/proc",
-    "/boot",
-    "/root",
-    "/var/lib",
-    "/var/log",
-  ];
-  
-  const CONFIG_DIR = path.join(HOME, ".config");
-  const PROTECTED_HOME_DIRS = [
-    path.join(HOME, ".ssh"),
-    path.join(HOME, ".gnupg"),
-    CONFIG_DIR, // Except opencode subdir
-    path.join(HOME, ".local"),
-  ];
-
-  function resolvePath(inputPath) {
-    if (!inputPath) return "";
-    return path.resolve(CURRENT_DIRECTORY, inputPath);
+function canonicalPath(input, directory) {
+  const absolute = path.resolve(directory, input);
+  const suffix = [];
+  let parent = absolute;
+  for (;;) {
+    try {
+      return path.join(realpathSync(parent), ...suffix);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      // A dangling symlink must not become a writable-looking lexical path.
+      try {
+        if (lstatSync(parent).isSymbolicLink()) throw new Error("BLOCKED: dangling symlink");
+      } catch (statError) {
+        if (statError.code !== "ENOENT") throw statError;
+      }
+      if (path.dirname(parent) === parent) throw error;
+      suffix.unshift(path.basename(parent));
+      parent = path.dirname(parent);
+    }
   }
+}
 
-  function isWithin(candidate, root) {
-    return candidate === root || candidate.startsWith(root + path.sep);
-  }
+function within(candidate, root) {
+  return candidate === root || candidate.startsWith(root + path.sep);
+}
 
-  /**
-   * Check if a path is within the allowed workspace
-   */
-  function isInWorkspace(inputPath) {
-    const absolutePath = resolvePath(inputPath);
-    return isWithin(absolutePath, WORKSPACE_ROOT);
-  }
-
-  /**
-   * Check if a path is the Jarvis codebase (protected)
-   */
-  function isJarvisCode(inputPath) {
-    const absolutePath = resolvePath(inputPath);
-    return isWithin(absolutePath, JARVIS_ROOT);
-  }
-
-  /**
-   * Check if a path is a system directory (protected)
-   */
-  function isSystemDir(inputPath) {
-    const absolutePath = resolvePath(inputPath);
-    
-    // Check system directories
-    for (const sysDir of SYSTEM_DIRS) {
-      if (isWithin(absolutePath, sysDir)) {
-        return true;
+export default {
+  id: "jarvis.workspace-protection",
+  async setup(ctx) {
+    const directory = ctx.location.directory;
+    const workspace = canonicalPath(
+      process.env.JARVIS_WORKSPACE_ROOT || path.join(homedir(), "jarvis-workspace"),
+      directory,
+    );
+    const jarvis = canonicalPath(
+      process.env.JARVIS_VOICE_ROOT || path.join(homedir(), "jarvis-voice"),
+      directory,
+    );
+    function checkMutation(input) {
+      if (typeof input !== "string" || !input) {
+        throw new Error("BLOCKED: mutation requires a target path");
+      }
+      const target = canonicalPath(input, directory);
+      if (!within(target, workspace) || within(target, jarvis)) {
+        throw new Error("BLOCKED: edits must remain inside the Jarvis workspace");
       }
     }
-    
-    // Check protected home directories (except opencode config)
-    for (const protectedDir of PROTECTED_HOME_DIRS) {
-      if (isWithin(absolutePath, protectedDir)) {
-        // Allow opencode's own config
-        if (protectedDir === CONFIG_DIR &&
-            isWithin(absolutePath, path.join(CONFIG_DIR, "opencode"))) {
-          return false;
-        }
-        return true;
+
+    // This hook also covers nested file tools reached through V2 Code Mode.
+    await ctx.permission.hook("evaluate", (event) => {
+      if (event.action !== "edit") return;
+      try {
+        if (!event.resources.length) checkMutation(undefined);
+        event.resources.forEach(checkMutation);
+      } catch {
+        event.effect = "deny";
+        event.message = "Edits must remain inside the Jarvis workspace";
       }
-    }
-    
-    return false;
-  }
+    });
 
-  /**
-   * Get user-friendly path for error messages
-   */
-  function formatPath(p) {
-    if (!p) return p;
-    if (p === HOME || p.startsWith(HOME + path.sep)) {
-      return "~" + (p === HOME ? "" : p.slice(HOME.length));
-    }
-    return p;
-  }
-
-  console.log("🛡️  Workspace Protection Plugin loaded");
-  console.log(`   Workspace: ${formatPath(WORKSPACE_ROOT)}`);
-  console.log(`   Protected: ${formatPath(JARVIS_ROOT)} (Jarvis codebase)`);
-
-  return {
-    /**
-     * Hook: Before tool execution
-     * Intercept file operations and enforce boundaries
-     */
-    "tool.execute.before": async (input, output) => {
-      const tool = input.tool;
-      const args = output.args || output;
-
-      // Define destructive operations (need strict validation)
-      const DESTRUCTIVE_TOOLS = [
-        "write",
-        "write_file", 
-        "create_file",
-        "edit",
-        "edit_file",
-        "delete",
-        "delete_file",
-        "rm",
-        "move",
-        "mv",
-        "rename",
-      ];
-
-      // Get file path from various possible argument names
-      const filePath = args.filePath || 
-                      args.file_path || 
-                      args.path || 
-                      args.file ||
-                      args.target ||
-                      args.destination;
-
-      if (!filePath) {
-        // No file path found, skip validation
-        return;
+    await ctx.tool.hook("execute.before", (event) => {
+      const input = event.input || {};
+      if (["write", "edit", "delete", "move", "rename"].includes(event.tool)) {
+        checkMutation(input.path || input.filePath || input.file_path);
+        if (input.destination) checkMutation(input.destination);
       }
-      const resolvedPath = resolvePath(filePath);
-
-      // RULE 1: Block ALL access to Jarvis codebase
-      if (isJarvisCode(resolvedPath)) {
-        throw new Error(
-          `❌ BLOCKED: Cannot access Jarvis codebase\n` +
-          `   Path: ${formatPath(resolvedPath)}\n` +
-          `   Reason: ${formatPath(JARVIS_ROOT)} is protected (read-only from workspace only)\n\n` +
-          `   If you need to understand Jarvis APIs, ask Jarvis to provide the information.`
-        );
+      if (event.tool === "patch") {
+        // V2 patch input uses the same Add/Update/Delete/Move header grammar.
+        const targets = [...String(input.patchText || "").matchAll(
+          /^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm,
+        )];
+        if (!targets.length) throw new Error("BLOCKED: patch requires target paths");
+        targets.forEach((match) => checkMutation(match[1].trim()));
       }
+    });
 
-      // RULE 2: Block destructive operations outside workspace
-      if (DESTRUCTIVE_TOOLS.includes(tool)) {
-        if (!isInWorkspace(resolvedPath)) {
-          // Check if it's a system directory for specific error message
-          if (isSystemDir(resolvedPath)) {
-            throw new Error(
-              `❌ BLOCKED: Cannot modify system directories\n` +
-              `   Tool: ${tool}\n` +
-              `   Path: ${formatPath(resolvedPath)}\n` +
-              `   Reason: System directories are protected\n\n` +
-              `   All file operations must be within: ${formatPath(WORKSPACE_ROOT)}`
-            );
-          }
-          
-          throw new Error(
-            `❌ BLOCKED: File operation outside workspace\n` +
-            `   Tool: ${tool}\n` +
-            `   Path: ${formatPath(resolvedPath)}\n` +
-            `   Workspace: ${formatPath(WORKSPACE_ROOT)}\n\n` +
-            `   All file operations must be within the workspace directory.\n` +
-            `   Create your project in: ${formatPath(WORKSPACE_ROOT)}/projects/`
-          );
-        }
-      }
-
-      // RULE 3: Block system directory access (even reads)
-      if (isSystemDir(resolvedPath)) {
-        throw new Error(
-          `❌ BLOCKED: Cannot access system directories\n` +
-          `   Tool: ${tool}\n` +
-          `   Path: ${formatPath(resolvedPath)}\n` +
-          `   Reason: System directories are protected\n\n` +
-          `   Work within: ${formatPath(WORKSPACE_ROOT)}`
-        );
-      }
-
-      // Allow the operation (passed all checks)
-    },
-
-    /**
-     * Hook: On session start
-     * Log workspace info for debugging
-     */
-    "session.start": async () => {
-      console.log("\n🛡️  Workspace Protection Active");
-      console.log(`   Current directory: ${formatPath(CURRENT_DIRECTORY)}`);
-      console.log(`   Allowed workspace: ${formatPath(WORKSPACE_ROOT)}`);
-      console.log(`   Protected: ${formatPath(JARVIS_ROOT)}\n`);
-    },
-
-    /**
-     * Hook: On error
-     * Log blocked operations for audit trail
-     */
-    "error": async ({ error }) => {
-      if (error.message && error.message.includes("BLOCKED")) {
-        console.error("\n🚫 Workspace Protection: Operation blocked");
-        console.error(`   ${error.message}\n`);
-      }
-    }
-  };
+    await ctx.shell.hook("create.before", (event) => {
+      // A cwd check is useful feedback, not a command parser or shell sandbox.
+      checkMutation(event.cwd);
+      const scratch = path.join(workspace, "temp");
+      event.env.TMPDIR = scratch;
+      event.env.TMP = scratch;
+      event.env.TEMP = scratch;
+    });
+  },
 };

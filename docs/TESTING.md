@@ -178,7 +178,7 @@ The script detects the configured provider/model. Anthropic can return displayab
 ### OpenCode
 
 ```bash
-# Mocked client/tool coverage only
+# Deterministic V2 client/tool/progress coverage through repo .venv when available
 ./tests/integration/test-opencode-integration.sh
 
 # Read-only configured server/auth check
@@ -189,6 +189,9 @@ The script detects the configured provider/model. Anthropic can return displayab
 ```
 
 The live prompt explicitly tells OpenCode not to create or modify files. It still creates a service session, so it remains opt-in.
+Health and live checks use `${JARVIS_VENV:-$HOME/jarvis-venv}` and the selected
+mode's server URL/authentication. Health checks require an OpenCode 2.x server;
+they do not prove provider/model access or workspace protection.
 
 ## Tool RAG diagnostics
 

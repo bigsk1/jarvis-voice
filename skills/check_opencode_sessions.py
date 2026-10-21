@@ -4,9 +4,9 @@ Check OpenCode Sessions Tool
 Query OpenCode API for session history, progress, and build details.
 READ-ONLY - does not trigger new builds.
 """
-import sys
 import json
 import os
+import sys
 from pathlib import Path
 
 # Add lib to path
@@ -15,10 +15,11 @@ from opencode_client import OpenCodeClient
 
 
 def _session_timestamp(session: dict, key: str) -> str | int | float:
-    """Return OpenCode session timestamps across old and current API shapes."""
+    """Return V2 timestamps, retaining compatibility with older saved rows."""
     time_info = session.get("time")
-    if isinstance(time_info, dict) and time_info.get(key) is not None:
-        return time_info.get(key)
+    timestamp = time_info.get(key) if isinstance(time_info, dict) else None
+    if isinstance(timestamp, (str, int, float)):
+        return timestamp
 
     legacy_key = "lastActivity" if key == "updated" else "created"
     return session.get(legacy_key, "")
@@ -57,7 +58,7 @@ def _summarize_opencode_logs(session_id: str) -> dict:
     """
     Return useful Jarvis-side details for an OpenCode session.
 
-    OpenCode's /session endpoint can be metadata-only on current builds, while
+    OpenCode's /api/session endpoint returns session metadata, while
     Jarvis logs the original task, model, response preview, duration, and status.
     """
     entries = _iter_opencode_log_entries(session_id)
@@ -127,7 +128,7 @@ def main():
         except Exception as e:
             return {
                 "ok": False,
-                "speech": "OpenCode server is not running. Start it with: systemctl --user start opencode",
+                "speech": "OpenCode could not initialize. Check its configuration and the opencode-jarvis.service system service.",
                 "error": f"Connection failed: {str(e)}"
             }
         
@@ -137,7 +138,7 @@ def main():
             return {
                 "ok": False,
                 "speech": "OpenCode server is not responding properly",
-                "error": "Health check failed"
+                "error": health.get("error") or "OpenCode V2 health check failed"
             }
         
         # Get specific session or list all sessions
@@ -156,9 +157,11 @@ def main():
             # Build speech summary
             title = session.get('title', 'Untitled')
             agent = session.get('agent', 'unknown')
-            msg_count = len(session.get('messages', []))
-            
-            speech = f"OpenCode session: {title}. Agent: {agent}. {msg_count} messages in conversation."
+
+            speech = f"OpenCode session: {title}. Agent: {agent}."
+            outcome = session.get('outcome')
+            if outcome in {'succeeded', 'failed', 'interrupted'}:
+                speech += f" Last run: {outcome}."
             log_summary = session.get("jarvis_log_summary") or {}
             if log_summary:
                 duration_ms = log_summary.get("duration_ms")
@@ -171,9 +174,11 @@ def main():
                     speech += f" Result preview: {preview[:240]}"
             
             # Add token info if available
-            if 'metadata' in session and 'tokensUsed' in session['metadata']:
-                tokens = session['metadata']['tokensUsed']
-                speech += f" Tokens used: {tokens}."
+            tokens = session.get('tokens')
+            if isinstance(tokens, dict):
+                input_tokens, output_tokens = tokens.get('input'), tokens.get('output')
+                if isinstance(input_tokens, (int, float)) and isinstance(output_tokens, (int, float)):
+                    speech += f" Tokens: {input_tokens:g} input, {output_tokens:g} output."
             
             result = {
                 "ok": True,
@@ -203,8 +208,7 @@ def main():
                     "data": {"sessions": []}
                 }
             
-            # Sort by last activity (most recent first). OpenCode 1.14 uses
-            # time.updated/time.created; older builds used top-level fields.
+            # V2 returns time.updated/time.created on the normalized session rows.
             sessions.sort(key=lambda s: _session_timestamp(s, "updated"), reverse=True)
             
             # Limit results

@@ -67,14 +67,15 @@ the dev environment with `UV_PROJECT_ENVIRONMENT=.venv uv sync --dev --frozen`.
 
 ## Maintained integration scripts
 
-The two maintained shell wrappers retain
-`${JARVIS_VENV:-$HOME/jarvis-venv}`. Their default behavior is deterministic; real
-provider/server checks require the explicit options below.
+Both maintained wrappers are deterministic by default; real provider/server
+checks require the explicit options below. The OpenCode wrapper prefers repo
+`.venv` for tests and uses `${JARVIS_VENV:-$HOME/jarvis-venv}` for health/live
+operations. The thinking wrapper retains the external Jarvis environment.
 
 | Script | Default | Explicit external checks |
 |---|---|---|
 | `tests/integration/test-thinking-mode.sh` | Catalog and mocked provider tests | `--live cloud`, `--live local`, or `--live all` |
-| `tests/integration/test-opencode-integration.sh` | Mocked OpenCode client/tool tests | `--health cloud\|local` or `--live cloud\|local` |
+| `tests/integration/test-opencode-integration.sh` | Mocked V2 client/tool/progress tests | `--health cloud\|local` or `--live cloud\|local` |
 
 Examples:
 

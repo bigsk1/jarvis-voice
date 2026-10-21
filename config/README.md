@@ -180,20 +180,35 @@ ALLOW_OLLAMA_CLOUD=false  # true permits signed-daemon :cloud cards locally
 
 **OpenCode Agent** (coding tasks):
 ```bash
-# Recommended default for the OpenCode web UI and Jarvis tool
+# Explicit OpenCode coding-task selection, independent of Jarvis's chat model
 OPENCODE_PROVIDER="xai"
-OPENCODE_MODEL="grok-build-0.1"
+OPENCODE_MODEL="grok-4.7"
 
 # Other cloud options
 # OPENCODE_PROVIDER="anthropic"
-# OPENCODE_MODEL="claude-sonnet-4-5-20250929"
+# OPENCODE_MODEL="claude-sonnet-5-5"
 # OPENCODE_PROVIDER="openai"
-# OPENCODE_MODEL="gpt-5.4-mini"
+# OPENCODE_MODEL="gpt-6.1-sol"
 
-# Experimental: Local Ollama models (less safe, less reliable)
-OPENCODE_PROVIDER="ollama"
-OPENCODE_MODEL="gemma4"
+# Alternative: a local tool-capable Ollama model
+# OPENCODE_PROVIDER="ollama"
+# OPENCODE_MODEL="gemma4"
 ```
+
+Jarvis requires an OpenCode 2.x server and V2 workspace plugin. Its native Linux
+service has a separate private environment at
+`~/.config/opencode/jarvis-env.env`; the install/update scripts copy supported
+settings from the selected mode env without executing its contents. Explicit
+`OPENCODE_PROVIDER`/`OPENCODE_MODEL` settings select Jarvis coding sessions;
+OpenCode's `model` setting controls its interactive default. See the
+[OpenCode guide](../docs/opencode/OPENCODE.md) for setup, credentials, workspace
+controls, and Docker boundaries.
+
+The installer backs up and migrates known settings from the old Jarvis-generated
+config, retaining provider/model choices. Custom permission/update policy and
+commented JSONC require manual review by the setup helper. Package caches are
+redirected into the coding workspace; OpenCode's shared session/credential
+databases and state remain writable by the server and its child processes.
 
 ### Response Style
 
@@ -212,7 +227,7 @@ For networks that require an HTTP(S) proxy for outbound API calls and downloads,
 ## Security Notes
 
 1. Keep secrets in `cloud.env` / `local.env` only — both are listed in `.gitignore`.
-2. **OpenCode**: local models can execute arbitrary code; many setups use a cloud provider for OpenCode even when Jarvis runs locally. Workspace is sandboxed to `~/jarvis-workspace`.
+2. **OpenCode**: coding models can execute arbitrary code; many setups use a cloud provider even when Jarvis runs locally. The native service combines a workspace plugin with systemd filesystem write restrictions. Child processes still share writable access to OpenCode's session/credential databases, state, caches, and private temporary storage.
 
 ## Troubleshooting
 
@@ -606,7 +621,8 @@ Curated metadata for the Web UI and cost helpers lives in `lib/model_catalog.py`
 - `cloud.env` / `local.env` - Main config (API keys, settings)
 - `mcp-servers.json` - MCP server configuration (Jarvis)
 - `config/opencode.config.json.template` - Git-safe OpenCode config example for new installs
-- `~/.config/opencode/opencode.json` - Live OpenCode config (copy from the template and customize)
+- `config/opencode.instructions.md.template` - Portable coding instructions seeded as OpenCode's global `AGENTS.md` only when absent
+- `~/.config/opencode/opencode.json` - Live OpenCode config (seed or migrate with the setup helper, then customize)
 
 **Key Concepts:**
 - API keys go in `.env` files

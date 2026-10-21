@@ -1,4 +1,4 @@
-# Template: render with ./bin/render-systemd-unit.sh before installing so User/Group/Home match the target account.
+# Template: render with python3 bin/opencode-setup.py render OUTPUT before installation.
 [Unit]
 Description=OpenCode Server for Jarvis Voice Assistant
 After=network.target
@@ -8,18 +8,42 @@ Wants=network-online.target
 Type=simple
 User=__JARVIS_USER__
 Group=__JARVIS_GROUP__
-WorkingDirectory=__JARVIS_HOME__/jarvis-workspace
+WorkingDirectory=__JARVIS_WORKSPACE__
 # Load environment variables (API keys for OpenCode providers)
 EnvironmentFile=__JARVIS_HOME__/.config/opencode/jarvis-env.env
-# Also ensure PATH includes opencode binary location
-Environment="PATH=__JARVIS_HOME__/.opencode/bin:/usr/local/bin:/usr/bin:/bin"
+# Host tools remain readable; user-installed Cargo/Go commands go in the workspace.
+Environment="PATH=__JARVIS_WORKSPACE__/.toolchains/cargo/bin:__JARVIS_WORKSPACE__/.toolchains/go/bin:__JARVIS_HOME__/.opencode/bin:__JARVIS_HOME__/.cargo/bin:__JARVIS_HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="XDG_CONFIG_HOME=__JARVIS_HOME__/.config"
+Environment="XDG_DATA_HOME=__JARVIS_HOME__/.local/share"
+Environment="XDG_STATE_HOME=__JARVIS_HOME__/.local/state"
+Environment="XDG_CACHE_HOME=__JARVIS_WORKSPACE__/.cache"
+# Build tools inherit the same read-only home as OpenCode. Give their caches
+# and user install targets workspace paths instead of widening home access.
+Environment="PIP_CACHE_DIR=__JARVIS_WORKSPACE__/.cache/pip"
+Environment="npm_config_cache=__JARVIS_WORKSPACE__/.cache/npm"
+Environment="UV_CACHE_DIR=__JARVIS_WORKSPACE__/.cache/uv"
+Environment="CARGO_HOME=__JARVIS_WORKSPACE__/.toolchains/cargo"
+Environment="GOPATH=__JARVIS_WORKSPACE__/.toolchains/go"
+Environment="GOCACHE=__JARVIS_WORKSPACE__/.cache/go-build"
+Environment="GOMODCACHE=__JARVIS_WORKSPACE__/.cache/go-mod"
 # Keep OpenCode shell temp files inside the allowed workspace. This avoids
 # permission prompts for /tmp access during unattended Jarvis tool runs.
-Environment="TMPDIR=__JARVIS_HOME__/jarvis-workspace/temp"
-Environment="TMP=__JARVIS_HOME__/jarvis-workspace/temp"
-Environment="TEMP=__JARVIS_HOME__/jarvis-workspace/temp"
-ExecStartPre=/usr/bin/mkdir -p __JARVIS_HOME__/jarvis-workspace/projects __JARVIS_HOME__/jarvis-workspace/temp __JARVIS_HOME__/jarvis-workspace/deployments
+Environment="TMPDIR=__JARVIS_WORKSPACE__/temp"
+Environment="TMP=__JARVIS_WORKSPACE__/temp"
+Environment="TEMP=__JARVIS_WORKSPACE__/temp"
 ExecStart=__JARVIS_HOME__/.opencode/bin/opencode serve --port 4096 --hostname 0.0.0.0
+# Shell and Code Mode run arbitrary code. Limit host writes in the OS, including
+# direct API commands. Required OpenCode data/state remain shared writable paths:
+# this unit does not isolate child commands from OpenCode's database/credentials.
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+NoNewPrivileges=true
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+ReadWritePaths="__JARVIS_WORKSPACE__"
+ReadWritePaths="__JARVIS_HOME__/.local/share/opencode" "__JARVIS_HOME__/.local/state/opencode"
+ReadOnlyPaths="__JARVIS_ROOT__"
 Restart=always
 RestartSec=5
 StandardOutput=journal

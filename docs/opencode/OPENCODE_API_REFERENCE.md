@@ -1,616 +1,87 @@
-# OpenCode API Reference
+# OpenCode V2 API used by Jarvis
 
-**OpenCode Server:** http://localhost:4096
-**Documentation:** http://localhost:4096/doc
-**Interactive UI:** http://localhost:4096/openapi
+Jarvis targets the OpenCode 2.x server API. The default native address is
+`http://localhost:4096`; the configured `OPENCODE_BASE_URL` can point elsewhere.
+Send HTTP Basic authentication when `OPENCODE_SERVER_PASSWORD` is configured.
+V2's Basic-auth username is fixed to `opencode`.
 
-> This file describes the Jarvis-facing subset. OpenCode is currently on the
-> `1.18.x` API family and can add endpoints between upgrades. Treat the running
-> server's authenticated `GET /doc` OpenAPI document as authoritative.
+The upstream [V2 API reference](https://opencode.ai/v2/docs/api) defines the
+wire contract. This document describes the Jarvis-facing subset, not every
+OpenCode endpoint. Experimental routes can change between releases; upgrade the
+client and server together and rerun the integration checks.
 
----
+## Task lifecycle
 
-## Current Jarvis Integration
+| Operation | V2 route | Meaning |
+| --- | --- | --- |
+| Server health/version | `GET /api/info` | Read running server identity and version |
+| Create a session | `POST /api/session` | Return a session under `data` |
+| Select its model | `POST /api/session/{sessionID}/model` | Select the requested provider/model |
+| Get a session | `GET /api/session/{sessionID}` | Read session state and outcome |
+| List sessions | `GET /api/session` | Read `data` plus pagination cursors |
+| Admit task input | `POST /api/session/{sessionID}/prompt` | Queue input; response is an admission receipt |
+| Add context without running | `POST /api/session/{sessionID}/synthetic` with `resume: false` | Admit synthetic context without starting execution |
+| Wait for idle | `POST /api/experimental/session/{sessionID}/wait` | Return 204 when the agent loop is idle |
+| Read messages | `GET /api/session/{sessionID}/message` | Read projected messages with pagination |
+| Interrupt execution | `POST /api/session/{sessionID}/interrupt` | Interrupt active execution; an idle session is a no-op |
+| Subscribe to progress | `GET /api/event` | Receive server-wide SSE events |
+| Pending permissions | `GET /api/session/{sessionID}/permission` | Detect unattended permission requests |
+| Pending forms | `GET /api/session/{sessionID}/form` | Detect questions/forms needing a reply |
 
-Jarvis uses a focused, supervised subset of the OpenCode API:
-- Creates sessions
-- Sends no-reply system/context messages and one task message
-- Subscribes to live SSE events while the task request runs
-- Polls todo/message state if the event stream is unavailable
-- Receives the complete final assistant response
-- Aborts unattended permission/question stalls and timed-out sessions
+The V1 routes `/session`, `/event`, `/config`, and `/session/{id}/abort` are not
+the V2 integration contract. In particular, a successful prompt POST does not
+mean that code has been written or that an assistant answer is available.
 
-The no-reply context writes are synchronous, do not invoke the coding agent,
-and use a 30-second HTTP timeout. The task message uses the longer supervised
-request window (`OPENCODE_TASK_TIMEOUT_SECONDS`, 900 seconds by default).
+## Representative wire shapes
 
-**Location:** `lib/opencode_client.py`
+Create a session with the chosen location, agent, and model:
 
----
-
-## Complete API Endpoints
-
-### 🎯 Task Execution (Currently Used by Jarvis)
-
-#### `POST /session`
-**Purpose:** Create a new OpenCode session
-
-**Request:**
 ```json
 {
-  "title": "Session name",
-  "agent": "build",  // or "plan"
-  "model": {
-    "provider": "anthropic",
-    "modelID": "claude-sonnet-4"
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "sessionId": "uuid",
-  "status": "created"
-}
-```
-
-**Jarvis Use:** Called automatically when executing tasks
-
----
-
-#### `POST /session/{sessionId}/message`
-**Purpose:** Send a message/task to OpenCode
-
-**Request:**
-```json
-{
-  "parts": [
-    {
-      "type": "text",
-      "text": "Build a Flask app"
-    }
-  ],
-  "model": {
-    "providerID": "xai",
-    "modelID": "grok-build-0.1"
-  },
+  "title": "Build a workspace utility",
   "agent": "build",
-  "noReply": false
+  "model": {"providerID": "xai", "id": "grok-4.7"},
+  "location": {"directory": "/home/example/jarvis-workspace"}
 }
 ```
 
-**Response:**
+The model reference uses `id`, not V1's `modelID`. The returned session is
+wrapped in `data` and contains its `id` and location.
+
+Submit the task to that session:
+
 ```json
 {
-  "info": {
-    "id": "msg_...",
-    "sessionID": "ses_...",
-    "role": "assistant",
-    "providerID": "xai",
-    "modelID": "grok-build-0.1"
-  },
-  "parts": [
-    {
-      "type": "text",
-      "text": "I've built the Flask app..."
-    }
-  ]
+  "text": "Create a hello world script in projects/scripts/example.",
+  "resume": true
 }
 ```
 
-**Jarvis Use:** Core task execution. The HTTP response remains the source of
-truth for the final answer while `/event` supplies live progress in parallel.
-
----
-
-#### `POST /session/{sessionId}/abort`
-**Purpose:** Cancel a running task
-
-**Request:** Empty body
-
-**Response:**
-```json
-{
-  "status": "aborted"
-}
-```
-
-**Jarvis Use:** Cancellation, timeout cleanup, and unattended permission/question blockers.
-
----
-
-### Live Progress (Used by Jarvis)
-
-#### `GET /event`
-
-**Purpose:** Subscribe to Server-Sent Events for the active OpenCode directory.
-
-Jarvis filters every event to the exact `sessionID` it created or resumed. The
-useful event families include:
-
-- `session.status`, `session.idle`, and `session.error`
-- `message.part.updated` tool states (`pending`, `running`, `completed`, `error`)
-- `session.next.tool.called`, `.progress`, `.success`, and `.failed`
-- `todo.updated`
-- `permission.asked` / `permission.v2.asked`
-- `question.asked` / `question.v2.asked`
-
-Reasoning/text deltas and raw tool output are intentionally not forwarded to
-the Jarvis UI.
-
-At the local skill-process boundary, Jarvis wraps every normalized event as
-`event_type: tool_progress`; the OpenCode event family remains available as
-`opencode_event_type` (for example, `message.part.updated`).
-
-#### `GET /session/status`
-
-**Purpose:** Read active/retry/idle session state. Jarvis uses this only as a
-diagnostic endpoint; the live fallback currently derives user-facing detail
-from todo and message tool state.
-
-#### `GET /session/{sessionId}/todo`
-
-**Purpose:** Read the session plan and its pending/in-progress/completed steps.
-
-#### `GET /session/{sessionId}/message`
-
-**Purpose:** Read structured messages and tool parts. Jarvis uses the newest
-tool state as a polling fallback; it does not replace the final POST response.
-
----
-
-### 📂 Session Management (NOT Currently Used)
-
-#### `GET /sessions`
-**Purpose:** List all OpenCode sessions
-
-**Response:**
-```json
-{
-  "sessions": [
-    {
-      "id": "uuid",
-      "title": "Build Tetris Game",
-      "agent": "build",
-      "created": "2025-11-12T20:00:00Z",
-      "lastActivity": "2025-11-12T20:05:00Z",
-      "messageCount": 12
-    }
-  ]
-}
-```
-
-**Potential Use:**
-- "Jarvis, list my OpenCode projects"
-- "Jarvis, what has OpenCode built recently?"
-- Show session history to user
-
----
-
-#### `GET /sessions/{sessionId}`
-**Purpose:** Get full session details and conversation history
-
-**Response:**
-```json
-{
-  "id": "uuid",
-  "title": "Build Tetris Game",
-  "agent": "build",
-  "messages": [
-    {
-      "role": "user",
-      "content": "Build a tetris game"
-    },
-    {
-      "role": "assistant",
-      "content": "I'll create a web-based tetris game..."
-    }
-  ],
-  "metadata": {
-    "filesCreated": ["server.py", "tetris.html"],
-    "tokensUsed": 15000
-  }
-}
-```
-
-**Potential Use:**
-- "Jarvis, show me the full tetris conversation"
-- Review what OpenCode did step-by-step
-- Export project documentation
-
----
-
-#### `DELETE /sessions/{sessionId}`
-**Purpose:** Delete a session
-
-**Response:**
-```json
-{
-  "status": "deleted"
-}
-```
-
-**Potential Use:**
-- "Jarvis, delete old OpenCode sessions"
-- Cleanup via voice command
-- Automated maintenance
-
----
-
-#### `POST /sessions/{sessionId}/rename`
-**Purpose:** Rename a session
-
-**Request:**
-```json
-{
-  "title": "New session name"
-}
-```
-
-**Potential Use:**
-- "Jarvis, rename the tetris project to 'Web Tetris Game'"
-- Better organization
-
----
-
-### 📁 File Operations (NOT Currently Used)
-
-#### `GET /files`
-**Purpose:** List all files in OpenCode workspace
-
-**Query Params:**
-- `path`: Directory to list (default: root)
-- `recursive`: Include subdirectories
-
-**Response:**
-```json
-{
-  "files": [
-    {
-      "path": "projects/tetris-game/server.py",
-      "size": 1700,
-      "modified": "2025-11-12T20:03:00Z",
-      "type": "file"
-    }
-  ]
-}
-```
-
-**Potential Use:**
-- "Jarvis, what files did OpenCode create?"
-- List project structure
-- Verify builds without bash commands
-
----
-
-#### `GET /files/{path}`
-**Purpose:** Read a file from workspace
-
-**Response:**
-```json
-{
-  "path": "projects/tetris-game/server.py",
-  "content": "#!/usr/bin/env python3\n...",
-  "encoding": "utf-8"
-}
-```
-
-**Potential Use:**
-- "Jarvis, show me the tetris server code"
-- Quick file inspection
-- Code review through OpenCode's file API
-
----
-
-#### `POST /files`
-**Purpose:** Create or update a file
-
-**Request:**
-```json
-{
-  "path": "projects/test/config.json",
-  "content": "{\n  \"port\": 5000\n}",
-  "overwrite": true
-}
-```
-
-**Potential Use:**
-- "Jarvis, change the port to 8000 in server.py"
-- Quick config updates without full rebuild
-- Hotfixes
-
----
-
-#### `DELETE /files/{path}`
-**Purpose:** Delete a file or directory
-
-**Response:**
-```json
-{
-  "status": "deleted",
-  "path": "projects/old-project"
-}
-```
-
-**Potential Use:**
-- "Jarvis, delete the old test project"
-- Workspace cleanup
-
----
-
-### 🤖 Agent Management (NOT Currently Used)
-
-#### `GET /agents`
-**Purpose:** List available agents and their capabilities
-
-**Response:**
-```json
-{
-  "agents": [
-    {
-      "name": "build",
-      "description": "Full development agent",
-      "permissions": {
-        "fileEdit": "allow",
-        "bash": "allow",
-        "git": "allow"
-      }
-    },
-    {
-      "name": "plan",
-      "description": "Read-only analysis agent",
-      "permissions": {
-        "fileEdit": "ask",
-        "bash": "ask",
-        "git": "deny"
-      }
-    }
-  ]
-}
-```
-
-**Potential Use:**
-- Show user agent capabilities
-- Auto-select agent based on task type
-
----
-
-#### `POST /agents/switch`
-**Purpose:** Switch agent mid-session
-
-**Request:**
-```json
-{
-  "sessionId": "uuid",
-  "agent": "plan"
-}
-```
-
-**Potential Use:**
-- "Jarvis, switch to plan mode to analyze this code"
-- Dynamic permission adjustment
-
----
-
-### 💬 Chat Interface (NOT Currently Used)
-
-#### `POST /chat`
-**Purpose:** Interactive streaming chat (like web UI)
-
-**Request:**
-```json
-{
-  "message": "What's the best way to handle authentication?",
-  "stream": true
-}
-```
-
-**Response:** Server-Sent Events (streaming)
-
-**Potential Use:**
-- "Jarvis, ask OpenCode about Flask best practices"
-- Quick technical Q&A without building
-- Code consultation
-
----
-
-### 🔧 System & Health
-
-#### `GET /health`
-**Purpose:** Server health check
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "version": "1.0.57",
-  "uptime": 86400
-}
-```
-
-**Current Use:** Already checked in `lib/opencode_client.py` during init
-
----
-
-#### `GET /models`
-**Purpose:** List available LLM models
-
-**Response:**
-```json
-{
-  "models": [
-    {
-      "provider": "anthropic",
-      "modelID": "claude-sonnet-4",
-      "available": true
-    },
-    {
-      "provider": "ollama",
-      "modelID": "qwen2.5-coder:32b",
-      "available": true
-    }
-  ]
-}
-```
-
-**Potential Use:**
-- "Jarvis, what models can OpenCode use?"
-- Show available options
-- Auto-fallback if model unavailable
-
----
-
-## Token Usage Tracking
-
-Every response includes usage stats:
-```json
-{
-  "usage": {
-    "inputTokens": 1500,
-    "outputTokens": 3000,
-    "totalTokens": 4500
-  }
-}
-```
-
-**Visible in:**
-- Web UI (http://localhost:4096/openapi)
-- API responses
-- Jarvis logs: `logs/opencode/opencode-*.jsonl`
-
----
-
-## Potential Jarvis Enhancements
-
-### 🎯 High Value (Streamline Workflow)
-
-1. **Session History**
-   - "Show me recent OpenCode projects"
-   - `GET /sessions` → format for voice
-
-2. **File Inspection**
-   - "What files are in the tetris project?"
-   - `GET /files?path=projects/tetris-game` → list without bash
-
-3. **Quick Edits**
-   - "Change port to 8000 in server.py"
-   - `POST /files` → direct update, no full rebuild
-
-### 🔍 Medium Value (Nice to Have)
-
-4. **Session Management**
-   - "Delete old OpenCode sessions"
-   - `DELETE /sessions/{id}` → voice-controlled cleanup
-
-5. **Code Review**
-   - "Show me the Flask server code"
-   - `GET /files/{path}` → inspect project files through the API
-
-6. **Chat Mode**
-   - "Ask OpenCode about Flask best practices"
-   - `POST /chat` → Q&A without building
-
-### 📊 Low Value (Already Have Solutions)
-
-7. **Health Checks** - Already implemented
-8. **Model Selection** - Could be useful with Ollama testing
-9. **Agent Switching** - Jarvis already selects mode intelligently
-
----
-
-## Current Limitations
-
-**Jarvis uses only:**
-- Session creation
-- Task execution
-- Response parsing
-
-**Doesn't use:**
-- File operations (not exposed as a separate Jarvis tool)
-- Session management (uses Jarvis's own logs)
-- Chat interface (always builds, doesn't consult)
-
----
-
-## Implementation Notes
-
-### If Adding New Endpoints:
-
-1. **Update `lib/opencode_client.py`:**
-   ```python
-   def list_sessions(self):
-       response = requests.get(f"{self.base_url}/sessions")
-       return response.json()
-   ```
-
-2. **Add new tool or extend opencode tool:**
-   - Option A: New tool `opencode_sessions.py`
-   - Option B: Add parameters to existing `opencode` tool
-
-3. **Update router system prompt:**
-   - Teach Jarvis when to use new capabilities
-
-4. **Test with voice:**
-   - "Hey Jarvis, list OpenCode sessions"
-   - Verify natural response
-
----
-
-## Testing Endpoints
-
-### Via curl:
-```bash
-# List sessions
-curl http://localhost:4096/sessions | jq
-
-# Get session details
-curl http://localhost:4096/sessions/<uuid> | jq
-
-# List files
-curl http://localhost:4096/files | jq
-
-# Read a file
-curl http://localhost:4096/files/projects/tetris-game/server.py
-```
-
-### Via Web UI:
-http://localhost:4096/openapi
-- Interactive testing
-- See token usage
-- View all sessions
-
----
-
-## Related Documentation
-
-- [OpenCode Integration](OPENCODE.md) - Overview
-- [OpenCode Phase 2 Complete (historical)](../archive/opencode/OPENCODE_PHASE2_COMPLETE.md)
-- [OpenCode Memory Strategy](OPENCODE_MEMORY_STRATEGY.md) - Context injection
-- [Multi-Turn Orchestration](../MULTI_TURN_ORCHESTRATION.md) - How Jarvis chains tools
-
----
-
-## Questions to Consider
-
-1. **Session Management:**
-   - Worth adding voice-controlled session cleanup?
-   - Or is TUI/Web UI sufficient?
-
-2. **File Operations:**
-   - Faster to use API than an OpenCode task?
-   - Trade-off: Simplicity vs efficiency
-
-3. **Chat Mode:**
-   - Use case: Quick questions without building
-   - Example: "Ask OpenCode best practices for X"
-   - Worth the added complexity?
-
-4. **Token Tracking:**
-   - Already visible in logs and Web UI
-   - Surface this to user via voice?
-   - "How many tokens did that build use?"
-
----
-
-**Next Step:** Review endpoints, identify which (if any) would streamline your workflow with Jarvis! 🚀
+The response's `data` describes admitted user input. Jarvis observes completion
+and correlates the final assistant message with that input. It does not reuse
+an earlier answer when delivery or completion cannot be confirmed. List responses use `data` and
+`cursor`; callers must follow the returned pagination cursors instead of
+assuming one response contains the whole conversation.
+
+V2 assistant messages have `type: "assistant"` and a `content` array containing
+text, reasoning, or tool items. Jarvis extracts final displayable text and
+normalizes it for existing Jarvis result consumers. The tool's normalized
+result is not an unmodified OpenCode HTTP response.
+
+## Progress and recovery
+
+`/api/event` includes events across locations and sessions. Jarvis filters the
+stream to the task's session, normalizes bounded status text, and falls back to
+persisted session/message state when events are absent or disconnected. The
+stream is volatile; a disconnect can lose events. Receiving an idle event alone
+is not sufficient evidence that the submitted task succeeded.
+
+The bridge preserves a task deadline, cancellation, errors, permission blockers,
+and question/form blockers while waiting. It interrupts unattended blocked runs
+and reports the issue to Jarvis. Reasoning deltas, raw command output, and
+unbounded tool payloads are not forwarded as Web progress.
+
+Use `./tests/integration/test-opencode-integration.sh` for deterministic
+transport/tool coverage. `--health cloud|local` checks the configured server
+without a model request; `--live cloud|local` creates a real plan-mode session.
+See [the integration guide](OPENCODE.md) for setup, logging, and boundaries.

@@ -401,32 +401,45 @@ You can skip this entire section if you only want the core Jarvis install.
 
 See [OPENCODE.md](opencode/OPENCODE.md) for the full setup and configuration reference.
 
+Jarvis requires an **OpenCode 2.x** server and its matching V2 workspace plugin.
+The maintained setup below runs a separate native Linux systemd service. Direct
+provider credentials are supported; an OpenCode Console account is optional.
+
 If you want OpenCode for autonomous coding:
 
 1. Add the provider keys OpenCode will use, such as `OPENAI_API_KEY`,
    `ANTHROPIC_API_KEY`, or `XAI_API_KEY`, to `config/cloud.env`.
-2. Run the setup commands below. The service installer automatically copies the
+2. Configure matching `OPENCODE_SERVER_PASSWORD` credentials for Jarvis and its
+   service, then run the setup commands below. The installer copies the
    supported provider keys and OpenCode authentication values from
    `config/cloud.env` to `~/.config/opencode/jarvis-env.env`.
 
-`config/cloud.env` is the default source. For a local-mode-only setup, run the
-installer with `OPENCODE_ENV_FILE=config/local.env`.
+The source defaults to `OPENCODE_ENV_FILE`, otherwise
+`config/${JARVIS_MODE:-cloud}.env`. An explicit env-file argument wins.
 
 ```bash
-# Create OpenCode workspace
-./setup_opencode_workspace.sh
+# Install V2 and verify the executable used by the service
+curl -fsSL https://opencode.ai/v2/install | bash
+~/.opencode/bin/opencode --version
 
-# Create the service environment, sync plugins, and install the service
+# Seed configuration/workspace, create the environment, sync plugins, and install
 ./bin/install-opencode-service.sh
 
 # Local-mode-only alternative:
-# OPENCODE_ENV_FILE=config/local.env ./bin/install-opencode-service.sh
+# ./bin/install-opencode-service.sh config/local.env
 ```
 
 The installer creates `~/.config/opencode/jarvis-env.env`, syncs the tracked
-workspace-protection plugin to `~/.config/opencode/plugin/`, and starts the
-service. Use `./bin/update-opencode-service.sh` after changing provider keys,
-server authentication, the service definition, or the tracked plugin.
+workspace-protection plugin to `~/.config/opencode/plugins/`, retains existing
+provider/model choices, and starts the service with systemd filesystem write
+restrictions. Known legacy Jarvis permission/update settings are migrated with
+an exact original backup; custom policy and commented JSONC require review.
+The service redirects package caches into the workspace, while child processes
+still share writable access to OpenCode's session/credential databases and
+state. It checks the running V2 version and plugin. Use
+`./bin/update-opencode-service.sh` after changing provider keys, server
+authentication, the service definition, or the tracked plugin. A major upgrade
+also requires migrating any other installed V1 plugins; see the full guide.
 
 ### n8n (Optional)
 
@@ -553,9 +566,9 @@ operations are `./bin/start`, `./bin/start --local`, `./bin/start --list`, and
 $HOME/
 ├── jarvis-voice/          # Main codebase
 ├── jarvis-venv/           # Python virtual environment
-├── jarvis-workspace/      # OpenCode projects (autonomous coding sandbox)
+├── jarvis-workspace/      # OpenCode projects (default coding workspace)
 └── .config/opencode/      # OpenCode config
-    └── plugin/            # OpenCode safety plugins
+    └── plugins/           # OpenCode V2 workspace plugin
 ```
 
 ### Key Config Files
@@ -603,7 +616,7 @@ Get API keys from:
 - **GitHub Personal Access Tokens**: https://github.com/settings/tokens
 
 For self-hosted or optional integrations:
-- **OpenCode**: no separate Jarvis-specific provider key is required. Add the provider keys OpenCode will use, such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `XAI_API_KEY`, to `config/cloud.env` before running `./bin/install-opencode-service.sh`. The installer copies them to the systemd environment file at `~/.config/opencode/jarvis-env.env`. It uses `config/cloud.env` by default; set `OPENCODE_ENV_FILE=config/local.env` for a local-mode-only service. Optional `OPENCODE_SERVER_PASSWORD` protects both the OpenCode web UI and API with HTTP Basic auth. See `docs/opencode/OPENCODE.md`.
+- **OpenCode V2**: uses direct provider credentials such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `XAI_API_KEY`; OpenCode Console is optional. Add the required keys and matching server-auth settings to the selected Jarvis mode env, then run `./bin/install-opencode-service.sh [ENV_FILE]`. The source defaults to `OPENCODE_ENV_FILE`, otherwise `config/${JARVIS_MODE:-cloud}.env`. The installer prepares `~/.config/opencode/jarvis-env.env` without executing env-file contents. Set `OPENCODE_SERVER_PASSWORD` before exposing the API/Web UI beyond the host. See [the OpenCode guide](opencode/OPENCODE.md).
 - **n8n**: generate the API key from your own n8n instance at `Settings -> API` after n8n is running. Used by `N8N_LOCAL_API_KEY`.
 - **Crawl4AI**: if using a hosted Crawl4AI service, use the key issued by that service/provider.
 

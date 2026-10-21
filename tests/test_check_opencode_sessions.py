@@ -15,10 +15,30 @@ from unittest.mock import patch
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "skills"))
 
-from check_opencode_sessions import _session_timestamp, _summarize_opencode_logs
+from check_opencode_sessions import _session_timestamp, _summarize_opencode_logs, main
 
 
 class CheckOpenCodeSessionsTests(unittest.TestCase):
+    def test_v2_session_summary_uses_outcome_and_tokens_without_invented_message_count(self):
+        session = {
+            'id': 'ses_123', 'title': 'Build example', 'agent': 'build',
+            'time': {'created': 100, 'updated': 200}, 'outcome': 'succeeded',
+            'tokens': {'input': 1234, 'output': 56, 'reasoning': 0, 'cache': {'read': 0, 'write': 0}},
+        }
+        with patch('check_opencode_sessions.sys.argv', ['check_opencode_sessions.py', '{"session_id":"ses_123"}']), \
+             patch('check_opencode_sessions.OpenCodeClient') as client_type, \
+             patch('check_opencode_sessions._summarize_opencode_logs', return_value={}), \
+             patch('builtins.print'):
+            client = client_type.return_value
+            client.health_check.return_value = {'healthy': True}
+            client.get_session.return_value = session
+            result = main()
+        self.assertTrue(result['ok'])
+        self.assertIn('Last run: succeeded.', result['speech'])
+        self.assertIn('1234 input, 56 output', result['speech'])
+        self.assertNotIn('messages in conversation', result['speech'])
+        self.assertEqual(result['data']['session'], session)
+
     def test_session_timestamp_prefers_current_time_shape(self):
         session = {
             "time": {"created": 100, "updated": 200},

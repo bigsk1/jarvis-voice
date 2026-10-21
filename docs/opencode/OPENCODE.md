@@ -1,583 +1,429 @@
-# OpenCode Integration
+# OpenCode V2 Integration
 
 ![opencode-info-graph](../images/opencode-info-graph.jpeg)
 
+OpenCode is an optional coding agent that Jarvis calls to build, debug, and
+review projects. Jarvis uses the **OpenCode 2.x HTTP API** and supervises each
+request until it completes, fails, is cancelled, or reaches its deadline.
+OpenCode 1.x servers and V1 plugin implementations are not compatible with this
+bridge. The migration targets the released 2.1.0 API contract; rerun integration
+checks when upgrading, especially where experimental routes are involved.
 
-To install OpenCode Server, follow the instructions on the OpenCode Github Repo https://opencode.ai/docs/
+OpenCode runs as a separate service. It is not required for normal Jarvis chat,
+voice, Web, API, or memory features, and the core Jarvis installer does not
+install it.
+
+## How the pieces fit
+
+```text
+Voice / CLI / Web / API
+    -> Jarvis opencode tool
+    -> authenticated OpenCode V2 server on port 4096
+    -> configured model provider and OpenCode tools
+    -> project files in ~/jarvis-workspace
+    -> progress and final answer back to Jarvis
+```
+
+The native Linux setup keeps one dedicated `opencode-jarvis.service` under
+systemd. OpenCode's normal terminal client can also manage its own shared
+background service; that is a different process and may use a different port.
+Connect the terminal to Jarvis's server explicitly when you want the same
+sessions:
 
 ```bash
-curl -fsSL https://opencode.ai/install | bash
+opencode ~/jarvis-workspace --server http://localhost:4096
 ```
 
+Use the configured workspace path instead when `JARVIS_WORKSPACE_ROOT` differs.
 
-## Quick Start
+A local OpenCode process can use a cloud model. With direct provider
+credentials, requests go from the host to the selected provider. OpenCode
+Console/Go and saving provider keys in OpenCode's hosted Console are optional;
+Jarvis's native service setup does not require them. See the upstream
+[provider guide](https://opencode.ai/v2/docs/providers/).
+
+## New native Linux installation
+
+Run these commands from the Jarvis checkout as the account that will own the
+service and workspace. The systemd integration is Linux-specific; it does not
+establish native Windows or macOS service support.
+
+### 1. Install OpenCode V2
+
+For the curl installation used by the service template:
 
 ```bash
-# Check OpenCode is running
-sudo systemctl status opencode-jarvis.service
-
-# Use via Jarvis
-./jarvis
-# Say: "Hey Jarvis, use OpenCode to create a Python hello world script"
-
-# View logs
-./bin/opencode-logs --verbose
-
-# Deterministic client/tool tests (no server/provider calls)
-./tests/integration/test-opencode-integration.sh
-
-# Read-only configured server/auth health check
-./tests/integration/test-opencode-integration.sh --health cloud
+curl -fsSL https://opencode.ai/v2/install | bash
+~/.opencode/bin/opencode --version
 ```
 
----
+Check that the version starts with `2.`. The service template uses
+`~/.opencode/bin/opencode`; a package-manager binary elsewhere requires
+adjusting the service executable. Do not install V1 and V2 over the same
+package-managed installation. See upstream
+[installation](https://opencode.ai/v2/docs/) and
+[V1 migration](https://opencode.ai/v2/docs/migrate-v1/) instructions.
 
-## What is OpenCode?
+### 2. Configure the selected Jarvis mode
 
-OpenCode is an **autonomous coding agent** that Jarvis can call for complex tasks:
-
-- **Writing code** - Full applications, scripts, utilities
-- **Debugging** - Analyze and fix code issues
-- **Building projects** - Websites, APIs, tools
-- **File operations** - Create, modify, organize files
-- **Git operations** - Commits, branches, deployments
-- **Analysis** - Code review, architecture suggestions
-
-**Flow:**
-```
-YOU (voice): "Hey Jarvis, build a Flask API"
-    ↓
-JARVIS: Routes to OpenCode tool
-    ↓
-OPENCODE: Creates project structure, writes code, tests
-    ↓
-JARVIS: "I've created a Flask API in your workspace with 5 endpoints..."
-```
-
-## Current Runtime Behavior
-
-OpenCode is integrated as a supervised long-running tool:
-
-- Jarvis routes one build/coding request to the `opencode` tool
-- Jarvis sends the task while subscribing to OpenCode's `/event` SSE feed
-- Real session, tool, todo, retry, blocker, error, idle, and completion phases are normalized into safe progress events
-- If SSE is unavailable or quiet, Jarvis polls the session's todo/message state and emits a phase-derived heartbeat
-- Jarvis waits for and returns the original final OpenCode response (15-minute default, configurable with `OPENCODE_TASK_TIMEOUT_SECONDS`)
-- On user cancellation or the configured task deadline, Jarvis aborts the OpenCode session before process-tree cleanup escalates
-- Jarvis summarizes the returned build result for voice/web response
-
-Important details:
-
-- **Not fire-and-forget**: Jarvis waits for the OpenCode result before answering
-- **True live progress**: the Web UI tool card shows a bounded timeline and a link to the OpenCode session while it is still running
-- **Status-LLM independent**: detailed Web progress works when the helper/status LLM is unavailable or disabled; when enabled, the status LLM may emit separate rate-limited natural-language summaries
-- **No hidden prompt stalls**: permission requests, questions, and terminal session errors are surfaced as issues and the unattended session is aborted
-- **Session/log checks are fallback-only**: `check_opencode_sessions` is useful when a run stalls, returns no usable result, or the user explicitly asks for session status/logs
-- **Successful builds should answer from OpenCode directly**: Jarvis should not replace a good build summary with a thin session-status recap
-
-Example successful lifecycle in `logs/opencode/opencode-YYYY-MM-DD.jsonl`:
-
-- `session_start`
-- `message_sent` for `system`
-- `message_sent` for `context`
-- `message_sent` for `task`
-- `progress` entries for normalized live phases
-- `message_received`
-- `session_complete`
-
----
-
-## Setup
-
-### 1. OpenCode Server (Systemd Service)
-
-**Service file**: `systemd/opencode-jarvis.service`
+In `config/cloud.env` or `config/local.env`, enable the tool and select a model
+that your provider account can use:
 
 ```bash
-# Install service
+OPENCODE_ENABLED=true
+OPENCODE_BASE_URL=http://localhost:4096
+OPENCODE_PROVIDER=xai
+OPENCODE_MODEL=grok-4.7
+OPENCODE_TASK_TIMEOUT_SECONDS=900
+OPENCODE_SERVER_USERNAME=opencode
+OPENCODE_SERVER_PASSWORD=replace-with-a-long-random-password
+XAI_API_KEY=replace-with-your-provider-key
+```
+
+Other direct-provider examples are `openai` with `gpt-6.1-sol` and `anthropic`
+with `claude-sonnet-5-5`, using `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
+Ollama uses the `ollama` provider, an installed tool-capable model, and the
+endpoint declared in the OpenCode config. Model availability and billing
+belong to the selected provider.
+
+`OPENCODE_PROVIDER` and `OPENCODE_MODEL` select Jarvis coding tasks independently
+of Jarvis's chat model and OpenCode's interactive default. Explicit settings
+win in either Jarvis mode. Without them, local mode resolves its Ollama model;
+cloud mode uses the Anthropic catalog fallback. Local Jarvis mode therefore
+does not guarantee that OpenCode runs offline.
+
+Keep server credentials consistent in every Jarvis mode that calls this
+server. One OpenCode service has one service environment, even when both
+Jarvis modes use it.
+
+### 3. Prepare configuration, workspace, and service
+
+```bash
 ./bin/install-opencode-service.sh
+```
 
-# Manage service
+The installer checks that the binary is V2, preflights existing configuration,
+seeds required workspace directories and a new config when absent, prepares the
+private environment, installs the plugin, renders the service, and verifies the
+running V2 version and plugin. Existing provider/model choices are retained;
+the migration rules below explain the settings that may change.
+Do not rerun the legacy `setup_opencode_workspace.sh` to upgrade a workspace.
+
+The env source defaults to `OPENCODE_ENV_FILE`, otherwise
+`config/${JARVIS_MODE:-cloud}.env`. An explicit path argument takes precedence.
+For a local-only installation:
+
+```bash
+./bin/install-opencode-service.sh config/local.env
+# Equivalent env override:
+# OPENCODE_ENV_FILE=config/local.env ./bin/install-opencode-service.sh
+```
+
+To prepare or migrate config without installing or restarting the service,
+run `./bin/setup-opencode-config.sh [ENV_FILE]`. The installer handles the
+environment, directories, and plugin separately. The scripts parse supported
+settings without sourcing or executing the env file.
+Set `JARVIS_WORKSPACE_ROOT` in that source env before installation when using a
+custom workspace. Keep the same path in every Jarvis mode calling the service.
+
+The tracked template is `config/opencode.config.json.template`. Fresh configs
+use native V2 fields such as `providers`, `permissions`, and `agents.title.model`.
+The title helper uses the selected coding model on a fresh setup, so a
+cloud-only install does not require an additional local chat model.
+Customize the OpenCode provider endpoint and model selections for the host.
+Other existing config content is preserved; V2 translates supported V1 fields
+at load time, so review legacy settings and startup warnings after migration.
+
+The installer seeds global coding instructions from the tracked
+[`config/opencode.instructions.md.template`](../../config/opencode.instructions.md.template)
+only when `~/.config/opencode/AGENTS.md` is absent. Existing instructions are
+preserved for the operator to review. Local ignored `AGENTS.md` development
+guides are not installation inputs.
+
+| Location | Purpose |
+| --- | --- |
+| `~/.config/opencode/opencode.json` | OpenCode server configuration and interactive default model |
+| `~/.config/opencode/jarvis-env.env` | Private provider credentials and server authentication for systemd |
+| `~/.config/opencode/plugins/00-workspace-protection.js` | Installed V2 workspace protection plugin |
+| `~/.config/opencode/AGENTS.md` | Coding instructions seeded only when absent; existing instructions are preserved |
+| `~/jarvis-workspace/projects/` | Persistent coding projects |
+| `~/jarvis-workspace/temp/` | Scratch files, command output, and temporary builds |
+| `~/jarvis-workspace/deployments/` | Prepared deployment artifacts |
+| `systemd/opencode-jarvis.service` | Tracked service template rendered for the installing account |
+
+The service binds `0.0.0.0:4096` by default, so require server authentication
+before making it reachable beyond the host. Jarvis sends HTTP Basic auth using
+`OPENCODE_SERVER_USERNAME` and `OPENCODE_SERVER_PASSWORD`. Protect remote access
+with the deployment's firewall and HTTPS arrangement. The server's service
+credentials are separate from model-provider credentials.
+
+V2's Basic-auth username is fixed to `opencode`; remove or update a custom V1
+username in each calling Jarvis mode. The installer requires a configured
+password and rejects a different username before writing the service env.
+
+### 4. Verify without a model request
+
+```bash
 sudo systemctl status opencode-jarvis.service
-sudo systemctl restart opencode-jarvis.service
-sudo systemctl stop opencode-jarvis.service
-
-# View logs
-journalctl -u opencode-jarvis.service -f
-```
-
-Before running `./bin/install-opencode-service.sh` or `./bin/update-opencode-service.sh`, make sure the provider keys and optional OpenCode server auth values are present in the source env file. By default, the scripts copy from `config/cloud.env` into `~/.config/opencode/jarvis-env.env`.
-
-For a local-mode-only setup, point the generator at `config/local.env`:
-
-```bash
-OPENCODE_ENV_FILE=config/local.env ./bin/update-opencode-service.sh
-```
-
-**Configuration:**
-- Port: `4096`
-- Host: `0.0.0.0` (accessible from local network)
-- Config: `~/.config/opencode/opencode.json`
-- Git-safe example: `config/opencode.config.json.template`
-- Runtime env/API keys: `~/.config/opencode/jarvis-env.env`
-
-To seed a new host with the tracked example:
-
-```bash
-install -D -m 600 config/opencode.config.json.template ~/.config/opencode/opencode.json
-```
-
-The template is safe to commit because API keys are referenced as environment variables such as `{env:OPENAI_API_KEY}` and `{env:ANTHROPIC_API_KEY}`. The built-in xAI provider reads `XAI_API_KEY` from the environment when `xai` is enabled.
-
-Optional server authentication:
-
-```bash
-OPENCODE_SERVER_PASSWORD=your-password
-# OPENCODE_SERVER_USERNAME=opencode
-```
-
-OpenCode applies this as HTTP Basic auth to both `opencode serve` and `opencode web`. Put the values in `config/cloud.env`, then run `./bin/update-opencode-service.sh` so they are copied into `~/.config/opencode/jarvis-env.env` and the service is restarted. Jarvis' `opencode` tool also reads these values and sends Basic auth when calling the OpenCode API.
-
-Verify auth after restarting:
-
-```bash
-curl -i http://localhost:4096/config
-curl -u opencode:your-password http://localhost:4096/config | jq '{model, small_model, enabled_providers}'
-```
-
-The first command should be rejected when auth is active. If you set `OPENCODE_SERVER_USERNAME`, use that username instead of `opencode`. Keep the username/password in the Jarvis env file and `~/.config/opencode/jarvis-env.env` in sync; the OpenCode server reads `jarvis-env.env`, while Jarvis' `opencode` tool reads the active Jarvis config.
-
-### 2. Workspace Structure
-
-```
-~/
-├── jarvis-voice/           ← READ-ONLY for OpenCode
-│   └── ...Jarvis code...
-│
-└── jarvis-workspace/       ← OpenCode writes here
-    ├── projects/
-    │   ├── websites/
-    │   ├── scripts/
-    │   └── experiments/
-    ├── temp/               ← Auto-cleanup
-    └── deployments/        ← Production-ready builds
-```
-
-**Security:**
-- The systemd service starts OpenCode in `~/jarvis-workspace`
-- The workspace-protection plugin blocks writes outside `~/jarvis-workspace`
-- `~/jarvis-voice` is protected from OpenCode edits
-
-### 3. Model Configuration
-
-Jarvis now prefers dedicated OpenCode config values first:
-
-- `OPENCODE_PROVIDER`
-- `OPENCODE_MODEL`
-
-If those are set in Jarvis config, the OpenCode tool uses them directly.
-If they are not set, it falls back to mode-specific defaults.
-
-**Cloud mode**:
-- Provider/model come from `OPENCODE_PROVIDER` and `OPENCODE_MODEL`
-- Example current setup: xAI + `grok-build-0.1`
-- xAI options such as `grok-build-0.1` and `grok-4.3` are available when `XAI_API_KEY` is in the OpenCode environment
-- OpenAI Codex-specific models may require API-account support; ChatGPT-account auth can reject them.
-
-**Local mode** (when using `jarvis-local`, fallback behavior):
-- Provider: Ollama
-- Model: `gemma4` (default in `local.env.example`; tool-capable on 16GB GPU)
-- Alternatives: `qwen3.5:latest`, `qwen3-coder`, `deepseek-r1` (see comments in `config/local.env.example`)
-- Server: `OLLAMA_BASE_URL` (default `http://localhost:11434`)
-
-Configured across:
-
-- Jarvis mode config (`config/cloud.env`, `config/local.env`)
-- OpenCode config: `~/.config/opencode/opencode.json`
-
-### 4. Memory Context
-
-OpenCode no longer gets Jarvis memory by default for ordinary build tasks.
-
-Current behavior:
-
-- Default: task/workspace context only
-- Optional: set `OPENCODE_INCLUDE_MEMORY=true` to inject relevant Jarvis memory
-
-Why:
-
-- Build tasks usually do not need broad Jarvis memory context
-- Avoids polluting coding tasks with unrelated memory blobs
-- Keeps prompts smaller and more deterministic
-
----
-
-## Usage
-
-### Via Voice
-
-```bash
-./jarvis  # or ./jarvis-local
-
-# Say:
-"Hey Jarvis, use OpenCode to..."
-  - "create a Python script that fetches weather data"
-  - "build a simple website with a contact form"
-  - "analyze the code in my project folder"
-  - "fix the bug in my Flask app"
-```
-
-### Via Command Line
-
-```bash
-# Direct test
-./orchestrator/orchestrator_v2.py cloud "Use OpenCode to create a hello world in Python"
-
-# Through tool
-python3 skills/opencode.py '{"task": "Create test.py with hello world"}'
-```
-
----
-
-## Logging & Debugging
-
-### Log Files
-
-1. **`logs/opencode/opencode-YYYY-MM-DD.jsonl`** - Detailed Jarvis ↔ OpenCode conversation
-2. **`logs/tools/tool-calls-YYYY-MM-DD.jsonl`** - All tool executions (including OpenCode)
-
-### View Logs
-
-```bash
-# Recent activity
-./bin/opencode-logs
-
-# Detailed with responses
-./bin/opencode-logs --verbose
-
-# Specific session
-LATEST=$(grep '"event": "session_start"' logs/opencode/*.jsonl | tail -1 | jq -r '.session_id')
-./bin/opencode-session "$LATEST"
-
-# Just OpenCode's responses
-grep '"event": "message_received"' logs/opencode/*.jsonl | jq -r '.response_preview'
-```
-
-### Read a Specific Session
-
-```bash
-SID="ses_example"
-grep "$SID" logs/opencode/opencode-$(date +%F).jsonl | jq .
-```
-
-### Open a Session in the OpenCode UI
-
-If the OpenCode web UI is reachable on your network, you can often jump straight to a session by ID.
-
-The session link in Jarvis Web uses OpenCode's configured HTTP(S) scheme and a
-browser-reachable host. A typical direct HTTP pattern is:
-
-```text
-http://<jarvis-host>:4096/Lw/session/<session_id>
-```
-
-Notes:
-
-- Replace the host if your OpenCode server is running elsewhere
-- The current UI route uses the raw `session_id`
-- For an HTTPS Web deployment, an optional `opencode` origin in
-  `config/ui_urls.json` can point the card to a separate HTTPS Tailscale Serve
-  port without changing Jarvis's internal `OPENCODE_BASE_URL`. See
-  [Optional OpenCode session links](../TAILSCALE_HTTPS.md#optional-opencode-session-links).
-- This is handy when the OpenCode UI no longer shows the full session list by default
-- If the UI changes again, `./bin/opencode-session <session_id>` is still the reliable fallback
-
-### What to Look For
-
-**Good response** (`message_received`):
-```json
-{
-  "response_preview": "I've created hello.py in ~/jarvis-workspace/projects/scripts/ with...",
-  "response_length": 450,
-  "duration_ms": 3500
-}
-```
-
-**Problem indicators:**
-- `response_length: 0` - OpenCode didn't respond
-- `duration_ms` near the configured `OPENCODE_TASK_TIMEOUT_SECONDS` with no useful response - likely stalled or timed out
-- `ok: false` in tool-calls log - Task failed
-
-**Normal timing reality:**
-- Small builds often take 30-90 seconds
-- Larger builds can take 2-10 minutes
-- Long duration alone is not a failure if `message_received` and `session_complete` show success
-
-### Live Progress Behavior
-
-During a build, Jarvis consumes OpenCode's structured event stream and can show
-updates such as:
-
-- "OpenCode: Updating workspace/projects/example/app.py"
-- "OpenCode: Running a command"
-- "OpenCode is working on: Run the tests"
-- "OpenCode finished its work and is preparing the result"
-
-The bridge deliberately does not expose reasoning deltas, raw tool output, or
-unbounded command data. It emits bounded phase text, redacts common secret
-shapes, deduplicates repetitive `busy` events, and keeps the full normalized
-audit trail in `logs/opencode/opencode-YYYY-MM-DD.jsonl`.
-
-Quiet-session heartbeats are derived from the last real phase, include truthful
-elapsed time, and never use a previous heartbeat as their detail. The initial
-system/context `noReply` writes are bounded to 30 seconds; they do not run the
-coding agent. A usable final POST response remains authoritative over a terminal
-event that arrives only after that response has completed.
-
-The Web UI receives these events directly through `tool:progress`, so they do
-not depend on `STATUS_LLM_ENABLED`. OpenCode only uses the general status bubble
-and optional status TTS when the status LLM is enabled; otherwise the detailed
-tool card remains the sole live surface. Browser TTS is additionally gated by
-the Web UI audio toggle. The final tool result also includes up to 25
-normalized `progress_events` plus `progress_transport` (`sse`, `poll`,
-`sse+poll`, or `none`).
-
-### Troubleshooting
-
-```bash
-# 1. Server running?
-sudo systemctl status opencode-jarvis.service
-
-# 2. Can reach API?
-curl http://localhost:4096/health
-
-# 3. Recent errors?
-./bin/opencode-logs | grep "❌"
-
-# 4. Check tool execution
-grep '"tool": "opencode"' logs/tools/*.jsonl | tail -1 | jq .
-
-# 5. Run configured server/auth health check
-./tests/integration/test-opencode-integration.sh --health cloud
-```
-
-**Common fixes:**
-```bash
-# Restart server
-sudo systemctl restart opencode-jarvis.service
-
-# Update API keys
-./bin/update-opencode-service.sh
-
-# Check config is valid
-curl http://localhost:4096/config
-```
-
----
-
-## System Prompt
-
-OpenCode receives this system prompt with every task:
-
-**Key points:**
-- Identity: "You are OpenCode" (not "Claude Code")
-- Audience: Responding to Jarvis (powerful LLM), not directly to user
-- Style: Technical and detailed - Jarvis will translate to casual speech
-- Boundaries: Read-only for `~/jarvis-voice`, writable to `~/jarvis-workspace`
-- Focus: Skip lengthy intros, get straight to work
-
-**Full prompt** in `lib/opencode_client.py` lines 150-185
-
----
-
-## Integration capabilities
-
-### Core integration
-- OpenCode server setup (systemd service)
-- Python client wrapper (`lib/opencode_client.py`)
-- Jarvis tool integration (`skills/opencode.py`)
-- Workspace structure (`~/jarvis-workspace`)
-- Voice command routing
-- Basic testing
-
-### Runtime and observability
-- Systemd service for auto-start
-- Detailed logging system
-- Session conversation viewer
-- Model selection (cloud/local)
-- Integration tests
-- OpenCode identifies as "OpenCode" (not "Claude Code")
-- Workspace isolation configured
-- Fallback-only session verification (`check_opencode_sessions`)
-- Build-result-first response path (successful OpenCode output should win over session status text)
-- `agent_mode` forwarding (`build` / `plan`)
-- Stop/cancel handling improved for long-running local tool execution
-
-### Workspace controls and planned extensions
-- **Workspace enforcement** - Configured workspace boundaries for OpenCode tasks
-- [ ] **Supervised agent loop** - OpenCode asks Jarvis when blocked, Jarvis answers or escalates to user
-- **Live progress streaming** - Surface real build steps/permission states with SSE and polling fallback
-- [ ] **Memory strategy** - Decide when Jarvis should inject memory vs keep OpenCode task-only
-- [ ] **Structured artifact reporting** - Return created files, run commands, and test status in a more machine-usable way
-- [ ] **Resume existing OpenCode sessions from follow-up requests** - Use `jarvis_session`, optional `web_conversation_id`, and prior `session_id` context so requests like "add keyboard support" continue the existing OpenCode project/session instead of starting fresh when appropriate
-
-## Longer-Term Architecture Direction
-
-The intended architecture is still:
-
-```text
-User
-  -> Jarvis (frontier/top-level orchestrator)
-    -> OpenCode (specialized lower-level coding agent)
-```
-
-Desired future behavior:
-
-- Jarvis supervises OpenCode like an operator, not just a relay
-- If OpenCode has a question, Jarvis answers when possible
-- If OpenCode gets off-task, Jarvis corrects it
-- If OpenCode hits a true decision point, Jarvis escalates to the user
-- OpenCode remains isolated in `~/jarvis-workspace` so it can build autonomous artifacts without touching the main Jarvis repo
-- Jarvis can detect when a new user request is really a continuation of the last OpenCode build and resume that same session/project deliberately
-
-That supervision loop is not fully implemented yet, but the current workspace-isolated model is the foundation for it.
-- **Context injection** - Pass user preferences, credentials to OpenCode (configured through `~/.config/opencode/jarvis-env.env`)
-- [ ] **Session persistence** - Resume long-running tasks across separate Jarvis requests; the current request remains supervised until its configured OpenCode deadline
-- **Improved condensation** - Voice response formatting for OpenCode results
-
----
-
-## Files
-
-### Core Implementation
-- `lib/opencode_client.py` (309 lines) - HTTP API client
-- `lib/opencode_logger.py` (156 lines) - Logging system
-- `skills/opencode.py` (120 lines) - Jarvis tool
-- `skills/opencode.tool.json` - Tool schema
-
-### Scripts
-- `setup_opencode_workspace.sh` - Create workspace structure
-- `bin/setup-opencode-config.sh` - Generate OpenCode config
-- `bin/install-opencode-service.sh` - Install systemd service
-- `bin/update-opencode-service.sh` - Update environment & restart
-- `bin/create-opencode-env.sh` - Create systemd env file
-- `bin/opencode-logs` - Log viewer
-- `bin/opencode-session` - Session conversation viewer
-
-### Configuration
-- `systemd/opencode-jarvis.service` - Systemd unit file
-- `~/.config/opencode/opencode.json` - OpenCode configuration
-- `~/.config/opencode/jarvis-env.env` - API keys for systemd
-- `config/cloud.env` - Jarvis cloud mode config (includes `OPENCODE_ENABLED=true`)
-- `config/local.env` - Jarvis local mode config
-
-### Tests
-- `tests/integration/test-opencode-integration.sh` - Mocked coverage by default; `--health` is read-only and `--live` creates one real plan-mode session
-
----
-
-## Configuration Reference
-
-### Environment Variables (`.env` files)
-
-**`config/cloud.env`:**
-```bash
-OPENCODE_ENABLED=true
-OPENCODE_BASE_URL=http://localhost:4096
-OPENCODE_TASK_TIMEOUT_SECONDS=900
-ANTHROPIC_API_KEY=sk-ant-api03-...
-OPENAI_API_KEY=sk-proj-...
-```
-
-**`config/local.env`:**
-```bash
-OPENCODE_ENABLED=true
-OPENCODE_BASE_URL=http://localhost:4096
-OPENCODE_TASK_TIMEOUT_SECONDS=900
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=gemma4
-```
-
-### OpenCode Config (`~/.config/opencode/opencode.json`)
-
-Use the tracked example at `config/opencode.config.json.template` as the starting point for a new host:
-
-```bash
-install -D -m 600 config/opencode.config.json.template ~/.config/opencode/opencode.json
-```
-
-**Key sections:**
-- `model`: Default model for new OpenCode sessions, for example `xai/grok-build-0.1`
-- `small_model`: Cheaper model for title and small helper tasks
-- `enabled_providers`: Restricts auto-loaded providers while keeping selected options such as `xai`
-- `provider`: Custom provider entries for Ollama, OpenAI, and Anthropic
-- `permission`: Uses `allow` for headless Jarvis integration; workspace boundaries are enforced by the plugin and service working directory
-- `disabled_providers`: Providers to skip when not using `enabled_providers`
-
----
-
-## Performance & Costs
-
-**Typical task durations:**
-- Simple greeting: ~3-5 seconds
-- Code file creation: ~5-10 seconds
-- Full project scaffold: ~15-30 seconds
-- Complex analysis: ~20-45 seconds
-
-**Model costs** (approximate):
-- Claude Sonnet 4: $3 per million input tokens, $15 per million output
-- GPT-5: $2.50/$10 per million tokens
-- Ollama (local): Free, but slower
-
-**Cache optimization:**
-- OpenCode caches system prompts
-- Reduces costs by 90% for repeated calls
-
----
-
-## Known Limitations
-
-1. **Manual server management** - Must start OpenCode server (systemd handles this)
-2. **Permission prompts** - OpenCode asks to confirm file edits and bash commands (by design)
-3. **Final response remains synchronous** - Jarvis streams progress while waiting, then returns the complete OpenCode result
-4. **Session cleanup** - OpenCode may clear session messages after completion (but we log everything)
-5. **Workspace enforcement** - Config set, needs testing to verify it works
-
----
-
-## Related Documentation
-
-- **`MEMORY_SYSTEM.md`** - Jarvis memory database
-- **`TESTING.md`** - Testing guide
-- **`docs/README.md`** - Documentation index
-
----
-
-## Quick Reference Commands
-
-```bash
-# Service management
-sudo systemctl {status|start|stop|restart} opencode-jarvis.service
-journalctl -u opencode-jarvis.service -f
-
-# Configuration
-cat ~/.config/opencode/opencode.json
-./bin/update-opencode-service.sh
-
-# Logging
-./bin/opencode-logs --verbose
-./bin/opencode-session <session_id>
-
-# Testing
 ./tests/integration/test-opencode-integration.sh
 ./tests/integration/test-opencode-integration.sh --health cloud
-
-# Workspace
-ls -la ~/jarvis-workspace/
-./setup_opencode_workspace.sh
-
-# Update opencode
-opencode upgrade
 ```
 
----
+Use `--health local` for a local-only configuration. The health command checks
+the configured V2 server and authentication; it does not create a session or
+call a model. The default wrapper runs deterministic tests through repo `.venv`
+when available. Health/live operations use
+`${JARVIS_VENV:-$HOME/jarvis-venv}`.
+
+An explicit provider check creates one real plan-mode session and can incur
+charges:
+
+```bash
+./tests/integration/test-opencode-integration.sh --live cloud
+```
+
+Its prompt requests a short answer without file changes. This confirms a
+provider response, not the ability to build and test a complete project.
+
+## Upgrading an existing V1 integration
+
+Back up the current OpenCode config, provider environment, plugins, and session
+data before a major upgrade. `opencode debug paths` identifies OpenCode's data
+locations. Keep the backup private because it can contain credentials and
+conversation content.
+
+1. Stop `opencode-jarvis.service` before replacing the binary.
+2. Upgrade to V2 (`opencode upgrade --major` for a supported curl install, or
+   follow the upstream V2 installation instructions).
+3. Update Jarvis to the matching V2 client and plugin implementation together.
+4. Run `./bin/setup-opencode-config.sh`, review the resulting configuration and
+   any migration notices,
+   then run `./bin/update-opencode-service.sh` with the appropriate
+   `OPENCODE_ENV_FILE` if it is not `config/cloud.env`.
+5. Run deterministic tests, authenticated health checks, and an explicit live
+   request before relying on autonomous coding.
+
+V2 supports many legacy config fields, but that compatibility does not run V1
+plugins or preserve the V1 HTTP API. The tracked setup uses V2 plugin discovery
+under `plugins/`. It backs up the matching legacy workspace plugin as
+`.js.v1-backup` and removes that old active copy from `plugin/`. Review any
+additional explicit plugin entries and migrate other V1 plugins separately.
+
+The setup helper recognizes the configuration written by the old Jarvis
+generator using its provider definitions, disabled-provider list,
+permission map, and absence of custom agent/native policy. The `$schema`
+metadata may be absent; when present, it must use the expected OpenCode schema
+URL. Existing model selections are optional and preserved. For a recognized
+profile, setup converts the old uniform `edit`/`bash` permission map into the
+unattended V2 policy and changes `autoupdate: true` to `update: "notify"`.
+An explicitly disabled updater remains disabled.
+The resulting policy allows edits, shell commands, and external-directory
+access, with filesystem writes constrained by the plugin and systemd service.
+The helper retains provider/model selections and writes an exact original
+backup with the `.v1-backup` suffix before changing the config; a differing
+older backup is retained and the new backup gets a timestamp suffix. Matching old
+workspace-plugin file entries are removed so V2 can discover the replacement.
+
+Custom broad permission restrictions and unrecognized automatic-update
+settings require manual review. The helper stops with an actionable error
+instead of replacing that policy; narrower custom rules such as denying
+`git push` remain in place. Review the policy for this unattended service while
+preserving intentional restrictions. A rule that asks for interaction will
+still block a Jarvis coding request when it matches.
+
+The helper preflights both `opencode.json` and `opencode.jsonc` before preparing
+runtime files. Its migrator requires strict JSON, including when the filename
+ends in `.jsonc`; comments or JSONC-only syntax require manual conversion.
+OpenCode V2 itself supports JSONC. This restriction belongs to Jarvis's setup
+migrator, not the OpenCode server.
+
+The V2 terminal client stores its UI settings in `~/.config/opencode/cli.json`.
+It migrates supported global V1 terminal preferences automatically; the
+headless Jarvis service does not read those client settings. Once native V2
+configuration has been written, restoring a V1 binary also requires restoring
+its matching configuration and plugin backup.
+
+After changing provider keys, server authentication, service settings, or the
+tracked plugin, refresh the service:
+
+```bash
+./bin/update-opencode-service.sh
+# For a local-only env source:
+# OPENCODE_ENV_FILE=config/local.env ./bin/update-opencode-service.sh
+```
+
+## Workspace controls
+
+The workspace plugin runs **inside OpenCode**. It applies to sessions on that
+server whether they originate in Jarvis, a terminal, the web interface, or an
+API client. It does not constrain Jarvis's other tools.
+
+The plugin checks supported file-edit operations against the configured
+workspace, resolves filesystem paths, and protects the Jarvis checkout.
+Read access is broader so the agent can inspect source and installed tools.
+Prompt instructions are guidance, not filesystem enforcement.
+
+The Linux service adds filesystem write restrictions for shell commands, Code
+Mode, and child agents, which can otherwise perform writes without invoking an
+edit hook. The workspace, private temporary storage, and these OpenCode runtime
+directories remain writable:
+
+- `~/.local/share/opencode`
+- `~/.local/state/opencode`
+
+The runtime directories hold shared session/credential databases and state.
+Shell commands, Code Mode, and child processes run with the same
+filesystem access as the server: they can read, alter, or delete that shared
+OpenCode state. Sessions and projects on this server share that exposure.
+Network access, provider credentials, and permitted source reads also remain
+available. Use the service for trusted coding work; stronger isolation requires
+separate accounts/services or a dedicated sandbox for untrusted code.
+See [permissions](OPENCODE_PERMISSIONS.md) and the
+[plugin implementation guide](plugin/README.md) for the exact controls.
+
+The supervised service cannot write its global `~/.config/opencode` directory.
+Edit provider/config/plugin/instruction files from the host editor or setup
+scripts, then restart the service; Web/API actions that rewrite these files can
+fail under the service. Session, credential, and saved-permission database
+storage remains writable by the server and its child processes. A separate
+auto-started OpenCode shared service does not inherit Jarvis's systemd
+restrictions.
+
+## Package caches and toolchains
+
+The service redirects package caches and user-installed build tools into the
+workspace so ordinary installs can run without making the host home directory
+writable. These paths use the actual `JARVIS_WORKSPACE_ROOT`:
+
+| Setting | Workspace location |
+| --- | --- |
+| `XDG_CACHE_HOME` | `.cache/`, including OpenCode's `.cache/opencode/` |
+| `PIP_CACHE_DIR` | `.cache/pip/` |
+| `npm_config_cache` | `.cache/npm/` |
+| `UV_CACHE_DIR` | `.cache/uv/` |
+| `CARGO_HOME` | `.toolchains/cargo/` |
+| `GOPATH` | `.toolchains/go/` |
+| `GOCACHE` | `.cache/go-build/` |
+| `GOMODCACHE` | `.cache/go-mod/` |
+
+The service path includes the workspace's Cargo/Go binary directories and
+existing host `~/.cargo/bin` and `~/.local/bin` tools. Install Python dependencies
+in a project virtual environment. Keep project dependencies and generated
+artifacts inside the workspace.
+
+The cache redirect gives OpenCode a separate cache from the host's previous
+`~/.cache/opencode`; metadata or packages may need downloading again. Cargo's
+home also changes, so host `~/.cargo` configuration and credentials are not
+automatically copied into the workspace. `RUSTUP_HOME` remains host-managed:
+preinstalled Rust toolchains can be read, while toolchain updates belong to the
+host operator. Other tools that insist on an unconfigured host write path may
+need an explicit workspace path or a host-managed installation.
+
+## Supervised execution and live progress
+
+Jarvis creates a V2 session, supplies task instructions/context, and admits one
+task input. The prompt response acknowledges the input; it is **not the final
+coding result**. Jarvis observes session completion and collects the resulting
+assistant message before reporting success.
+
+While waiting, Jarvis consumes `/api/event` SSE and polls persisted session
+state when events are unavailable or quiet. V2 events can cover multiple
+locations and sessions, so the bridge filters to the task's session. Progress
+includes bounded tool, plan, retry, blocker, failure, and completion phases.
+Reasoning text, raw shell output, and unbounded command data are not forwarded
+to the Web tool card.
+
+Tool-step completion does not mean that the coding task is complete. Progress
+uses bounded, redacted command or file summaries when available and keeps
+working status separate from the final task result. File-tool contents,
+detected inline/heredoc code bodies, and reasoning are excluded from progress
+text; command summaries redact common credential forms. Only the collected final answer
+marks the task complete; a command exit code is evidence about that step.
+
+The shared instructions describe a headless service environment. The agent
+must inspect the OpenCode host's operating system and available tools rather
+than assuming it is the Jarvis or browser machine. GUI projects use headless
+checks unless a display is explicitly available; those checks do not establish
+visual correctness.
+
+The Web card receives progress directly through `tool:progress`. It continues
+to work when the helper/status LLM is disabled. Optional status text/TTS is a
+separate surface; browser TTS also respects the Web audio toggle. The final
+result includes bounded `progress_events` and `progress_transport` metadata.
+
+Jarvis waits up to `OPENCODE_TASK_TIMEOUT_SECONDS` (900 seconds by default).
+Cancellation and deadline cleanup interrupt the OpenCode session. Unattended
+permission requests, question forms, and terminal errors are surfaced as
+failures rather than silently waiting for a person who is not connected.
+Jarvis does not yet answer OpenCode's questions or automatically resume the
+same coding session across separate user requests.
+
+`check_opencode_sessions` and the log viewer are useful for a stalled or failed
+run, or an explicit status request. A successful build should be answered from
+its actual final response.
+
+Memory is excluded from ordinary coding tasks by default. Set
+`OPENCODE_INCLUDE_MEMORY=true` only when relevant Jarvis memory should be
+included. Coding tasks always receive their task/workspace context.
+
+## Use and troubleshoot
+
+```bash
+# Normal production Jarvis request (may execute coding tools/provider requests)
+./bin/jarvis-cli "Use OpenCode to build a hello world script in the workspace"
+
+# Service logs
+journalctl -u opencode-jarvis.service -f
+
+# Jarvis's normalized coding log
+./bin/opencode-logs --verbose
+
+# Inspect a known session
+./bin/opencode-session <session_id>
+```
+
+Jarvis logs normalized progress and final results under
+`logs/opencode/opencode-YYYY-MM-DD.jsonl`; ordinary tool calls appear under
+`logs/tools/`. These logs are not an exhaustive trace of every filesystem write
+or child-process action. Check the systemd journal for startup, plugin, and
+provider errors. Do not paste unredacted credentials, raw config responses, or
+private task content into bug reports.
+
+Jarvis Web builds a V2 session link using the browser-reachable OpenCode origin.
+For HTTPS deployments, set the optional `opencode` origin in
+`config/ui_urls.json` without changing the internal `OPENCODE_BASE_URL`. See
+[OpenCode session links](../TAILSCALE_HTTPS.md#optional-opencode-session-links).
+
+If health fails, check the actual process version, configured URL, Basic auth,
+and server journal. A healthy HTTP listener does not prove that the selected
+model exists or that the provider account has credit. If startup fails after a
+major update, inspect plugin import/config errors before retrying model tasks.
+
+## Docker and other frontends
+
+The maintained systemd setup runs OpenCode on the host. Jarvis Docker images do
+not bundle this service, and the tracked Docker tool profiles disable OpenCode
+unless the operator explicitly wires it up. A container's `localhost:4096`
+refers to that container, not the host service. Use a reachable service address,
+matching authentication, and an appropriate tool profile; see
+[Docker setup](../docker/README.md).
+
+Voice, Web, and the public API call the Jarvis tool through their own request
+paths. A server health check does not establish browser session-link reachability,
+voice/TTS behavior, or Docker networking.
+
+## Implementation and references
+
+- `lib/opencode_client.py`: V2 HTTP transport, supervision, progress, and cancellation.
+- `skills/opencode.py` and `skills/opencode.tool.json`: Jarvis tool boundary.
+- `skills/check_opencode_sessions.py`: session and log diagnostics.
+- `docs/opencode/plugin/00-workspace-protection.js`: tracked V2 plugin.
+- `config/opencode.instructions.md.template`: portable global coding instructions
+  for fresh installations.
+- `bin/setup-opencode-config.sh`, `bin/create-opencode-env.sh`, and the
+  install/update service scripts: native setup.
+- [Jarvis API subset](OPENCODE_API_REFERENCE.md), [agent modes](OPENCODE_AGENTS.md),
+  [plugins](OPENCODE_PLUGINS.md), and [testing](../TESTING.md).
+- Upstream [V2 API](https://opencode.ai/v2/docs/api),
+  [plugins](https://opencode.ai/v2/docs/plugins/), and
+  [permissions](https://opencode.ai/v2/docs/permissions/).

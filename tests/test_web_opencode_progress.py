@@ -45,10 +45,11 @@ global.window = {
 };
 
 const routed = [];
+const banners = [];
 const listenerChat = Object.create(global.ChatUI.prototype);
 Object.assign(listenerChat, {
   _updateOpenCodeProgressCard: (cardId, data) => routed.push({cardId, data}),
-  showProgressStatus: () => {}
+  showProgressStatus: (status) => banners.push(status)
 });
 listenerChat._setupSocketListeners();
 handlers.toolProgress({
@@ -59,6 +60,11 @@ handlers.toolProgress({
 });
 if (routed.length !== 1 || routed[0].cardId !== 'opencode_2') {
   throw new Error(`call_index routed to wrong card: ${JSON.stringify(routed)}`);
+}
+listenerChat._updateOpenCodeProgressCard = () => false;
+handlers.toolProgress({tool: 'opencode', call_index: 2, status: 'Stale progress', phase: 'tool'});
+if (banners.length !== 1) {
+  throw new Error(`Rejected late progress restarted the banner: ${JSON.stringify(banners)}`);
 }
 
 const statusEl = {textContent: ''};
@@ -106,18 +112,73 @@ if (statusEl.textContent !== '⏳ 50% phase 9') {
 if (!bodyEl.textContent.includes('phase 2') || !bodyEl.textContent.includes('phase 9')) {
   throw new Error(`timeline body is incomplete: ${bodyEl.textContent}`);
 }
-if (!linkRow || !linkRow.child || !linkRow.child.href.includes('/Lw/session/ses_runtime')) {
+if (!linkRow || !linkRow.child || !linkRow.child.href.includes('/session/ses_runtime')) {
   throw new Error('live OpenCode session link was not rendered');
+}
+
+cardChat._updateOpenCodeProgressCard('opencode_2', {
+  status: 'OpenCode completed the task and returned its result', phase: 'complete', progress: 100
+});
+const completedStatus = statusEl.textContent;
+const completedBody = bodyEl.textContent;
+const completedEvents = JSON.stringify(state.progressEvents);
+if (cardChat._updateOpenCodeProgressCard('opencode_2', {
+  status: 'Stale running command', phase: 'tool'
+}) !== false || statusEl.textContent !== completedStatus || bodyEl.textContent !== completedBody
+    || JSON.stringify(state.progressEvents) !== completedEvents) {
+  throw new Error('Late tool activity replaced authoritative task completion');
+}
+for (const terminalStatus of ['success', 'error', 'skipped']) {
+  state.status = terminalStatus;
+  state.progressTerminal = false;
+  if (cardChat._updateOpenCodeProgressCard('opencode_2', {
+    status: 'Stale heartbeat', phase: 'heartbeat'
+  }) !== false || statusEl.textContent !== completedStatus || bodyEl.textContent !== completedBody) {
+    throw new Error(`Late progress replaced a ${terminalStatus} result`);
+  }
+}
+
+cardChat.pendingToolsByMessage = new Map([['finished-turn', cardChat.pendingTools]]);
+cardChat.pendingToolMessageId = 'finished-turn';
+cardChat.currentMessageId = 'finished-turn';
+cardChat.rememberRenderedMessage('assistant', 'finished-turn');
+cardChat._clearPendingToolsForMessage('finished-turn');
+if (cardChat._updateOpenCodeProgressCard('opencode_2', {
+  message_id: 'finished-turn', status: 'Late after response cleanup', phase: 'heartbeat'
+}) !== false || Object.keys(cardChat.pendingTools).length !== 0) {
+  throw new Error('Late progress recreated tools after final response cleanup');
+}
+cardChat.currentMessageId = 'new-turn';
+cardChat._activatePendingToolsForMessage('new-turn', true);
+cardChat.pendingTools.opencode_2 = {toolName: 'opencode', status: 'pending'};
+if (cardChat._updateOpenCodeProgressCard('opencode_2', {
+  message_id: 'new-turn', status: 'Current command', phase: 'tool'
+}) !== true) {
+  throw new Error('Legitimate progress for the next turn was rejected');
+}
+const newTurnStatus = statusEl.textContent;
+if (cardChat._updateOpenCodeProgressCard('opencode_2', {
+  message_id: 'finished-turn', status: 'Old command after a new turn', phase: 'tool'
+}) !== false || statusEl.textContent !== newTurnStatus
+    || cardChat.pendingToolMessageId !== 'new-turn') {
+  throw new Error('Old progress contaminated the next turn');
+}
+cardChat.rememberRenderedMessage('error', 'new-turn');
+cardChat._clearPendingToolsForMessage('new-turn');
+if (cardChat._updateOpenCodeProgressCard('opencode_2', {
+  message_id: 'new-turn', status: 'Late after failed response cleanup', phase: 'tool'
+}) !== false || Object.keys(cardChat.pendingTools).length !== 0) {
+  throw new Error('Late progress recreated a failed response');
 }
 
 global.window.location = {protocol: 'https:', hostname: 'jarvis.example.test'};
 const directUrl = cardChat._getOpenCodeSessionUrl('ses_runtime');
-if (directUrl !== 'http://jarvis.example.test:4096/Lw/session/ses_runtime') {
+if (directUrl !== `http://jarvis.example.test:4096/server/${Buffer.from('http://jarvis.example.test:4096').toString('base64url')}/session/ses_runtime`) {
   throw new Error(`HTTPS Web page changed OpenCode's HTTP scheme: ${directUrl}`);
 }
 cardChat.systemConfig.OPENCODE_BASE_URL = 'http://192.0.2.5:4096';
 const configuredUrl = cardChat._getOpenCodeSessionUrl('ses_runtime');
-if (configuredUrl !== 'http://192.0.2.5:4096/Lw/session/ses_runtime') {
+if (configuredUrl !== `http://192.0.2.5:4096/server/${Buffer.from('http://192.0.2.5:4096').toString('base64url')}/session/ses_runtime`) {
   throw new Error(`Configured OpenCode host was replaced: ${configuredUrl}`);
 }
 cardChat.systemConfig.OPENCODE_BASE_URL = 'http://localhost:4096';
@@ -126,8 +187,23 @@ global.window.JarvisUINavigation = {
     ? 'https://jarvis.example.test:8448' : fallback
 };
 const servedUrl = cardChat._getOpenCodeSessionUrl('ses_runtime');
-if (servedUrl !== 'https://jarvis.example.test:8448/Lw/session/ses_runtime') {
+if (servedUrl !== `https://jarvis.example.test:8448/server/${Buffer.from('https://jarvis.example.test:8448').toString('base64url')}/session/ses_runtime`) {
   throw new Error(`OpenCode Serve origin was not used: ${servedUrl}`);
 }
+window.JarvisUINavigation.url = () => 'https://user:secret@jarvis.example.test:8448/path?token=private';
+const safeUrl = cardChat._getOpenCodeSessionUrl('ses_a/b?c');
+if (safeUrl !== `https://jarvis.example.test:8448/server/${Buffer.from('https://jarvis.example.test:8448').toString('base64url')}/session/ses_a%2Fb%3Fc`) {
+  throw new Error(`Session URL exposed credentials or failed path escaping: ${safeUrl}`);
+}
+window.JarvisUINavigation.url = () => 'javascript:alert(1)';
+if (cardChat._getOpenCodeSessionUrl('ses_runtime') !== null) {
+  throw new Error('Session URL allowed a non-HTTP navigation override');
+}
+delete window.JarvisUINavigation;
+cardChat.systemConfig.OPENCODE_BASE_URL = 'http://[::1]:4096';
+if (!cardChat._getOpenCodeSessionUrl('ses_runtime').startsWith('http://jarvis.example.test:4096/server/')) {
+  throw new Error('IPv6 loopback OpenCode URL remained inaccessible from the browser');
+}
+
 """
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)

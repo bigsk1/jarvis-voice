@@ -1,5 +1,9 @@
 # OpenCode Memory Strategy
 
+> Design notes, not the implemented runtime contract. Current coding tasks
+> exclude memory by default; `OPENCODE_INCLUDE_MEMORY=true` enables optional
+> relevant-memory context. See [OPENCODE.md](OPENCODE.md) for current V2 behavior.
+
 ## The Problem
 
 Not all memories are useful for OpenCode. We need to distinguish:
@@ -382,4 +386,3 @@ Replace current `get_memory_context()` with contextual version above.
 ```
 
 **OpenCode will find relevant info automatically via semantic search.**
-

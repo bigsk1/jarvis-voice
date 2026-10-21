@@ -1253,7 +1253,10 @@ See [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md) for details.
 
 ## 🤖 OpenCode Integration
 
-OpenCode is an autonomous coding agent that can build entire projects.
+OpenCode is an optional autonomous coding agent that can build entire projects.
+Jarvis requires an **OpenCode 2.x** server and the matching V2 workspace plugin.
+The native Linux integration runs a separate supervised systemd service;
+OpenCode Console is optional and direct provider credentials are supported.
 
 ### Usage
 
@@ -1262,7 +1265,7 @@ OpenCode is an autonomous coding agent that can build entire projects.
 "Use OpenCode to create a Flask API on port 8091"
 
 # Via CLI
-./orchestrator/orchestrator_v2.py cloud "Build a Tetris game"
+./bin/jarvis-cli "Use OpenCode to build a Tetris game"
 ```
 
 ### What OpenCode Can Do
@@ -1276,15 +1279,20 @@ OpenCode is an autonomous coding agent that can build entire projects.
 ### Configuration
 
 ```bash
-# In cloud.env or local.env (shipped defaults shown)
-# cloud: OPENCODE_PROVIDER=xai, OPENCODE_MODEL=grok-build-0.1
-# local: OPENCODE_PROVIDER=ollama, OPENCODE_MODEL=gemma4
+# In cloud.env or local.env (explicit cloud-provider example)
+OPENCODE_ENABLED=true
 OPENCODE_PROVIDER="xai"
-OPENCODE_MODEL="grok-build-0.1"
+OPENCODE_MODEL="grok-4.7"
 OPENCODE_BASE_URL="http://localhost:4096"
+# Set matching server credentials in Jarvis and the OpenCode service environment.
+OPENCODE_SERVER_PASSWORD="replace-with-a-long-random-password"
 ```
 
-**Workspace:** All OpenCode projects go to `~/jarvis-workspace/projects/`
+**Workspace:** Coding projects go to `~/jarvis-workspace/projects/` by default.
+The native service combines a workspace plugin with systemd filesystem write
+restrictions. A local OpenCode service can still call paid cloud models.
+Its child processes share writable access to OpenCode's session/credential
+storage and caches; see the integration guide for those boundaries.
 
 See [`docs/opencode/OPENCODE.md`](docs/opencode/OPENCODE.md) for details.
 
@@ -1400,8 +1408,8 @@ LIMIT 7;"
 - [`docs/METADATA_SYSTEM.md`](docs/METADATA_SYSTEM.md) - Cost tracking & metadata
 
 **Advanced:**
-- [`docs/opencode/OPENCODE_API_REFERENCE.md`](docs/opencode/OPENCODE_API_REFERENCE.md) - Full OpenCode API
-- [`docs/opencode/OPENCODE_AGENTS.md`](docs/opencode/OPENCODE_AGENTS.md) - Agent system architecture
+- [`docs/opencode/OPENCODE_API_REFERENCE.md`](docs/opencode/OPENCODE_API_REFERENCE.md) - OpenCode V2 API used by Jarvis
+- [`docs/opencode/OPENCODE_AGENTS.md`](docs/opencode/OPENCODE_AGENTS.md) - OpenCode V2 agent selection
 - [`docs/mcp/MCP_QUICKSTART.md`](docs/mcp/MCP_QUICKSTART.md) - MCP server integration
 - [`docs/ERROR_RECOVERY.md`](docs/ERROR_RECOVERY.md) - Error handling
 
@@ -1533,8 +1541,7 @@ not rotate or restore active databases.
 **"OpenCode server not reachable"**
 ```bash
 sudo systemctl start opencode-jarvis.service
-# or
-cd ~/opencode && npm start
+./tests/integration/test-opencode-integration.sh --health cloud
 ```
 
 **"Ollama connection failed"**

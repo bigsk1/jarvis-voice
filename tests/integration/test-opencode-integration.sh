@@ -16,6 +16,10 @@ set -uo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 JARVIS_VENV=${JARVIS_VENV:-"$HOME/jarvis-venv"}
 PYTHON="$JARVIS_VENV/bin/python"
+TEST_PYTHON="$ROOT_DIR/.venv/bin/python"
+if [[ ! -x "$TEST_PYTHON" ]]; then
+    TEST_PYTHON="$PYTHON"
+fi
 
 usage() {
     cat <<'EOF'
@@ -27,20 +31,25 @@ No arguments: run deterministic OpenCode unit tests only.
 EOF
 }
 
-require_runtime() {
-    if [[ ! -x "$PYTHON" ]]; then
-        echo "ERROR: Jarvis Python not found at $PYTHON" >&2
-        echo "Set JARVIS_VENV to the external Jarvis virtual environment." >&2
+require_python() {
+    local interpreter=$1
+    if [[ ! -x "$interpreter" ]]; then
+        echo "ERROR: Jarvis Python not found at $interpreter" >&2
+        echo "Use uv sync --dev for tests; set JARVIS_VENV for live checks." >&2
         exit 2
     fi
 }
 
 run_static_checks() {
-    "$PYTHON" -m pytest -q \
+    "$TEST_PYTHON" -m pytest -q \
         "$ROOT_DIR/tests/test_opencode_client.py" \
+        "$ROOT_DIR/tests/test_opencode_client_v2.py" \
         "$ROOT_DIR/tests/test_opencode_tool.py" \
+        "$ROOT_DIR/tests/test_opencode_setup.py" \
         "$ROOT_DIR/tests/test_check_opencode_sessions.py" \
-        "$ROOT_DIR/tests/test_status_updater_opencode_auth.py"
+        "$ROOT_DIR/tests/test_status_updater_opencode_auth.py" \
+        "$ROOT_DIR/tests/test_orchestrator_opencode_progress.py" \
+        "$ROOT_DIR/tests/test_web_opencode_progress.py"
 }
 
 run_health_check() {
@@ -83,15 +92,17 @@ run_live_check() {
         return 1
     fi
     echo "$result" | jq '.'
-    jq -e '.ok == true and (.data.session_id | type == "string" and length > 0)' \
+    jq -e '.ok == true
+        and (.data.session_id | type == "string" and length > 0)
+        and (.raw_llm_response | type == "string" and contains("OpenCode integration OK"))' \
         >/dev/null <<<"$result"
 }
 
 main() {
-    require_runtime
     cd "$ROOT_DIR" || exit 2
 
     if [[ $# -eq 0 ]]; then
+        require_python "$TEST_PYTHON"
         run_static_checks
         return
     fi
@@ -104,6 +115,8 @@ main() {
         exit 2
     fi
 
+    require_python "$TEST_PYTHON"
+    require_python "$PYTHON"
     run_static_checks || exit 1
     run_health_check "$2" || exit 1
     if [[ "$1" == "--live" ]]; then

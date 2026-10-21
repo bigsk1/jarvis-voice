@@ -185,9 +185,9 @@ labeled research or historical documents.
 | Document | Purpose |
 |----------|---------|
 | **opencode/OPENCODE.md** | Main OpenCode guide |
-| **opencode/OPENCODE_API_REFERENCE.md** | Full API reference |
-| **opencode/OPENCODE_AGENTS.md** | Agent system architecture |
-| **opencode/OPENCODE_MEMORY_STRATEGY.md** | Memory integration |
+| **opencode/OPENCODE_API_REFERENCE.md** | OpenCode V2 API used by Jarvis |
+| **opencode/OPENCODE_AGENTS.md** | OpenCode V2 agent selection |
+| **opencode/OPENCODE_MEMORY_STRATEGY.md** | Memory design notes; see the main guide for implemented behavior |
 | **opencode/OPENCODE_PERMISSIONS.md** | Permission system |
 | **opencode/OPENCODE_PLUGINS.md** | Plugin system |
 | **[archive/opencode/](archive/opencode/)** | Historical OpenCode phase milestones (Phase 1 / Phase 2) |

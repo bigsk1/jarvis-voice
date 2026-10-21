@@ -31,6 +31,38 @@ service.load_config = observed_load
 raise SystemExit(service.main())
 """
 
+SIGNAL_DURING_WAIT_WORKER = """
+import faulthandler
+import inspect
+import os
+import signal
+import sys
+import threading
+from pathlib import Path
+from services import ntfy_notifications as service
+
+service.PROJECT_ROOT = Path(sys.argv[1])
+service.sys.argv = ['ntfy-worker']
+# On the former Event implementation this line executes with its non-reentrant
+# condition lock held. The current plain flag wait has no such critical section.
+stop_type = getattr(service, 'ShutdownSignal', threading.Event)
+source, first = inspect.getsourcelines(stop_type.wait)
+needle = 'signaled = self._flag' if stop_type is threading.Event else 'remaining ='
+target = first + next(index for index, line in enumerate(source) if needle in line)
+injected = False
+def trace(frame, event, arg):
+    global injected
+    if (not injected and event == 'line'
+            and frame.f_code is stop_type.wait.__code__ and frame.f_lineno == target):
+        injected = True
+        print('injecting SIGTERM during stop.wait', flush=True)
+        faulthandler.dump_traceback_later(2)
+        os.kill(os.getpid(), signal.SIGTERM)
+    return trace
+sys.settrace(trace)
+raise SystemExit(service.main())
+"""
+
 
 def wait_until(predicate, process, log):
     deadline = time.monotonic() + 5
@@ -114,4 +146,29 @@ def test_waiting_daemon_takes_over_after_owner_stops_and_releases_lock(tmp_path,
     assert standby.wait(timeout=5) == 0
     assert json.loads((tmp_path / 'logs/ntfy_notifications.status.json').read_text())['state'] == 'stopped'
     with lock.acquire(timeout=0):
+        pass
+
+
+def test_signal_during_stop_wait_exits_without_reentrant_lock_deadlock(tmp_path):
+    process = subprocess.Popen(
+        [sys.executable, '-u', '-c', SIGNAL_DURING_WAIT_WORKER, str(tmp_path)],
+        cwd=ROOT, env={**os.environ, 'JARVIS_MODE': 'cloud'},
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        output, _ = process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        output, _ = process.communicate(timeout=5)
+        pytest.fail(f'Worker deadlocked after SIGTERM during stop.wait: {output}')
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+    assert process.returncode == 0, output
+    assert 'injecting SIGTERM during stop.wait' in output
+    status = json.loads((tmp_path / 'logs/ntfy_notifications.status.json').read_text())
+    assert status['state'] == 'stopped'
+    with FileLock(tmp_path / 'data/ntfy_notifications.db.lock').acquire(timeout=0):
         pass

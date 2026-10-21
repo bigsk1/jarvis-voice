@@ -428,12 +428,18 @@ class ChatUI {
     try {
       if (!['http:', 'https:'].includes(base.protocol)) return null;
       const browserBase = new URL(base.origin);
-      const needsBrowserHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(base.hostname);
+      const needsBrowserHost = ['localhost', '127.0.0.1', '0.0.0.0', '[::1]', '[::]'].includes(base.hostname);
       if (needsBrowserHost && window.location.hostname) {
         browserBase.hostname = window.location.hostname;
       }
-      const origin = window.JarvisUINavigation?.url('opencode', browserBase.origin) || browserBase.origin;
-      return `${origin}/Lw/session/${encodeURIComponent(sessionId)}`;
+      const selectedBase = window.JarvisUINavigation?.url('opencode', browserBase.origin) || browserBase.origin;
+      const publicBase = new URL(selectedBase);
+      if (!['http:', 'https:'].includes(publicBase.protocol)) return null;
+      // V2 keys each web connection by its origin, encoded as unpadded base64url.
+      // Keep credentials, query parameters, and internal localhost out of links.
+      const origin = publicBase.origin;
+      const serverKey = btoa(origin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      return `${origin}/server/${serverKey}/session/${encodeURIComponent(sessionId)}`;
     } catch {
       return null;
     }
@@ -1408,8 +1414,9 @@ class ChatUI {
       if (data.tool) {
         const cardId = data.call_index > 0 ? `${data.tool}_${data.call_index}` : data.tool;
         if (data.tool === 'opencode' && data.status) {
-          this._updateOpenCodeProgressCard(cardId, data);
-          this.showProgressStatus(data.status);
+          if (this._updateOpenCodeProgressCard(cardId, data) !== false) {
+            this.showProgressStatus(data.status);
+          }
         } else {
           // Update specific tool card with progress
           this.updateToolCard(cardId, data.tool, 'pending', {
@@ -6303,11 +6310,26 @@ class ChatUI {
 
   /** Keep a bounded, readable timeline for a live OpenCode session. */
   _updateOpenCodeProgressCard(cardId, data) {
+    const messageId = String(data.message_id || '').trim();
+    if (messageId) {
+      if (messageId !== this.currentMessageId
+          || this._renderedMessageIds?.has(`assistant:${messageId}`)
+          || this._renderedMessageIds?.has(`error:${messageId}`)) {
+        return false;
+      }
+      this._activatePendingToolsForMessage(messageId);
+    }
     if (!this.pendingTools[cardId]) {
       this.updateToolCard(cardId, 'opencode', 'pending', {});
     }
 
     const state = this.pendingTools[cardId];
+    // A delayed progress packet must not replace a settled result or restart
+    // the progress banner after authoritative task completion.
+    if (['success', 'error', 'skipped'].includes(state.status) || state.progressTerminal) {
+      return false;
+    }
+    state.progressTerminal = ['complete', 'error', 'blocked'].includes(data.phase);
     state.progressEvents = Array.isArray(state.progressEvents) ? state.progressEvents : [];
     const previous = state.progressEvents[state.progressEvents.length - 1];
     if (!previous || previous.status !== data.status || previous.phase !== data.phase) {
@@ -6320,7 +6342,7 @@ class ChatUI {
     if (data.session_id) state.sessionId = data.session_id;
 
     const card = document.getElementById(`tool-card-${cardId}`);
-    if (!card) return;
+    if (!card) return true;
 
     const statusEl = card.querySelector('.tool-card-status');
     if (statusEl) {
@@ -6355,6 +6377,7 @@ class ChatUI {
         card.insertBefore(row, bodyEl || null);
       }
     }
+    return true;
   }
 
   /**

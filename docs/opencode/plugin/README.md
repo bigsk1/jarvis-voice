@@ -1,198 +1,91 @@
-# OpenCode Plugins for Jarvis
+# Jarvis's OpenCode V2 workspace plugin
 
-This directory contains OpenCode plugins that enforce safety and enhance capabilities when Jarvis delegates tasks to OpenCode.
+`00-workspace-protection.js` runs inside an OpenCode 2.x server. The native
+install/update scripts copy it to
+`~/.config/opencode/plugins/00-workspace-protection.js` and verify that the
+running server loaded it. It applies to all sessions on that server, including
+sessions opened directly from a terminal, browser, or API client. It does not
+restrict Jarvis's other tools or unrelated OpenCode processes.
 
-**Important**: These plugins only activate when Jarvis calls the OpenCode tool. They do NOT affect Jarvis's own operations.
+## What the plugin enforces
 
----
+The guard validates supported edit/write/patch operations against
+`JARVIS_WORKSPACE_ROOT` (default `~/jarvis-workspace`). It resolves paths and
+existing symlinks before allowing edits, rejects writes outside the workspace,
+and protects the Jarvis checkout. Source reads are permitted, including reads
+of the Jarvis source.
 
-## Installed Plugins
+Temporary files belong in the workspace's `temp/` directory. The service sets
+its temporary-directory variables accordingly. A prompt or `AGENTS.md` file
+provides guidance; the plugin is the tool-level write check.
 
-### 🛡️ `00-workspace-protection.js`
-**Status**: ✅ Active
-**Purpose**: Enforce strict workspace boundaries for OpenCode
+A hook cannot inspect every write performed by arbitrary shell commands,
+JavaScript Code Mode, custom tools, or subprocesses. The tracked Linux service
+therefore also applies `ProtectSystem=strict`, `ProtectHome=read-only`, and
+explicit `ReadWritePaths` for the workspace and required OpenCode state/cache
+locations, with private temporary storage. The global config directory stays
+read-only; edit config/plugin files from the host and restart the service.
+A manually started server does not inherit those systemd controls.
+See [permissions](../OPENCODE_PERMISSIONS.md) for the complete scope and limits.
 
-**Safety Rules**:
-1. ✅ Block write/edit/delete outside `~/jarvis-workspace`
-2. ✅ Block all access to `~/jarvis-voice` (Jarvis codebase)
-3. ✅ Block system directories (`/etc`, `/usr`, `/bin`, `/sys`, `/proc`)
-4. ✅ Block sensitive home directories (`~/.ssh`, `~/.gnupg`, `~/.config/*`)
-5. ✅ Allow OpenCode to work freely within its workspace
+OpenCode's shared runtime storage under `~/.local/share/opencode` and
+`~/.local/state/opencode` remains writable by child
+shells, Code Mode, and subprocesses. They can read or change session/credential
+databases and other server state there. The guard provides no separate
+per-session filesystem boundary for that shared storage.
 
-**When it triggers**:
-```
-User: "Jarvis, use OpenCode to build a Flask API"
-Jarvis: Calls OpenCode tool
-OpenCode: Works in ~/jarvis-workspace ✅ Allowed
-OpenCode: Tries to edit ~/jarvis-voice/orchestrator.py ❌ BLOCKED
-```
+OpenCode and package caches live under the workspace's `.cache/`; Cargo/Go user
+directories live under `.toolchains/`. The old `~/.cache/opencode` path is no
+longer a writable service exception. See
+[package caches and toolchains](../OPENCODE.md#package-caches-and-toolchains).
 
-**Error messages** (when boundaries are violated):
-```
-❌ BLOCKED: Cannot access Jarvis codebase
-   Path: ~/jarvis-voice/orchestrator.py
-   Reason: ~/jarvis-voice is protected (read-only from workspace only)
+## V2 implementation
 
-   If you need to understand Jarvis APIs, ask Jarvis to provide the information.
-```
+The plugin exports a default object with a stable `id` and `setup(ctx)` and
+registers the V2 tool-execution hook. It has no npm package dependency. This is
+the same definition shape produced by V2's `Plugin.define`; V1's named async
+plugin factory and `tool.execute.before` return-map API are obsolete.
 
-**Why it's essential**:
-- Prevents OpenCode from accidentally damaging Jarvis itself
-- Critical for local models (Qwen) that may ignore system prompts
-- Defense-in-depth security layer
+Do not copy V1 plugin code into a V2 service. The installer moves the matching
+legacy singular-directory workspace plugin out of discovery as a
+`.js.v1-backup`, leaving other plugins for deliberate migration. Avoid adding
+a second explicit config entry pointing to another copy of the same guard.
 
----
-
-## Plugin Load Order
-
-Plugins are loaded alphabetically. Use prefixes to control order:
-- `00-*`: Safety/protection plugins (load first)
-- `10-*`: Core functionality plugins
-- `20-*`: Enhancement plugins
-- `99-*`: Debug/development plugins
-
----
-
-## Testing the Plugin
-
-To verify the workspace protection plugin is working:
+## Install and verify
 
 ```bash
-# Start the service installed by bin/install-opencode-service.sh
-sudo systemctl start opencode-jarvis.service
+# From the Jarvis checkout, with the V2 binary installed
+./bin/install-opencode-service.sh
 
-# Test via Jarvis (should be blocked)
-./jarvis-local
-> "Use OpenCode to edit the file ~/jarvis-voice/README.md"
-# Expected: ❌ BLOCKED error message
+# Refresh tracked plugin, service config, keys, and authentication
+./bin/update-opencode-service.sh
 
-# Test via Jarvis (should work)
-./jarvis-local
-> "Use OpenCode to create a test file in the workspace"
-# Expected: ✅ File created in ~/jarvis-workspace
+# Select a different source env explicitly
+./bin/update-opencode-service.sh config/local.env
+
+# Review startup/plugin failures
+journalctl -u opencode-jarvis.service -n 50 --no-pager
+
+# Deterministic integration tests; no provider call
+./tests/integration/test-opencode-integration.sh
+
+# Read-only configured V2/auth connectivity
+./tests/integration/test-opencode-integration.sh --health cloud
 ```
 
-Or test directly via OpenCode API (if you want to test without Jarvis):
+The install/update scripts check the actual running V2 service and plugin,
+rather than treating a config entry or a healthy HTTP listener as proof of
+plugin loading. Review the effective systemd unit when validating filesystem
+restrictions. Keep adversarial path tests deterministic and use disposable
+files; do not ask a live model to alter real system files to test the guard.
 
-```bash
-# This requires calling OpenCode API directly - see opencode docs
-curl -X POST http://localhost:4096/message \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "test-session",
-    "message": "Write a test file to /etc/test.txt"
-  }'
-# Expected: Error with plugin block message
-```
+Fresh installations seed global instructions from
+[`config/opencode.instructions.md.template`](../../../config/opencode.instructions.md.template)
+only when `~/.config/opencode/AGENTS.md` is absent. Existing global instructions
+remain unchanged.
 
----
-
-## Plugin Architecture
-
-```
-┌─────────────────────────────────────┐
-│ User: "Use OpenCode to do X"       │
-└──────────────┬──────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────┐
-│ Jarvis (orchestrator)               │
-│ - Routes to opencode.py tool        │
-└──────────────┬──────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────┐
-│ OpenCode Server (localhost:4096)    │
-│ - Loads plugins from this directory │
-│ - Executes task                     │
-│ - Plugins intercept tool calls      │
-└──────────────┬──────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────┐
-│ Plugin: tool.execute.before         │
-│ - Validates file paths              │
-│ - Blocks operations if needed       │
-│ - Returns error or allows           │
-└─────────────────────────────────────┘
-```
-
-**Key Point**: Plugins run INSIDE OpenCode, not in Jarvis. They are OpenCode's guardrails.
-
----
-
-## Adding New Plugins
-
-Create a new `.js` file in this directory:
-
-```javascript
-// ~/.config/opencode/plugin/10-my-plugin.js
-
-export const MyPlugin = async ({ project, client, $, directory, worktree }) => {
-  console.log("🔌 My Plugin loaded");
-
-  return {
-    // Hook into tool execution
-    "tool.execute.before": async (input, output) => {
-      // Validate or modify tool calls
-    },
-
-    // Hook into events
-    "event": async ({ event }) => {
-      // React to session events
-    },
-
-    // Add custom tools
-    "tool": {
-      my_custom_tool: {
-        description: "Does something useful",
-        args: { /* ... */ },
-        execute: async (args, ctx) => {
-          // Tool implementation
-        }
-      }
-    }
-  };
-};
-```
-
-See: https://opencode.ai/docs/plugins/
-
----
-
-## Troubleshooting
-
-**Plugin not loading?**
-- Check OpenCode logs: `tail -f ~/jarvis-voice/logs/opencode/opencode-*.jsonl`
-- Verify syntax: `node --check ~/.config/opencode/plugin/00-workspace-protection.js`
-- Restart OpenCode server: `sudo systemctl restart opencode-jarvis.service`
-
-**Plugin blocking valid operations?**
-- Check the error message for specific reason
-- Verify paths are absolute or relative to workspace
-- Ensure operation is within `~/jarvis-workspace`
-
-**Need to disable temporarily?**
-- Rename: `mv 00-workspace-protection.js 00-workspace-protection.js.disabled`
-- Restart OpenCode server
-
----
-
-## Future Plugins (Ideas)
-
-See: `~/jarvis-voice/docs/opencode/OPENCODE_PLUGIN_IDEAS.md`
-
-Candidates:
-- Docker sandbox for safe code execution
-- Smart port allocation
-- Environment file protection
-- Web research tools
-- Document processing tools
-
-**Decision**: Start simple with safety, add complexity only when needed.
-
----
-
-**Last Updated**: November 15, 2025
-**Maintainer**: Jarvis Dev Team
-**Architecture**: Jarvis (boss) → OpenCode (specialist) → Plugins (guardrails)
+For a new plugin, follow the upstream
+[V2 plugin API](https://opencode.ai/v2/docs/build/plugins) and
+[V1 plugin migration guide](https://opencode.ai/v2/docs/build/plugins/migrate-v1).
+The old plugin ideas/test reports elsewhere in this directory are historical
+V1 material, not current safety evidence.

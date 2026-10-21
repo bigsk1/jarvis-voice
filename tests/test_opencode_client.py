@@ -47,7 +47,7 @@ class OpenCodeClientTests(unittest.TestCase):
             values.update(config)
             return values.get(key, default)
 
-        with patch("opencode_client.requests.get", return_value=FakeResponse({"ok": True})), \
+        with patch("opencode_client.requests.get", return_value=FakeResponse({"version": "2.1.0"})), \
              patch("config_loader.get_config_value", side_effect=fake_get_config), \
              patch("opencode_client.OpenCodeLogger", return_value=MagicMock()):
             return OpenCodeClient(base_url="http://opencode.test")
@@ -55,13 +55,14 @@ class OpenCodeClientTests(unittest.TestCase):
     def test_create_session_includes_agent_mode_string(self):
         client = self._make_client()
 
-        with patch("opencode_client.requests.post", return_value=FakeResponse({"sessionId": "ses_123"})) as mock_post:
+        with patch("opencode_client.requests.post", return_value=FakeResponse({"data": {"id": "ses_123"}})) as mock_post, \
+             patch("opencode_client.get_jarvis_workspace", return_value=Path("/tmp/opencode-unit-workspace")):
             response = client.create_session(title="Jarvis: demo", agent_mode="build")
 
-        self.assertEqual(response["sessionId"], "ses_123")
+        self.assertEqual(response["id"], "ses_123")
         mock_post.assert_called_once_with(
-            "http://opencode.test/session",
-            json={"title": "Jarvis: demo", "agent": "build"},
+            "http://opencode.test/api/session",
+            json={"title": "Jarvis: demo", "agent": "build", "location": {"directory": "/tmp/opencode-unit-workspace"}},
             timeout=client.timeout,
         )
 
@@ -70,27 +71,28 @@ class OpenCodeClientTests(unittest.TestCase):
 
         with patch(
             "opencode_client.requests.post",
-            return_value=FakeResponse({"ok": True}),
-        ) as mock_post:
+            return_value=FakeResponse({"data": {"id": "msg_context", "type": "synthetic"}}),
+        ) as mock_post, patch("opencode_client.uuid.uuid4", return_value=MagicMock(hex="context")):
             client.send_message("ses_123", "context", no_reply=True)
 
         self.assertEqual(
             mock_post.call_args.kwargs["timeout"],
             client.NO_REPLY_TIMEOUT_SECONDS,
         )
-        self.assertTrue(mock_post.call_args.kwargs["json"]["noReply"])
+        self.assertFalse(mock_post.call_args.kwargs["json"]["resume"])
+        self.assertEqual(mock_post.call_args.args[0], "http://opencode.test/api/session/ses_123/synthetic")
 
-    def test_final_task_message_uses_configured_task_timeout(self):
+    def test_final_task_wait_uses_configured_task_timeout(self):
         client = self._make_client({"OPENCODE_TASK_TIMEOUT_SECONDS": "900"})
-
-        with patch(
-            "opencode_client.requests.post",
-            return_value=FakeResponse({"parts": [{"type": "text", "text": "done"}]}),
-        ) as mock_post:
+        with patch.object(client, "_post", side_effect=[
+            FakeResponse(None, 204),
+            FakeResponse({"data": {"id": "msg_input", "type": "user"}}),
+            FakeResponse(None, 204),
+        ]) as mock_post, patch("opencode_client.uuid.uuid4", return_value=MagicMock(hex="input")), patch.object(client, "_collect_final_response", return_value={"parts": [{"type": "text", "text": "done"}]}):
             client.send_message("ses_123", "build it")
-
         self.assertEqual(client.task_timeout, 900)
-        self.assertEqual(mock_post.call_args.kwargs["timeout"], 900)
+        self.assertTrue(890 < mock_post.call_args.kwargs["timeout"] <= 900)
+        self.assertEqual(mock_post.call_args.args[0], "/api/experimental/session/ses_123/wait")
 
     def test_invalid_task_timeout_uses_safe_default(self):
         client = self._make_client({"OPENCODE_TASK_TIMEOUT_SECONDS": "invalid"})
@@ -99,18 +101,19 @@ class OpenCodeClientTests(unittest.TestCase):
 
     def test_uses_basic_auth_when_server_password_is_configured(self):
         client = self._make_client({
-            "OPENCODE_SERVER_USERNAME": "jarvis",
+            "OPENCODE_SERVER_USERNAME": "opencode",
             "OPENCODE_SERVER_PASSWORD": "secret",
         })
 
-        with patch("opencode_client.requests.post", return_value=FakeResponse({"sessionId": "ses_123"})) as mock_post:
+        with patch("opencode_client.requests.post", return_value=FakeResponse({"data": {"id": "ses_123"}})) as mock_post, \
+             patch("opencode_client.get_jarvis_workspace", return_value=Path("/tmp/opencode-unit-workspace")):
             client.create_session(title="Jarvis: demo", agent_mode="build")
 
         mock_post.assert_called_once_with(
-            "http://opencode.test/session",
-            json={"title": "Jarvis: demo", "agent": "build"},
+            "http://opencode.test/api/session",
+            json={"title": "Jarvis: demo", "agent": "build", "location": {"directory": "/tmp/opencode-unit-workspace"}},
             timeout=client.timeout,
-            auth=("jarvis", "secret"),
+            auth=("opencode", "secret"),
         )
 
     def test_resolve_opencode_defaults_uses_catalog_when_model_unset(self):
@@ -139,7 +142,7 @@ class OpenCodeClientTests(unittest.TestCase):
             }
             return values.get(key, default)
 
-        with patch("opencode_client.requests.get", return_value=FakeResponse({"ok": True})), \
+        with patch("opencode_client.requests.get", return_value=FakeResponse({"version": "2.1.0"})), \
              patch("config_loader.get_config_value", side_effect=fake_get_config), \
              patch("opencode_client.get_provider_fallback_model", return_value="fixture-anthropic-model") as fallback, \
              patch("opencode_client.OpenCodeLogger", return_value=MagicMock()):
@@ -175,14 +178,14 @@ class OpenCodeClientTests(unittest.TestCase):
 
     def test_parses_multiline_sse_payloads(self):
         payloads = list(OpenCodeClient._iter_sse_payloads([
-            'event: message.part.updated',
-            'data: {"type":"session.status",',
-            'data: "properties":{"sessionID":"ses_123","status":{"type":"busy"}}}',
+            'event: session.execution.started',
+            'data: {"type":"session.execution.started",',
+            'data: "data":{"sessionID":"ses_123"}}',
             '',
         ]))
 
-        self.assertEqual(payloads[0]["type"], "session.status")
-        self.assertEqual(payloads[0]["properties"]["sessionID"], "ses_123")
+        self.assertEqual(payloads[0]["type"], "session.execution.started")
+        self.assertEqual(payloads[0]["data"]["sessionID"], "ses_123")
 
     def test_sse_read_timeout_exceeds_legacy_keepalive_interval(self):
         client = self._make_client()
@@ -196,9 +199,10 @@ class OpenCodeClientTests(unittest.TestCase):
             def raise_for_status(self):
                 return None
 
-            def iter_lines(self, decode_unicode=False):
+            def iter_lines(self, chunk_size=None, decode_unicode=False):
+                self.chunk_size = chunk_size
                 self.decode_unicode = decode_unicode
-                yield 'data: {"type":"server.connected","properties":{}}'
+                yield 'data: {"type":"server.connected","data":{}}'
                 yield ""
                 stop_event.set()
 
@@ -212,62 +216,29 @@ class OpenCodeClientTests(unittest.TestCase):
         self.assertGreater(mock_get.call_args.kwargs["timeout"][1], 30)
         self.assertTrue(event_queue.get_nowait()["_monitor_connected"])
 
-    def test_normalizes_live_tool_and_todo_progress_without_raw_output(self):
-        tool_progress = OpenCodeClient._normalize_progress_event(
-            {
-                "type": "message.part.updated",
-                "properties": {
-                    "sessionID": "ses_123",
-                    "part": {
-                        "type": "tool",
-                        "tool": "write",
-                        "state": {
-                            "status": "running",
-                            "input": {"filePath": "/home/boss/jarvis-workspace/temp/demo.py"},
-                        },
-                    },
-                },
+    def test_normalizes_v2_tool_progress_without_raw_output(self):
+        progress = OpenCodeClient._normalize_progress_event({
+            "id": "evt_tool", "created": 100,
+            "type": "session.tool.success",
+            "durable": {"aggregateID": "ses_123", "seq": 1, "version": 2},
+            "data": {
+                "sessionID": "ses_123", "assistantMessageID": "msg_assistant", "id": "call_123",
+                "executed": True, "content": [{"type": "text", "text": "PRIVATE RAW OUTPUT"}],
             },
-            "ses_123",
-        )
-        todo_progress = OpenCodeClient._normalize_progress_event(
-            {
-                "type": "todo.updated",
-                "properties": {
-                    "sessionID": "ses_123",
-                    "todos": [
-                        {"content": "Create the script", "status": "completed", "priority": "high"},
-                        {"content": "Run its tests", "status": "in_progress", "priority": "high"},
-                    ],
-                },
-            },
-            "ses_123",
-        )
+        }, "ses_123")
+        self.assertEqual(progress["phase"], "tool")
+        self.assertEqual(progress["tool_status"], "completed")
+        self.assertNotIn("PRIVATE RAW OUTPUT", str(progress))
 
-        self.assertEqual(tool_progress["phase"], "tool")
-        self.assertIn("workspace/temp/demo.py", tool_progress["status"])
-        self.assertNotIn("output", tool_progress)
-        self.assertEqual(todo_progress["status"], "OpenCode is working on: Run its tests")
-        self.assertEqual(todo_progress["progress"], 50)
-
-    def test_normalizes_pending_tool_state_for_poll_fallback(self):
-        progress = OpenCodeClient._normalize_progress_event(
-            {
-                "type": "message.part.updated",
-                "properties": {
-                    "sessionID": "ses_123",
-                    "part": {
-                        "type": "tool",
-                        "tool": "bash",
-                        "state": {"status": "pending", "input": {}},
-                    },
-                },
-            },
-            "ses_123",
-        )
-
-        self.assertEqual(progress["tool_status"], "pending")
-        self.assertEqual(progress["status"], "OpenCode: Running a command")
+    def test_normalizes_v2_tool_input_start(self):
+        progress = OpenCodeClient._normalize_progress_event({
+            "id": "evt_tool", "created": 100,
+            "type": "session.tool.input.started",
+            "durable": {"aggregateID": "ses_123", "seq": 1, "version": 1},
+            "data": {"sessionID": "ses_123", "assistantMessageID": "msg_assistant", "id": "call_123", "name": "bash"},
+        }, "ses_123")
+        self.assertEqual(progress["phase"], "tool")
+        self.assertIn("command", progress["status"])
 
     def test_progress_text_redacts_common_secret_shapes(self):
         cleaned = OpenCodeClient._clean_progress_text(
@@ -321,44 +292,16 @@ class OpenCodeClientTests(unittest.TestCase):
         )
 
     def test_normalizer_filters_other_sessions_and_surfaces_blockers(self):
-        other = OpenCodeClient._normalize_progress_event(
-            {
-                "type": "session.status",
-                "properties": {"sessionID": "ses_other", "status": {"type": "busy"}},
-            },
-            "ses_123",
-        )
-        blocked = OpenCodeClient._normalize_progress_event(
-            {
-                "type": "question.asked",
-                "properties": {
-                    "sessionID": "ses_123",
-                    "questions": [{"question": "Which port should I use?"}],
-                },
-            },
-            "ses_123",
-        )
-
+        other = OpenCodeClient._normalize_progress_event({
+            "type": "session.execution.started", "data": {"sessionID": "ses_other"},
+        }, "ses_123")
+        blocked = OpenCodeClient._normalize_progress_event({
+            "type": "form.created",
+            "data": {"form": {"id": "form_123", "sessionID": "ses_123", "title": "Which port should I use?", "fields": [{"key": "port", "type": "string", "title": "Which port should I use?"}]}},
+        }, "ses_123")
         self.assertIsNone(other)
         self.assertTrue(blocked["terminal"])
         self.assertIn("Which port", blocked["status"])
-
-    def test_normalizes_current_next_tool_success_without_exposing_result(self):
-        progress = OpenCodeClient._normalize_progress_event(
-            {
-                "type": "session.next.tool.success",
-                "properties": {
-                    "sessionID": "ses_123",
-                    "callID": "call_123",
-                    "result": {"stdout": "sensitive raw command output"},
-                },
-            },
-            "ses_123",
-        )
-
-        self.assertEqual(progress["tool_status"], "completed")
-        self.assertNotIn("result", progress)
-        self.assertNotIn("sensitive", progress["status"])
 
     def test_execute_task_forwards_progress_and_preserves_final_response(self):
         client = self._make_client()
@@ -457,11 +400,8 @@ class OpenCodeClientTests(unittest.TestCase):
             ready_event.set()
             event_queue.put(
                 {
-                    "type": "question.asked",
-                    "properties": {
-                        "sessionID": "ses_blocked",
-                        "questions": [{"question": "Which port should I use?"}],
-                    },
+                    "type": "form.created",
+                    "data": {"form": {"id": "form_123", "sessionID": "ses_blocked", "title": "Which port should I use?", "fields": [{"key": "port", "type": "string", "title": "Which port should I use?"}]}},
                 }
             )
 
@@ -498,8 +438,8 @@ class OpenCodeClientTests(unittest.TestCase):
             time.sleep(0.03)
             event_queue.put(
                 {
-                    "type": "session.error",
-                    "properties": {
+                    "type": "session.execution.failed",
+                    "data": {
                         "sessionID": "ses_final",
                         "error": {"message": "late stale error"},
                     },

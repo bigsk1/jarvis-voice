@@ -8,11 +8,14 @@ import json
 import os
 import queue
 import re
+import shlex
 import sys
 import threading
 import time
+import uuid
 from collections.abc import Callable, Iterable
 from typing import Any
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import requests
 from model_catalog import get_provider_fallback_model
@@ -73,6 +76,7 @@ class OpenCodeClient:
     HEARTBEAT_INTERVAL_SECONDS = 30
     NO_REPLY_TIMEOUT_SECONDS = 30
     DEFAULT_TASK_TIMEOUT_SECONDS = 900
+    MAX_PROGRESS_TOOL_CONTEXT = 128
 
     def __init__(self, base_url: str | None = None):
         """
@@ -89,10 +93,13 @@ class OpenCodeClient:
             except Exception:
                 base_url = "http://localhost:4096"
         
-        self.base_url = base_url
+        self.base_url = base_url.rstrip("/")
         self.timeout = 360  # Generic OpenCode API calls; final tasks use task_timeout.
         self.logger = OpenCodeLogger()
         self.active_session_id: str | None = None
+        self.active_input_id: str | None = None
+        self._pending_input_ids: dict[str, list[str]] = {}
+        self._cancelled_sessions: set[str] = set()
         
         # Load model config from environment
         try:
@@ -122,6 +129,8 @@ class OpenCodeClient:
             server_password = ""
             server_username = "opencode"
 
+        if server_username != "opencode":
+            raise ValueError("OpenCode 2 requires OPENCODE_SERVER_USERNAME=opencode; update Jarvis and the service environment together")
         self.auth = (server_username, server_password) if server_password else None
         
         self._verify_connection()
@@ -157,65 +166,106 @@ class OpenCodeClient:
         """Verify OpenCode server is accessible."""
         for attempt in range(max_retries):
             try:
-                response = self._get("/config", timeout=5)
-                if response.status_code == 200:
+                response = self._get("/api/info", timeout=5)
+                if response.status_code == 200 and str(response.json().get("version", "")).lstrip(
+                    "v"
+                ).startswith("2."):
                     return True
             except requests.exceptions.ConnectionError:
                 if attempt < max_retries - 1:
                     time.sleep(1)
                 else:
-                    print(f"⚠️  OpenCode server not reachable at {self.base_url}")
+                    print(f"⚠️  OpenCode server not reachable at {self.base_url}", file=sys.stderr)
                     return False
             except Exception as e:
-                print(f"⚠️  Error connecting to OpenCode: {e}")
+                print(f"⚠️  Error connecting to OpenCode: {e}", file=sys.stderr)
                 return False
         return False
 
     def health_check(self) -> dict[str, Any]:
         """Check OpenCode server health."""
         try:
-            response = self._get("/config", timeout=5)
+            response = self._get("/api/info", timeout=5)
             if response.status_code != 200:
                 return {"healthy": False, "status": "error"}
 
-            sessions_response = self._get("/session", timeout=5)
-            sessions = (
-                sessions_response.json() if sessions_response.status_code == 200 else []
-            )
+            info = response.json()
+            version = str(info.get("version", "")).lstrip("v")
+            if not version.startswith("2."):
+                return {
+                    "healthy": False,
+                    "status": "incompatible",
+                    "error": "Jarvis requires OpenCode 2; upgrade and restart the OpenCode service.",
+                }
 
             return {
                 "healthy": True,
                 "status": "running",
-                "active_sessions": len(sessions),
+                "version": version,
             }
         except Exception as e:
             return {"healthy": False, "status": "error", "error": str(e)}
 
     def create_session(
-        self,
-        title: str = "Jarvis Session",
-        agent_mode: str = "build"
+        self, title: str = "Jarvis Session", agent_mode: str = "build"
     ) -> dict[str, Any]:
         """Create a new OpenCode session."""
-        payload: dict[str, Any] = {"title": title}
+        payload: dict[str, Any] = {
+            "title": title,
+            "location": {"directory": str(get_jarvis_workspace().resolve())},
+        }
         if agent_mode:
             payload["agent"] = agent_mode
 
-        response = self._post("/session", json_payload=payload)
+        response = self._post("/api/session", json_payload=payload)
         response.raise_for_status()
-        return response.json()
+        return self._response_data(response, dict)
 
     def get_session(self, session_id: str) -> dict[str, Any]:
         """Get session information."""
-        response = self._get(f"/session/{session_id}")
+        response = self._get(f"/api/session/{quote(session_id, safe='')}")
         response.raise_for_status()
-        return response.json()
+        return self._response_data(response, dict)
 
     def list_sessions(self) -> list[dict[str, Any]]:
-        """List all sessions."""
-        response = self._get("/session")
+        """List all sessions, following V2 cursors in newest-first order."""
+        sessions: list[dict[str, Any]] = []
+        params: dict[str, Any] = {"order": "desc", "limit": 50}
+        seen_cursors: set[str] = set()
+        while True:
+            response = self._get("/api/session", params=params)
+            response.raise_for_status()
+            sessions.extend(self._response_data(response, list))
+            pagination = response.json().get("cursor")
+            if not isinstance(pagination, dict):
+                raise RuntimeError("Unexpected OpenCode 2 session pagination format")
+            cursor = pagination.get("next")
+            if cursor is None:
+                return sessions
+            if not isinstance(cursor, str) or not cursor or cursor in seen_cursors:
+                raise RuntimeError("Invalid or repeated OpenCode 2 session pagination cursor")
+            seen_cursors.add(cursor)
+            # The cursor carries its order; V2 rejects order plus cursor.
+            params = {"cursor": cursor, "limit": 50}
+
+    @staticmethod
+    def _response_data(response: Any, expected_type: type) -> Any:
+        """Unwrap V2 envelopes and reject HTML, receipts, or malformed responses."""
+        payload = response.json()
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, expected_type):
+            raise RuntimeError("Unexpected OpenCode 2 response format")
+        return data
+
+    def get_messages(self, session_id: str, *, limit: int = 20) -> list[dict[str, Any]]:
+        """Return native V2 messages, newest first."""
+        response = self._get(
+            f"/api/session/{quote(session_id, safe='')}/message",
+            params={"order": "desc", "limit": limit},
+            timeout=5,
+        )
         response.raise_for_status()
-        return response.json()
+        return self._response_data(response, list)
 
     def send_message(
         self,
@@ -231,32 +281,152 @@ class OpenCodeClient:
             provider_id = self.default_provider_id
         if model_id is None:
             model_id = self.default_model_id
-        
-        payload: dict[str, Any] = {"parts": [{"type": "text", "text": message}]}
 
+        self._check_cancelled(session_id)
+        session_path = f"/api/session/{quote(session_id, safe='')}"
         if no_reply:
-            payload["noReply"] = True
-        else:
-            payload["model"] = {"providerID": provider_id, "modelID": model_id}
+            input_id = "msg_" + uuid.uuid4().hex
+            self._pending_input_ids.setdefault(session_id, []).append(input_id)
+            try:
+                response = self._post(
+                    f"{session_path}/synthetic",
+                    json_payload={
+                        "id": input_id,
+                        "text": message,
+                        "resume": False,
+                        "delivery": "queue",
+                    },
+                    timeout=self.NO_REPLY_TIMEOUT_SECONDS,
+                )
+                response.raise_for_status()
+            finally:
+                self._check_cancelled(session_id, admitted_id=input_id)
+            receipt = self._response_data(response, dict)
+            if receipt.get("id") != input_id:
+                raise RuntimeError("OpenCode synthetic receipt did not match the submitted input")
+            return receipt
 
+        started = time.monotonic()
         response = self._post(
-            f"/session/{session_id}/message",
-            json_payload=payload,
-            timeout=(
-                self.NO_REPLY_TIMEOUT_SECONDS
-                if no_reply
-                else self.task_timeout
-            ),
+            f"{session_path}/model",
+            json_payload={"model": {"providerID": provider_id, "id": model_id}},
+            timeout=self.NO_REPLY_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
-        return response.json()
+        self._check_cancelled(session_id)
+        input_id = "msg_" + uuid.uuid4().hex
+        self.active_input_id = input_id
+        self._pending_input_ids.setdefault(session_id, []).append(input_id)
+        try:
+            response = self._post(
+                f"{session_path}/prompt",
+                json_payload={"id": input_id, "text": message, "delivery": "queue"},
+                timeout=self.NO_REPLY_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+        finally:
+            self._check_cancelled(session_id, admitted_id=input_id)
+        receipt = self._response_data(response, dict)
+        if receipt.get("id") != input_id or receipt.get("type") != "user":
+            raise RuntimeError("OpenCode did not return a durable prompt receipt")
+        remaining = self.task_timeout - (time.monotonic() - started)
+        if remaining <= 0:
+            raise TimeoutError("OpenCode task deadline reached")
+        response = self._post(
+            f"/api/experimental/session/{quote(session_id, safe='')}/wait", timeout=remaining
+        )
+        response.raise_for_status()
+        self._check_cancelled(session_id)
+        result = self._collect_final_response(session_id, input_id)
+        self._pending_input_ids.pop(session_id, None)
+        return result
+
+    def _check_cancelled(self, session_id: str, admitted_id: str | None = None) -> None:
+        """Prevent a slow request from admitting work after its owner cancelled."""
+        if session_id not in getattr(self, "_cancelled_sessions", set()):
+            return
+        if admitted_id:
+            # Cancellation may have raced the HTTP admission. Reconcile the
+            # known ID once the server acknowledges it; never resubmit it.
+            pending = self._pending_input_ids.setdefault(session_id, [])
+            if admitted_id not in pending:
+                pending.append(admitted_id)
+            self.abort_session(session_id)
+        raise RuntimeError("OpenCode task was cancelled")
+
+    def _collect_final_response(self, session_id: str, input_id: str) -> dict[str, Any]:
+        """Collect only completed output after this prompt, never an older answer."""
+        path = f"/api/session/{quote(session_id, safe='')}/message"
+        params: dict[str, Any] = {"order": "desc", "limit": 100}
+        newest_assistant = None
+        outcome = None
+        seen_cursors: set[str] = set()
+        while True:
+            response = self._get(path, params=params, timeout=5)
+            response.raise_for_status()
+            messages = self._response_data(response, list)
+            for item in messages:
+                if item.get("id") == input_id:
+                    if outcome != "succeeded":
+                        raise RuntimeError(
+                            f"OpenCode execution {outcome or 'has no confirmed completion'}"
+                        )
+                    if not newest_assistant or not self._has_usable_final_response(
+                        newest_assistant
+                    ):
+                        raise RuntimeError("OpenCode finished without a usable assistant answer")
+                    # Keep the established Jarvis result shape; provider replay data
+                    # and hidden reasoning are not required by the caller.
+                    return {
+                        "info": {
+                            k: newest_assistant[k]
+                            for k in ("id", "type", "time", "model", "finish")
+                            if k in newest_assistant
+                        },
+                        "parts": [
+                            {"type": "text", "text": part["text"]}
+                            for part in newest_assistant.get("content", [])
+                            if part.get("type") == "text" and isinstance(part.get("text"), str)
+                        ],
+                    }
+                if item.get("type") == "idle" and outcome is None:
+                    outcome = item.get("outcome")
+                    if outcome != "succeeded":
+                        raise RuntimeError(
+                            self._error_message(
+                                item.get("error") or f"OpenCode execution {outcome}"
+                            )
+                        )
+                if item.get("type") == "user":
+                    raise RuntimeError(
+                        "OpenCode session received concurrent input; inspect the session before continuing"
+                    )
+                if item.get("type") == "assistant" and newest_assistant is None:
+                    if item.get("error"):
+                        raise RuntimeError(self._error_message(item["error"]))
+                    if item.get("time", {}).get("completed"):
+                        newest_assistant = item
+            cursor = response.json().get("cursor", {}).get("next")
+            if not cursor or cursor in seen_cursors:
+                raise RuntimeError(
+                    "OpenCode prompt delivery could not be confirmed; no previous answer was reused"
+                )
+            seen_cursors.add(cursor)
+            params = {"cursor": cursor, "limit": 100}
 
     @staticmethod
-    def _iter_sse_payloads(lines: Iterable[str | bytes]) -> Iterable[dict[str, Any]]:
+    def _iter_sse_payloads(
+        lines: Iterable[str | bytes],
+        stop_event: threading.Event | None = None,
+    ) -> Iterable[dict[str, Any]]:
         """Yield decoded JSON payloads from a Server-Sent Events line stream."""
         data_lines: list[str] = []
 
         for raw_line in lines:
+            # V2 sends comment-only keepalives. Observe cancellation even when
+            # there is no JSON event to yield to the outer consumer.
+            if stop_event is not None and stop_event.is_set():
+                return
             line = (
                 raw_line.decode("utf-8", errors="replace")
                 if isinstance(raw_line, bytes)
@@ -290,15 +460,12 @@ class OpenCodeClient:
         ready_event: threading.Event,
     ) -> None:
         """Continuously read OpenCode's SSE feed until the supervised call ends."""
-        workspace = str(get_jarvis_workspace().resolve())
-
         while not stop_event.is_set():
             response = None
             try:
                 response = self._get(
-                    "/event",
+                    "/api/event",
                     timeout=(5, self.SSE_READ_TIMEOUT_SECONDS),
-                    params={"directory": workspace},
                     headers={"Accept": "text/event-stream"},
                     stream=True,
                 )
@@ -306,7 +473,8 @@ class OpenCodeClient:
                 ready_event.set()
                 event_queue.put({"_monitor_connected": True})
                 for payload in self._iter_sse_payloads(
-                    response.iter_lines(decode_unicode=True)
+                    response.iter_lines(chunk_size=1, decode_unicode=True),
+                    stop_event=stop_event,
                 ):
                     if stop_event.is_set():
                         break
@@ -328,31 +496,71 @@ class OpenCodeClient:
             return ""
         text = re.sub(r"\s+", " ", value).strip()
         text = "".join(char for char in text if char.isprintable())
+        secret_value = r'''(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s;&"']+)'''
         text = re.sub(
-            r"(?i)\b(authorization\s*[:=]\s*(?:bearer\s+)?)([^\s;&]+)",
+            r"(?i)\b(authorization\s*[:=]\s*)(?:[a-z][a-z0-9_-]*\s+)?" + secret_value,
             r"\1[redacted]",
             text,
         )
         text = re.sub(
             r"(?i)\b((?:[a-z0-9]+[_-])*(?:api[_-]?key|token|password|"
             r"secret(?:[_-]?access[_-]?key)?|access[_-]?key(?:[_-]?id)?))"
-            r"\s*[:=]\s*([^\s;&]+)",
+            r'''["']?\s*[:=]\s*''' + secret_value,
             r"\1=[redacted]",
             text,
         )
         text = re.sub(
-            r"(?i)(--(?:api[_-]?key|token|password|secret))\s+([^\s;&]+)",
+            r"(?i)((?:--(?:[a-z0-9]+[-_])*(?:api[_-]?key|token|password|secret)|--user))(?:\s+|=)" + secret_value,
             r"\1 [redacted]",
             text,
         )
+        text = re.sub(r"(?<!\S)(-u)\s*" + secret_value, r"\1 [redacted]", text)
         text = re.sub(r"\b(?:sk|xai)-[A-Za-z0-9_-]{8,}", "[redacted]", text)
+        def safe_url(match: re.Match[str]) -> str:
+            try:
+                url = urlsplit(match.group(0))
+                host = url.netloc.rsplit("@", 1)[-1]
+                return urlunsplit((url.scheme, host, url.path, "", ""))
+            except ValueError:
+                return "[url]"
+
+        text = re.sub(r'''https?://[^\s'"<>]+''', safe_url, text)
         if len(text) > max_chars:
             text = text[: max_chars - 3].rstrip() + "..."
         return text
 
+    @classmethod
+    def _command_progress_text(cls, value: Any) -> str:
+        """Display only a bounded command line, excluding embedded script bodies."""
+        if not isinstance(value, str) or not value.strip():
+            return ""
+        first_line = value.strip().splitlines()[0]
+        try:
+            shlex.split(first_line)
+        except ValueError:
+            program = cls._clean_progress_text(first_line.split(None, 1)[0], 80)
+            return f"{program} [arguments omitted]"
+        # Request payloads and arbitrary headers can contain credentials without
+        # recognizable names. Their values do not belong in a progress preview.
+        shell_argument = r'''(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\\.|[^\s;&"'\\])+'''
+        first_line = re.sub(
+            r"(?i)(?<!\S)(--(?:header|cookie|data(?:-raw|-binary|-urlencode|-ascii)?|form(?:-string)?|json|user|proxy-user)|-[HbdFuU])(?:\s+|=)?" + shell_argument,
+            r"\1 [redacted]",
+            first_line,
+        )
+        if "<<" in first_line:
+            first_line = first_line.split("<<", 1)[0].rstrip() + " [inline script]"
+        if re.search(r"(?i)\b(?:python[0-9.]*|node|ruby|perl|bash|sh|zsh|powershell|pwsh|cmd(?:\.exe)?)\b", first_line):
+            first_line = re.sub(
+                r'''(?i)(\s(?:-[a-z]*[ce][a-z]*|--eval|--command|-command|/c))(?=\s|=|['"$]|$).*''',
+                r"\1 [inline code]",
+                first_line,
+            )
+        return cls._clean_progress_text(first_line, 140)
+
     @staticmethod
     def _event_session_id(event: dict[str, Any]) -> str | None:
-        properties = event.get("properties")
+        properties = event.get("data", event.get("properties"))
         if not isinstance(properties, dict):
             properties = {}
         part = properties.get("part")
@@ -365,6 +573,7 @@ class OpenCodeClient:
             or part.get("sessionId")
             or event.get("sessionID")
             or event.get("sessionId")
+            or (properties.get("form") or {}).get("sessionID")
         )
 
     @classmethod
@@ -381,14 +590,18 @@ class OpenCodeClient:
         )
 
     @classmethod
-    def _tool_progress_message(
+    def _tool_progress_title(
         cls,
         tool_name: str,
         state: dict[str, Any],
     ) -> str:
-        status = state.get("status", "running")
         title = cls._clean_progress_text(state.get("title"))
         inputs = state.get("input") if isinstance(state.get("input"), dict) else {}
+
+        if not title:
+            command = cls._command_progress_text(inputs.get("command"))
+            if command:
+                title = f"Running command: {command}"
 
         if not title:
             raw_path = next(
@@ -428,8 +641,21 @@ class OpenCodeClient:
             }
             title = friendly_tools.get(tool_name.lower(), f"Running {tool_name}")
 
+        return title
+
+    @classmethod
+    def _tool_progress_message(cls, tool_name: str, state: dict[str, Any]) -> str:
+        title = cls._tool_progress_title(tool_name, state)
+        status = state.get("status", "running")
+        metadata = state.get("metadata") if isinstance(state.get("metadata"), dict) else {}
         if status == "completed":
-            return f"OpenCode finished: {title}"
+            detail = re.sub(r"^Running command: ", "Command: ", title)
+            if metadata.get("status") == "running":
+                return f"OpenCode: Command running in background — {detail}"
+            exit_code = metadata.get("exit")
+            if isinstance(exit_code, (int, float)) and exit_code != 0:
+                return f"OpenCode command exited with status {exit_code:g} — task continues: {detail}"
+            return f"OpenCode step complete — continuing: {detail}"
         if status == "error":
             error = cls._clean_progress_text(state.get("error"), max_chars=180)
             suffix = f": {error}" if error else ""
@@ -441,6 +667,7 @@ class OpenCodeClient:
         cls,
         event: dict[str, Any],
         session_id: str,
+        tool_context: dict[tuple[str, str, str], dict[str, Any]] | None = None,
     ) -> dict[str, Any] | None:
         """Convert raw OpenCode events into safe, useful Jarvis progress phases."""
         payload = event.get("payload")
@@ -448,7 +675,7 @@ class OpenCodeClient:
             event = payload
 
         event_type = event.get("type")
-        properties = event.get("properties")
+        properties = event.get("data", event.get("properties"))
         if not isinstance(properties, dict):
             properties = {}
 
@@ -463,6 +690,90 @@ class OpenCodeClient:
             "event_type": event_type,
         }
 
+        if event_type in {
+            "session.tool.input.started",
+            "session.tool.called",
+            "session.tool.progress",
+            "session.tool.success",
+            "session.tool.failed",
+        }:
+            call_id = properties.get("id")
+            assistant_id = properties.get("assistantMessageID")
+            key = (session_id, str(assistant_id or ""), str(call_id or ""))
+            cached = tool_context.get(key, {}) if tool_context is not None and call_id else {}
+            name = cls._clean_progress_text(properties.get("name"), 60) or cached.get("name") or "coding step"
+            status = {
+                "session.tool.input.started": "pending",
+                "session.tool.called": "running",
+                "session.tool.progress": "running",
+                "session.tool.success": "completed",
+                "session.tool.failed": "error",
+            }[event_type]
+            state = {
+                "status": status,
+                "input": properties.get("input", {}),
+                "error": cls._error_message(properties["error"]) if properties.get("error") else "",
+            }
+            if not properties.get("input") and cached.get("title"):
+                state["title"] = cached["title"]
+            metadata = properties.get("metadata")
+            safe_metadata = {}
+            if isinstance(metadata, dict):
+                if metadata.get("status") in {"running", "completed"}:
+                    safe_metadata["status"] = metadata["status"]
+                if isinstance(metadata.get("exit"), (int, float)):
+                    safe_metadata["exit"] = metadata["exit"]
+            state["metadata"] = safe_metadata
+            if tool_context is not None and call_id:
+                tool_context[key] = {"name": name, "title": cls._tool_progress_title(name, state)}
+                while len(tool_context) > cls.MAX_PROGRESS_TOOL_CONTEXT:
+                    tool_context.pop(next(iter(tool_context)))
+            return {
+                **base,
+                "phase": "tool",
+                "status": cls._tool_progress_message(name, state),
+                "opencode_tool": name,
+                "tool_status": "running" if status == "completed" and safe_metadata.get("status") == "running" else status,
+                "call_id": call_id,
+                "assistant_message_id": assistant_id,
+            }
+
+        if event_type == "session.retry.scheduled":
+            return {
+                **base,
+                "phase": "retry",
+                "status": f"OpenCode is retrying provider work (attempt {properties.get('attempt', 1)}): {cls._error_message(properties.get('error'))}",
+            }
+
+        if event_type == "session.execution.started":
+            return {
+                **base,
+                "phase": "running",
+                "status": "OpenCode is actively working on the task",
+            }
+
+        if event_type in {"session.execution.failed", "session.execution.interrupted"}:
+            detail = cls._error_message(
+                properties.get("error") or properties.get("reason") or "execution failed"
+            )
+            return {
+                **base,
+                "phase": "error",
+                "status": f"OpenCode stopped with an issue: {detail}",
+                "terminal": True,
+            }
+
+        if event_type == "form.created":
+            form = properties.get("form") or {}
+            detail = cls._clean_progress_text(form.get("title"), 180)
+            suffix = f": {detail}" if detail else ""
+            return {
+                **base,
+                "phase": "blocked",
+                "status": f"OpenCode needs an answer before it can continue{suffix}",
+                "terminal": True,
+            }
+
         if event_type == "message.part.updated":
             part = properties.get("part")
             if not isinstance(part, dict):
@@ -473,15 +784,24 @@ class OpenCodeClient:
                 if not isinstance(state, dict):
                     return None
                 tool_status = state.get("status")
-                if tool_status not in {"pending", "running", "completed", "error"}:
+                if tool_status not in {"pending", "streaming", "running", "completed", "error"}:
                     return None
                 opencode_tool = cls._clean_progress_text(part.get("tool"), 60) or "tool"
+                call_id = part.get("id")
+                assistant_id = properties.get("assistantMessageID")
+                if tool_context is not None and call_id:
+                    key = (session_id, str(assistant_id or ""), str(call_id))
+                    tool_context[key] = {"name": opencode_tool, "title": cls._tool_progress_title(opencode_tool, state)}
+                    while len(tool_context) > cls.MAX_PROGRESS_TOOL_CONTEXT:
+                        tool_context.pop(next(iter(tool_context)))
                 return {
                     **base,
                     "phase": "tool",
                     "status": cls._tool_progress_message(opencode_tool, state),
                     "opencode_tool": opencode_tool,
-                    "tool_status": tool_status,
+                    "tool_status": "running" if tool_status == "completed" and isinstance(state.get("metadata"), dict) and state["metadata"].get("status") == "running" else tool_status,
+                    "call_id": call_id,
+                    "assistant_message_id": assistant_id,
                 }
             if part_type == "retry":
                 attempt = int(part.get("attempt") or 0) + 1
@@ -497,7 +817,9 @@ class OpenCodeClient:
             opencode_tool = cls._clean_progress_text(properties.get("tool"), 60) or "tool"
             state = {
                 "status": "running",
-                "input": properties.get("input") if isinstance(properties.get("input"), dict) else {},
+                "input": properties.get("input")
+                if isinstance(properties.get("input"), dict)
+                else {},
             }
             return {
                 **base,
@@ -528,7 +850,7 @@ class OpenCodeClient:
             return {
                 **base,
                 "phase": "tool",
-                "status": "OpenCode finished a coding step",
+                "status": "OpenCode step complete — continuing",
                 "tool_status": "completed",
             }
 
@@ -545,9 +867,7 @@ class OpenCodeClient:
                 None,
             )
             completed = sum(
-                1
-                for todo in todos
-                if isinstance(todo, dict) and todo.get("status") == "completed"
+                1 for todo in todos if isinstance(todo, dict) and todo.get("status") == "completed"
             )
             total = sum(1 for todo in todos if isinstance(todo, dict))
             progress = int((completed / total) * 100) if total else None
@@ -592,9 +912,7 @@ class OpenCodeClient:
             "permission.v2.asked",
         }:
             permission = cls._clean_progress_text(
-                properties.get("permission")
-                or properties.get("action")
-                or properties.get("type"),
+                properties.get("permission") or properties.get("action") or properties.get("type"),
                 100,
             )
             suffix = f" for {permission}" if permission else ""
@@ -634,7 +952,7 @@ class OpenCodeClient:
             return {
                 **base,
                 "phase": "finishing",
-                "status": "OpenCode finished its work and is preparing the result",
+                "status": "OpenCode is preparing the task result",
             }
 
         return None
@@ -649,6 +967,9 @@ class OpenCodeClient:
         elapsed = max(0, int(elapsed_seconds))
         minutes, seconds = divmod(elapsed, 60)
         elapsed_text = f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
+
+        if last_substantive_progress and last_substantive_progress.get("tool_status") in {"completed", "error"}:
+            return f"OpenCode is working on the next step ({elapsed_text} elapsed)"
 
         detail = ""
         if (
@@ -694,59 +1015,51 @@ class OpenCodeClient:
             result.get("content")
         )
 
-    def _poll_session_progress(self, session_id: str) -> dict[str, Any] | None:
-        """Recover useful progress when the SSE connection is unavailable."""
+    def _poll_session_progress(
+        self,
+        session_id: str,
+        tool_context: dict[tuple[str, str, str], dict[str, Any]] | None = None,
+    ) -> dict[str, Any] | None:
+        """Recover tool progress and persisted blockers after missed SSE events."""
         try:
-            todo_response = self._get(
-                f"/session/{session_id}/todo",
-                timeout=3,
-            )
-            if todo_response.status_code == 200:
-                progress = self._normalize_progress_event(
-                    {
-                        "type": "todo.updated",
-                        "properties": {
-                            "sessionID": session_id,
-                            "todos": todo_response.json(),
+            path = f"/api/session/{quote(session_id, safe='')}"
+            for suffix, message in (
+                ("permission", "OpenCode is blocked waiting for permission"),
+                ("form", "OpenCode needs an answer before it can continue"),
+            ):
+                response = self._get(f"{path}/{suffix}", timeout=3)
+                response.raise_for_status()
+                if self._response_data(response, list):
+                    return {
+                        "session_id": session_id,
+                        "event_type": f"jarvis.poll.{suffix}",
+                        "phase": "blocked",
+                        "status": message,
+                        "terminal": True,
+                        "source": "poll",
+                    }
+            for message in self.get_messages(session_id):
+                if message.get("type") == "idle":
+                    break
+                for part in reversed(message.get("content", [])):
+                    if part.get("type") != "tool":
+                        continue
+                    progress = self._normalize_progress_event(
+                        {
+                            "type": "message.part.updated",
+                            "properties": {
+                                "sessionID": session_id,
+                                "assistantMessageID": message.get("id"),
+                                "part": {**part, "tool": part.get("name")},
+                            },
                         },
-                    },
-                    session_id,
-                )
-                if progress:
-                    progress["source"] = "poll"
-                    return progress
-
-            messages_response = self._get(
-                f"/session/{session_id}/message",
-                timeout=3,
-                params={"limit": 20},
-            )
-            if messages_response.status_code == 200:
-                messages = messages_response.json()
-                if isinstance(messages, list):
-                    for message in reversed(messages):
-                        if not isinstance(message, dict):
-                            continue
-                        parts = message.get("parts")
-                        if not isinstance(parts, list):
-                            continue
-                        for part in reversed(parts):
-                            if not isinstance(part, dict) or part.get("type") != "tool":
-                                continue
-                            progress = self._normalize_progress_event(
-                                {
-                                    "type": "message.part.updated",
-                                    "properties": {
-                                        "sessionID": session_id,
-                                        "part": part,
-                                    },
-                                },
-                                session_id,
-                            )
-                            if progress:
-                                progress["source"] = "poll"
-                                return progress
-        except Exception:
+                        session_id,
+                        tool_context=tool_context,
+                    )
+                    if progress:
+                        progress["source"] = "poll"
+                        return progress
+        except (requests.RequestException, ValueError, RuntimeError):
             return None
         return None
 
@@ -784,6 +1097,8 @@ class OpenCodeClient:
         terminal_issue: str | None = None
         abort_requested = False
         busy_emitted = False
+        tool_context: dict[tuple[str, str, str], dict[str, Any]] = {}
+        seen_tool_progress: dict[tuple[str, str], tuple[Any, ...]] = {}
 
         def publish(progress: dict[str, Any]) -> None:
             nonlocal last_signature, last_substantive_progress, last_progress_at, busy_emitted
@@ -799,7 +1114,19 @@ class OpenCodeClient:
                 progress.get("status"),
                 progress.get("tool_status"),
                 progress.get("progress"),
+                progress.get("call_id"),
+                progress.get("assistant_message_id"),
             )
+            if progress.get("phase") == "tool" and progress.get("call_id"):
+                key = (str(progress.get("assistant_message_id") or ""), str(progress["call_id"]))
+                previous = seen_tool_progress.get(key)
+                if previous == signature:
+                    return
+                if previous and previous[2] in {"completed", "error"} and progress.get("tool_status") not in {"completed", "error"}:
+                    return
+                seen_tool_progress[key] = signature
+                while len(seen_tool_progress) > self.MAX_PROGRESS_TOOL_CONTEXT:
+                    seen_tool_progress.pop(next(iter(seen_tool_progress)))
             if signature == last_signature:
                 return
             last_signature = signature
@@ -854,7 +1181,7 @@ class OpenCodeClient:
                 elif isinstance(raw_event, dict):
                     stream_healthy = True
                     sse_connected = True
-                    progress = self._normalize_progress_event(raw_event, session_id)
+                    progress = self._normalize_progress_event(raw_event, session_id, tool_context=tool_context)
                     if progress:
                         publish(progress)
                         if progress.get("terminal") and not terminal_issue:
@@ -869,10 +1196,12 @@ class OpenCodeClient:
                 poll_needed = not stream_healthy or now - last_progress_at >= poll_interval
                 if poll_needed and now - last_poll_at >= poll_interval:
                     last_poll_at = now
-                    polled = self._poll_session_progress(session_id)
+                    polled = self._poll_session_progress(session_id, tool_context=tool_context)
                     if polled:
                         poll_used = True
                         publish(polled)
+                        if polled.get("terminal") and not terminal_issue:
+                            terminal_issue = polled.get("status") or "OpenCode stopped"
 
                 if (
                     now - last_progress_at >= self.HEARTBEAT_INTERVAL_SECONDS
@@ -894,6 +1223,9 @@ class OpenCodeClient:
                 if terminal_issue and not abort_requested:
                     abort_requested = True
                     self.abort_session(session_id)
+                    raise RuntimeError(terminal_issue)
+                if now - request_started_at >= self.task_timeout:
+                    raise TimeoutError("OpenCode task deadline reached")
 
             if "error" in request_result:
                 raise request_result["error"]
@@ -907,7 +1239,7 @@ class OpenCodeClient:
                 except queue.Empty:
                     break
                 if isinstance(raw_event, dict) and not raw_event.get("_monitor_error"):
-                    progress = self._normalize_progress_event(raw_event, session_id)
+                    progress = self._normalize_progress_event(raw_event, session_id, tool_context=tool_context)
                     if progress:
                         if progress.get("terminal") and has_usable_final:
                             continue
@@ -1016,6 +1348,12 @@ You are executing tasks on behalf of Jarvis. The user spoke to Jarvis via voice,
 
 **IMPORTANT**: You are responding to Jarvis (a powerful LLM), NOT directly to the user. Jarvis will translate your response into natural language for voice output.
 
+## Execution Environment
+- OpenCode runs on its service host, which may differ from the Jarvis host or the user's browser machine.
+- Inspect the operating system, distribution, and available tools on that host; do not assume another machine's environment applies.
+- Treat execution as headless unless the task explicitly provides a graphical display.
+- For GUI projects, create the code and run headless compilation, import checks, or self-tests. Explain that a graphical run belongs on a machine with a display.
+
 ## Response Style
 - **Skip lengthy introductions** unless specifically asked "what can you do?"
 - **Get straight to work** on the task at hand
@@ -1037,17 +1375,18 @@ You are executing tasks on behalf of Jarvis. The user spoke to Jarvis via voice,
    - This is Jarvis's codebase - READ ONLY
    - If asked to modify Jarvis code, refuse and explain it's protected
 
-2. **ALL file operations MUST be in `{_ws_str}`**
+2. **ALL file writes MUST be in `{_ws_str}`**
    - Your workspace root: `{_ws_str}`
    - Projects: `{_proj_str}/`
    - Temp files: `{_temp_str}/`
    - Deployments: `{_dep_str}/`
    - Do not use `/tmp`; use `{_temp_str}/` for scratch files, temporary scripts, test artifacts, and command output.
 
-3. **If asked to work outside workspace:**
-   - Politely refuse
-   - Explain the security boundary
-   - Suggest alternative in workspace
+3. **Source files outside the workspace may be read when needed for the task.**
+   - Keep those sources read-only, including the Jarvis checkout.
+   - If asked to modify files outside the workspace, refuse and suggest a workspace copy.
+   - The native systemd service limits host writes for shell commands and Code Mode too.
+   - OpenCode's required data/state directories and private temporary storage are shared writable exceptions, not project output locations. Do not modify them directly.
 
 **Working directory will be specified in context**
 
@@ -1085,7 +1424,8 @@ Remember: Your response goes to Jarvis, who will intelligently format it for voi
 ## Workspace
 Your workspace root: `{_ws_str}`
 
-All file operations must be within this directory. DO NOT access `{_repo_str}`.
+Keep all created or modified files within this directory. Source files elsewhere,
+including `{_repo_str}`, are read-only and may be inspected when relevant to the task.
 
 ## Task Context
 {json.dumps(context, indent=2)}"""
@@ -1126,21 +1466,15 @@ All file operations must be within this directory. DO NOT access `{_repo_str}`.
                 }
             )
             progress_transport = None
-            if progress_callback:
-                result, progress_transport = self._send_message_with_progress(
-                    session_id=session_id,
-                    message=task,
-                    provider_id=model["providerID"],
-                    model_id=model["modelID"],
-                    progress_callback=report_progress,
-                )
-            else:
-                result = self.send_message(
-                    session_id=session_id,
-                    message=task,
-                    provider_id=model["providerID"],
-                    model_id=model["modelID"],
-                )
+            # Supervise even when a caller does not display progress, so an
+            # unattended permission/form request never becomes a hidden stall.
+            result, progress_transport = self._send_message_with_progress(
+                session_id=session_id,
+                message=task,
+                provider_id=model["providerID"],
+                model_id=model["modelID"],
+                progress_callback=report_progress,
+            )
             msg_duration = (time.time() - msg_start_time) * 1000
             
             # Log response
@@ -1175,10 +1509,16 @@ All file operations must be within this directory. DO NOT access `{_repo_str}`.
                 "progress_transport": progress_transport,
             }
         except Exception as e:
-            if session_id and isinstance(
-                e,
-                (requests.exceptions.Timeout, TimeoutError),
+            if (
+                session_id
+                and session_id not in self._cancelled_sessions
+                and (
+                    isinstance(e, (requests.RequestException, TimeoutError))
+                    or self._pending_input_ids.get(session_id)
+                )
             ):
+                # An HTTP failure can occur after the server accepted work.
+                # Reconcile owned input IDs instead of leaving paid work alive.
                 self.abort_session(session_id)
             report_progress(
                 {
@@ -1208,15 +1548,28 @@ All file operations must be within this directory. DO NOT access `{_repo_str}`.
 
     def get_providers(self) -> dict[str, Any]:
         """Get available LLM providers and models."""
-        response = self._get("/config/providers")
+        response = self._get("/api/provider")
         response.raise_for_status()
-        return response.json()
+        return {"providers": self._response_data(response, list)}
 
     def abort_session(self, session_id: str) -> bool:
         """Abort a running session."""
+        if not hasattr(self, "_cancelled_sessions"):
+            self._cancelled_sessions = set()
+        self._cancelled_sessions.add(session_id)
         try:
-            response = self._post(f"/session/{session_id}/abort", timeout=5)
+            path = f"/api/session/{quote(session_id, safe='')}"
+            # Interrupt with resume=false so pending work is not automatically
+            # restarted. Remove our own queued input if it was never delivered.
+            response = self._post(f"{path}/interrupt?resume=false", timeout=5)
             response.raise_for_status()
+            for input_id in self._pending_input_ids.pop(session_id, []):
+                response = requests.delete(
+                    f"{self.base_url}{path}/inbox/{quote(input_id, safe='')}",
+                    **self._request_kwargs(5),
+                )
+                if response.status_code != 404:
+                    response.raise_for_status()
             return True
         except Exception as e:
             print(f"Failed to abort session: {e}", file=sys.stderr)

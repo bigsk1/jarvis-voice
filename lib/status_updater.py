@@ -6,25 +6,25 @@ Provides real-time voice feedback without blocking task execution.
 Handles rate limiting, error deduplication, and collision prevention.
 """
 
+import contextvars
 import os
 import re
 import signal
-import sys
-import time
-import threading
 import subprocess
-import contextvars
+import sys
+import threading
+import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
 
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import get_config_value, get_int
-from status_phrases import StatusPhrases
-from status_llm import StatusSummarizer
 from status_activity_logger import log_status_event
+from status_llm import StatusSummarizer
+from status_phrases import StatusPhrases
 
 
 class StatusUpdater:
@@ -827,49 +827,62 @@ class StatusUpdater:
             Context string with recent activity, or None
         """
         try:
+            from urllib.parse import quote
+
             import requests
+            from opencode_client import OpenCodeClient
+
             opencode_url = get_config_value('OPENCODE_BASE_URL', 'http://localhost:4096')
             server_password = get_config_value('OPENCODE_SERVER_PASSWORD', '').strip()
             server_username = get_config_value('OPENCODE_SERVER_USERNAME', 'opencode').strip() or 'opencode'
+            if server_username != 'opencode':
+                # V2's server accepts the fixed Basic-auth username only.
+                return None
 
             request_kwargs: dict[str, Any] = {'timeout': 3}
             if server_password:
                 request_kwargs['auth'] = (server_username, server_password)
             
             response = requests.get(
-                f'{opencode_url}/session/{session_id}',
+                f'{opencode_url.rstrip("/")}/api/session/{quote(session_id, safe="")}/message',
+                params={'order': 'desc', 'limit': '3'},
                 **request_kwargs,
             )
             
             if response.status_code != 200:
                 return None
             
-            session = response.json()
-            
-            # Extract recent messages/activity
-            messages = session.get('messages', [])
-            if not messages:
+            payload = response.json()
+            messages = payload.get('data') if isinstance(payload, dict) else None
+            if not isinstance(messages, list):
                 return None
-            
-            # Get last 2-3 messages for context
-            recent = messages[-3:]
+
+            # V2 metadata is separate from the projected message timeline. The
+            # server returns newest first; present this bounded page in order.
             context_parts = []
-            
-            for msg in recent:
-                # Extract meaningful content
-                if msg.get('type') == 'tool_call':
-                    tool = msg.get('tool', {})
-                    context_parts.append(f"Running: {tool.get('name', 'tool')}")
-                elif msg.get('type') == 'tool_result':
-                    result = msg.get('result', '')
-                    if isinstance(result, str):
-                        context_parts.append(result[:200])
-                elif msg.get('content'):
-                    content = msg.get('content', '')
-                    if isinstance(content, str):
-                        context_parts.append(content[:200])
-            
-            return '\n'.join(context_parts) if context_parts else None
+            for msg in reversed(messages[:3]):
+                if not isinstance(msg, dict):
+                    continue
+                if msg.get('type') == 'idle':
+                    outcome = msg.get('outcome')
+                    if outcome in {'succeeded', 'failed', 'interrupted'}:
+                        context_parts.append(f'OpenCode session {outcome}')
+                elif msg.get('type') == 'assistant' and isinstance(msg.get('content'), list):
+                    for part in msg['content']:
+                        if not isinstance(part, dict):
+                            continue
+                        if part.get('type') == 'text':
+                            text = OpenCodeClient._clean_progress_text(part.get('text'), 200)
+                            if text:
+                                context_parts.append(text)
+                        elif part.get('type') == 'tool' and isinstance(part.get('state'), dict):
+                            name = OpenCodeClient._clean_progress_text(part.get('name'), 60)
+                            state = part['state'].get('status')
+                            if name and state in {'streaming', 'running', 'completed', 'error'}:
+                                context_parts.append(f'Tool {name}: {state}')
+
+            # Reasoning, tool inputs/outputs, and shell commands remain private.
+            return '\n'.join(context_parts)[-600:] if context_parts else None
             
         except Exception:
             # Silently fail - just use static phrases

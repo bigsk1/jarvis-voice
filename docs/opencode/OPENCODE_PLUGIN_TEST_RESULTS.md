@@ -1,5 +1,9 @@
 # OpenCode Plugin Test Results
 
+> Historical V1 experiment from November 2025. These observations do not verify
+> the current V2 plugin or filesystem restrictions. Use the maintained tests
+> and service verification in [the V2 plugin README](plugin/README.md).
+
 **Date**: November 15, 2025  
 **Plugin**: `00-workspace-protection.js`  
 **Status**: ✅ **WORKING PERFECTLY**
@@ -212,4 +216,3 @@ tail -20 ~/jarvis-voice/logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 **Test Date**: November 15, 2025  
 **Branch**: `opencode-plugins`  
 **Commit**: `ceabc3e`
-
