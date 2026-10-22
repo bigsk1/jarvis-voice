@@ -512,9 +512,9 @@ Authentication belongs to the Ollama daemon user, not the Jarvis checkout. Run
 `ollama signin` on the daemon host. Jarvis calls the daemon API; the daemon
 proxies cloud models to ollama.com.
 
-The Web System tab calls `POST {OLLAMA_BASE_URL}/api/me` and exposes only
-reachability, signed-in/signed-out/unknown, plan when supplied, and validated
-sign-in links — never raw profile data.
+The Web System tab probes `POST {OLLAMA_BASE_URL}/api/me` for account readiness,
+then reads the account balance and usage endpoints described below. It exposes
+only sanitized status and metrics, never raw profile data.
 
 ### Direct API key (alternative)
 
@@ -541,8 +541,41 @@ process. A commented `# OLLAMA_API_KEY=` line does not mask inherited values.
 Local mode always uses the daemon; `OLLAMA_API_KEY` is ignored there so GPU
 inference is unaffected.
 
-Ollama currently does not expose session/weekly quota bars through `/api/me`.
-Jarvis links to <https://ollama.com/settings> instead of fabricating percentages.
+### Account balance and usage in Web Settings
+
+When cloud mode uses Ollama, **Settings → System → Ollama Cloud** lazily reads
+[`GET /api/balance`](https://docs.ollama.com/api/balance) and
+[`GET /api/usage?range=7d&scope=self`](https://docs.ollama.com/api/cloud-usage).
+The direct path uses the configured API key only at `https://ollama.com`; the
+daemon path uses the first configured daemon's signed-in account without sending
+that key. Local inference and model routing are unchanged.
+
+The card supports both upstream plan shapes:
+
+- Credit plans: remaining included dollars, the allowance and reset period when
+  supplied, with purchased credits shown separately.
+- Legacy plans: session and weekly **percent remaining**, with reset times when
+  supplied. A value of 75 means 75% remains.
+- Seven-day activity: request count, spend and token counts only when returned.
+  Legacy accounts may report request counts alone. Activity can lag and is not
+  used to calculate remaining allowance.
+
+Connection/authentication and balance/activity availability stay separate. An
+older daemon without these endpoints can still show signed-in status and the
+**Manage** link. Temporary failures, unsupported fields and rate limits do not
+fabricate zero balances or mark the entire cloud quota exhausted. Purchased
+credits and included allowance are independent pools.
+
+Requests have bounded connect/read timeouts, do not follow redirects, and are
+coalesced and cached in each Web process for at least 60 seconds. A `429` honors
+`Retry-After`; an independently successful endpoint remains visible when the
+other fails. Reloading Settings after that cache period refreshes the values;
+there is no background account polling. Web authentication also protects this
+status endpoint when enabled. No extra service, database or dependency is needed.
+
+The configured direct-key and signed-daemon paths were both verified read-only
+on 2026-10-22; the daemon reported version 0.40.3. Older daemons may require an
+Ollama update. This check did not validate a Docker deployment or browser layout.
 
 ## Migrating from the older local-only Ollama setup
 

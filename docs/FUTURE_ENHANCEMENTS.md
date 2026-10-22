@@ -207,35 +207,32 @@ lifecycle/supervision benefits only.
 
 **Likely files:** `jarvis-web/server/app.py`, `bin/jarvis-web`, `docker/entrypoint.sh`, `Dockerfile`, dependency manifests, Web runtime tests, and Docker/native deployment docs.
 
-### 6) Ollama Cloud Account Quota and Usage Status
-**Priority:** Blocked upstream / integrate when Ollama exposes a supported API
+### 6) Ollama Cloud Account Quota and Usage Status — Implemented
+**Status:** Implemented 2026-10-22; direct-key and signed-daemon endpoints verified read-only
 
-Jarvis can currently identify the Ollama Cloud connection path and authentication state:
-- `connection_mode=api_key` for direct `https://ollama.com` requests using `OLLAMA_API_KEY`
-- signed-daemon status through Ollama's account probe
-- per-request input/output token counts returned by model calls
+Web **Settings → System → Ollama Cloud** now reads the documented
+[balance](https://docs.ollama.com/api/balance) and
+[account activity](https://docs.ollama.com/api/cloud-usage) endpoints. It supports
+monthly credit balances and legacy session/weekly percentages remaining, keeps
+purchased credits separate, and displays seven-day activity fields only when
+provided. The configured direct API and daemon version 0.40.3 both returned
+legacy balance windows and request-count history during validation.
 
-It cannot retrieve account-level session or weekly usage, remaining quota, reset times, or plan limits. Ollama's `/api/me` response does not expose those values, model responses provide only per-request token counts, and there is no documented public quota endpoint or response header. Therefore, Web Settings → System must treat quota as unavailable rather than infer it from chat totals, scrape the Ollama dashboard, or display a guessed percentage.
+Requests are cached, honor rate-limit backoff, and retain independently
+successful balance or activity data. Unsupported daemon routes and missing
+metrics remain explicitly unavailable. Authentication/readiness, account usage,
+and model routing stay separate; no model call is needed to check status.
+See [account balance and usage](ollama/README.md#account-balance-and-usage-in-web-settings)
+for transport, refresh and compatibility details.
 
-**Interim UI semantics:**
-- API-key path: `API key configured · usage unavailable · Manage`
-- signed-daemon path: `Signed in · usage unavailable · Manage`
-- Keep connection/authentication status separate from account quota status
-- Continue linking **Manage** to Ollama's account/usage page
+**Possible later extensions:** user-selected 24-hour/30-day ranges, per-model
+activity breakdowns and explicit opt-in quota threshold notifications. These
+are not part of the first status-card implementation.
 
-**Implementation trigger:** Add live quota reporting only after Ollama documents a stable source such as `/api/me` fields, a dedicated account-usage endpoint, or official quota response headers.
-
-**Desired implementation once available:**
-- Normalize limit, used, remaining, period, and reset timestamp into the existing Ollama Cloud status payload
-- Support both direct API-key and signed-daemon transports without changing model routing
-- Cache/poll conservatively and degrade to `usage unavailable` on unsupported versions or request failures
-- Show session/weekly usage and reset times in System without mixing them with conversation token accounting
-- Add contract tests for complete, partial, unavailable, unauthorized, and rate-limited responses
-
-**Upstream tracking (checked 2026-07-03):**
-- [ollama/ollama#12532 — Cloud usage stats](https://github.com/ollama/ollama/issues/12532) — open primary request for exposing usage through `/api/me`
-- [ollama/ollama#15663 — Expose account quota/usage details via the Cloud API](https://github.com/ollama/ollama/issues/15663) — closed as a duplicate of #12532; documents the missing headers/body/endpoint options
-- [ollama/ollama#16448 — API endpoint to check Cloud Usage/Quota limits](https://github.com/ollama/ollama/issues/16448) — closed as a duplicate of #12532
+**Upstream tracking (checked 2026-10-22):**
+- [ollama/ollama#12532 — Cloud usage stats](https://github.com/ollama/ollama/issues/12532) — still open even though the account APIs are documented
+- [ollama/ollama#15663](https://github.com/ollama/ollama/issues/15663) and [#16448](https://github.com/ollama/ollama/issues/16448) — closed as duplicates, not by an implementation
+- [PR #18829](https://github.com/ollama/ollama/pull/18829), merged 2026-10-07 UTC, adds the local-server account proxies; a merge alone is not proof a deployed daemon supports them
 
 ### 7) Latency-Aware Status Updates Across Web, CLI, and Wake Word - this is done
 **Priority:** Medium–High usability / latency
@@ -407,6 +404,15 @@ calls to every tool. Installing a tool or configuring ntfy must not subscribe
 the user to automatic notifications from ordinary tool calls. An empty rule set
 should produce none; existing explicitly requested notices and alert/reminder
 delivery retain their behavior.
+
+A concrete candidate is an explicit GitHub issue/release watchlist. The Ollama
+quota API is an example: issue #12532 stayed open while documentation and a
+linked merged PR established a usable feature. A future watcher should inspect
+linked fixes, release notes and official documentation, then notify once when
+the requested capability is documented or released. Distinguish a merged fix
+from a released version and locally verified compatibility; deduplicate by
+watch item and meaningful state/version. A notification must not automatically
+upgrade or deploy anything. This watcher remains planned, not implemented.
 
 Each proposed rule should declare:
 
@@ -1039,6 +1045,71 @@ ImageMagick executable can read and write JXL.
 Web conversion controls/result renderers and Stash routes, dependency/setup
 definitions, `Dockerfile`, and conversion/background tests.
 
+### 18) Real-Time Voice Frontend With Jarvis Delegation
+
+**Priority:** Deferred / future exploration
+**Status:** Concept recorded 2026-10-22; requires further planning before implementation
+
+**Idea:** Make a voice-to-voice assistant the primary conversational interface,
+with Jarvis available as a specialist. The voice assistant handles natural
+conversation, ordinary Q&A, listening and interruptions. It delegates requests
+that need Jarvis's tools, personal context, workflows or deeper reasoning, keeps
+conversing while that work runs, and incorporates verified results when useful.
+
+**Recommended starting shape:**
+
+- Use an optional, independently supervised voice service and browser UI. Keep
+  the voice provider independent of Jarvis's selected cloud/local mode and task
+  model. Evaluate OpenAI, xAI and local options later; choose WebRTC or WebSocket
+  according to the provider's actual capabilities. Qwen3-TTS supplies speech
+  output; a local conversation also needs recognition and dialogue components.
+- Expose one small delegation function, provisionally `ask_jarvis`, through a
+  translation bridge to an existing CLI or API entry point. Pass the original
+  utterance, resolved task, bounded relevant context/references and request ID.
+  Run Jarvis outside the audio-processing loop and feed its progress/results
+  back into the matching voice conversation. Reuse Jarvis's orchestration,
+  tool discovery, profiles and policies.
+- Let the voice model select delegation initially. Consider a lightweight
+  decisions API if consistent routing across voice providers proves useful:
+  `answer_here`, `delegate_to_jarvis`, or `clarify`. Personal-memory questions
+  can require delegation even when they sound like Q&A. The existing router's
+  normal `confidence` values are fixed at `1.0`; they are not calibrated scores
+  suitable for a new delegation threshold.
+
+**Questions to resolve when planning resumes:**
+
+- Choose the first provider and execution adapter. The current `/api/query`
+  waits for completion; its `session_id` does not load a named conversation.
+  A bounded asynchronous CLI child is a possible native prototype. Verify API
+  concurrency and native/Docker behavior before choosing the production bridge.
+- Define context ownership, request/result correlation and corrections while
+  work is running. Preserve the human request separately from inferred intent;
+  prevent duplicate execution and outdated results from becoming new actions.
+- Separate stopping speech from explicitly cancelling a delegated task. Define
+  how results enter the visible transcript and spoken conversation, including
+  failures, uncertain outcomes, disconnects and reconnects. Keep credentials on
+  the server and retain the chosen entry point's authorization/tool boundaries.
+- Establish a small proof: one voice provider delegates a bounded lookup,
+  conversation continues during execution, and the result returns naturally.
+  Measure useful-answer latency, interruptions, task correctness and voice plus
+  backend usage. Add persistence or a richer asynchronous task API only as the
+  experiment establishes the need; a general job-system redesign is not a
+  prerequisite for exploring the bridge.
+
+**Separate optional Talk improvement:** Consider one brief spoken acknowledgment
+during a slower existing Talk turn. Many static phrases already have cached
+audio; prewarm the relevant native or Web cache with stable provider/voice/model
+settings. Preserve final-answer priority, discard late status audio and keep
+the current 2.2-second silence setting. This remains a separate deferred idea.
+
+**References for later planning:** [Web Talk](WEB_TALK.md),
+[status audio and caching](STATUS_UPDATES.md), [CLI interface](../jarvis-cli/README.md),
+[API overview](api/API_OVERVIEW.md),
+[OpenAI client delegation](https://developers.openai.com/api/docs/guides/live-delegation),
+[xAI voice](https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech).
+Recheck provider availability, streaming, tool and interruption behavior before
+selecting an implementation.
+
 ---
 
 ## 📊 Implementation Priority
@@ -1072,6 +1143,8 @@ definitions, `Dockerfile`, and conversion/background tests.
 - Conditional write-through mirroring for alerts and reminders, only if seamless mode switching becomes necessary
 - JPEG XL conversion, only through the existing image backend with compatible
   packaged dependencies and no additional user setup
+- Real-time voice frontend with a thin Jarvis delegation bridge; deferred for
+  further design before any implementation
 
 ---
 

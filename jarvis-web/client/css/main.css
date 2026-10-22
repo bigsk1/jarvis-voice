@@ -6100,19 +6100,23 @@ button.tool-item:focus-visible {
   font-style: italic;
 }
 
-.config-value.error {
+.config-value.error,
+.config-value-list-item.error {
   color: var(--error);
 }
 
-.config-value.usage-ok {
+.config-value.usage-ok,
+.config-value-list-item.usage-ok {
   color: var(--success);
 }
 
-.config-value.usage-warning {
+.config-value.usage-warning,
+.config-value-list-item.usage-warning {
   color: var(--warning);
 }
 
-.config-value.usage-critical {
+.config-value.usage-critical,
+.config-value-list-item.usage-critical {
   color: var(--error);
   font-weight: 600;
 }

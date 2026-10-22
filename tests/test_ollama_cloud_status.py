@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Regression coverage for sanitized Ollama Cloud account status."""
 
-import sys
-import os
 import importlib
+import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
-
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "jarvis-web"))
@@ -24,14 +23,16 @@ from server_package_utils import load_server_package  # noqa: E402
 
 load_server_package("jarvis_web_test_server", ROOT / "jarvis-web" / "server")
 
+import ollama_cloud_status  # noqa: E402
+from config_loader import export_config_environment, get_config_value  # noqa: E402
 from jarvis_web_test_server.app import app  # noqa: E402
 from jarvis_web_test_server.routes import api  # noqa: E402
 from jarvis_web_test_server.sockets.chat import _scoped_by_mode  # noqa: E402
-from config_loader import export_config_environment, get_config_value  # noqa: E402
 
 
 class _Response:
     def __init__(self, status_code=200, payload=None, json_error=False):
+        self.headers = {}
         self.status_code = status_code
         self.payload = payload
         self.json_error = json_error
@@ -43,10 +44,12 @@ class _Response:
 
 
 def _status_payload(response):
-    api._OLLAMA_CLOUD_STATUS_CACHE.clear()
+    ollama_cloud_status._CACHE.clear()
     with app.test_request_context("/api/ollama/cloud-status?mode=cloud"):
-        with patch("ollama_utils.get_ollama_api_key", return_value=""), patch(
-            "requests.post", return_value=response
+        with (
+            patch("ollama_utils.get_ollama_api_key", return_value=""),
+            patch("requests.post", return_value=response),
+            patch("requests.get", return_value=_Response(status_code=404)),
         ):
             return api.get_ollama_cloud_status().get_json()
 
@@ -64,11 +67,15 @@ def test_empty_success_is_unknown_not_signed_in():
 
 
 def test_valid_account_is_sanitized():
-    payload = _status_payload(_Response(payload={
-        "id": "private-account-id",
-        "email": "private@example.com",
-        "plan": "free",
-    }))
+    payload = _status_payload(
+        _Response(
+            payload={
+                "id": "private-account-id",
+                "email": "private@example.com",
+                "plan": "free",
+            }
+        )
+    )
     assert payload["signed_in"] is True
     assert payload["plan"] == "free"
     assert "id" not in payload
@@ -76,10 +83,11 @@ def test_valid_account_is_sanitized():
 
 
 def test_api_key_mode_skips_daemon_me_check():
-    import config_loader
     import tempfile
 
-    api._OLLAMA_CLOUD_STATUS_CACHE.clear()
+    import config_loader
+
+    ollama_cloud_status._CACHE.clear()
     with tempfile.TemporaryDirectory() as tmp:
         cfg = Path(tmp) / "config"
         cfg.mkdir()
@@ -89,9 +97,19 @@ def test_api_key_mode_skips_daemon_me_check():
         config_loader.get_project_root = lambda: Path(tmp)
         try:
             with app.test_request_context("/api/ollama/cloud-status?mode=cloud"):
-                with patch("requests.post") as mock_post:
+                with (
+                    patch("requests.post") as mock_post,
+                    patch(
+                        "requests.get",
+                        return_value=_Response(payload={"purchased": {"balance_usd": 0}}),
+                    ) as mock_get,
+                ):
                     payload = api.get_ollama_cloud_status().get_json()
                     mock_post.assert_not_called()
+                    assert mock_get.call_args_list[0].args[0] == "https://ollama.com/api/balance"
+                    assert mock_get.call_args_list[0].kwargs["headers"] == {
+                        "Authorization": "Bearer test-key"
+                    }
         finally:
             config_loader.get_project_root = orig_root
 
@@ -122,18 +140,10 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
             "child_music": child.get("JARVIS_OVERRIDE_MUSIC_TOOL_PROVIDER"),
             "child_tts": child.get("JARVIS_OVERRIDE_TTS_PROVIDER"),
             "child_tool_rag": child.get("JARVIS_OVERRIDE_CLOUD_TOOL_RAG_LIMIT"),
-            "child_analyze_provider": child.get(
-                "JARVIS_OVERRIDE_ANALYZE_IMAGE_LLM_PROVIDER"
-            ),
-            "child_analyze_model": child.get(
-                "JARVIS_OVERRIDE_ANALYZE_IMAGE_LLM_MODEL"
-            ),
-            "child_status_llm_enabled": child.get(
-                "JARVIS_OVERRIDE_STATUS_LLM_ENABLED"
-            ),
-            "child_status_phrase_mode": child.get(
-                "JARVIS_OVERRIDE_STATUS_PHRASE_MODE"
-            ),
+            "child_analyze_provider": child.get("JARVIS_OVERRIDE_ANALYZE_IMAGE_LLM_PROVIDER"),
+            "child_analyze_model": child.get("JARVIS_OVERRIDE_ANALYZE_IMAGE_LLM_MODEL"),
+            "child_status_llm_enabled": child.get("JARVIS_OVERRIDE_STATUS_LLM_ENABLED"),
+            "child_status_phrase_mode": child.get("JARVIS_OVERRIDE_STATUS_PHRASE_MODE"),
         }
 
     web_config = {
@@ -197,10 +207,13 @@ def test_system_config_reflects_status_web_overrides():
             "status_phrase_mode": "normal",
         }
     }
-    with patch(
-        "jarvis_web_test_server.config.load_web_config",
-        return_value=web_config,
-    ), app.test_request_context("/api/settings/system?mode=cloud"):
+    with (
+        patch(
+            "jarvis_web_test_server.config.load_web_config",
+            return_value=web_config,
+        ),
+        app.test_request_context("/api/settings/system?mode=cloud"),
+    ):
         payload = api.get_system_config().get_json()
 
     assert payload["config"]["STATUS_LLM_ENABLED"] == "true"
@@ -225,12 +238,8 @@ def test_local_web_chat_keeps_analyze_image_on_pinned_ollama_vision_model(tmp_pa
         return {
             "analyze_provider": get_config_value("ANALYZE_IMAGE_LLM_PROVIDER"),
             "analyze_model": get_config_value("ANALYZE_IMAGE_LLM_MODEL"),
-            "child_analyze_provider": child.get(
-                "JARVIS_OVERRIDE_ANALYZE_IMAGE_LLM_PROVIDER"
-            ),
-            "child_analyze_model": child.get(
-                "JARVIS_OVERRIDE_ANALYZE_IMAGE_LLM_MODEL"
-            ),
+            "child_analyze_provider": child.get("JARVIS_OVERRIDE_ANALYZE_IMAGE_LLM_PROVIDER"),
+            "child_analyze_model": child.get("JARVIS_OVERRIDE_ANALYZE_IMAGE_LLM_MODEL"),
             "ollama_vision_model": get_config_value("OLLAMA_VISION_MODEL"),
         }
 
@@ -248,3 +257,44 @@ def test_local_web_chat_keeps_analyze_image_on_pinned_ollama_vision_model(tmp_pa
     assert result["child_analyze_provider"] is None
     assert result["child_analyze_model"] is None
     assert result["ollama_vision_model"] == "test-pinned-vision"
+
+
+def test_status_route_requires_web_auth(monkeypatch):
+    import webui_auth
+
+    monkeypatch.setenv("WEBUI_PASSWORD", "disposable-password")
+    client = app.test_client()
+    with patch("ollama_cloud_status.get_cloud_status", return_value={"signed_in": True}) as status:
+        for headers in ({}, {"Authorization": "Bearer bad-token"}):
+            assert (
+                client.get("/api/ollama/cloud-status?mode=cloud", headers=headers).status_code
+                == 401
+            )
+        status.assert_not_called()
+        response = client.get(
+            "/api/ollama/cloud-status?mode=cloud",
+            headers={
+                "Authorization": f"Bearer {webui_auth.create_token()}",
+            },
+        )
+        assert response.status_code == 200
+        assert response.json["signed_in"] is True
+        status.assert_called_once()
+
+
+def test_status_route_uses_normalized_active_mode():
+    with app.test_request_context("/api/ollama/cloud-status?mode=%20LOCAL%20"):
+        with patch("ollama_cloud_status.get_cloud_status", return_value={}) as status:
+            response = api.get_ollama_cloud_status()
+            assert status.call_args.kwargs["mode"] == "local"
+            assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_status_route_uses_web_default_mode():
+    with app.test_request_context("/api/ollama/cloud-status"):
+        with (
+            patch.object(api, "get_web_setting", return_value="local"),
+            patch("ollama_cloud_status.get_cloud_status", return_value={}) as status,
+        ):
+            api.get_ollama_cloud_status()
+            assert status.call_args.kwargs["mode"] == "local"

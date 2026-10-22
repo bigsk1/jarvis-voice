@@ -89,7 +89,7 @@ Use the configured login when Web authentication is enabled.
 | Dynamic media provider | Switch image, video, and music providers on-the-fly |
 | Response style overrides | Per-mode overrides for response style, Q&A word limit, and multi-turn word limit |
 | MCP tool discovery | Reads from memory_db, shows in Tools tab |
-| System config view | Mode-specific .env values plus lazy SerpApi quota in Settings → System |
+| System config view | Mode-specific .env values, lazy SerpApi quota, and [Ollama Cloud balance/usage](ollama/README.md#account-balance-and-usage-in-web-settings) in Settings → System |
 | Per-mode settings | `cloud`/`local` sections in web_config.json |
 | Dynamic Ollama models | Fetches available models from Ollama server |
 | Mode switching | Keeps cloud/local settings and learning data separate |

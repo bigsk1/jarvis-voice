@@ -3206,86 +3206,10 @@ class JarvisApp {
     }
   }
   
-  /**
-   * Load Ollama Cloud account/connectivity status and update the System tab card.
-   * Mirrors the ElevenLabs usage card. Backed by GET /api/ollama/cloud-status.
-   */
+  /** Load read-only Ollama Cloud account balance and recent activity. */
   async _loadOllamaCloudStatus() {
-    const el = document.getElementById('ollama-cloud-status');
-    if (!el) return;
-
-    try {
-      const mode = this._settingsData?.mode || this.socket.mode;
-      const response = await fetch(`/api/ollama/cloud-status?mode=${encodeURIComponent(mode)}`);
-      const data = await response.json();
-
-      if (data.ok === false && data.error) {
-        el.innerHTML = `
-          <span class="config-label">Ollama Cloud</span>
-          <span class="config-value error">${data.error}</span>
-        `;
-        return;
-      }
-
-      const reachable = data.reachable === true;
-      const signedIn = data.signed_in === true;
-      const quota = data.quota_available;
-      const plan = data.plan || (signedIn ? 'unknown' : '');
-
-      let statusClass = 'usage-ok';
-      let label = 'Connected';
-      if (!reachable) {
-        statusClass = 'usage-critical';
-        label = 'Unreachable';
-      } else if (!signedIn) {
-        statusClass = 'usage-warning';
-        label = 'Not signed in';
-      } else if (quota === false) {
-        // Only when the host explicitly reports quota exhausted.
-        statusClass = 'usage-warning';
-        label = plan ? `Signed in · ${plan} · quota exhausted` : 'Signed in · quota exhausted';
-      } else {
-        // quota unknown (null) or available: just show plan. Usage limits live
-        // on the ollama.com dashboard, not in /api/me.
-        label = plan ? `Signed in · ${plan}` : 'Signed in';
-      }
-
-      const link = (!signedIn && data.signin_url)
-        ? data.signin_url
-        : (data.dashboard_url || 'https://ollama.com/settings');
-      const linkText = (!signedIn && data.signin_url) ? 'Sign in' : 'Manage';
-
-      el.innerHTML = `
-        <span class="config-label">Ollama Cloud</span>
-        <span class="config-value ${statusClass}">
-          ${label}${link ? ` · <a href="${link}" target="_blank" rel="noopener">${linkText}</a>` : ''}
-        </span>
-      `;
-      el.title = data.connection_mode ? `Connection: ${data.connection_mode}` : '';
-
-      // Merge live sign-in status into provider availability (server marks
-      // cloud-mode ollama as "unknown" because it needs this live check).
-      if ((this._settingsData?.mode || this.socket.mode) === 'cloud'
-          && this._settingsData?.provider_availability) {
-        const resolved = (!reachable || !signedIn)
-          ? { status: 'unavailable', reason: !reachable ? 'Ollama host unreachable' : 'Ollama host not signed in' }
-          : { status: 'available', reason: null };
-        for (const domain of ['llm', 'completion_guard']) {
-          const map = this._settingsData.provider_availability[domain];
-          if (map && map.ollama && map.ollama.status !== resolved.status) {
-            map.ollama = { ...resolved };
-          }
-        }
-        this._applyProviderAvailability('setting-llm-provider', 'llm');
-        this._applyProviderAvailability('setting-completion-guard-eval-provider', 'completion_guard');
-      }
-    } catch (err) {
-      console.error('[App] Failed to load Ollama Cloud status:', err);
-      el.innerHTML = `
-        <span class="config-label">Ollama Cloud</span>
-        <span class="config-value error">Error loading</span>
-      `;
-    }
+    this._ollamaCloudStatus ||= new window.OllamaCloudStatus(this);
+    await this._ollamaCloudStatus.load();
   }
 
   /** Load xAI API-key/OAuth readiness without exposing cached credentials. */

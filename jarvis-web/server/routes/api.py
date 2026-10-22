@@ -1406,9 +1406,6 @@ def get_serpapi_account():
     })
 
 
-_OLLAMA_CLOUD_STATUS_CACHE = {}
-_OLLAMA_CLOUD_STATUS_TTL_SECONDS = 45
-
 _OLLAMA_MODEL_CONTEXT_CACHE = {}
 _OLLAMA_MODEL_CONTEXT_TTL_SECONDS = 600
 
@@ -1675,117 +1672,26 @@ def _extract_ollama_context_length(show_data):
     return None
 
 
-def _validate_ollama_signin_url(url):
-    """Only allow https://ollama.com[...] sign-in URLs into the UI payload."""
-    if not url or not isinstance(url, str):
-        return None
-    candidate = url.strip()
-    if candidate.startswith('https://ollama.com/') or candidate == 'https://ollama.com':
-        return candidate
-    return None
-
-
 @api_bp.route('/ollama/cloud-status', methods=['GET'])
 @_scoped_request_config
 def get_ollama_cloud_status():
-    """Lazy, best-effort Ollama host/account readiness for the System tab.
-
-    Cloud mode uses one of two exclusive paths:
-
-    - ``OLLAMA_API_KEY`` set → report direct ``https://ollama.com`` configuration
-    - no key → ``POST {OLLAMA_BASE_URL}/api/me`` on the configured daemon
-
-    Returns a sanitized shape only; never exposes key values or raw profile data.
-    """
-    import time
-    import requests as http_requests
-    from ..config import load_jarvis_config, get_jarvis_setting
+    """Lazy account balance/activity without model calls or raw account profiles."""
+    from config_loader import get_active_config_mode
+    from ollama_cloud_status import get_cloud_status
     from ollama_utils import get_ollama_api_key
 
-    mode = request.args.get('mode', 'cloud')
-    load_jarvis_config(mode)
+    from ..config import get_jarvis_setting
 
+    mode = get_active_config_mode()
     raw_base = (get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434') or '').strip()
-    base_url = raw_base.split(',')[0].strip().rstrip('/') if raw_base else 'http://localhost:11434'
-
-    effective_provider = (get_jarvis_setting('LLM_PROVIDER', 'xai' if mode == 'cloud' else 'ollama') or '').lower()
-
-    api_key_mode = mode == 'cloud' and bool(get_ollama_api_key())
-    cache_key = f"{mode}:{'api_key' if api_key_mode else base_url}"
-    now = time.time()
-    cached = _OLLAMA_CLOUD_STATUS_CACHE.get(cache_key)
-    if cached and (now - cached['ts']) < _OLLAMA_CLOUD_STATUS_TTL_SECONDS:
-        return jsonify(cached['payload'])
-
-    payload = {
-        'provider': 'ollama',
-        'connection_mode': 'api_key' if api_key_mode else 'signed_in_host',
-        'effective_provider': effective_provider,
-        'reachable': False,
-        'signed_in': 'unknown',
-        'plan': None,
-        'quota_available': None,
-        'dashboard_url': 'https://ollama.com/settings',
-        'signin_url': None,
-    }
-
-    if api_key_mode:
-        # Match the other provider gates: a nonblank key means configured.
-        # Authentication failures are reported by the actual model request.
-        payload['reachable'] = True
-        payload['signed_in'] = True
-        _OLLAMA_CLOUD_STATUS_CACHE[cache_key] = {'ts': now, 'payload': payload}
-        return jsonify(payload)
-
-    try:
-        response = http_requests.post(f"{base_url}/api/me", timeout=(3, 6))
-        payload['reachable'] = True
-        if response.status_code == 200:
-            try:
-                data = response.json()
-            except ValueError:
-                data = None
-            # Treat malformed/empty success payloads as an unsupported schema,
-            # not proof of authentication. Surface only plan/state; identity
-            # fields are used solely as a capability hint and never returned.
-            plan = data.get('plan') if isinstance(data, dict) else None
-            looks_like_account = isinstance(data, dict) and bool(data) and (
-                isinstance(plan, str)
-                or any(data.get(key) for key in ('id', 'email', 'name', 'username'))
-            )
-            if looks_like_account:
-                payload['signed_in'] = True
-                payload['plan'] = plan if isinstance(plan, str) else None
-            else:
-                payload['signed_in'] = 'unknown'
-        elif response.status_code in (401, 403):
-            payload['signed_in'] = False
-            try:
-                data = response.json()
-            except ValueError:
-                data = {}
-            payload['signin_url'] = _validate_ollama_signin_url(
-                (data or {}).get('signin_url') if isinstance(data, dict) else None
-            )
-        elif response.status_code == 404:
-            # Older/incompatible daemon without /api/me — capability not present.
-            payload['signed_in'] = 'unknown'
-        else:
-            payload['signed_in'] = 'unknown'
-    except http_requests.exceptions.Timeout:
-        payload['reachable'] = False
-        payload['signed_in'] = 'unknown'
-        payload['error'] = 'Ollama host timed out'
-    except http_requests.exceptions.RequestException:
-        payload['reachable'] = False
-        payload['signed_in'] = 'unknown'
-        payload['error'] = 'Ollama host unreachable'
-    except Exception:
-        payload['signed_in'] = 'unknown'
-        payload['error'] = 'Status check failed'
-
-    _OLLAMA_CLOUD_STATUS_CACHE[cache_key] = {'ts': now, 'payload': payload}
-    return jsonify(payload)
+    base_url = raw_base.split(',')[0].strip() if raw_base else 'http://localhost:11434'
+    provider = get_jarvis_setting('LLM_PROVIDER', 'xai' if mode == 'cloud' else 'ollama')
+    response = jsonify(get_cloud_status(
+        mode=mode, base_url=base_url, api_key=get_ollama_api_key() or '',
+        effective_provider=(provider or '').lower(),
+    ))
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 @api_bp.route('/ollama/model-context', methods=['GET'])
