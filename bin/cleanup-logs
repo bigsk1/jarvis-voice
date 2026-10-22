@@ -23,7 +23,7 @@
 #   - logs/evolution/    - Legacy retired prompt-evolution history (manually managed)
 #   - logs/intelligence/ - Intelligence logs (manually managed)
 
-set -e
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -68,9 +68,19 @@ if $DRY_RUN; then
 fi
 echo ""
 
+if [[ ! -d "$LOGS_DIR" ]]; then
+    echo "Logs directory not found: $LOGS_DIR. Nothing to clean."
+    exit 0
+fi
+
+# Capture each scan before processing it so find failures cannot look like an
+# empty, successful cleanup. Keep the temporary manifest private and remove it.
+SCAN_FILE=$(mktemp)
+trap 'rm -f "$SCAN_FILE"' EXIT
+
 # Count files before
-BEFORE_COUNT=$(find "$LOGS_DIR" -type f \( -name "*.log" -o -name "*.jsonl" -o -name "*.json" \) ! -name "*.pid" ! -name "baseline-*.json" 2>/dev/null | wc -l)
-BEFORE_SIZE=$(du -sh "$LOGS_DIR" 2>/dev/null | cut -f1)
+BEFORE_COUNT=$(find "$LOGS_DIR" -type f \( -name "*.log" -o -name "*.jsonl" -o -name "*.json" \) ! -name "*.pid" ! -name "baseline-*.json" | wc -l)
+BEFORE_SIZE=$(du -sh "$LOGS_DIR" | cut -f1)
 
 echo "📊 Before cleanup:"
 echo "   Files: $BEFORE_COUNT"
@@ -109,20 +119,21 @@ for dir in "${DIRS[@]}"; do
     if [[ -d "$dir" ]]; then
         for pattern in "${PATTERNS[@]}"; do
             # Find files older than retention days
-            while IFS= read -r file; do
+            find "$dir" -maxdepth 1 -name "$pattern" -type f -mtime +"$RETENTION_DAYS" -print0 > "$SCAN_FILE"
+            while IFS= read -r -d '' file; do
                 if [[ -n "$file" ]]; then
-                    size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+                    size=$(stat -c%s -- "$file")
                     TOTAL_BYTES=$((TOTAL_BYTES + size))
                     TOTAL_DELETED=$((TOTAL_DELETED + 1))
                     
                     if $DRY_RUN; then
-                        echo "   Would delete: $file ($(numfmt --to=iec $size 2>/dev/null || echo "${size}B"))"
+                        echo "   Would delete: $file ($(numfmt --to=iec "$size" 2>/dev/null || echo "${size}B"))"
                     else
                         echo "   Deleting: $file"
                         rm -f "$file"
                     fi
                 fi
-            done < <(find "$dir" -maxdepth 1 -name "$pattern" -type f -mtime +$RETENTION_DAYS 2>/dev/null)
+            done < "$SCAN_FILE"
         done
     fi
 done
@@ -141,8 +152,8 @@ else
         echo "✅ Deleted $TOTAL_DELETED files ($SIZE_HUMAN)"
         
         # Count after
-        AFTER_COUNT=$(find "$LOGS_DIR" -type f \( -name "*.log" -o -name "*.jsonl" -o -name "*.json" \) ! -name "*.pid" ! -name "baseline-*.json" 2>/dev/null | wc -l)
-        AFTER_SIZE=$(du -sh "$LOGS_DIR" 2>/dev/null | cut -f1)
+        AFTER_COUNT=$(find "$LOGS_DIR" -type f \( -name "*.log" -o -name "*.jsonl" -o -name "*.json" \) ! -name "*.pid" ! -name "baseline-*.json" | wc -l)
+        AFTER_SIZE=$(du -sh "$LOGS_DIR" | cut -f1)
         
         echo ""
         echo "📊 After cleanup:"

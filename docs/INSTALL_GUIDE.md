@@ -1371,6 +1371,14 @@ crontab -e
 0 9 1 * * cd $HOME/jarvis-voice && . $HOME/jarvis-venv/bin/activate && ./bin/reconcile-profile > logs/profile-reconcile-$(date +\%Y\%m\%d).md 2>&1
 ```
 
+Successful `cleanup-all` runs now record a quiet notification; optional ntfy
+delivery uses its `notifications` category. Add `--no-notify` to the cleanup
+command to opt out for that invocation. Dry runs never notify, and failures
+retain their existing alert. Without `JARVIS_MODE`, the success notice appears
+in Cloud notification history. Notification content retention runs automatically
+after 90 days for both modes and needs no additional cron entry.
+See [notification setup](tools/notification-tool/README.md).
+
 ---
 
 ## Version Information

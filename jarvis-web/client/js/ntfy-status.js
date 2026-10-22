@@ -1,4 +1,4 @@
-/* Optional phone-notification diagnostics, loaded only when Profile is opened. */
+/* Optional phone-notification diagnostics, loaded only when Notifications is opened. */
 (() => {
   class NtfyStatusCard {
     constructor() {
@@ -19,18 +19,18 @@
 
     active() {
       return document.getElementById('settingsModal')?.classList.contains('active')
-        && document.getElementById('settings-profile')?.classList.contains('active');
+        && document.getElementById('settings-notifications')?.classList.contains('active');
     }
 
     presentation() {
       if (this.loading) return ['Checking…', 'Checking configuration, worker, and ntfy server…', 'neutral'];
       if (this.error) return ['Unavailable', 'Could not check ntfy. Try Refresh.', 'warning'];
       const status = this.status;
-      if (!status) return ['Not checked', 'Open Profile to check phone notifications.', 'neutral'];
+      if (!status) return ['Not checked', 'Open Notifications to check phone notifications.', 'neutral'];
       if (status.configuration === 'missing') return ['Not configured', 'Phone notifications are optional. Configure ntfy to enable them.', 'neutral'];
       if (status.configuration === 'disabled') return ['Disabled', 'Phone notifications are disabled in the ntfy configuration.', 'neutral'];
       if (status.configuration !== 'enabled') return ['Invalid configuration', 'Check the ntfy configuration and its file permissions.', 'warning'];
-      const names = {alerts: 'alerts', reminders: 'reminders', background_tasks: 'background tasks'};
+      const names = {alerts: 'alerts', reminders: 'reminders', background_tasks: 'background tasks', notifications: 'notifications'};
       const categories = (Array.isArray(status.categories) ? status.categories : [])
         .map(name => names[name]).filter(Boolean);
       const enabled = categories.length ? `Enabled: ${categories.join(', ')}.` : 'No notification categories enabled.';

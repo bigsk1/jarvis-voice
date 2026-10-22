@@ -24,6 +24,7 @@ from lib.rate_limiter import APIRateLimitMiddleware
 from lib.config_loader import get_config_value, get_active_config_mode
 from lib.webhook_integrations.http import CallbackBoundary, callback_namespace, callback_path
 from api.routes.task_callbacks import router as task_callbacks_router
+from api.routes.notifications import router as notifications_router
 
 
 # ============================================================================
@@ -423,6 +424,7 @@ app.include_router(generated_videos_router)
 app.include_router(docs_router)
 app.include_router(scheduled_tasks_router)
 app.include_router(task_callbacks_router)
+app.include_router(notifications_router)
 
 # Last registered middleware is outermost, before logging/auth/metrics can buffer.
 app.add_middleware(CallbackBoundary)

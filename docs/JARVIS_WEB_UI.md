@@ -1263,6 +1263,16 @@ Each assistant message may have a **"▶ Show details"** button to reveal the fu
 
 ### Proactive Notifications
 
+Routine notices and outbound delivery history are available separately in
+**Settings → Notifications**. That tab contains ntfy status/test controls,
+source switches, and mode/source-type/channel/state filters. `create_notification`
+records a quiet notice without adding an urgent bell item or spoken follow-ups.
+History also shows delivery receipts for existing alerts, reminders, and
+background tasks; their management stays in the existing interfaces. See
+[quiet notifications](tools/notification-tool/README.md). History and local
+notification creation do not require FastAPI; delivery uses the independently
+supervised worker.
+
 The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered reminders:
 
 **What Gets Notified:**

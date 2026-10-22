@@ -17,6 +17,7 @@
 # Usage:
 #   ./bin/cleanup-all              # Run all cleanups
 #   ./bin/cleanup-all --dry-run    # Preview what would be deleted
+#   ./bin/cleanup-all --no-notify  # Skip the successful-run notification
 #
 # For individual control:
 #   ./bin/cleanup-logs [--days N] [--dry-run]
@@ -33,9 +34,25 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 # explicitly, including the JARVIS_VENV supplied by the Docker entrypoint.
 CLEANUP_PYTHON="${JARVIS_VENV:-$HOME/jarvis-venv}/bin/python"
 DRY_RUN=""
-if [[ "$1" == "--dry-run" ]]; then
-    DRY_RUN="--dry-run"
-fi
+NOTIFY=true
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run) DRY_RUN="--dry-run" ;;
+        --no-notify) NOTIFY=false ;;
+        -h|--help)
+            echo "Usage: cleanup-all [--dry-run] [--no-notify]"
+            echo "  --dry-run    Preview cleanup without deleting files or creating notifications"
+            echo "  --no-notify  Skip the successful-run notification (failures still create alerts)"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            echo "Usage: cleanup-all [--dry-run] [--no-notify]" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
 CLEANUP_STAGE="Python environment preflight"
 
 report_cleanup_failure() {
@@ -160,17 +177,66 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "📦 Stash Spaces Cleanup (TTL-based)"
 "$CLEANUP_PYTHON" "$SCRIPT_DIR/cleanup-retention" stash $DRY_RUN
 
+# Disk usage is informational; a failed summary must not invalidate cleanup.
+CLEANUP_STAGE="Disk usage summary"
+echo ""
+echo "📊 Current disk usage:"
+for d in logs logs/server-side-tools audio data/generated_images data/web_conversations jarvis-web/data/uploads data/stash; do
+    if [[ -d "$PROJECT_ROOT/$d" ]]; then
+        if usage=$(du -sh "$PROJECT_ROOT/$d"); then
+            size=${usage%%[[:space:]]*}
+        else
+            size="unavailable"
+            echo "Warning: Could not calculate disk usage for $d; cleanup remains successful." >&2
+        fi
+        printf "   %-20s %s\n" "${d##*/}/" "$size"
+    fi
+done
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "🎉 Cleanup complete!"
 echo ""
 
-# Show overall disk usage (only existing dirs to avoid du failures)
-CLEANUP_STAGE="Disk usage summary"
-echo "📊 Current disk usage:"
-for d in logs logs/server-side-tools audio data/generated_images data/web_conversations jarvis-web/data/uploads data/stash; do
-    [[ -d "$PROJECT_ROOT/$d" ]] && du -sh "$PROJECT_ROOT/$d" 2>/dev/null
-done | while read size dir; do
-    name=$(basename "$dir")
-    printf "   %-20s %s\n" "$name/" "$size"
-done
+# Recording a quiet notice is optional and must never change cleanup's result.
+# The tool persists the notice and queues delivery; it does not send synchronously.
+if [[ -z "$DRY_RUN" ]] && $NOTIFY; then
+    if ! "$CLEANUP_PYTHON" - "$PROJECT_ROOT" <<'PY'
+import json
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+
+payload = {
+    "title": "Jarvis cleanup completed",
+    "message": "Cleanup completed successfully. Logs, runtime audio, generated images, "
+               "Web conversations, uploads and expired Stash were checked. "
+               "See logs/cleanup.log or command output for details.",
+    "source": "cleanup_all",
+    "channels": ["ntfy"],
+    "dedupe_key": f"cleanup-all:success:{uuid.uuid4().hex}",
+    "max_age_seconds": 3600,
+}
+try:
+    result = subprocess.run(
+        [sys.executable, str(Path(sys.argv[1]) / "skills" / "create_notification.py"),
+         json.dumps(payload)],
+        capture_output=True, text=True, timeout=15,
+    )
+    response = json.loads(result.stdout)
+except subprocess.TimeoutExpired:
+    print("Cleanup success notification timed out after 15 seconds.", file=sys.stderr)
+    raise SystemExit(1)
+except (OSError, ValueError):
+    print("Cleanup success notification failed to run or returned invalid JSON.", file=sys.stderr)
+    raise SystemExit(1)
+if result.returncode or not isinstance(response, dict) or response.get("ok") is not True:
+    print(f"Cleanup success notification failed (tool exit {result.returncode}).", file=sys.stderr)
+    raise SystemExit(1)
+print("Cleanup success notification recorded.")
+PY
+    then
+        echo "Unable to record the cleanup success notification; cleanup remains successful." >&2
+    fi
+fi

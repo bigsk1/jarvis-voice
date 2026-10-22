@@ -420,6 +420,10 @@
         "progress": ["CURRENTLY TRAUMATIZING WHOEVER ANSWERED", "THE CALL IS COMING FROM INSIDE THE HOUSE"]
       },
   
+      "create_notification": {
+        "start": ["PINNING THIS UPDATE TO THE NOTIFICATION BOARD", "PREPARING A SMALL DIGITAL NUDGE"],
+        "progress": ["SAVING THE NUDGE AND ITS DELIVERY REQUEST"]
+      },
       "send_email": {
         "start": ["CRAFTING A DIGITAL CURSE LETTER", "LOADING THE EMAIL CANNON"],
         "progress": ["YOUR MESSAGE HAS BEEN YEETED INTO THE VOID"]

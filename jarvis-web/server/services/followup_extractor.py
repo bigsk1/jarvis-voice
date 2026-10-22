@@ -614,6 +614,7 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'update_memory': ['memory_id', 'old_value', 'new_value'],
     'forget': ['deleted_id', 'deleted_key', 'deleted_ids', 'deleted_keys', 'missing_ids'],
     'create_reminder': ['reminder_id', 'formatted_time'],
+    'create_notification': ['id', 'title', 'source', 'mode', 'created_at', 'deduplicated', 'deliveries'],
     'acknowledge_alerts': ['alert_id', 'acknowledged', 'cleared_count'],
     'acknowledge_reminders': [
         'acknowledged_count', 'acknowledged_ids', 'already_done',

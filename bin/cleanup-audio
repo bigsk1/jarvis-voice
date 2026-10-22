@@ -21,7 +21,7 @@
 #   - *.mp3  - Compressed audio (if any)
 #   - *.txt  - QA log files in audio/local/logs/
 
-set -e
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -73,9 +73,14 @@ if [[ ! -d "$AUDIO_DIR" ]]; then
     exit 0
 fi
 
+# Check scan completion before processing files; process substitution would hide
+# find's exit status and could incorrectly report a successful cleanup.
+SCAN_FILE=$(mktemp)
+trap 'rm -f "$SCAN_FILE"' EXIT
+
 # Count files before
-BEFORE_COUNT=$(find "$AUDIO_DIR" -type f \( -name "*.wav" -o -name "*.mp3" -o -name "*.txt" \) 2>/dev/null | wc -l)
-BEFORE_SIZE=$(du -sh "$AUDIO_DIR" 2>/dev/null | cut -f1)
+BEFORE_COUNT=$(find "$AUDIO_DIR" -type f \( -name "*.wav" -o -name "*.mp3" -o -name "*.txt" \) | wc -l)
+BEFORE_SIZE=$(du -sh "$AUDIO_DIR" | cut -f1)
 
 echo "📊 Before cleanup:"
 echo "   Files: $BEFORE_COUNT"
@@ -90,16 +95,17 @@ TOTAL_BYTES=0
 PREVIEW_SHOWN=0
 
 # Find and process old audio files
-while IFS= read -r file; do
+find "$AUDIO_DIR" -type f \( -name "*.wav" -o -name "*.mp3" \) -mtime +"$RETENTION_DAYS" -print0 > "$SCAN_FILE"
+while IFS= read -r -d '' file; do
     if [[ -n "$file" ]]; then
-        size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+        size=$(stat -c%s -- "$file")
         TOTAL_BYTES=$((TOTAL_BYTES + size))
         TOTAL_DELETED=$((TOTAL_DELETED + 1))
         
         # Show progress every 50 files in dry-run, or always when deleting
         if $DRY_RUN; then
             if [[ $((TOTAL_DELETED % 50)) -eq 1 ]] || [[ $TOTAL_DELETED -le 10 ]]; then
-                echo "   Would delete: $file ($(numfmt --to=iec $size 2>/dev/null || echo "${size}B"))"
+                echo "   Would delete: $file ($(numfmt --to=iec "$size" 2>/dev/null || echo "${size}B"))"
                 PREVIEW_SHOWN=$((PREVIEW_SHOWN + 1))
             fi
         else
@@ -110,33 +116,39 @@ while IFS= read -r file; do
             rm -f "$file"
         fi
     fi
-done < <(find "$AUDIO_DIR" -type f \( -name "*.wav" -o -name "*.mp3" \) -mtime +$RETENTION_DAYS 2>/dev/null)
+done < "$SCAN_FILE"
 
 # Also clean up old QA log text files in audio/local/logs/
-while IFS= read -r file; do
-    if [[ -n "$file" ]]; then
-        size=$(stat -c%s "$file" 2>/dev/null || echo 0)
-        TOTAL_BYTES=$((TOTAL_BYTES + size))
-        TOTAL_DELETED=$((TOTAL_DELETED + 1))
+if [[ -d "$AUDIO_DIR/local/logs" ]]; then
+    find "$AUDIO_DIR/local/logs" -type f -name "*.txt" -mtime +"$RETENTION_DAYS" -print0 > "$SCAN_FILE"
+    while IFS= read -r -d '' file; do
+        if [[ -n "$file" ]]; then
+            size=$(stat -c%s -- "$file")
+            TOTAL_BYTES=$((TOTAL_BYTES + size))
+            TOTAL_DELETED=$((TOTAL_DELETED + 1))
         
-        if ! $DRY_RUN; then
-            rm -f "$file"
+            if ! $DRY_RUN; then
+                rm -f "$file"
+            fi
         fi
-    fi
-done < <(find "$AUDIO_DIR/local/logs" -type f -name "*.txt" -mtime +$RETENTION_DAYS 2>/dev/null)
+    done < "$SCAN_FILE"
+fi
 
 # Clean up old text files in cloud directory too
-while IFS= read -r file; do
-    if [[ -n "$file" ]]; then
-        size=$(stat -c%s "$file" 2>/dev/null || echo 0)
-        TOTAL_BYTES=$((TOTAL_BYTES + size))
-        TOTAL_DELETED=$((TOTAL_DELETED + 1))
+if [[ -d "$AUDIO_DIR/cloud" ]]; then
+    find "$AUDIO_DIR/cloud" -type f -name "*.txt" -mtime +"$RETENTION_DAYS" -print0 > "$SCAN_FILE"
+    while IFS= read -r -d '' file; do
+        if [[ -n "$file" ]]; then
+            size=$(stat -c%s -- "$file")
+            TOTAL_BYTES=$((TOTAL_BYTES + size))
+            TOTAL_DELETED=$((TOTAL_DELETED + 1))
         
-        if ! $DRY_RUN; then
-            rm -f "$file"
+            if ! $DRY_RUN; then
+                rm -f "$file"
+            fi
         fi
-    fi
-done < <(find "$AUDIO_DIR/cloud" -type f -name "*.txt" -mtime +$RETENTION_DAYS 2>/dev/null)
+    done < "$SCAN_FILE"
+fi
 
 echo ""
 
@@ -157,8 +169,8 @@ else
         echo "✅ Deleted $TOTAL_DELETED files ($SIZE_HUMAN)"
         
         # Count after
-        AFTER_COUNT=$(find "$AUDIO_DIR" -type f \( -name "*.wav" -o -name "*.mp3" -o -name "*.txt" \) 2>/dev/null | wc -l)
-        AFTER_SIZE=$(du -sh "$AUDIO_DIR" 2>/dev/null | cut -f1)
+        AFTER_COUNT=$(find "$AUDIO_DIR" -type f \( -name "*.wav" -o -name "*.mp3" -o -name "*.txt" \) | wc -l)
+        AFTER_SIZE=$(du -sh "$AUDIO_DIR" | cut -f1)
         
         echo ""
         echo "📊 After cleanup:"

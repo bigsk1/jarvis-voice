@@ -29,6 +29,11 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "create_notification": _case({
+        "id": "notice_7", "title": "Cleanup complete", "message": "All stages succeeded.",
+        "source": "cleanup_all", "mode": "local", "created_at": "2026-10-22T03:00:00+00:00",
+        "deduplicated": False, "deliveries": [{"channel": "ntfy", "state": "pending"}],
+    }),
     "apify_run_actor": _case({
         "contract": "external_result_v1", "source": {"provider": "apify", "tool": "apify_run_actor", "mode": "cloud"},
         "execution": {"run_id": "testRun123", "actor_id": "testActor123", "status": "SUBMITTED"},

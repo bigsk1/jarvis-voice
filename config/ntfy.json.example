@@ -21,5 +21,10 @@
     "enabled": false,
     "topic": "jarvis-tasks",
     "max_age_seconds": 3600
+  },
+  "notifications": {
+    "enabled": true,
+    "topic": "jarvis-notifications",
+    "max_age_seconds": 3600
   }
 }

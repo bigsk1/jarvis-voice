@@ -19,6 +19,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 CATEGORIES = ("alerts", "reminders", "background_tasks")
+CONFIG_CATEGORIES = (*CATEGORIES, "notifications")
 DEFAULTS = {
     "enabled": False,
     "server_url": "",
@@ -35,6 +36,9 @@ DEFAULTS = {
     "background_tasks": {
         "enabled": False, "topic": "jarvis-tasks", "max_age_seconds": 3600,
     },
+    "notifications": {
+        "enabled": True, "topic": "jarvis-notifications", "max_age_seconds": 3600,
+    },
 }
 
 
@@ -43,7 +47,7 @@ def validate_config(raw: dict) -> dict:
     if not isinstance(raw, dict) or set(raw) - set(DEFAULTS):
         raise ValueError("Unknown ntfy configuration setting")
     config = {**DEFAULTS, **raw}
-    for category in CATEGORIES:
+    for category in CONFIG_CATEGORIES:
         section = raw.get(category, {})
         if not isinstance(section, dict) or set(section) - set(DEFAULTS[category]):
             raise ValueError("Unknown ntfy category setting")
@@ -191,13 +195,16 @@ class NotificationWorker:
                 source_id TEXT NOT NULL, stamp TEXT, expires REAL NOT NULL,
                 payload TEXT, state TEXT NOT NULL DEFAULT 'pending',
                 attempts INTEGER NOT NULL DEFAULT 0, next_try REAL NOT NULL DEFAULT 0,
-                receipt TEXT, error TEXT, sent_at TEXT
+                receipt TEXT, error TEXT, sent_at TEXT, event_at REAL
             );
             CREATE INDEX IF NOT EXISTS deliveries_pending ON deliveries(state,next_try);
         """)
-        if "sent_at" not in {row["name"] for row in conn.execute("PRAGMA table_info(deliveries)")}:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(deliveries)")}
+        for name, column_type in (("sent_at", "TEXT"), ("event_at", "REAL")):
+            if name in columns:
+                continue
             with conn:
-                conn.execute("ALTER TABLE deliveries ADD COLUMN sent_at TEXT")
+                conn.execute(f"ALTER TABLE deliveries ADD COLUMN {name} {column_type}")
         return conn
 
     def _rows(self, category: str, cursor, now: float):
@@ -274,7 +281,7 @@ class NotificationWorker:
                    "priority": priority}
         event_key = json.dumps([self.mode, category, str(row["id"]), stamp])
         return (event_key, category, self.mode, str(row["id"]), stamp, expires,
-                json.dumps(payload))
+                json.dumps(payload), when)
 
     def _current(self, item, config: dict) -> bool:
         """Retries must still represent a live, eligible source event."""
@@ -343,8 +350,8 @@ class NotificationWorker:
                         if event:
                             stats["queued"] += state.execute(
                                 "INSERT OR IGNORE INTO deliveries "
-                                "(event_key,category,mode,source_id,stamp,expires,payload) "
-                                "VALUES(?,?,?,?,?,?,?)", event,
+                                "(event_key,category,mode,source_id,stamp,expires,payload,event_at) "
+                                "VALUES(?,?,?,?,?,?,?,?)", event,
                             ).rowcount
                     state.execute("INSERT OR REPLACE INTO cursors VALUES(?,?,?)",
                                   (category, self.mode, json.dumps(cursor)))
@@ -394,4 +401,10 @@ class NotificationWorker:
                                       "sent_at=?,payload=NULL,error=NULL WHERE event_key=?",
                                       (receipt, sent_at, item["event_key"]))
                     stats["delivered"] += 1
+        from lib.notifications import NotificationStore
+
+        explicit = NotificationStore(self.root, self.mode).deliver_ntfy(config, self.sender, self.clock)
+        for key in ("delivered", "suppressed"):
+            stats[key] += explicit[key]
+        stats["errors"].extend(explicit["errors"])
         return stats

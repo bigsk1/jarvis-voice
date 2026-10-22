@@ -85,10 +85,13 @@ def test_send_timestamp_records_receipt_time_and_survives_restart(setup, categor
 
     worker.sender = publish_after_delay
     assert worker.cycle(config)["delivered"] == 1
-    expected = (expected_stamp, iso(occurrence + 7.5), "receipt", "delivered")
+    expected = (
+        expected_stamp, pytest.approx(occurrence, abs=0.001, rel=0),
+        iso(occurrence + 7.5), "receipt", "delivered",
+    )
     with closing(sqlite3.connect(worker.state_path)) as conn:
         assert conn.execute(
-            "SELECT stamp,sent_at,receipt,state FROM deliveries WHERE category=?", (category,)
+            "SELECT stamp,event_at,sent_at,receipt,state FROM deliveries WHERE category=?", (category,)
         ).fetchone() == expected
     now[0] += 60
     restarted = ntfy.NotificationWorker(root, "cloud", sender=worker.sender, clock=worker.clock)
@@ -96,11 +99,12 @@ def test_send_timestamp_records_receipt_time_and_survives_restart(setup, categor
     assert len(sent) == 1
     with closing(sqlite3.connect(worker.state_path)) as conn:
         assert conn.execute(
-            "SELECT stamp,sent_at,receipt,state FROM deliveries WHERE category=?", (category,)
+            "SELECT stamp,event_at,sent_at,receipt,state FROM deliveries WHERE category=?", (category,)
         ).fetchone() == expected
 
 
-def test_old_delivery_database_preserves_history_and_deduplication(setup):
+@pytest.mark.parametrize("has_sent_at", [False, True])
+def test_old_delivery_database_preserves_history_and_deduplication(setup, has_sent_at):
     root, config, now, sent, worker = setup
     alert(root, now[0])
     legacy_key = json.dumps(["cloud", "alerts", "1", None])
@@ -123,13 +127,18 @@ def test_old_delivery_database_preserves_history_and_deduplication(setup):
             "VALUES(?,'alerts','cloud','1',?,'delivered','legacy-receipt')",
             (legacy_key, now[0] + 1800),
         )
+        old_sent_at = iso(now[0] - 60) if has_sent_at else None
+        if has_sent_at:
+            conn.execute("ALTER TABLE deliveries ADD COLUMN sent_at TEXT")
+            conn.execute("UPDATE deliveries SET sent_at=?", (old_sent_at,))
         old_delivery = conn.execute("SELECT * FROM deliveries").fetchone()
         old_cursor = conn.execute("SELECT * FROM cursors").fetchone()
 
-    # Repeated schema opens preserve every legacy field without inventing a send time.
+    # Repeated opens preserve legacy fields without inventing event/send times.
+    expected_delivery = (*old_delivery, None) if has_sent_at else (*old_delivery, None, None)
     for _ in range(2):
         with closing(worker._state()) as conn:
-            assert tuple(conn.execute("SELECT * FROM deliveries").fetchone()) == (*old_delivery, None)
+            assert tuple(conn.execute("SELECT * FROM deliveries").fetchone()) == expected_delivery
             assert tuple(conn.execute("SELECT * FROM cursors").fetchone()) == old_cursor
     assert worker.cycle(config)["delivered"] == 0
     assert not sent
@@ -138,8 +147,11 @@ def test_old_delivery_database_preserves_history_and_deduplication(setup):
     assert worker.cycle(config)["delivered"] == 1
     with closing(sqlite3.connect(worker.state_path)) as conn:
         assert conn.execute(
-            "SELECT source_id,sent_at,receipt FROM deliveries ORDER BY source_id"
-        ).fetchall() == [("1", None, "legacy-receipt"), ("2", iso(now[0]), "receipt")]
+            "SELECT source_id,event_at,sent_at,receipt FROM deliveries ORDER BY source_id"
+        ).fetchall() == [
+            ("1", None, old_sent_at, "legacy-receipt"),
+            ("2", now[0], iso(now[0]), "receipt"),
+        ]
 
 
 def test_baseline_filters_dedupes_and_keeps_producers_unchanged(setup):

@@ -1,0 +1,22 @@
+{
+  "enabled": true,
+  "name": "create_notification",
+  "description": "Create a quiet notification for routine updates, workflow findings, or completed tasks. Examples: 'notify me that cleanup succeeded', 'send this update to my phone'. Saves notification history and queues configured channel delivery without creating an alert or spoken follow-ups. Use create_alert for an actionable problem needing alert management. A queued notification is not confirmation of phone arrival. Keep messages brief and omit credentials or raw private tool responses.",
+  "script": "create_notification.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "title": {"type": "string", "maxLength": 200, "description": "Short notification title."},
+      "message": {"type": "string", "maxLength": 2000, "description": "Brief text retained in local history and published as supplied to requested channels. Omit secrets and raw private responses."},
+      "source": {"type": "string", "maxLength": 80, "description": "Origin such as cleanup_all or github_ai_radar. Defaults to manual."},
+      "channels": {"type": "array", "items": {"type": "string", "enum": ["ntfy"]}, "description": "Configured delivery channels. Defaults to ntfy; an empty list saves history only. No credentials, URLs, or destinations are accepted."},
+      "dedupe_key": {"type": "string", "maxLength": 200, "description": "Stable occurrence identity shared across retries, such as a release version or job run ID. Use a fresh key for a new occurrence."},
+      "max_age_seconds": {"type": "integer", "minimum": 60, "maximum": 86400, "description": "Delivery freshness limit, default 3600 seconds. This is separate from history retention."}
+    },
+    "required": ["title", "message"],
+    "additionalProperties": false
+  },
+  "permissions": {"dangerous": false, "network": false, "filesystem": true, "bash": false, "auto_approve": true},
+  "child_environment": {"mode": "restricted", "allow": []}
+}

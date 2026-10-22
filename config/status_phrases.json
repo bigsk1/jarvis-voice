@@ -459,6 +459,10 @@
       "progress": ["Call in progress", "On the phone now"]
     },
     
+    "create_notification": {
+      "start": ["Recording your notification", "Preparing your notification"],
+      "progress": ["Saving the notification and delivery request"]
+    },
     "send_email": {
       "start": ["Drafting your email", "Preparing to send"],
       "progress": ["Email sent successfully"]

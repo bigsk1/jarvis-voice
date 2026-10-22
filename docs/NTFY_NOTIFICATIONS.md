@@ -2,8 +2,9 @@
 
 Jarvis can forward selected saved events to an authenticated HTTPS ntfy server.
 The independently supervised worker is `services/ntfy_notifications.py`. It
-reads source databases without modifying them and owns
-`data/ntfy_notifications.db`. It makes no LLM calls and does not delay event
+reads source databases without modifying them and writes delivery receipts in
+`data/ntfy_notifications.db`. The shared notification helper also writes
+standalone records and delivery intent there. The worker makes no LLM calls and does not delay event
 creation, speech, Web responses, or background-task completion.
 
 ## Configuration
@@ -20,6 +21,15 @@ to `jarvis-reminders`. Background-task success/failure notifications are
 `jarvis-tasks`. This covers background jobs, not every scheduled-task result.
 Scheduled workflows that create eligible alerts are covered by alert delivery.
 
+Standalone quiet notices use `create_notification` or its shared Python helper.
+Successful normal `bin/cleanup-all` runs also record them; `--no-notify` opts out
+for one run, and dry runs never notify. Cleanup failures retain their existing
+alert. See [entry points and history](tools/notification-tool/README.md).
+The new `notifications` category defaults to enabled when ntfy itself is
+enabled, with topic `jarvis-notifications` and a one-hour freshness limit.
+Subscribe the phone to this topic and grant the publisher account write access.
+Existing JSON without this category uses those defaults.
+
 Each category has an independent `enabled`, `topic`, and `max_age_seconds`.
 `alerts.severities` controls severity selection. Alerts expire after 30 minutes,
 reminder occurrences and task notifications after one hour by default. Pending
@@ -33,13 +43,25 @@ and reminder descriptions, limited to 2,000 characters. Task results, prompts,
 conversation contents, and management credentials are never forwarded. Consider
 lock-screen previews when deciding what notification text to enable.
 
-On the first successful scan of each category and mode, current records form a
+Explicit standalone notices publish the supplied title and message as authored.
+`include_descriptions` applies to automatic legacy-source forwarding; it does
+not strip an explicit notification's message. Keep credentials and raw private
+tool responses out of notification text.
+
+On the first successful automatic scan of each category and mode, current records form a
 **silent baseline**. Already-existing alerts and already-triggered reminders
 are not replayed. Later events are delivered once according to local receipts.
 Disabling a category discards its pending deliveries and baseline; enabling it
 again starts a fresh baseline. Keep it disabled for at least one polling cycle
 so the running worker observes the change. Missing/disabled configuration keeps
 the worker idle. Invalid configuration fails closed and logs the error type.
+
+Explicit notices have no baseline: only newly requested deliveries are queued.
+If ntfy is missing, disabled, or invalid at creation, the local record shows
+`unavailable` and is never replayed on enable. Pending explicit deliveries are
+suppressed when the worker observes disabled delivery; subsequent new notices
+can queue after re-enabling. Keep a disable in place for one polling cycle to
+ensure the worker observes it.
 
 Delivery retries use bounded exponential backoff, up to five attempts, and only
 while the event is fresh and still eligible. Authentication failures and
@@ -51,6 +73,22 @@ exactly-once transaction with the local database. Notifications already delivere
 to the phone are not recalled when their source resolves.
 
 ## Delivery history
+
+Web **Settings → Notifications** provides paginated, mode-scoped history with
+source-type/channel/state filters. **History mode** filters the displayed records;
+it does not change the running application's mode or phone delivery. Cron notices
+default to Cloud history unless the script explicitly selects another mode.
+Standalone notice text is retained for 90 days in both modes in the same shared
+database. Content is cleared on subsequent worker cycles, notification creation,
+or history access; no cleanup cron is required. Minimal identity and delivery
+receipts remain to prevent duplicate sends. Existing
+automatic-source receipts show source references without recovering discarded
+payloads. New automatic-source receipts record their source event time for
+history ordering and display. Older receipts fall back to their known send time;
+rows with neither timestamp appear after dated entries and show an unknown time.
+Delivery deadlines are never used as event times. The schema adds
+`notification_events` and `notification_channel_deliveries` without changing
+existing cursors or replaying old sends.
 
 The `deliveries` table in `data/ntfy_notifications.db` records `sent_at` for
 alerts, reminders, and background-task notifications. It is an ISO 8601 UTC
@@ -73,22 +111,23 @@ WHERE category = 'alerts' AND state = 'delivered'
 ORDER BY sent_at DESC;
 ```
 
-The worker automatically adds `sent_at` to older delivery databases on startup.
-Existing receipts are preserved, and older rows remain `NULL` because their
-send times were not recorded. No manual migration or notification replay is
-needed.
+The worker automatically adds `sent_at` and `event_at` to older delivery databases
+on startup. `event_at` is the source event's Unix timestamp, independent of
+delivery attempts and their outcome. Existing receipts are preserved; older
+timestamps remain `NULL` when they were not recorded. No manual migration or
+notification replay is needed.
 
 ## Running the worker
 
-Web **Settings → Profile → System Info** shows an ntfy card below Tailscale.
+Web **Settings → Notifications** contains the ntfy status card and source switches.
 It reports private configuration readiness, HTTPS server health, and the worker's
-shared heartbeat. Checks run when Profile opens or **Refresh** is clicked;
+shared heartbeat. Checks run when Notifications opens or **Refresh** is clicked;
 opening the card never sends a notification. Health results are cached for 15
 seconds. An online server does not by itself verify publishing credentials or
 phone delivery.
 
 **Send test** publishes one labeled notification to the first enabled category's
-topic (alerts, then reminders, then background tasks). It works independently of
+topic (alerts, reminders, background tasks, then standalone notifications). It works independently of
 the event worker to help diagnose delivery. The API requires the normal Web
 authentication, uses the configured publisher token without returning it to the
 browser, and limits tests to one attempt per 30 seconds. A receipt means ntfy
@@ -120,8 +159,10 @@ stops. SIGTERM/SIGINT ends the wait cleanly. Lock contention does not terminate
 Docker's services container or its sibling daemons. The `--once` check still
 returns an error immediately when another worker holds the lock.
 
-The worker observes the launcher's active cloud/local mode and reloads notification settings
-each cycle. Changing mode requires the normal service restart. Its state and
+Automatic source scans use the launcher's active cloud/local mode. Explicitly
+requested standalone notices from both modes are delivered by that same worker.
+It reloads notification settings each cycle. Changing the source-scan mode
+requires the normal service restart. Its state and
 lock live in the existing mounted `data/` directory; source databases are
 `jarvis_memory.db`, `jarvis_memory_local.db`, and `background_tasks.db`. Normal
 source database retention/deletion causes pending deliveries to be suppressed or

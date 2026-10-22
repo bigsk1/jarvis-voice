@@ -750,6 +750,53 @@ def get_ntfy_status_route():
     return response
 
 
+@api_bp.route('/notifications', methods=['GET'])
+@require_auth
+@_scoped_request_config
+def get_notifications_route():
+    from config_loader import get_active_config_mode
+
+    from ..services.notifications import NotificationSettingsError, get_history
+
+    try:
+        result = get_history(
+            get_active_config_mode(), source_type=request.args.get('source_type') or None,
+            source=request.args.get('source') or None,
+            channel=request.args.get('channel') or None, state=request.args.get('state') or None,
+            limit=int(request.args.get('limit', '25')), offset=int(request.args.get('offset', '0')),
+        )
+        status = 200
+    except NotificationSettingsError as error:
+        result, status = {'ok': False, 'error': str(error)}, error.status
+    except ValueError:
+        result, status = {'ok': False, 'error': 'Invalid notification history parameters.'}, 400
+    except (OSError, RuntimeError):
+        result, status = {'ok': False, 'error': 'Notification history is unavailable.'}, 503
+    response = jsonify(result)
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response, status
+
+
+@api_bp.route('/notifications/channels', methods=['GET', 'PATCH'])
+@require_auth
+def notification_channels_route():
+    from ..services.notifications import NotificationSettingsError, get_channels, update_channels
+
+    try:
+        if request.method == 'GET':
+            result = get_channels()
+        else:
+            if request.mimetype != 'application/json':
+                return jsonify({'ok': False, 'error': 'Submit JSON notification switches.'}), 400
+            result = update_channels(request.get_json(silent=True))
+        status = 200
+    except NotificationSettingsError as error:
+        result, status = {'ok': False, 'error': str(error)}, error.status
+    response = jsonify(result)
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response, status
+
+
 @api_bp.route('/ntfy/test', methods=['POST'])
 @require_auth
 def send_ntfy_test_route():

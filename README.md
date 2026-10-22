@@ -184,6 +184,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 - **Smart Reminders**: Time-based reminders with natural language parsing and recurring support
 - **Remote Monitoring**: Deploy [Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor) (Docker) anywhere to send health checks and alerts
 - **Voice Notifications**: Jarvis speaks alerts and reminders via TTS
+- **Quiet Notifications**: Shared tool/API/cron helper with optional ntfy delivery and Web **Settings → Notifications** history; [setup and usage](docs/tools/notification-tool/README.md)
 
 ### Integrations & Automation
 - **AI Phone Calls via Vapi.ai**: Outbound AI phone calls on your behalf

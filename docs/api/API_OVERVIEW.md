@@ -61,6 +61,12 @@ Jarvis will immediately speak the alert!
 
 ## How It Works
 
+For routine updates, `POST /api/notifications` records a quiet notification
+without an alert lifecycle or TTS. `GET /api/notifications` exposes mode-scoped
+history and per-channel delivery states. Both use the existing API auth policy;
+delivery is asynchronous and a successful creation response confirms storage.
+See [notification inputs, channels, and examples](../tools/notification-tool/README.md).
+
 ```
 External System → Webhook → Jarvis API → TTS Notification
      (Uptime Kuma,       (port 8880)      "Boss, alert!"

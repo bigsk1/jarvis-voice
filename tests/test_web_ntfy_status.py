@@ -76,7 +76,7 @@ def test_configuration_and_heartbeat_are_sanitized(isolated, monkeypatch):
     status = service.get_ntfy_status()
     assert status['enabled'] and status['configured'] and status['server_online']
     assert status['worker'] == {'state': 'ready', 'mode': 'local'}
-    assert status['categories'] == ['alerts', 'reminders']
+    assert status['categories'] == ['alerts', 'reminders', 'notifications']
     assert 'tk_' not in json.dumps(status) and 'example.test' not in json.dumps(status)
     assert (isolated / 'logs/ntfy_notifications.status.json').stat().st_mode & 0o777 == 0o600
     path.chmod(0o644)
@@ -173,6 +173,18 @@ def test_test_lock_and_bad_receipt_do_not_expose_credentials(client, isolated, m
     response = client.post('/api/ntfy/test', headers=LOGIN, json={})
     assert response.status_code == 502 and not response.json['ok']
     assert 'private' not in response.get_data(as_text=True)
+
+
+def test_notifications_only_category_supports_status_and_explicit_test(client, isolated, monkeypatch):
+    configure(isolated, alerts={'enabled': False}, reminders={'enabled': False},
+              background_tasks={'enabled': False}, notifications={'enabled': True})
+    calls = []
+    monkeypatch.setattr(service, '_health', lambda *_: True)
+    monkeypatch.setattr(service, 'publish', lambda config, payload: calls.append(payload) or 'receipt')
+    assert client.get('/api/ntfy/status', headers=LOGIN).json['categories'] == ['notifications']
+    assert not calls
+    response = client.post('/api/ntfy/test', headers=LOGIN, json={})
+    assert response.status_code == 200 and calls[0]['topic'] == 'jarvis-notifications'
 
 
 def test_heartbeat_failure_does_not_stop_event_delivery(isolated, monkeypatch):

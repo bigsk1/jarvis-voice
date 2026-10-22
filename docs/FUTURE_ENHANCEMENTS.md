@@ -389,6 +389,93 @@ framework: durable admission, a supervised worker, task cards, and a follow-up
 answer in the originating conversation. See [Background tasks](BACKGROUND-TASKS.md).
 MCP tools do not currently have a background adapter binding.
 
+#### Quiet Notifications: Foundation Complete, Optional Rules Deferred
+
+**Status:** First implementation completed 2026-10-22; the extensions below are
+planning notes and are not enabled by installing the notification tool.
+
+The shared `lib.notifications.NotificationStore` writer now supports the
+`create_notification` tool, REST calls, ordinary Python callers, and cleanup
+success notices. It saves history and per-channel delivery intent; the existing
+worker publishes through optional ntfy configuration. Web **Settings →
+Notifications** shows delivery history and switches. Routine notices have no
+spoken alert lifecycle. See [notification setup and usage](tools/notification-tool/README.md).
+
+**Next extension: explicit, opt-in rules for selected tools and outcomes.**
+Use the same writer rather than adding notification logic or direct provider
+calls to every tool. Installing a tool or configuring ntfy must not subscribe
+the user to automatic notifications from ordinary tool calls. An empty rule set
+should produce none; existing explicitly requested notices and alert/reminder
+delivery retain their behavior.
+
+Each proposed rule should declare:
+
+- A stable rule ID, an enabled switch, the exact tool/action, applicable entry
+  points and modes. Include local and MCP tools only through reviewed outcome
+  adapters; foreground calls, scheduled workflows, and durable background jobs
+  have different completion boundaries.
+- An explicit outcome: confirmed success, terminal failure, a changed result,
+  or a deterministic threshold over allowlisted structured fields. For example,
+  notify only when a report has new matching items, rather than whenever its
+  search tool runs. Start with simple comparisons; avoid arbitrary expressions
+  evaluated from configuration.
+- A short title/message template with approved result fields, requested channel
+  IDs, freshness, cooldown and delivery limits. Keep credentials, raw tool
+  arguments/results, private response bodies, and unrestricted destinations out
+  of templates. Provider credentials and destinations stay in private channel
+  configuration, preserving the tool's restricted child environment.
+
+**Execution and reliability boundaries:**
+
+- Evaluate against the canonical final tool/job outcome. A queued background
+  receipt, progress update, or uncertain remote timeout is not success. A rule
+  can request a failure notice without changing the source task's result.
+- Feed matched rules into the existing helper and asynchronous delivery worker.
+  Notification failures must not turn a completed tool or workflow into a
+  failure, block the foreground response, or cause the original action to retry.
+- Use stable rule/run/occurrence identity for deduplication across retries and
+  restarts; give a genuinely new occurrence a fresh identity. Apply per-rule
+  cooldowns and bounded rates. Exclude notification creation/delivery from rule
+  evaluation to prevent recursive notices.
+- Preserve the originating Cloud/Local mode. Background completion keeps its
+  original mode even if a Web session switches. The shared database already
+  clears message content after 90 days in both modes; no new notification mode,
+  mode-detection process, database, or retention cron is required for these rules.
+- Keep `create_alert` for actionable problems. Avoid sending a second notice
+  when the same event already created an alert with phone delivery; do not
+  change existing yt-dlp alerts, reminder behavior, or spoken follow-ups as a
+  side effect of introducing tool rules.
+- Expose enabled rules, match reasons, cooldown/deduplication suppression, and
+  delivery receipts without logging private payloads. Offer a preview of which
+  rules would match before enabling phone delivery.
+
+**Workflow and decision scoring:** Explicit conditional workflow steps can
+already call `create_notification`; keep those conditions upstream. A future
+modular decisions API could score whether a GitHub AI-radar finding is worth a
+notice, using an optional local or cloud provider. It should return a validated
+decision, score and reason; each workflow owns its threshold and hard inclusion
+rules. Evaluate on labeled examples and measured false positives before relying
+on a score. Bound latency/output and keep the source workflow useful when the
+decision provider is unavailable or uncertain. Do not make routine notification
+delivery depend on an LLM, or let semantic scoring suppress an existing required
+security/failure alert.
+
+**Additional channels:** Add Discord or other adapters behind the same channel
+interface when needed, preserving independent per-channel receipts, retries,
+configuration and disable behavior. A rule selects configured channel IDs, not
+arbitrary URLs or credentials. ntfy remains optional; saving local history must
+continue to work with no delivery provider configured. Channel tests should
+identify the selected category/topic rather than imply that one successful send
+validated every subscription.
+
+**Suggested rollout:** Pilot one explicit workflow condition, then one opted-in
+ordinary tool/outcome rule before generalizing hooks. Verify no-rule silence,
+success/failure/pending distinctions, safe templates, independent legitimate
+occurrences, retry/restart deduplication, disable/cooldown behavior, unavailable
+channels, mode switching, and native/Docker execution. Add new channel adapters
+and optional semantic scoring as separate increments after the deterministic
+rules prove useful.
+
 #### Planned: Opt-In Background Execution for MCP Tools
 
 **Why:** A long MCP call should be able to release the foreground Web chat and

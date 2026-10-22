@@ -10,7 +10,14 @@ from pathlib import Path
 
 from filelock import FileLock, Timeout
 
-from lib.ntfy_notifications import DeliveryError, NoRedirect, load_config, publish, validate_config
+from lib.ntfy_notifications import (
+    CONFIG_CATEGORIES,
+    DeliveryError,
+    NoRedirect,
+    load_config,
+    publish,
+    validate_config,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 _health_lock = threading.Lock()
@@ -76,7 +83,7 @@ def get_ntfy_status():
               "configured": config is not None, "server_online": None,
               "worker": _worker_status(), "test_available": False, "categories": []}
     if config and state == "enabled":
-        result["categories"] = [name for name in ("alerts", "reminders", "background_tasks")
+        result["categories"] = [name for name in CONFIG_CATEGORIES
                                 if config[name]["enabled"]]
         result["server_online"] = _health(config["server_url"])
         result["test_available"] = bool(result["categories"])
@@ -88,7 +95,7 @@ def send_ntfy_test():
     config, state = _configuration()
     if config is None or state != "enabled":
         return {"ok": False, "error": "Enable a valid private ntfy configuration first."}, 409
-    category = next((name for name in ("alerts", "reminders", "background_tasks")
+    category = next((name for name in CONFIG_CATEGORIES
                      if config[name]["enabled"]), None)
     if category is None:
         return {"ok": False, "error": "Enable a notification category first."}, 409

@@ -479,6 +479,7 @@
             <button class="settings-tab" data-settings-tab="integrations">Integrations</button>
             <button class="settings-tab" data-settings-tab="system">System</button>
             <button class="settings-tab" data-settings-tab="api">API Keys</button>
+            <button class="settings-tab" data-settings-tab="notifications">Notifications</button>
             <button class="settings-tab" data-settings-tab="profile">👤 Profile</button>
           </div>
           
@@ -989,6 +990,54 @@
             </section>
           </div>
           
+          <!-- Notification delivery settings and history -->
+          <div class="settings-panel" id="settings-notifications">
+            <section class="notifications-section" aria-labelledby="notification-channels-heading">
+              <h3 id="notification-channels-heading">Channels</h3>
+              <p class="setting-note">Phone delivery uses your private ntfy configuration. Category switches apply across modes. Saved notifications remain in history when phone delivery is disabled.</p>
+              <section class="tailscale-status ntfy-status" id="ntfy-status" data-tone="neutral" aria-label="ntfy phone notifications">
+                <div class="tailscale-status-copy" role="status" aria-live="polite" aria-atomic="true">
+                  <div class="tailscale-status-heading">
+                    <span aria-hidden="true">🔔</span>
+                    <span>ntfy</span>
+                    <span class="tailscale-status-pill" id="ntfy-status-label">Not checked</span>
+                  </div>
+                  <p id="ntfy-status-detail">Open Notifications to check phone delivery.</p>
+                  <p id="ntfy-test-result"></p>
+                </div>
+                <div class="ntfy-status-actions">
+                  <button type="button" class="btn-secondary tailscale-refresh-btn" id="refreshNtfyStatusBtn">Refresh</button>
+                  <button type="button" class="btn-secondary tailscale-refresh-btn" id="testNtfyBtn" disabled>Send test</button>
+                </div>
+              </section>
+              <div class="notification-channel-controls" id="notification-channel-controls" aria-busy="false">
+                <label class="notification-switch"><input type="checkbox" id="notifications-enabled" disabled> Enable ntfy phone delivery</label>
+                <fieldset id="notification-category-controls" disabled>
+                  <legend>Send to phone</legend>
+                  <label class="notification-switch"><input type="checkbox" id="notifications-category-alerts"> Alerts</label>
+                  <label class="notification-switch"><input type="checkbox" id="notifications-category-reminders"> Reminders</label>
+                  <label class="notification-switch"><input type="checkbox" id="notifications-category-background_tasks"> Background tasks</label>
+                  <label class="notification-switch"><input type="checkbox" id="notifications-category-notifications"> Notifications</label>
+                </fieldset>
+                <p class="setting-note" id="notification-channels-result" role="status" aria-live="polite">Open this tab to load delivery preferences.</p>
+              </div>
+            </section>
+            <section class="notifications-section" aria-labelledby="notification-history-heading">
+              <div class="notification-history-heading"><h3 id="notification-history-heading">History</h3><button type="button" class="btn-secondary" id="refreshNotificationsBtn">Refresh history</button></div>
+              <p class="setting-note">Delivery receipts include saved notifications and earlier alert, reminder, and background task deliveries. Acceptance by the delivery service does not confirm that a phone displayed the message.</p>
+              <p class="setting-note" id="notification-history-help">History mode filters this list only. Cron notices default to Cloud. Saved notification message content is cleared automatically after 90 days in both modes.</p>
+              <div class="notification-history-filters">
+                <label>History mode<select id="notification-history-mode" aria-describedby="notification-history-help"><option value="cloud">Cloud</option><option value="local">Local</option></select></label>
+                <label>Source<select id="notification-history-source"><option value="">All sources</option><option value="notifications">Notifications</option><option value="alerts">Alerts</option><option value="reminders">Reminders</option><option value="background_tasks">Background tasks</option></select></label>
+                <label>Channel<select id="notification-history-channel"><option value="">All channels</option><option value="ntfy">ntfy</option></select></label>
+                <label>State<select id="notification-history-state"><option value="">All states</option><option value="saved">Saved locally</option><option value="pending">Pending</option><option value="delivered">Accepted by service</option><option value="failed">Failed</option><option value="suppressed">Suppressed</option><option value="unavailable">Unavailable</option></select></label>
+              </div>
+              <p class="setting-note" id="notification-history-status" role="status" aria-live="polite">Open this tab to load notification history.</p>
+              <div class="notification-history-list" id="notification-history-list" aria-busy="false"></div>
+              <div class="notification-history-pagination"><button type="button" class="btn-secondary" id="notificationsPreviousBtn" disabled>Previous</button><span id="notification-history-page">0 items</span><button type="button" class="btn-secondary" id="notificationsNextBtn" disabled>Next</button></div>
+            </section>
+          </div>
+
           <!-- User Profile -->
           <div class="settings-panel" id="settings-profile">
             <div class="profile-card">
@@ -1056,21 +1105,7 @@
                 </div>
                 <button type="button" class="btn-secondary tailscale-refresh-btn" id="refreshTailscaleStatusBtn" aria-label="Refresh Tailscale status">Refresh</button>
               </section>
-              <section class="tailscale-status ntfy-status" id="ntfy-status" data-tone="neutral" aria-label="ntfy phone notifications">
-                <div class="tailscale-status-copy" role="status" aria-live="polite" aria-atomic="true">
-                  <div class="tailscale-status-heading">
-                    <span aria-hidden="true">🔔</span>
-                    <span>ntfy</span>
-                    <span class="tailscale-status-pill" id="ntfy-status-label">Not checked</span>
-                  </div>
-                  <p id="ntfy-status-detail">Open Profile to check phone notifications.</p>
-                  <p id="ntfy-test-result"></p>
-                </div>
-                <div class="ntfy-status-actions">
-                  <button type="button" class="btn-secondary tailscale-refresh-btn" id="refreshNtfyStatusBtn">Refresh</button>
-                  <button type="button" class="btn-secondary tailscale-refresh-btn" id="testNtfyBtn" disabled>Send test</button>
-                </div>
-              </section>
+
             </div>
 
             <div class="profile-section">
@@ -1522,6 +1557,7 @@
   <script src="/js/logs.js"></script>
   <script src="/js/profile-appearance.js"></script>
   <script src="/js/ntfy-status.js"></script>
+  <script src="/js/notifications.js"></script>
   <script src="/js/talk-capture.js"></script>
   <script src="/js/talk.js"></script>
   <script src="/js/task-manager.js"></script>

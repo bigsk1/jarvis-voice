@@ -147,6 +147,13 @@ journey has also been exercised; other tool journeys are not claimed here.
 The services container also runs the optional [ntfy phone notification worker](../NTFY_NOTIFICATIONS.md).
 Delivery defaults off and uses private `config/ntfy.json` through the existing
 read-only config mount. Its delivery receipts persist under `data/`.
+The shared `create_notification` tool also saves quiet notices in that store;
+Web **Settings → Notifications** shows history and channel status. Stock Docker
+keeps channel switches read-only: edit private `config/ntfy.json` on the host.
+The worker reloads those settings each cycle. Rebuild/recreate affected images
+for notification code upgrades, keeping existing mounts. See
+[quiet notifications](../tools/notification-tool/README.md) for the new topic,
+automatic schema additions, and cleanup-success behavior.
 
 The FastAPI container includes the Phase 3a authenticated task-callback receiver.
 Web, API and worker share the task database and credential keyring through `./data`.

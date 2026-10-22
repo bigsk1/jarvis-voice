@@ -17,7 +17,7 @@ class Element {
   addEventListener(key, callback) { this.events[key] = callback; }
   set innerHTML(value) { throw new Error('Use textContent for diagnostics'); }
 }
-const elements = Object.fromEntries(['settingsModal', 'settings-profile', 'ntfy-status',
+const elements = Object.fromEntries(['settingsModal', 'settings-notifications', 'ntfy-status',
   'ntfy-status-label', 'ntfy-status-detail', 'ntfy-test-result', 'refreshNtfyStatusBtn', 'testNtfyBtn']
   .map(id => [id, new Element()]));
 const calls = [], pending = [];
@@ -37,8 +37,8 @@ const ready = {ok: true, configuration: 'enabled', enabled: true, configured: tr
 const answer = data => ({ok: true, status: 200, json: async () => data});
 (async () => {
   await card.refresh();
-  assert.equal(calls.length, 0, 'No diagnostics until Profile is visible');
-  elements.settingsModal.active = elements['settings-profile'].active = true;
+  assert.equal(calls.length, 0, 'No diagnostics until Notifications is visible');
+  elements.settingsModal.active = elements['settings-notifications'].active = true;
   let refresh = card.refresh();
   assert.equal(elements['ntfy-status-label'].textContent, 'Checking…');
   assert.equal(elements.testNtfyBtn.disabled, true);
@@ -46,7 +46,7 @@ const answer = data => ({ok: true, status: 200, json: async () => data});
   assert.equal(elements['ntfy-status-label'].textContent, 'Online');
   assert.match(elements['ntfy-status-detail'].textContent, /Cloud/);
   assert.equal(elements.testNtfyBtn.disabled, false);
-  assert.equal(calls.length, 1, 'Opening Profile must not send a test');
+  assert.equal(calls.length, 1, 'Opening Notifications must not send a test');
 
   const testing = card.sendTest(); await card.sendTest();
   assert.equal(calls.length, 2, 'Double click must not duplicate a publish');
@@ -98,7 +98,7 @@ def test_ntfy_card_lifecycle():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_ntfy_card_is_loaded_before_app_and_below_tailscale():
+def test_ntfy_card_is_loaded_before_app_and_in_notifications():
     html = (ROOT / 'jarvis-web/client/index.html').read_text()
-    assert html.index('id="tailscale-status"') < html.index('id="ntfy-status"') < html.index('id="user-profile-summary"')
+    assert html.index('id="settings-notifications"') < html.index('id="ntfy-status"') < html.index('id="settings-profile"')
     assert html.index('/js/ntfy-status.js') < html.index('/js/app.js')

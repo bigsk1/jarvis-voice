@@ -68,6 +68,7 @@ class JarvisApp {
   _initialize() {
     this.profileAppearance = window.ProfileAppearance ? new window.ProfileAppearance() : null;
     this.ntfyStatus = window.NtfyStatusCard ? new window.NtfyStatusCard() : null;
+    this.notifications = window.NotificationsSettings ? new window.NotificationsSettings(this) : null;
     this.talk = window.TalkController ? new window.TalkController({ app: this, chat: this.chat, socket: this.socket }) : null;
     this.promptLibrary = window.PromptLibrary ? new window.PromptLibrary(this) : null;
     this._setupSocketListeners();
@@ -423,7 +424,10 @@ class JarvisApp {
       }
       if (document.getElementById('settings-profile')?.classList.contains('active')) {
         this._loadTailscaleStatus();
-        this.ntfyStatus?.refresh();
+      }
+      if (document.getElementById('settings-notifications')?.classList.contains('active')) {
+        void this.notifications?.refresh();
+        void this.ntfyStatus?.refresh();
       }
       if (document.getElementById('settings-prompts')?.classList.contains('active')) {
         void this.promptLibrary?.setActive(true);
@@ -452,7 +456,8 @@ class JarvisApp {
         if (activeTab === 'prompts' && tabName !== 'prompts'
             && this.promptLibrary && !this.promptLibrary.confirmDiscard()) return;
         const saveSettingsButton = document.getElementById('saveSettingsBtn');
-        if (saveSettingsButton) saveSettingsButton.hidden = ['profile', 'integrations', 'prompts'].includes(tabName);
+        if (saveSettingsButton) saveSettingsButton.hidden = tabName === 'notifications'
+          || ['profile', 'integrations', 'prompts'].includes(tabName);
         
         // Update active tab
         document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
@@ -479,7 +484,10 @@ class JarvisApp {
           this.profileAppearance?.load();
           this._loadUserProfileSummary();
           this._loadTailscaleStatus();
-          this.ntfyStatus?.refresh();
+        }
+        if (tabName === 'notifications') {
+          void this.notifications?.refresh();
+          void this.ntfyStatus?.refresh();
         }
       });
     });

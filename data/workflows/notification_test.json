@@ -1,0 +1,33 @@
+{
+  "id": "notification_test",
+  "name": "Notification test",
+  "description": "Explicit manual test: record the current UTC time and request one quiet notification through configured channels. No model calls or alerts.",
+  "version": "1.0",
+  "enabled": true,
+  "allow_workflow_tool": false,
+  "triggers": {"explicit": ["/notification_test"], "patterns": [], "keywords": []},
+  "steps": [
+    {
+      "step": 1,
+      "tool": "get_time",
+      "params": {"timezone": "UTC"},
+      "extract": {"notice_time": "time_12h", "notice_date": "date"},
+      "required": true
+    },
+    {
+      "step": 2,
+      "tool": "create_notification",
+      "params": {
+        "title": "Jarvis notification test",
+        "message": "Manual workflow test at ${notice_time} UTC on ${notice_date}.",
+        "source": "notification_test",
+        "channels": ["ntfy"],
+        "dedupe_key": "notification-test:${timestamp}"
+      },
+      "extract": {"notification_id": "id"},
+      "required": true
+    }
+  ],
+  "success_speech": "Test notification recorded. Check Notifications settings for delivery status.",
+  "abort_speech": "The notification test could not be recorded."
+}
