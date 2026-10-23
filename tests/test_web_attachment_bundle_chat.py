@@ -81,10 +81,12 @@ def journey(tmp_path, monkeypatch, request):
         def __init__(self, **kwargs):
             self.router = SimpleNamespace(provider_type='test', model_name='test-model')
             self.cancel_check = None
+            self.status_callback = None
+            self.progress_callback = None
             instances.append(self)
 
-        def set_status_callback(self, fn): pass
-        def set_progress_callback(self, fn): pass
+        def set_status_callback(self, fn): self.status_callback = fn
+        def set_progress_callback(self, fn): self.progress_callback = fn
         def set_web_conversation_id(self, value): pass
         def set_reflection_queue_enabled(self, enabled): pass
         def set_cancel_check(self, fn): self.cancel_check = fn
@@ -154,6 +156,98 @@ def test_two_pdfs_and_text_are_saved_routed_and_restored_in_order(journey):
     history = journey.routes[-1][1]['conversation_history']
     assert all(source['stash_ref'] in history[0]['attachment_context'] for source in sources)
     assert 'Budget is 120' in history[0]['attachment_context']
+
+
+def test_enabled_progress_forwards_status_and_each_tool_event(journey, monkeypatch):
+    import orchestrator_v2
+
+    monkeypatch.setattr(web_config, 'get_web_setting', lambda key, default=None: (
+        True if key == 'ui.progress_events' else False if key == 'audio.tts_enabled' else default
+    ))
+    original_process = orchestrator_v2.Orchestrator.process
+    forwarded = []
+
+    def process(self, prompt, **kwargs):
+        assert self.cancel_check() is False
+        first_event = len(journey.socket.events)
+        self.status_callback('Inspecting the source')
+        self.progress_callback('tool_start', tool='fixture', call_index=2,
+                               args={'source': 'original'}, turn=1, max_turns=4)
+        self.progress_callback('tool_complete', tool='fixture', call_index=2,
+                               success=True, duration_ms=37)
+        self.progress_callback('tool_complete', tool='fixture', call_index=3,
+                               success=False, duration_ms=11, error='Fixture unavailable')
+        self.progress_callback('routing', message='Selecting another source')
+        self.progress_callback('tool_progress', tool='fixture', call_index=4,
+                               status='Reading', phase='extract', progress=0.5,
+                               session_id='worker-session', opencode_event_type='part.updated',
+                               opencode_tool='read', tool_status='running', sequence=9)
+        forwarded.extend(journey.socket.events[first_event:])
+        return original_process(self, prompt, **kwargs)
+
+    monkeypatch.setattr(orchestrator_v2.Orchestrator, 'process', process)
+    journey.send()
+    journey.process()
+    response = next(payload for event, payload, _ in journey.socket.events
+                    if event == 'chat:response')
+    identity = {'message_id': response['message_id'], 'conversation_id': response['conversation_id']}
+    expected = [
+        ('chat:status', {'status': 'Inspecting the source'}),
+        ('tool:start', {'tool': 'fixture', 'call_index': 2, 'args': {'source': 'original'},
+                        'turn': 1, 'max_turns': 4}),
+        ('tool:complete', {'tool': 'fixture', 'call_index': 2, 'result': {},
+                           'duration_ms': 37, 'success': True}),
+        ('tool:error', {'tool': 'fixture', 'call_index': 3, 'error': 'Fixture unavailable',
+                        'duration_ms': 11}),
+        ('tool:progress', {'status': 'Selecting another source'}),
+        ('tool:progress', {'tool': 'fixture', 'call_index': 4, 'status': 'Reading',
+                           'phase': 'extract', 'progress': 0.5, 'session_id': 'worker-session',
+                           'opencode_event_type': 'part.updated', 'opencode_tool': 'read',
+                           'tool_status': 'running', 'sequence': 9}),
+    ]
+    assert len(forwarded) == len(expected)
+    for (event, payload, options), (expected_event, expected_payload) in zip(forwarded, expected):
+        assert event == expected_event
+        assert isinstance(payload['timestamp'], (int, float))
+        assert {key: value for key, value in payload.items() if key != 'timestamp'} == {
+            **identity, **expected_payload,
+        }
+        assert options['room'] == f"conversation:{response['conversation_id']}"
+
+
+def test_generated_audio_is_saved_before_response_delivery(journey, monkeypatch):
+    monkeypatch.setattr(web_config, 'get_web_setting', lambda key, default=None: (
+        True if key == 'audio.tts_enabled' else False if key == 'ui.progress_events' else default
+    ))
+    generated = []
+    audio_url = '/audio/fixture-response.mp3'
+
+    def generate_tts(speech, *, mode):
+        conversation_id = journey.handler.sessions['client']['conversation_id']
+        saved = journey.store.get_conversation(conversation_id)['messages'][-1]
+        assert saved['role'] == 'assistant'
+        assert saved['data']['speech'] == speech
+        generated.append((speech, mode))
+        return audio_url
+
+    original_emit = journey.handler._emit_run_event
+    delivered = []
+
+    def emit(event, payload, **kwargs):
+        if event == 'chat:response':
+            saved = journey.store.get_conversation(payload['conversation_id'])['messages'][-1]
+            assert saved['data']['audio_url'] == audio_url
+            assert saved['data']['_web_message_id'] == payload['message_id']
+            assert payload['audio_url'] == audio_url
+            delivered.append(payload)
+        return original_emit(event, payload, **kwargs)
+
+    monkeypatch.setattr(journey.handler, '_generate_tts', generate_tts)
+    monkeypatch.setattr(journey.handler, '_emit_run_event', emit)
+    journey.send()
+    journey.process()
+    assert len(delivered) == 1
+    assert generated == [(delivered[0]['speech'], 'cloud')]
 
 
 @pytest.mark.parametrize('manual_hint', [None, 'docling_convert', 'pdf_read', 'document_ocr'])

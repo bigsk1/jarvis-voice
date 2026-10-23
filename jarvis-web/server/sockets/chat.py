@@ -29,7 +29,7 @@ sys.path.insert(0, str(JARVIS_ROOT / 'orchestrator'))
 from config_loader import DEFAULT_JARVIS_QA_WORD_LIMIT, DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT
 
 from model_prompt_overrides import apply_prompt_override_sections, load_model_prompt_override
-from model_catalog import get_media_model_env_key, get_provider_fallback_model
+from model_catalog import get_media_model_env_key
 from ..services.usage_metadata import enrich_usage_metadata
 from ..services.completion_guard import CompletionGuardPolicy
 from ..services.followup_extractor import (
@@ -4371,6 +4371,532 @@ Previous structured data:
                         'workflow_step': idx  # Use overall index for unique ID
                     }, room=delivery_room)
 
+    def _configure_message_orchestrator(
+        self, orchestrator, *, mode, message_id, conversation_id, delivery_room,
+        prompt_meta, effective_provider, effective_model, original_user_message,
+    ):
+        """Install Web callbacks, approvals, background authorization, and cancellation."""
+        from ..config import get_web_setting
+
+        # Set up status callback to emit via WebSocket instead of local TTS
+        def status_callback(status_message: str):
+            """Send status updates to browser via WebSocket"""
+            print(f"[CHAT] Status update: {status_message}")
+            self._emit_run_event('chat:status', {
+                'message_id': message_id,
+                'conversation_id': conversation_id,
+                'status': status_message,
+                'timestamp': time.time()
+            }, room=delivery_room)
+
+        orchestrator.set_status_callback(status_callback)
+
+        # Set web conversation ID for tracking in conversation metadata
+        # This allows searching/filtering conversations by web chat session
+        orchestrator.set_web_conversation_id(conversation_id)
+        self._install_tool_approval(orchestrator, conversation_id, message_id)
+        from config_loader import get_config_value
+        blocked_tools = [name.strip() for name in get_config_value('BLOCKED_TOOLS', '').split(',') if name.strip()]
+        background_tools = [
+            name for name in prompt_meta.get('background_tools', [])
+            if name not in blocked_tools
+            and (schema := orchestrator.registry.get_tool(name)) is not None
+            and schema.background_adapter == self.background_tasks.adapters.get(name)
+        ]
+        if background_tools:
+            orchestrator.background_context = self.background_tasks.authorize(
+                conversation_id, message_id, mode, background_tools,
+                effective_provider, effective_model, original_user_message, orchestrator.registry)
+
+        # Set up progress callback for real-time tool execution events
+        # Check if progress events are enabled (default: True)
+        progress_enabled = get_web_setting('ui.progress_events', True)
+        orchestrator.set_reflection_queue_enabled(self._intelligence_reflections_enabled())
+
+        if progress_enabled:
+            def progress_callback(event_type: str, **kwargs):
+                """Send tool progress events to browser via WebSocket"""
+                if event_type == 'tool_start':
+                    tool_name = kwargs.get('tool')
+                    call_index = kwargs.get('call_index', 0)
+                    print(f"[CHAT] Tool starting: {tool_name}[{call_index}] (turn {kwargs.get('turn')}/{kwargs.get('max_turns')})")
+                    self._emit_run_event('tool:start', {
+                        'message_id': message_id,
+                        'tool': tool_name,
+                        'call_index': call_index,  # For unique card IDs when same tool called multiple times
+                        'args': kwargs.get('args', {}),
+                        'turn': kwargs.get('turn'),
+                        'max_turns': kwargs.get('max_turns'),
+                        'timestamp': time.time()
+                    }, room=delivery_room)
+
+                elif event_type == 'tool_complete':
+                    # Emit tool completion in real-time (success or failure)
+                    tool_name = kwargs.get('tool')
+                    call_index = kwargs.get('call_index', 0)
+                    duration_ms = kwargs.get('duration_ms')
+                    success = kwargs.get('success')
+
+                    if success:
+                        print(f"[CHAT] Tool completed: {tool_name}[{call_index}] ({duration_ms}ms)")
+                        self._emit_run_event('tool:complete', {
+                            'message_id': message_id,
+                            'tool': tool_name,
+                            'call_index': call_index,  # For matching unique card ID
+                            'result': {},  # Result will be in final response
+                            'duration_ms': duration_ms,
+                            'success': True,
+                            'timestamp': time.time()
+                        }, room=delivery_room)
+                    else:
+                        print(f"[CHAT] Tool failed: {tool_name}[{call_index}] - {kwargs.get('error', 'unknown')}")
+                        self._emit_run_event('tool:error', {
+                            'message_id': message_id,
+                            'tool': tool_name,
+                            'call_index': call_index,
+                            'error': kwargs.get('error', 'Unknown error'),
+                            'duration_ms': duration_ms,
+                            'timestamp': time.time()
+                        }, room=delivery_room)
+
+                elif event_type == 'routing':
+                    print(f"[CHAT] Routing: {kwargs.get('message')}")
+                    self._emit_run_event('tool:progress', {
+                        'message_id': message_id,
+                        'status': kwargs.get('message'),
+                        'timestamp': time.time()
+                    }, room=delivery_room)
+                elif event_type == 'tool_progress':
+                    print(
+                        f"[CHAT] Tool progress: {kwargs.get('tool')} - "
+                        f"{kwargs.get('status')}"
+                    )
+                    self._emit_run_event('tool:progress', {
+                        'message_id': message_id,
+                        'tool': kwargs.get('tool'),
+                        'call_index': kwargs.get('call_index', 0),
+                        'status': kwargs.get('status'),
+                        'phase': kwargs.get('phase'),
+                        'progress': kwargs.get('progress'),
+                        'session_id': kwargs.get('session_id'),
+                        'opencode_event_type': kwargs.get('opencode_event_type'),
+                        'opencode_tool': kwargs.get('opencode_tool'),
+                        'tool_status': kwargs.get('tool_status'),
+                        'sequence': kwargs.get('sequence'),
+                        'timestamp': time.time()
+                    }, room=delivery_room)
+
+            orchestrator.set_progress_callback(progress_callback)
+
+        orchestrator.set_cancel_check(
+            lambda: self.pending_cancellations.get(message_id, False)
+        )
+        return blocked_tools, progress_enabled
+
+    def _save_message_response(
+        self, result, *, data, pending_jobs, is_workflow, workflow_data,
+        conversation_id, message_id, mode, tools_used, vision_result, stash_info,
+        run_status, was_cancelled, effective_provider, effective_model,
+        human_reaction_eligible, response_usage, original_user_message,
+    ):
+        """Persist the assistant response and evidence before publishing success."""
+        try:
+            from ..services.conversation_store import get_conversation_store
+            store = get_conversation_store()
+            response_text, prepared_speech = self._prepare_web_response_text(
+                result,
+                "Done. I shared the details in chat."
+            )
+            # Include raw_llm_response and vision_analysis in saved data for "expand details"
+            save_data = data.copy() if data else {}
+            if pending_jobs:
+                save_data['pending_jobs'] = pending_jobs
+                save_data['background_jobs'] = {
+                    receipt['job_id']: self.background_tasks.card(
+                        self.background_tasks.store.get(receipt['job_id']))
+                    for receipt in pending_jobs}
+            # Workflow results store tool output in data.results (array); client expects
+            # tool-name-keyed map when loading from history. Populate flat map for workflows.
+            if is_workflow:
+                save_data.update(workflow_step_tool_results(workflow_data or save_data))
+            raw_response = result.get('raw_llm_response', '')
+            if raw_response:
+                save_data['raw_llm_response'] = raw_response
+            if result.get('server_side_tools'):
+                save_data['server_side_tools'] = result['server_side_tools']
+            if prepared_speech:
+                save_data['speech'] = prepared_speech
+            # Include vision analysis if we processed an image
+            if vision_result:
+                save_data['vision_analysis'] = vision_result
+            if stash_info:
+                save_data['_web_upload_stash'] = stash_info
+                save_data.setdefault('stash', stash_info)
+            save_data['_web_message_id'] = message_id
+            save_data['_run_status'] = run_status
+            save_data['cancelled'] = was_cancelled
+            save_data['_llm_provider'] = effective_provider
+            save_data['_llm_model'] = effective_model
+            if result.get('experience_id'):
+                save_data['experience_id'] = result['experience_id']
+                save_data['_intelligence_mode'] = mode
+            save_data['_human_reaction_eligible'] = human_reaction_eligible
+            # Include token usage for tracking
+            if response_usage:
+                save_data['usage'] = response_usage
+            if result.get('tool_trace'):
+                save_data['_tool_trace'] = result['tool_trace']
+            if isinstance(result.get('approval_outcome'), dict):
+                save_data['_approval_outcome'] = result['approval_outcome']
+            # Include error details for failed tool calls (enables follow-up debugging)
+            # Without this, errors only exist in the speech text and can't be analyzed
+            if not result.get('ok') and result.get('error'):
+                error_data = {
+                    'message': str(result['error'])[:2000],
+                    'retries': result.get('retries', 0),
+                    'tool_failed': (
+                        result.get('tool_name')
+                        or next((entry['tool'] for entry in reversed(result.get('tool_trace') or [])
+                                 if isinstance(entry, dict) and entry.get('ok') is False
+                                 and entry.get('tool')), None)
+                        or (tools_used[-1] if tools_used else 'unknown')
+                    ),
+                }
+                # Include tool arguments for debugging (truncated to avoid bloat)
+                if result.get('tool_args'):
+                    # Keep only non-prompt args to save space (prompts are in the message text)
+                    args_copy = {k: v for k, v in result['tool_args'].items() if k != 'prompt'}
+                    error_data['tool_args'] = {k: str(v)[:300] for k, v in args_copy.items()}
+                save_data['_error'] = error_data
+            ev = self._compute_effective_evidence(
+                conversation_id,
+                save_data,
+                tools_used,
+                result.get('server_side_tools', {}),
+                message_id,
+                original_user_message,
+            )
+            if ev:
+                save_data['_effective_evidence'] = ev
+                if isinstance(data, dict):
+                    data['_effective_evidence'] = ev
+            store.add_message(
+                conversation_id,
+                'assistant',
+                response_text,
+                data=save_data,
+                tools_used=tools_used
+            )
+            store.update_llm_metadata(
+                conversation_id,
+                provider=effective_provider,
+                model=effective_model,
+            )
+        except Exception as save_err:
+            raise RuntimeError(f"The task ran, but its response could not be saved: {save_err}") from save_err
+        return save_data, response_text, prepared_speech
+
+    def _generate_message_audio(
+        self, prepared_speech, *, mode, conversation_id, message_id,
+    ) -> str | None:
+        """Generate optional speech and retain its URL for conversation reloads."""
+        from ..config import get_web_setting
+
+        # Generate TTS if enabled
+        audio_url = None
+        try:
+            if get_web_setting('audio.tts_enabled', False):
+                speech_text = prepared_speech
+                if speech_text:
+                    audio_url = self._generate_tts(speech_text, mode=mode)
+                    if audio_url:
+                        try:
+                            from ..services.conversation_store import get_conversation_store
+                            store = get_conversation_store()
+                            store.update_message_data_by_web_message_id(
+                                conversation_id,
+                                message_id,
+                                {'audio_url': audio_url}
+                            )
+                        except Exception as save_audio_err:
+                            print(f"[CHAT] Failed to save TTS audio URL: {save_audio_err}")
+        except Exception as tts_err:
+            print(f"[CHAT] TTS generation failed: {tts_err}")
+        return audio_url
+
+    def _dispatch_message_feedback(
+        self, result, *, session_id, message_id, conversation_id, delivery_room,
+        message, mode, tools_used, effective_provider, effective_model,
+        request_feedback, defer_feedback_until_completion_guard,
+    ):
+        """Dispatch requested or pre-collected feedback after the response is delivered."""
+        # Collect feedback if requested (runs async after main response)
+        # Skip if Completion Guard has to settle first.
+        # Also skip if orchestrator already collected feedback (random trigger), though
+        # random feedback is disabled above while Completion Guard is enabled.
+        already_has_feedback = result.get('feedback') is not None
+        print(f"[CHAT] Feedback check: request_feedback={request_feedback}, ok={result.get('ok', True)}, already_has_feedback={already_has_feedback}")
+
+        if defer_feedback_until_completion_guard:
+            print(f"[CHAT] Deferring feedback until Completion Guard settles for message {message_id[:8]}...")
+        elif request_feedback and result.get('ok', True) and not already_has_feedback:
+            print(f"[CHAT] Starting async feedback collection for message {message_id[:8]}...")
+            self._start_blocking_task(
+                self._collect_feedback_async,
+                session_id,
+                message_id,
+                message,
+                mode,
+                message_id,
+                conversation_id,
+                result,
+                tools_used,
+                effective_provider,
+                effective_model,
+                None,
+                name=f"feedback-{message_id[:8]}",
+            )
+        elif already_has_feedback:
+            # Orchestrator already collected feedback (for example random trigger), emit that result
+            print("[CHAT] Using orchestrator's feedback (pre-collected)")
+            feedback = result.get('feedback', {})
+            self._emit_run_event('feedback:start', {
+                'message_id': message_id,
+                'conversation_id': conversation_id,
+                'status': 'complete'  # Already done
+            }, room=delivery_room)
+            self._emit_run_event('feedback:complete', {
+                'message_id': message_id,
+                'conversation_id': conversation_id,
+                'rating': feedback.get('rating'),
+                'summary': feedback.get('summary', ''),
+                'positive': feedback.get('positive', ''),
+                'issues': feedback.get('issues', []),
+                'suggestions': feedback.get('suggestions', []),
+                'tool_ratings': feedback.get('tool_ratings', {}),
+                'analysis': feedback.get('analysis', ''),
+                'duration_ms': 0,  # Already collected
+                'success': True
+            }, room=delivery_room)
+
+    def _complete_message(
+        self, result, *, orchestrator, session_id, message_id, conversation_id, mode,
+        delivery_room, start_time, original_user_message, message, prompt_meta,
+        request_feedback, completion_guard_config, effective_provider, effective_model,
+        progress_enabled, attachment_errors, vision_result, stash_info,
+    ):
+        """Settle a foreground result, save it, and deliver its response and follow-up work."""
+        if attachment_errors:
+            notice = ('Image analysis was unavailable for: '
+                      + ', '.join(item['filename'] for item in attachment_errors)
+                      + '. The response covers only the other sources.')
+            result['speech'] = str(result.get('speech') or '') + '\n\n' + notice
+            if result.get('raw_llm_response'):
+                result['raw_llm_response'] += '\n\n' + notice
+            if result.get('ok', True):
+                result['error'] = notice
+                result['tool_name'] = 'image_analysis'
+            result['ok'] = False
+            if not isinstance(result.get('data'), dict):
+                result['data'] = {}
+            result['data']['attachment_errors'] = attachment_errors
+
+        was_cancelled = result.get('cancelled', False)
+        approval_reply = (was_cancelled and isinstance(result.get('approval_outcome'), dict)
+                          and result['approval_outcome'].get('decision') in ('denied', 'expired'))
+        run_status = ('completed' if approval_reply else 'cancelled' if was_cancelled
+                      else 'completed' if result.get('ok', True) else 'failed')
+        if was_cancelled:
+            request_feedback = False
+        from lib.background_tasks.admission import WebTaskContext, reject_background_result
+        task_context = getattr(orchestrator, 'background_context', None)
+        if isinstance(task_context, WebTaskContext):
+            pending_jobs = list(task_context.receipts.values())
+            result['pending_jobs'] = pending_jobs
+        else:
+            result = reject_background_result(result)
+            pending_jobs = []
+        if pending_jobs:
+            request_feedback = False
+            result.pop('feedback', None)
+        print(f"[CHAT] Got result: ok={result.get('ok')}, tools={result.get('tools_used', [])}, cancelled={was_cancelled}")
+
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # Extract tools used from result
+        tools_used = result.get('tools_used', [])
+        data = result.get('data', {})
+
+        # Explicit slash workflows return workflow data at the top level;
+        # autonomous workflow(run) is nested under the outer meta-tool.
+        workflow_data = workflow_result_payload(data)
+        is_workflow = bool(result.get('workflow_executed') or workflow_data)
+
+        self._emit_completed_tool_events(
+            is_workflow=is_workflow,
+            workflow_data=workflow_data,
+            data=data,
+            tools_used=tools_used,
+            progress_enabled=progress_enabled,
+            duration_ms=duration_ms,
+            message_id=message_id,
+            delivery_room=delivery_room,
+        )
+
+        # Save assistant response to conversation
+        response_usage = enrich_usage_metadata(
+            result.get('usage'),
+            effective_provider,
+            effective_model,
+            mode,
+        )
+        human_reaction_eligible = bool(
+            result.get('ok', True)
+            and not pending_jobs
+            and self._is_user_reaction_eligible(
+                result.get('experience_id'),
+                mode,
+                feedback_requested=bool(request_feedback),
+                cancelled=bool(was_cancelled),
+            )
+        )
+        save_data, response_text, prepared_speech = self._save_message_response(
+            result, data=data, pending_jobs=pending_jobs, is_workflow=is_workflow,
+            workflow_data=workflow_data, conversation_id=conversation_id,
+            message_id=message_id, mode=mode, tools_used=tools_used,
+            vision_result=vision_result, stash_info=stash_info, run_status=run_status,
+            was_cancelled=was_cancelled, effective_provider=effective_provider,
+            effective_model=effective_model, human_reaction_eligible=human_reaction_eligible,
+            response_usage=response_usage, original_user_message=original_user_message,
+        )
+
+        audio_url = self._generate_message_audio(
+            prepared_speech, mode=mode, conversation_id=conversation_id, message_id=message_id,
+        )
+
+        # Emit final response
+        # Include raw_llm_response and vision_analysis in data for "expand details" feature
+        response_data = data.copy() if data else {}
+        if pending_jobs:
+            response_data['pending_jobs'] = pending_jobs
+            response_data['background_jobs'] = save_data['background_jobs']
+        raw_response = result.get('raw_llm_response', '')
+        if raw_response:
+            response_data['raw_llm_response'] = raw_response
+        if result.get('server_side_tools'):
+            response_data['server_side_tools'] = result['server_side_tools']
+        # Include vision analysis if we processed an image
+        if vision_result:
+            response_data['vision_analysis'] = vision_result
+        if stash_info:
+            response_data['_web_upload_stash'] = stash_info
+            response_data.setdefault('stash', stash_info)
+        if result.get('experience_id'):
+            response_data['experience_id'] = result['experience_id']
+            response_data['_intelligence_mode'] = mode
+        response_data['_llm_provider'] = effective_provider
+        response_data['_llm_model'] = effective_model
+        response_data['_human_reaction_eligible'] = human_reaction_eligible
+        if result.get('tool_trace'):
+            response_data['_tool_trace'] = result['tool_trace']
+        if isinstance(result.get('approval_outcome'), dict):
+            response_data['_approval_outcome'] = result['approval_outcome']
+
+        completion_guard_prompt = (not was_cancelled) and (not pending_jobs) and (not is_workflow) and self._should_prompt_completion_guard(completion_guard_config, tools_used)
+        completion_guard_expires_in_ms = (
+            int(completion_guard_config.get('manual_prompt_ttl_seconds', 0) * 1000)
+            if completion_guard_prompt and completion_guard_config.get('manual_prompt_ttl_seconds', 0) > 0
+            else None
+        )
+        completion_guard_auto_eval = (
+            (not was_cancelled) and (not pending_jobs) and (not is_workflow)
+            and result.get('ok', True)
+            and self._should_auto_evaluate_completion_guard(completion_guard_config, tools_used)
+        )
+        defer_feedback_until_completion_guard = (
+            request_feedback
+            and result.get('ok', True)
+            and (completion_guard_prompt or completion_guard_auto_eval)
+        )
+        self._remember_completion_guard_record(session_id, message_id, {
+            'timestamp': time.time(),
+            'conversation_id': conversation_id,
+            'message_id': message_id,
+            'mode': mode,
+            'provider': effective_provider,
+            'model': effective_model,
+            'tool_policy': self._sanitize_tool_policy(
+                prompt_meta.get('tool_policy')
+            ),
+            'query': original_user_message,
+            'processed_query': message,
+            'speech': result.get('speech', ''),
+            'raw_llm_response': raw_response,
+            'tools_used': tools_used,
+            'data': response_data,
+            'usage': response_usage or {},
+            'server_side_tools': result.get('server_side_tools', {}),
+            'completion_guard': completion_guard_config,
+            'is_workflow': bool(is_workflow),
+            'experience_id': result.get('experience_id'),
+            'available_tools': result.get('available_tools', []),
+            'web_search_hint_tools': result.get('web_search_hint_tools', []),
+            'intelligence_context': result.get('intelligence_context', ''),
+            'feedback_requested': bool(request_feedback and result.get('ok', True)),
+            'feedback_state': 'pending' if defer_feedback_until_completion_guard else 'idle',
+            'completion_guard_prompt': bool(completion_guard_prompt),
+        })
+
+        self._emit_run_event('chat:response', {
+            'message_id': message_id,
+            'conversation_id': conversation_id,
+            'text': response_text,
+            'speech': prepared_speech,
+            'data': response_data,
+            'tools_used': tools_used,
+            'ok': result.get('ok', True),
+            'cancelled': was_cancelled,  # True if user stopped processing
+            'run_status': run_status,
+            'approval_outcome': result.get('approval_outcome'),
+            'duration_ms': duration_ms,
+            'usage': response_usage or {},
+            'audio_url': audio_url,
+            'server_side_tools': result.get('server_side_tools', {}),  # xAI/Anthropic native tools
+            'human_reaction_eligible': human_reaction_eligible,
+            'completion_guard': {
+                'enabled': completion_guard_config.get('enabled', False),
+                'mode': completion_guard_config.get('mode', 'off'),
+                'ticket_on_fail': completion_guard_config.get('ticket_on_fail', True),
+                'prompt_user': completion_guard_prompt,
+                'expires_in_ms': completion_guard_expires_in_ms,
+            }
+        }, room=delivery_room)
+
+        if completion_guard_prompt and completion_guard_config.get('manual_prompt_ttl_seconds', 0) > 0:
+            self.socketio.start_background_task(
+                self._expire_completion_guard_prompt_later,
+                session_id,
+                message_id,
+                int(completion_guard_config.get('manual_prompt_ttl_seconds', 0)),
+            )
+
+        if completion_guard_auto_eval:
+            self._start_blocking_task(
+                self._run_completion_guard_auto_eval,
+                session_id,
+                self._get_completion_guard_record(session_id, message_id) or {},
+                name=f"completion-guard-auto-{message_id[:8]}",
+            )
+
+        self._dispatch_message_feedback(
+            result, session_id=session_id, message_id=message_id,
+            conversation_id=conversation_id, delivery_room=delivery_room,
+            message=message, mode=mode, tools_used=tools_used,
+            effective_provider=effective_provider, effective_model=effective_model,
+            request_feedback=request_feedback,
+            defer_feedback_until_completion_guard=defer_feedback_until_completion_guard,
+        )
+
     @_scoped_by_mode
     def _process_message(self, session_id: str, message: str, mode: str,
                          message_id: str, conversation_id: str, image_data: dict = None,
@@ -4426,7 +4952,7 @@ Previous structured data:
             from orchestrator_v2 import Orchestrator
             
             # Get LLM overrides from web config (per-mode)
-            from ..config import get_web_setting, load_web_config
+            from ..config import load_web_config
             from ..services.settings_manager import CLOUD_TTS_PROVIDER_OPTIONS, LOCAL_TTS_PROVIDER_OPTIONS
             web_config = load_web_config()
             mode_overrides = web_config.get(mode, {})
@@ -4514,120 +5040,13 @@ Previous structured data:
             effective_provider = getattr(orchestrator.router, 'provider_type', provider_override or '')
             effective_model = getattr(orchestrator.router, 'model_name', model_override or '')
             
-            # Set up status callback to emit via WebSocket instead of local TTS
-            def status_callback(status_message: str):
-                """Send status updates to browser via WebSocket"""
-                print(f"[CHAT] Status update: {status_message}")
-                self._emit_run_event('chat:status', {
-                    'message_id': message_id,
-                    'conversation_id': conversation_id,
-                    'status': status_message,
-                    'timestamp': time.time()
-                }, room=delivery_room)
-            
-            orchestrator.set_status_callback(status_callback)
-            
-            # Set web conversation ID for tracking in conversation metadata
-            # This allows searching/filtering conversations by web chat session
-            orchestrator.set_web_conversation_id(conversation_id)
-            self._install_tool_approval(orchestrator, conversation_id, message_id)
-            from config_loader import get_config_value
-            blocked_tools = [name.strip() for name in get_config_value('BLOCKED_TOOLS', '').split(',') if name.strip()]
-            background_tools = [
-                name for name in prompt_meta.get('background_tools', [])
-                if name not in blocked_tools
-                and (schema := orchestrator.registry.get_tool(name)) is not None
-                and schema.background_adapter == self.background_tasks.adapters.get(name)
-            ]
-            if background_tools:
-                orchestrator.background_context = self.background_tasks.authorize(
-                    conversation_id, message_id, mode, background_tools,
-                    effective_provider, effective_model, original_user_message, orchestrator.registry)
-            
-            # Set up progress callback for real-time tool execution events
-            # Check if progress events are enabled (default: True)
-            progress_enabled = get_web_setting('ui.progress_events', True)
-            orchestrator.set_reflection_queue_enabled(self._intelligence_reflections_enabled())
-            
-            if progress_enabled:
-                def progress_callback(event_type: str, **kwargs):
-                    """Send tool progress events to browser via WebSocket"""
-                    if event_type == 'tool_start':
-                        tool_name = kwargs.get('tool')
-                        call_index = kwargs.get('call_index', 0)
-                        print(f"[CHAT] Tool starting: {tool_name}[{call_index}] (turn {kwargs.get('turn')}/{kwargs.get('max_turns')})")
-                        self._emit_run_event('tool:start', {
-                            'message_id': message_id,
-                            'tool': tool_name,
-                            'call_index': call_index,  # For unique card IDs when same tool called multiple times
-                            'args': kwargs.get('args', {}),
-                            'turn': kwargs.get('turn'),
-                            'max_turns': kwargs.get('max_turns'),
-                            'timestamp': time.time()
-                        }, room=delivery_room)
-                    
-                    elif event_type == 'tool_complete':
-                        # Emit tool completion in real-time (success or failure)
-                        tool_name = kwargs.get('tool')
-                        call_index = kwargs.get('call_index', 0)
-                        duration_ms = kwargs.get('duration_ms')
-                        success = kwargs.get('success')
-                        
-                        if success:
-                            print(f"[CHAT] Tool completed: {tool_name}[{call_index}] ({duration_ms}ms)")
-                            self._emit_run_event('tool:complete', {
-                                'message_id': message_id,
-                                'tool': tool_name,
-                                'call_index': call_index,  # For matching unique card ID
-                                'result': {},  # Result will be in final response
-                                'duration_ms': duration_ms,
-                                'success': True,
-                                'timestamp': time.time()
-                            }, room=delivery_room)
-                        else:
-                            print(f"[CHAT] Tool failed: {tool_name}[{call_index}] - {kwargs.get('error', 'unknown')}")
-                            self._emit_run_event('tool:error', {
-                                'message_id': message_id,
-                                'tool': tool_name,
-                                'call_index': call_index,
-                                'error': kwargs.get('error', 'Unknown error'),
-                                'duration_ms': duration_ms,
-                                'timestamp': time.time()
-                            }, room=delivery_room)
-                    
-                    elif event_type == 'routing':
-                        print(f"[CHAT] Routing: {kwargs.get('message')}")
-                        self._emit_run_event('tool:progress', {
-                            'message_id': message_id,
-                            'status': kwargs.get('message'),
-                            'timestamp': time.time()
-                        }, room=delivery_room)
-                    elif event_type == 'tool_progress':
-                        print(
-                            f"[CHAT] Tool progress: {kwargs.get('tool')} - "
-                            f"{kwargs.get('status')}"
-                        )
-                        self._emit_run_event('tool:progress', {
-                            'message_id': message_id,
-                            'tool': kwargs.get('tool'),
-                            'call_index': kwargs.get('call_index', 0),
-                            'status': kwargs.get('status'),
-                            'phase': kwargs.get('phase'),
-                            'progress': kwargs.get('progress'),
-                            'session_id': kwargs.get('session_id'),
-                            'opencode_event_type': kwargs.get('opencode_event_type'),
-                            'opencode_tool': kwargs.get('opencode_tool'),
-                            'tool_status': kwargs.get('tool_status'),
-                            'sequence': kwargs.get('sequence'),
-                            'timestamp': time.time()
-                        }, room=delivery_room)
-                
-                orchestrator.set_progress_callback(progress_callback)
-                
-            orchestrator.set_cancel_check(
-                lambda: self.pending_cancellations.get(message_id, False)
+            blocked_tools, progress_enabled = self._configure_message_orchestrator(
+                orchestrator, mode=mode, message_id=message_id,
+                conversation_id=conversation_id, delivery_room=delivery_room,
+                prompt_meta=prompt_meta, effective_provider=effective_provider,
+                effective_model=effective_model, original_user_message=original_user_message,
             )
-            
+
             # Get conversation history for context
             conversation_history = self._get_conversation_context(conversation_id)
             
@@ -4679,359 +5098,18 @@ Previous structured data:
                     tool_policy=prompt_meta.get('tool_policy', 'auto'),
                 )
             
-            if attachment_errors:
-                notice = ('Image analysis was unavailable for: '
-                          + ', '.join(item['filename'] for item in attachment_errors)
-                          + '. The response covers only the other sources.')
-                result['speech'] = str(result.get('speech') or '') + '\n\n' + notice
-                if result.get('raw_llm_response'):
-                    result['raw_llm_response'] += '\n\n' + notice
-                if result.get('ok', True):
-                    result['error'] = notice
-                    result['tool_name'] = 'image_analysis'
-                result['ok'] = False
-                if not isinstance(result.get('data'), dict):
-                    result['data'] = {}
-                result['data']['attachment_errors'] = attachment_errors
-            
-            was_cancelled = result.get('cancelled', False)
-            approval_reply = (was_cancelled and isinstance(result.get('approval_outcome'), dict)
-                              and result['approval_outcome'].get('decision') in ('denied', 'expired'))
-            run_status = ('completed' if approval_reply else 'cancelled' if was_cancelled
-                          else 'completed' if result.get('ok', True) else 'failed')
-            if was_cancelled:
-                request_feedback = False
-            from lib.background_tasks.admission import WebTaskContext, reject_background_result
-            task_context = getattr(orchestrator, 'background_context', None)
-            if isinstance(task_context, WebTaskContext):
-                pending_jobs = list(task_context.receipts.values())
-                result['pending_jobs'] = pending_jobs
-            else:
-                result = reject_background_result(result)
-                pending_jobs = []
-            if pending_jobs:
-                request_feedback = False
-                result.pop('feedback', None)
-            print(f"[CHAT] Got result: ok={result.get('ok')}, tools={result.get('tools_used', [])}, cancelled={was_cancelled}")
-            
-            duration_ms = int((time.time() - start_time) * 1000)
-            
-            # Extract tools used from result
-            tools_used = result.get('tools_used', [])
-            data = result.get('data', {})
-            
-            # Explicit slash workflows return workflow data at the top level;
-            # autonomous workflow(run) is nested under the outer meta-tool.
-            workflow_data = workflow_result_payload(data)
-            is_workflow = bool(result.get('workflow_executed') or workflow_data)
-
-            self._emit_completed_tool_events(
-                is_workflow=is_workflow,
-                workflow_data=workflow_data,
-                data=data,
-                tools_used=tools_used,
-                progress_enabled=progress_enabled,
-                duration_ms=duration_ms,
-                message_id=message_id,
-                delivery_room=delivery_room,
+            self._complete_message(
+                result, orchestrator=orchestrator, session_id=session_id,
+                message_id=message_id, conversation_id=conversation_id, mode=mode,
+                delivery_room=delivery_room, start_time=start_time,
+                original_user_message=original_user_message, message=message,
+                prompt_meta=prompt_meta, request_feedback=request_feedback,
+                completion_guard_config=completion_guard_config,
+                effective_provider=effective_provider, effective_model=effective_model,
+                progress_enabled=progress_enabled, attachment_errors=attachment_errors,
+                vision_result=vision_result, stash_info=stash_info,
             )
-            
-            # Save assistant response to conversation
-            response_usage = enrich_usage_metadata(
-                result.get('usage'),
-                effective_provider,
-                effective_model,
-                mode,
-            )
-            human_reaction_eligible = bool(
-                result.get('ok', True)
-                and not pending_jobs
-                and self._is_user_reaction_eligible(
-                    result.get('experience_id'),
-                    mode,
-                    feedback_requested=bool(request_feedback),
-                    cancelled=bool(was_cancelled),
-                )
-            )
-            try:
-                from ..services.conversation_store import get_conversation_store
-                store = get_conversation_store()
-                response_text, prepared_speech = self._prepare_web_response_text(
-                    result,
-                    "Done. I shared the details in chat."
-                )
-                # Include raw_llm_response and vision_analysis in saved data for "expand details"
-                save_data = data.copy() if data else {}
-                if pending_jobs:
-                    save_data['pending_jobs'] = pending_jobs
-                    save_data['background_jobs'] = {
-                        receipt['job_id']: self.background_tasks.card(
-                            self.background_tasks.store.get(receipt['job_id']))
-                        for receipt in pending_jobs}
-                # Workflow results store tool output in data.results (array); client expects
-                # tool-name-keyed map when loading from history. Populate flat map for workflows.
-                if is_workflow:
-                    save_data.update(workflow_step_tool_results(workflow_data or save_data))
-                raw_response = result.get('raw_llm_response', '')
-                if raw_response:
-                    save_data['raw_llm_response'] = raw_response
-                if result.get('server_side_tools'):
-                    save_data['server_side_tools'] = result['server_side_tools']
-                if prepared_speech:
-                    save_data['speech'] = prepared_speech
-                # Include vision analysis if we processed an image
-                if vision_result:
-                    save_data['vision_analysis'] = vision_result
-                if stash_info:
-                    save_data['_web_upload_stash'] = stash_info
-                    save_data.setdefault('stash', stash_info)
-                save_data['_web_message_id'] = message_id
-                save_data['_run_status'] = run_status
-                save_data['cancelled'] = was_cancelled
-                save_data['_llm_provider'] = effective_provider
-                save_data['_llm_model'] = effective_model
-                if result.get('experience_id'):
-                    save_data['experience_id'] = result['experience_id']
-                    save_data['_intelligence_mode'] = mode
-                save_data['_human_reaction_eligible'] = human_reaction_eligible
-                # Include token usage for tracking
-                if response_usage:
-                    save_data['usage'] = response_usage
-                if result.get('tool_trace'):
-                    save_data['_tool_trace'] = result['tool_trace']
-                if isinstance(result.get('approval_outcome'), dict):
-                    save_data['_approval_outcome'] = result['approval_outcome']
-                # Include error details for failed tool calls (enables follow-up debugging)
-                # Without this, errors only exist in the speech text and can't be analyzed
-                if not result.get('ok') and result.get('error'):
-                    error_data = {
-                        'message': str(result['error'])[:2000],
-                        'retries': result.get('retries', 0),
-                        'tool_failed': (
-                            result.get('tool_name')
-                            or next((entry['tool'] for entry in reversed(result.get('tool_trace') or [])
-                                     if isinstance(entry, dict) and entry.get('ok') is False
-                                     and entry.get('tool')), None)
-                            or (tools_used[-1] if tools_used else 'unknown')
-                        ),
-                    }
-                    # Include tool arguments for debugging (truncated to avoid bloat)
-                    if result.get('tool_args'):
-                        # Keep only non-prompt args to save space (prompts are in the message text)
-                        args_copy = {k: v for k, v in result['tool_args'].items() if k != 'prompt'}
-                        error_data['tool_args'] = {k: str(v)[:300] for k, v in args_copy.items()}
-                    save_data['_error'] = error_data
-                ev = self._compute_effective_evidence(
-                    conversation_id,
-                    save_data,
-                    tools_used,
-                    result.get('server_side_tools', {}),
-                    message_id,
-                    original_user_message,
-                )
-                if ev:
-                    save_data['_effective_evidence'] = ev
-                    if isinstance(data, dict):
-                        data['_effective_evidence'] = ev
-                store.add_message(
-                    conversation_id, 
-                    'assistant', 
-                    response_text,
-                    data=save_data,
-                    tools_used=tools_used
-                )
-                store.update_llm_metadata(
-                    conversation_id,
-                    provider=effective_provider,
-                    model=effective_model,
-                )
-            except Exception as save_err:
-                raise RuntimeError(f"The task ran, but its response could not be saved: {save_err}") from save_err
-            
-            # Generate TTS if enabled
-            audio_url = None
-            try:
-                if get_web_setting('audio.tts_enabled', False):
-                    speech_text = prepared_speech
-                    if speech_text:
-                        audio_url = self._generate_tts(speech_text, mode=mode)
-                        if audio_url:
-                            try:
-                                from ..services.conversation_store import get_conversation_store
-                                store = get_conversation_store()
-                                store.update_message_data_by_web_message_id(
-                                    conversation_id,
-                                    message_id,
-                                    {'audio_url': audio_url}
-                                )
-                            except Exception as save_audio_err:
-                                print(f"[CHAT] Failed to save TTS audio URL: {save_audio_err}")
-            except Exception as tts_err:
-                print(f"[CHAT] TTS generation failed: {tts_err}")
-            
-            # Emit final response
-            # Include raw_llm_response and vision_analysis in data for "expand details" feature
-            response_data = data.copy() if data else {}
-            if pending_jobs:
-                response_data['pending_jobs'] = pending_jobs
-                response_data['background_jobs'] = save_data['background_jobs']
-            raw_response = result.get('raw_llm_response', '')
-            if raw_response:
-                response_data['raw_llm_response'] = raw_response
-            if result.get('server_side_tools'):
-                response_data['server_side_tools'] = result['server_side_tools']
-            # Include vision analysis if we processed an image
-            if vision_result:
-                response_data['vision_analysis'] = vision_result
-            if stash_info:
-                response_data['_web_upload_stash'] = stash_info
-                response_data.setdefault('stash', stash_info)
-            if result.get('experience_id'):
-                response_data['experience_id'] = result['experience_id']
-                response_data['_intelligence_mode'] = mode
-            response_data['_llm_provider'] = effective_provider
-            response_data['_llm_model'] = effective_model
-            response_data['_human_reaction_eligible'] = human_reaction_eligible
-            if result.get('tool_trace'):
-                response_data['_tool_trace'] = result['tool_trace']
-            if isinstance(result.get('approval_outcome'), dict):
-                response_data['_approval_outcome'] = result['approval_outcome']
 
-            completion_guard_prompt = (not was_cancelled) and (not pending_jobs) and (not is_workflow) and self._should_prompt_completion_guard(completion_guard_config, tools_used)
-            completion_guard_expires_in_ms = (
-                int(completion_guard_config.get('manual_prompt_ttl_seconds', 0) * 1000)
-                if completion_guard_prompt and completion_guard_config.get('manual_prompt_ttl_seconds', 0) > 0
-                else None
-            )
-            completion_guard_auto_eval = (
-                (not was_cancelled) and (not pending_jobs) and (not is_workflow)
-                and result.get('ok', True)
-                and self._should_auto_evaluate_completion_guard(completion_guard_config, tools_used)
-            )
-            defer_feedback_until_completion_guard = (
-                request_feedback
-                and result.get('ok', True)
-                and (completion_guard_prompt or completion_guard_auto_eval)
-            )
-            self._remember_completion_guard_record(session_id, message_id, {
-                'timestamp': time.time(),
-                'conversation_id': conversation_id,
-                'message_id': message_id,
-                'mode': mode,
-                'provider': effective_provider,
-                'model': effective_model,
-                'tool_policy': self._sanitize_tool_policy(
-                    prompt_meta.get('tool_policy')
-                ),
-                'query': original_user_message,
-                'processed_query': message,
-                'speech': result.get('speech', ''),
-                'raw_llm_response': raw_response,
-                'tools_used': tools_used,
-                'data': response_data,
-                'usage': response_usage or {},
-                'server_side_tools': result.get('server_side_tools', {}),
-                'completion_guard': completion_guard_config,
-                'is_workflow': bool(is_workflow),
-                'experience_id': result.get('experience_id'),
-                'available_tools': result.get('available_tools', []),
-                'web_search_hint_tools': result.get('web_search_hint_tools', []),
-                'intelligence_context': result.get('intelligence_context', ''),
-                'feedback_requested': bool(request_feedback and result.get('ok', True)),
-                'feedback_state': 'pending' if defer_feedback_until_completion_guard else 'idle',
-                'completion_guard_prompt': bool(completion_guard_prompt),
-            })
-            
-            self._emit_run_event('chat:response', {
-                'message_id': message_id,
-                'conversation_id': conversation_id,
-                'text': response_text,
-                'speech': prepared_speech,
-                'data': response_data,
-                'tools_used': tools_used,
-                'ok': result.get('ok', True),
-                'cancelled': was_cancelled,  # True if user stopped processing
-                'run_status': run_status,
-                'approval_outcome': result.get('approval_outcome'),
-                'duration_ms': duration_ms,
-                'usage': response_usage or {},
-                'audio_url': audio_url,
-                'server_side_tools': result.get('server_side_tools', {}),  # xAI/Anthropic native tools
-                'human_reaction_eligible': human_reaction_eligible,
-                'completion_guard': {
-                    'enabled': completion_guard_config.get('enabled', False),
-                    'mode': completion_guard_config.get('mode', 'off'),
-                    'ticket_on_fail': completion_guard_config.get('ticket_on_fail', True),
-                    'prompt_user': completion_guard_prompt,
-                    'expires_in_ms': completion_guard_expires_in_ms,
-                }
-            }, room=delivery_room)
-
-            if completion_guard_prompt and completion_guard_config.get('manual_prompt_ttl_seconds', 0) > 0:
-                self.socketio.start_background_task(
-                    self._expire_completion_guard_prompt_later,
-                    session_id,
-                    message_id,
-                    int(completion_guard_config.get('manual_prompt_ttl_seconds', 0)),
-                )
-
-            if completion_guard_auto_eval:
-                self._start_blocking_task(
-                    self._run_completion_guard_auto_eval,
-                    session_id,
-                    self._get_completion_guard_record(session_id, message_id) or {},
-                    name=f"completion-guard-auto-{message_id[:8]}",
-                )
-
-            # Collect feedback if requested (runs async after main response)
-            # Skip if Completion Guard has to settle first.
-            # Also skip if orchestrator already collected feedback (random trigger), though
-            # random feedback is disabled above while Completion Guard is enabled.
-            already_has_feedback = result.get('feedback') is not None
-            print(f"[CHAT] Feedback check: request_feedback={request_feedback}, ok={result.get('ok', True)}, already_has_feedback={already_has_feedback}")
-
-            if defer_feedback_until_completion_guard:
-                print(f"[CHAT] Deferring feedback until Completion Guard settles for message {message_id[:8]}...")
-            elif request_feedback and result.get('ok', True) and not already_has_feedback:
-                print(f"[CHAT] Starting async feedback collection for message {message_id[:8]}...")
-                self._start_blocking_task(
-                    self._collect_feedback_async,
-                    session_id,
-                    message_id,
-                    message,
-                    mode,
-                    message_id,
-                    conversation_id,
-                    result,
-                    tools_used,
-                    effective_provider,
-                    effective_model,
-                    None,
-                    name=f"feedback-{message_id[:8]}",
-                )
-            elif already_has_feedback:
-                # Orchestrator already collected feedback (for example random trigger), emit that result
-                print("[CHAT] Using orchestrator's feedback (pre-collected)")
-                feedback = result.get('feedback', {})
-                self._emit_run_event('feedback:start', {
-                    'message_id': message_id,
-                    'conversation_id': conversation_id,
-                    'status': 'complete'  # Already done
-                }, room=delivery_room)
-                self._emit_run_event('feedback:complete', {
-                    'message_id': message_id,
-                    'conversation_id': conversation_id,
-                    'rating': feedback.get('rating'),
-                    'summary': feedback.get('summary', ''),
-                    'positive': feedback.get('positive', ''),
-                    'issues': feedback.get('issues', []),
-                    'suggestions': feedback.get('suggestions', []),
-                    'tool_ratings': feedback.get('tool_ratings', {}),
-                    'analysis': feedback.get('analysis', ''),
-                    'duration_ms': 0,  # Already collected
-                    'success': True
-                }, room=delivery_room)
-            
         except _AttachmentPreparationCancelled:
             from ..services.conversation_store import get_conversation_store
 
