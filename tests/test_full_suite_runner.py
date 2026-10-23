@@ -28,6 +28,9 @@ def test_child_uses_test_python_without_inherited_test_selection_or_live_flags(t
         'JARVIS_LIVE_BROWSER_TEST': '1', 'JARVIS_TEST_LONG_ENCODE': '1',
         'JARVIS_TEST_VIDEO': '/private/video.mp4', 'JARVIS_TEST_IMAGE': '/private/image.png',
         'PYTHONPATH': '/private/modules', 'PYTHONHOME': '/wrong/python',
+        'PYTEST_CURRENT_TEST': 'outer test', 'PYTEST_XDIST_WORKER': 'gw9',
+        'PYTEST_XDIST_WORKER_COUNT': '10', 'PYTEST_XDIST_TESTRUNUID': 'outer-run',
+        'PYTEST_XDIST_AUTO_NUM_WORKERS': '10',
     })
     result = subprocess.run([str(python), '-c', """
 import os, shutil, sys
@@ -36,6 +39,8 @@ assert not any(key in os.environ for key in (
     'PYTEST_ADDOPTS', 'PYTEST_PLUGINS', 'JARVIS_LIVE_BROWSER_TEST',
     'JARVIS_TEST_LONG_ENCODE', 'PYTHONPATH', 'PYTHONHOME',
     'JARVIS_TEST_VIDEO', 'JARVIS_TEST_IMAGE',
+    'PYTEST_CURRENT_TEST', 'PYTEST_XDIST_WORKER', 'PYTEST_XDIST_WORKER_COUNT',
+    'PYTEST_XDIST_TESTRUNUID', 'PYTEST_XDIST_AUTO_NUM_WORKERS',
 ))
 """], env=env, cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
@@ -48,6 +53,30 @@ def test_preflight_preserves_dependency_failure_vs_permission_denial(monkeypatch
     captured = capsys.readouterr()
     assert 'fixture error' in captured.err
     assert ('ENVIRONMENT BLOCKED' in captured.out) == (returncode == 3)
+
+
+@pytest.mark.parametrize('workers', [1, 2])
+def test_preflight_requires_xdist_only_for_parallel_mode(monkeypatch, tmp_path, capsys, workers):
+    block_xdist = '''
+import builtins
+original_import = builtins.__import__
+def import_without_xdist(name, *args, **kwargs):
+    if name == 'xdist':
+        raise ImportError('simulated missing pytest-xdist')
+    return original_import(name, *args, **kwargs)
+builtins.__import__ = import_without_xdist
+'''
+    monkeypatch.setattr(runner, 'PREFLIGHT', block_xdist + runner.PREFLIGHT)
+    python = Path(sys.executable)
+    assert runner.preflight(python, runner.child_environment(python), tmp_path, workers) == (
+        2 if workers == 2 else 0
+    )
+    captured = capsys.readouterr()
+    if workers == 2:
+        assert 'simulated missing pytest-xdist' in captured.err
+        assert 'uv sync --dev --frozen' in captured.err
+    else:
+        assert 'fixtures are available' in captured.out
 
 
 @pytest.mark.parametrize('fixture', ['socket', 'async HTTP'])
@@ -127,7 +156,8 @@ def test_concrete_permission_denial_requests_host_rerun_without_starting_pytest(
 
 
 @pytest.mark.parametrize('passing', [False, True])
-def test_real_pytest_exit_and_evidence_are_preserved(monkeypatch, tmp_path, passing):
+@pytest.mark.parametrize('workers', [1, 2])
+def test_real_pytest_exit_and_evidence_are_preserved(monkeypatch, tmp_path, passing, workers):
     (tmp_path / '.venv').symlink_to(ROOT / '.venv', target_is_directory=True)
     (tmp_path / 'tests').mkdir()
     (tmp_path / 'tests' / 'test_fixture.py').write_text(f'''
@@ -147,11 +177,22 @@ def test_optional_fixture():
     monkeypatch.setattr(runner, 'preflight', lambda *args: 0)
     monkeypatch.setenv('PYTEST_ADDOPTS', '-k nonexistent')
     reports = tmp_path / 'evidence'
-    code = runner.main(['--report-dir', str(reports)])
+    arguments = ['--report-dir', str(reports)]
+    if workers == 2:
+        arguments.extend(['--workers', '2'])
+    code = runner.main(arguments)
     assert code == (0 if passing else 1)
     summary = json.loads((reports / 'summary.json').read_text())
     assert summary['exit_code'] == code
     assert summary['scope'] == 'full'
+    assert summary['workers'] == workers
+    assert summary['distribution'] == ('loadfile' if workers == 2 else 'no')
+    if workers == 2:
+        assert summary['command'][-5:] == [
+            '-n', '2', '--dist', 'loadfile', '--max-worker-restart=0',
+        ]
+    else:
+        assert '-n' not in summary['command']
     assert summary['status'] == ('passed' if passing else 'failed')
     assert summary['junit']['available'] is True
     assert summary['junit']['testcase_counts'] == {
@@ -165,6 +206,47 @@ def test_optional_fixture():
     assert (reports / 'results.xml').is_file()
     assert ('1 passed' if passing else '1 failed') in (reports / 'pytest.log').read_text()
     assert '2 subtests passed' in (reports / 'pytest.log').read_text()
+
+
+@pytest.mark.parametrize('workers', ['0', '3', '-1', 'auto'])
+def test_worker_count_is_bounded_before_starting_preflight(monkeypatch, workers):
+    monkeypatch.setattr(runner, 'preflight', lambda *args: pytest.fail('preflight ran'))
+    with pytest.raises(SystemExit) as error:
+        runner.main(['--workers', workers])
+    assert error.value.code == 2
+
+
+def test_two_workers_execute_distinct_files_without_splitting_them(monkeypatch, tmp_path):
+    (tmp_path / '.venv').symlink_to(ROOT / '.venv', target_is_directory=True)
+    (tmp_path / 'tests').mkdir()
+    records = tmp_path / 'records'
+    records.mkdir()
+    source = '''
+import json, os
+from pathlib import Path
+import pytest
+
+@pytest.mark.parametrize('step', [1, 2])
+def test_record_worker(step):
+    record = {'pid': os.getpid(), 'worker': os.environ['PYTEST_XDIST_WORKER']}
+    name = Path(__file__).stem + str(step) + '.json'
+    (Path(RECORDS) / name).write_text(json.dumps(record))
+'''
+    for name in ('test_first.py', 'test_second.py'):
+        (tmp_path / 'tests' / name).write_text(f'RECORDS={str(records)!r}\n' + source)
+    monkeypatch.setattr(runner, 'ROOT', tmp_path)
+    monkeypatch.setattr(runner, 'preflight', lambda *args: 0)
+    reports = tmp_path / 'evidence'
+    assert runner.main(['--workers', '2', '--report-dir', str(reports)]) == 0
+    observed = []
+    for name in ('first', 'second'):
+        rows = [json.loads((records / f'test_{name}{step}.json').read_text()) for step in (1, 2)]
+        assert rows[0] == rows[1], f'Test file {name} was split between workers'
+        observed.append(rows[0])
+    assert {row['worker'] for row in observed} == {'gw0', 'gw1'}
+    assert len({row['pid'] for row in observed}) == 2
+    summary = json.loads((reports / 'summary.json').read_text())
+    assert summary['junit']['testcase_counts']['passed'] == 4
 
 
 @pytest.mark.parametrize('contents', [None, '<testsuites><broken>'])
@@ -227,4 +309,67 @@ raise SystemExit(runner.run_tests([sys.executable, '-c', child], os.environ.copy
                 try:
                     os.killpg(int(path.read_text()), signal.SIGKILL)
                 except ProcessLookupError:
+                    pass
+
+
+def test_termination_cleans_up_both_workers_and_their_detached_children(tmp_path):
+    tests = tmp_path / 'tests'
+    tests.mkdir()
+    source = '''
+import json, os, subprocess, sys, time
+from pathlib import Path
+
+def test_blocking_fixture():
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'],
+                             start_new_session=True)
+    record = {'worker': os.getpid(), 'controller': os.getppid(), 'child': child.pid}
+    Path(os.environ['PYTEST_XDIST_WORKER'] + '.json').write_text(json.dumps(record))
+    time.sleep(60)
+'''
+    for name in ('test_first.py', 'test_second.py'):
+        (tests / name).write_text(source)
+    script = '''
+import importlib.machinery, importlib.util, os, sys
+from pathlib import Path
+loader = importlib.machinery.SourceFileLoader('runner', sys.argv[1])
+spec = importlib.util.spec_from_loader(loader.name, loader)
+runner = importlib.util.module_from_spec(spec)
+loader.exec_module(runner)
+command = [sys.executable, '-m', 'pytest', 'tests', '-q', '-n', '2', '--dist', 'loadfile',
+           '--max-worker-restart=0']
+raise SystemExit(runner.run_tests(command, runner.child_environment(Path(sys.executable)),
+                                 Path.cwd(), Path('run.log'), 60))
+'''
+    process = subprocess.Popen(
+        [sys.executable, '-c', script, str(ROOT / 'bin/test-suite')],
+        cwd=tmp_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    owned = []
+    try:
+        markers = [tmp_path / f'gw{number}.json' for number in (0, 1)]
+        deadline = time.monotonic() + 15
+        while not all(marker.exists() for marker in markers) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert all(marker.exists() for marker in markers), 'Both worker fixtures did not start'
+        records = [json.loads(marker.read_text()) for marker in markers]
+        owned = [psutil.Process(pid) for pid in {pid for row in records for pid in row.values()}]
+        process.terminate()
+        stdout, stderr = process.communicate(timeout=15)
+        assert process.returncode == 143, (stdout, stderr)
+        for child in owned:
+            try:
+                assert not child.is_running() or child.status() == psutil.STATUS_ZOMBIE
+            except psutil.NoSuchProcess:
+                pass
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate()
+        for marker in tmp_path.glob('gw*.json'):
+            for pid in json.loads(marker.read_text()).values():
+                try:
+                    child = psutil.Process(pid)
+                    if child.is_running():
+                        child.kill()
+                except psutil.NoSuchProcess:
                     pass

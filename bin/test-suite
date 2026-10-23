@@ -39,6 +39,8 @@ print('Preflight phase: dependency imports', flush=True)
 try:
     import pytest
     import psutil
+    if sys.argv[1:] == ['parallel']:
+        import xdist
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 except ImportError as exc:
@@ -70,6 +72,8 @@ def child_environment(python: Path, inherited=None) -> dict[str, str]:
         'JARVIS_LIVE_BROWSER_TEST', 'JARVIS_TEST_LONG_ENCODE',
         'JARVIS_TEST_VIDEO', 'JARVIS_TEST_IMAGE',
         'PYTEST_ADDOPTS', 'PYTEST_PLUGINS', 'PYTHONPATH', 'PYTHONHOME',
+        'PYTEST_CURRENT_TEST', 'PYTEST_XDIST_WORKER', 'PYTEST_XDIST_WORKER_COUNT',
+        'PYTEST_XDIST_TESTRUNUID', 'PYTEST_XDIST_AUTO_NUM_WORKERS',
     ):
         env.pop(key, None)
     env['PATH'] = str(python.parent) + os.pathsep + env.get('PATH', '')
@@ -78,10 +82,11 @@ def child_environment(python: Path, inherited=None) -> dict[str, str]:
     return env
 
 
-def preflight(python: Path, env: dict[str, str], root: Path) -> int:
+def preflight(python: Path, env: dict[str, str], root: Path, workers: int = 1) -> int:
     try:
         result = subprocess.run(
-            [str(python), '-c', PREFLIGHT], cwd=root, env=env,
+            [str(python), '-c', PREFLIGHT, *(['parallel'] if workers > 1 else [])],
+            cwd=root, env=env,
             capture_output=True, text=True, timeout=10,
         )
     except subprocess.TimeoutExpired as exc:
@@ -241,6 +246,8 @@ def main(argv=None) -> int:
     parser.add_argument('--preflight-only', action='store_true', help='Check local fixture support only')
     parser.add_argument('--report-dir', type=Path, help='New directory for log, JUnit and run summary')
     parser.add_argument('--timeout', type=float, default=1800, help='Whole pytest timeout in seconds (default: 1800)')
+    parser.add_argument('--workers', type=int, choices=(1, 2), default=1,
+                        help='Pytest processes: 1 (serial, default) or 2 (parallel by file)')
     args = parser.parse_args(argv)
     if args.timeout <= 0:
         parser.error('--timeout must be greater than zero')
@@ -249,7 +256,7 @@ def main(argv=None) -> int:
         print('Missing repo .venv/bin/python. Run uv sync --dev in this checkout.', file=sys.stderr)
         return 2
     env = child_environment(python)
-    result = preflight(python, env, ROOT)
+    result = preflight(python, env, ROOT, args.workers)
     if result:
         if result == ENVIRONMENT_BLOCKED:
             print('No tests ran. In Codex, rerun this command outside the sandbox; do not skip tests.', flush=True)
@@ -265,13 +272,18 @@ def main(argv=None) -> int:
         str(python), '-m', 'pytest', 'tests', '-q', '-ra', '--tb=short',
         '-o', 'faulthandler_timeout=90', f'--junitxml={report_dir / "results.xml"}',
     ]
-    print(f'Running FULL deterministic suite. Reports: {report_dir}', flush=True)
+    if args.workers > 1:
+        command.extend(['-n', str(args.workers), '--dist', 'loadfile', '--max-worker-restart=0'])
+    execution = 'serial' if args.workers == 1 else f'{args.workers} workers, grouped by file'
+    print(f'Running FULL deterministic suite ({execution}). Reports: {report_dir}', flush=True)
     started = time.monotonic()
     result = run_tests(command, env, ROOT, report_dir / 'pytest.log', args.timeout)
     status = {0: 'passed', 124: 'timeout', 130: 'interrupted', 143: 'terminated'}.get(result, 'failed')
     summary = {
         'scope': 'full', 'status': status, 'exit_code': result,
         'preflight': 'passed',
+        'workers': args.workers,
+        'distribution': 'loadfile' if args.workers > 1 else 'no',
         'duration_seconds': round(time.monotonic() - started, 2),
         'command': command, 'report_dir': str(report_dir),
         'junit': junit_evidence(report_dir / 'results.xml'),

@@ -10,6 +10,9 @@ cd ~/jarvis-voice
 # Complete deterministic core suite (Python and core UI Node tests)
 ./bin/test-suite
 
+# Same complete suite with two worker processes, grouped by test file
+./bin/test-suite --workers 2
+
 # Environment check only, without collecting or executing tests
 ./bin/test-suite --preflight-only
 
@@ -26,7 +29,20 @@ target explicitly: `UV_PROJECT_ENVIRONMENT=.venv uv sync --dev --frozen`.
 
 ## Full-suite execution and sandbox boundaries
 
-`./bin/test-suite` runs all collected tests under `tests/` in one pytest process.
+`./bin/test-suite` runs all collected tests under `tests/` serially by default.
+Use `./bin/test-suite --workers 2` for two worker processes with pytest-xdist's
+`loadfile` distribution: every test in a file stays on the same worker. Both modes
+use one pytest invocation, the same isolation/preflight, and one combined report.
+The development lockfile includes pytest-xdist; it is not a production dependency.
+
+Use parallel mode for faster feedback, and retain serial runs before releases
+and when investigating shared-state failures. Separate worker processes can hide
+cross-file import/global-state contamination that a serial run exposes. Do not
+accept parallel success as a workaround for a failing serial run. Tests must use
+temporary files/databases and ephemeral ports; worker processes still share the
+checkout and host resources. Session fixtures run once per worker, not once for
+the whole run. Worker crashes fail the run without automatic worker restarts.
+
 This includes the standalone core UI `*.test.js` suites through
 `tests/test_javascript_regressions.py`, alongside Python tests that use Node
 fixtures. Node must be available on `PATH`. The separately packaged Firefox
@@ -65,7 +81,8 @@ operations even though the tests themselves are deterministic.
 Each run uses a unique report folder under ignored `logs/tests/` by default.
 Completed pytest runs retain `pytest.log`, JUnit `results.xml`, and `summary.json`
 with the command, environment/preflight outcome, result, JUnit case counts, and
-individual skip reasons. JUnit case counts exclude separately reported passing
+individual skip reasons. The summary also records worker count and distribution.
+JUnit case counts exclude separately reported passing
 subtests; `pytest.log` retains pytest's authoritative terminal totals.
 A preflight-only or blocked run does not have pytest results because no tests
 executed. Use these
@@ -75,7 +92,9 @@ The runner removes inherited `PYTEST_ADDOPTS` and `PYTEST_PLUGINS`, and clears
 `JARVIS_LIVE_BROWSER_TEST`, `JARVIS_TEST_LONG_ENCODE`, and optional private-media
 sample paths (`JARVIS_TEST_VIDEO`, `JARVIS_TEST_IMAGE`), so shell settings cannot
 silently select a smaller run or enable live work. It places the chosen Python
-environment first on `PATH` for child commands. The test isolation in
+environment first on `PATH` for child commands. Inherited pytest worker identity
+and automatic worker-count settings are cleared; `--workers` controls execution.
+The test isolation in
 `tests/conftest.py` intercepts the Python config loader's reads of exactly this
 checkout's private `cloud.env` / `local.env`, returning no operator values.
 It preserves mode ownership for setting names declared in the public `.example`

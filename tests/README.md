@@ -12,6 +12,9 @@ Use the repo `.venv` for development (`uv sync --dev --frozen` if needed):
 # Canonical full core suite (Python and core UI Node tests)
 ./bin/test-suite
 
+# Same full suite in two processes, keeping each test file together
+./bin/test-suite --workers 2
+
 # Check sandbox/local HTTP support without running tests
 ./bin/test-suite --preflight-only
 
@@ -21,8 +24,11 @@ Use the repo `.venv` for development (`uv sync --dev --frozen` if needed):
   tests/test_mode_plumbing_scripts.py
 ```
 
-The full runner executes the collected suite in one process, isolates operator
-configuration, and leaves a unique report folder under ignored `logs/tests/`.
+The full runner executes the collected suite serially by default. `--workers 2`
+uses two pytest-xdist worker processes, grouped by test file, with one combined
+report. Both modes isolate operator configuration and leave a unique report
+folder under ignored `logs/tests/`. Keep serial runs before releases and for
+shared-state investigations: worker isolation can hide cross-file state leakage.
 Use `--report-dir` to choose another report location. A preflight exit of **3**
 means a required local fixture reported an explicit EPERM or EACCES permission
 denial before pytest ran. If the sandbox blocked it, rerun the same command
