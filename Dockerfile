@@ -35,8 +35,8 @@ RUN apt-get update \
 
 RUN python -m venv "$JARVIS_VENV"
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip setuptools wheel \
+COPY requirements.txt constraints-security.txt /app/
+RUN pip install --upgrade "pip>=26.2.2" "setuptools>=84.1.0" wheel \
     && pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . /app

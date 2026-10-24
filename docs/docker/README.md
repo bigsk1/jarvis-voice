@@ -123,6 +123,12 @@ docker compose build
 docker compose up -d --force-recreate
 ```
 
+Python packages in the image come from `requirements.txt` with the transitive
+security floors in `constraints-security.txt`. Keep those files together when
+building. Native `uv sync` updates the host environment; existing images need a
+rebuild to adopt dependency fixes. For certificate-store or base-image security
+updates, use `docker compose build --pull --no-cache` before recreating containers.
+
 ### Background tasks and task callbacks
 
 `jarvis-services` runs reminders, follow-ups and scheduled tasks; it is not the
