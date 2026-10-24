@@ -29,6 +29,23 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "dependency_security_check": _case({
+        "status": "findings", "complete": True, "packages_queried": 153,
+        "checked_at": "2026-10-24T16:00:00+00:00", "issue_count": 1,
+        "findings": [{
+            "package": "pillow", "version": "12.3.0",
+            "environments": ["runtime_installed", "uv_lock"],
+            "advisories": [{
+                "id": "GHSA-v9pv-5gc8-w2m6", "aliases": ["CVE-2026-96639"],
+                "summary": "Stale native image storage reused after mode transitions",
+                "severity": "critical", "fixed_versions": ["13.0.0"],
+                "urls": ["https://osv.dev/vulnerability/GHSA-v9pv-5gc8-w2m6"],
+                "details_complete": True,
+            }],
+        }],
+        "errors": [], "alert_needed": True,
+        "summary_markdown": "# Jarvis dependency security audit\n\nStatus: **findings**\n\nPillow 12.3.0: published fix 13.0.0.",
+    }, {"action": "check"}),
     "create_notification": _case({
         "id": "notice_7", "title": "Cleanup complete", "message": "All stages succeeded.",
         "source": "cleanup_all", "mode": "local", "created_at": "2026-10-22T03:00:00+00:00",
@@ -2015,6 +2032,50 @@ def test_malwarebytes_batch_preserves_ten_indicator_verdicts():
 
 def test_every_enabled_local_tool_has_an_audited_payload_sample():
     assert set(LOCAL_TOOL_SAMPLES) == _enabled_local_tool_names()
+
+
+def test_dependency_security_followup_preserves_exact_packages_and_published_fixes():
+    payload, arguments = LOCAL_TOOL_SAMPLES["dependency_security_check"]
+    before = deepcopy(payload)
+    result = followup.extract_followup_data({
+        "dependency_security_check": payload,
+        "_tool_trace": [{"tool": "dependency_security_check", "ok": True, "arguments": arguments}],
+    })["dependency_security_check"]
+    assert result["status"] == "findings"
+    assert result["complete"] is True
+    assert result["packages_queried"] == 153
+    assert result["checked_at"] == payload["checked_at"]
+    assert result["findings"] == payload["findings"]
+    assert result["findings_count"] == 1
+    assert "summary_markdown" not in result
+    assert json.loads(json.dumps(result, allow_nan=False)) == result
+    assert payload == before
+
+
+def test_dependency_security_followup_keeps_incomplete_coverage_without_inventing_findings():
+    result = followup.extract_followup_data({"dependency_security_check": {
+        "status": "incomplete", "complete": False, "packages_queried": 0, "issue_count": 1,
+        "findings": [], "errors": [{"stage": "query", "code": "advisory_network_error"}],
+    }})["dependency_security_check"]
+    assert result["complete"] is False
+    assert result["packages_queried"] == 0
+    assert result["findings_count"] == 0
+    assert result["errors"] == [{"stage": "query", "code": "advisory_network_error"}]
+
+
+def test_dependency_security_followup_bounds_many_findings_and_marks_omitted_packages():
+    payload, _ = LOCAL_TOOL_SAMPLES["dependency_security_check"]
+    payload = deepcopy(payload)
+    payload["findings"] = [
+        {**deepcopy(payload["findings"][0]), "package": f"example-{index}"}
+        for index in range(30)
+    ]
+    result = followup.extract_followup_data({"dependency_security_check": payload})["dependency_security_check"]
+    assert result["findings_count"] == 30
+    assert result["findings_truncated"] is True
+    assert len(result["findings"]) == followup.FOLLOWUP_DEFAULT_MAX_CANDIDATES
+    assert result["findings"][0]["advisories"][0]["fixed_versions"] == ["13.0.0"]
+    assert len(json.dumps(result, allow_nan=False)) <= 8000
 
 
 def test_bookmark_plus_followup_keeps_ids_and_partial_judging_without_notes():

@@ -440,6 +440,7 @@ JSON object printed to stdout:
 | `ssh_remote` | SSH into remote hosts |
 | `network_tools` | Ping, DNS, port checks, traceroute |
 | `system_monitor` | CPU, RAM, disk, processes |
+| [`dependency_security_check`](../docs/tools/dependency-security-check/README.md) | Read-only Python dependency advisory audit, coverage report, and weekly security workflow |
 | `gpu_hot_status` | Remote GPU Hot GPU, process, and host metrics |
 | `speaker_volume` | Audio volume control |
 

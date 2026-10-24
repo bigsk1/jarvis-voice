@@ -204,6 +204,7 @@
     "create_reminder": "_family_reminders",
     "create_social_clip": "_family_video",
     "crypto_chart": "crypto_price",
+    "dependency_security_check": "_family_developer_ops",
     "flight_search": "_family_travel",
     "forget": "_family_memory",
     "generate_video": "_family_video",

@@ -1,0 +1,25 @@
+{
+  "enabled": true,
+  "name": "dependency_security_check",
+  "description": "Check Jarvis Python dependencies for known security vulnerabilities using OSV advisories. Use for 'does Jarvis need security package updates?', 'audit dependencies', or a scheduled security self-check. Inspects the executing Python environment and repository dependency inventories without installing, resolving, upgrading, or restarting anything. Returns exact affected versions, advisory references, published fixes, and explicit coverage errors. Package names and versions are sent to OSV. Does not audit Ubuntu packages, other containers, remote services, or the standalone uv executable.",
+  "script": "dependency_security_check.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["check"],
+        "description": "Run the read-only advisory check. Default: check."
+      }
+    },
+    "additionalProperties": false
+  },
+  "permissions": {
+    "dangerous": false,
+    "network": true,
+    "filesystem": true,
+    "bash": false,
+    "auto_approve": true
+  },
+  "child_environment": {"mode": "restricted", "allow": []}
+}

@@ -406,6 +406,7 @@ the same orchestration turn; it is not a durable background run.
 | `game_brief.json` | `/game_brief <sport> <team>` | Create a current game Canvas brief from structured Google Sports details, with optional Brave narrative enrichment |
 | `github_ai_radar_daily.json` | `/github_ai_radar` | Search for current GitHub AI project signals with Brave MCP, optionally feature a YouTube result, gather Brave LLM Context, and keep one current Canvas page refreshed |
 | `jarvis_self_check.json` | `/jarvis_self_check` | Local Jarvis host health check with deduped alerts and one refreshed Canvas health page |
+| `jarvis_dependency_security_check.json` | `/jarvis_security_check` | Read-only Python dependency advisory check with a current Canvas report and deduplicated findings/incomplete-check alerts; [weekly scheduling](../../docs/tools/dependency-security-check/README.md) |
 | `knowledge_snapshot.json` | `/knowledge <topic>` | Search active-mode Memory, Intel, and prior conversations without new web research, then create or refresh one source-attributed Canvas briefing per topic |
 | `local_services_compare.json` | `/local_services_compare <service>` | Compare Google Local Services, Google Local, and bounded Yelp review evidence using the active mode's configured location, optional Stash evidence, and a dated Canvas shortlist |
 | `memory_scan.json` | `/memory_scan` | Run memory_deduper against the active cloud/local memory DB and save a labeled report to stash + canvas |

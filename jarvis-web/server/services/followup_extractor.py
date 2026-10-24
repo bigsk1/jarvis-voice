@@ -589,6 +589,9 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'alert_dedupe_key',
     ],
     'memory_deduper': ['stash_ref', 'canvas_page_id'],
+    'dependency_security_check': [
+        'status', 'complete', 'checked_at', 'packages_queried', 'issue_count',
+    ],
     'stash': ['space_id', 'file_id', 'name', 'mime_type', 'size_bytes'],
     'screenshot_url': ['url', 'screenshot_path'],
     'phone_call': [
@@ -3102,6 +3105,24 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             field_value = payload.get(field)
             if field_value not in (None, '', [], {}):
                 extracted[field] = field_value
+
+        if key == 'dependency_security_check':
+            findings = payload.get('findings')
+            if isinstance(findings, list):
+                selected = findings[:max_candidates]
+                extracted['findings_count'] = len(findings)
+                extracted['findings'] = [
+                    _bounded_structured_followup_value(
+                        item, max_chars=6000 // max(1, len(selected)),
+                    )
+                    for item in selected if isinstance(item, dict)
+                ]
+                if len(selected) < len(findings):
+                    extracted['findings_truncated'] = True
+            if isinstance(payload.get('errors'), list) and payload['errors']:
+                extracted['errors'] = _bounded_structured_followup_value(
+                    payload['errors'], max_chars=1000,
+                )
 
         if key == 'generate_password':
             # Keep useful metadata without persisting generated credentials in

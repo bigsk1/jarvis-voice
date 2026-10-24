@@ -1,0 +1,123 @@
+{
+  "id": "jarvis_dependency_security_check",
+  "name": "Jarvis Dependency Security Check",
+  "description": "Read-only Python dependency advisory check on the executing Jarvis host, with one current Canvas report and deduplicated alerts for findings or incomplete checks. Suitable for weekly scheduling.",
+  "version": "1.0",
+  "enabled": true,
+  "allow_workflow_tool": false,
+  "disable_server_side_tools": true,
+  "triggers": {
+    "explicit": [
+      "/jarvis_security_check"
+    ],
+    "patterns": [],
+    "keywords": []
+  },
+  "variables": {
+    "canvas_title": "Workflows/Jarvis Dependency Security",
+    "security_page_id": "",
+    "security_status": "not run"
+  },
+  "steps": [
+    {
+      "step": 1,
+      "tool": "dependency_security_check",
+      "params": {
+        "action": "check"
+      },
+      "output_var": "security_result",
+      "extract": {
+        "security_status": "status",
+        "security_complete": "complete",
+        "security_issue_count": "issue_count",
+        "security_packages_queried": "packages_queried",
+        "security_checked_at": "checked_at",
+        "security_summary_markdown": "summary_markdown",
+        "security_alert_title": "alert_title",
+        "security_alert_description": "alert_description",
+        "security_alert_severity": "alert_severity",
+        "security_alert_dedupe_key": "alert_dedupe_key"
+      },
+      "required": true,
+      "description": "Collect local package inventories and check current OSV advisories without model calls"
+    },
+    {
+      "step": 2,
+      "tool": "canvas",
+      "action": "read",
+      "params": {
+        "search": "${canvas_title}"
+      },
+      "extract": {
+        "security_page_id": "page_id"
+      },
+      "required": true,
+      "description": "Find the durable dependency security report"
+    },
+    {
+      "step": 3,
+      "tool": "canvas",
+      "action": "create",
+      "condition": {
+        "op": "not_exists",
+        "left": "${security_page_id}"
+      },
+      "params": {
+        "title": "${canvas_title}",
+        "tags": [
+          "jarvis",
+          "security",
+          "dependencies",
+          "workflow"
+        ],
+        "content": "# Jarvis Dependency Security\n\n## Current Status\n\nAudit status: **${security_status}**. Checked ${security_checked_at}.\n\n${security_summary_markdown}\n\n## Follow-up\n\nReview advisory findings and proposed package updates with Codex before applying changes. Listed fixes require compatibility review. This check does not install packages or restart services.\n\n## Run Log\n\n- ${security_checked_at}: ${security_status}; ${security_packages_queried} package/version pairs queried. Earlier structured results are retained in scheduled run history.\n"
+      },
+      "required": true,
+      "description": "Create the dependency security report on its first run"
+    },
+    {
+      "step": 4,
+      "tool": "canvas",
+      "action": "update",
+      "condition": {
+        "op": "exists",
+        "left": "${security_page_id}"
+      },
+      "params": {
+        "page_id": "${security_page_id}",
+        "allow_content_shrink": true,
+        "content": "# Jarvis Dependency Security\n\n## Current Status\n\nAudit status: **${security_status}**. Checked ${security_checked_at}.\n\n${security_summary_markdown}\n\n## Follow-up\n\nReview advisory findings and proposed package updates with Codex before applying changes. Listed fixes require compatibility review. This check does not install packages or restart services.\n\n## Run Log\n\n- ${security_checked_at}: ${security_status}; ${security_packages_queried} package/version pairs queried. Earlier structured results are retained in scheduled run history.\n"
+      },
+      "required": true,
+      "description": "Replace the current report so resolved findings do not remain active"
+    },
+    {
+      "step": 5,
+      "tool": "create_alert",
+      "condition": {
+        "op": "gte",
+        "left": "${security_issue_count}",
+        "right": 1
+      },
+      "params": {
+        "title": "${security_alert_title}",
+        "description": "${security_alert_description}",
+        "severity": "${security_alert_severity}",
+        "source": "jarvis_dependency_security_check",
+        "speak_immediately": false,
+        "metadata": {
+          "dedupe_key": "${security_alert_dedupe_key}",
+          "workflow_id": "jarvis_dependency_security_check",
+          "status": "${security_status}",
+          "complete": "${security_complete}",
+          "issue_count": "${security_issue_count}",
+          "canvas_title": "${canvas_title}"
+        }
+      },
+      "required": true,
+      "description": "Raise a deduplicated alert for affected versions or incomplete coverage after saving the report"
+    }
+  ],
+  "success_speech": "Dependency security check: ${security_status}. ${security_packages_queried} package/version pairs queried. The current report is on Canvas.",
+  "abort_speech": "The dependency security workflow could not finish. Check its scheduled run history; no all-clear result is available."
+}
