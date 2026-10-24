@@ -431,8 +431,22 @@ JSON object printed to stdout:
 | Tool | Description |
 |------|-------------|
 | `send_email` | Email with HTML templates |
+| `email_contacts` | Read-only list or lookup of local recipient aliases shared by email and Gmail |
 | `send_webhook` | Trigger webhooks (Slack, Discord, APIs) |
 | `phone_call` | AI phone calls (Vapi.ai) |
+
+`email_contacts` reads `config/contacts.json`; omit `query` to list email-capable
+entries, or provide a key, display name, or email fragment to filter them. It
+returns only keys, names, and email addresses, with explicit lookup-completeness
+and truncation fields. Missing or unreadable configuration is distinguished from
+a completed lookup with no matches. It never sends mail or changes contacts.
+
+Both `send_email` and Google Workspace Gmail sends/drafts resolve those local
+aliases themselves and accept explicit email addresses. A supplied recipient
+can go directly to the requested sender; use `email_contacts` when inspection or
+clarification is needed. Google Contacts list/search tools inspect a separate
+address book, and memory searches do not inspect either contact store. A miss in
+one source is not evidence that a recipient is unavailable in another.
 
 ### System & Network
 | Tool | Description |

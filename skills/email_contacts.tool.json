@@ -1,0 +1,35 @@
+{
+  "enabled": true,
+  "name": "email_contacts",
+  "description": "List or look up Jarvis's configured local email contacts in config/contacts.json. These recipient aliases are shared by send_email and Google Workspace Gmail sends/drafts. Use to inspect saved local recipients or verify a name before claiming it is missing. Optional query filters contact keys, display names, and email addresses case-insensitively. This does not search Google Contacts, Gmail messages, or memory, and it never sends mail or changes contacts. A missing local match does not mean an explicit email address cannot be used. Phone-only entries are omitted; truncated=true means more local matches exist.",
+  "script": "lookup_email_contacts.py",
+  "proxy_policy": "off",
+  "child_environment": {"mode": "restricted", "allow": []},
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Optional case-insensitive text to match against local contact keys, display names, or email addresses. Omit to list email-capable contacts."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 20,
+        "description": "Maximum contacts returned, between 1 and 50. total_matches and truncated describe additional matches."
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "test_input": {},
+  "expected_output_contains": ["jarvis_local_contacts", "lookup_complete", "contacts"]
+}

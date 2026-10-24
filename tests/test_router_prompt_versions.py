@@ -393,6 +393,40 @@ def test_runtime_prompt_routes_live_flight_status_through_generic_web_search(ver
     assert "If web search is unavailable, do not guess" in prompt
 
 
+@pytest.mark.parametrize("version", available_router_prompt_versions())
+@pytest.mark.parametrize("provider,mode", [
+    ("openai", "cloud"), ("anthropic", "cloud"), ("xai", "cloud"),
+    ("ollama", "local"), ("ollama", "cloud"),
+])
+def test_shared_email_recipient_policy_preserves_config_and_provider_boundaries(version, provider, mode):
+    values = {
+        "JARVIS_ROUTER_PROMPT_VERSION": version,
+        "JARVIS_TIMEZONE": "UTC",
+        "JARVIS_RESPONSE_STYLE": "casual",
+        "LLM_PROVIDER": provider,
+    }
+    with (
+        patch("router_v2.load_config"),
+        patch("router_v2.get_config_value", side_effect=lambda key, default=None: values.get(key, default)),
+        patch.object(LLMRouter, "_create_provider", return_value=MagicMock(model="test-model")),
+        patch("router_v2.load_model_prompt_override", return_value=None),
+        patch("router_v2.append_profile_card_for_router_direct_answer", side_effect=lambda prompt: prompt),
+    ):
+        prompt = LLMRouter(mode=mode, registry=MagicMock()).system_prompt
+
+    assert prompt.count("CONFIGURED EMAIL RECIPIENTS:") == 1
+    for contract in (
+        "requested email provider", "authorized send despite empty memory results",
+        "email_contacts reads Jarvis's configured aliases", "Google's address book",
+        "neither an empty Google result nor a memory miss", "supplied aliases or direct addresses",
+        "known aliases and literal addresses need no preliminary memory search",
+        "read-only email_contacts for uncertain recipients", "current tool evidence",
+        "existing approval requirements", "lookup-only requests never authorize sending",
+    ):
+        assert contract in prompt
+    assert prompt.index("CONFIGURED EMAIL RECIPIENTS:") < prompt.index("RUNTIME CONTEXT FOR THIS TURN:")
+
+
 def test_runtime_prompt_exposes_full_xai_tts_vocabulary_only_when_selected():
     provider = MagicMock(model="test-model")
 

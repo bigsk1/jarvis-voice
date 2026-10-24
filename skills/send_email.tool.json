@@ -1,14 +1,14 @@
 {
   "enabled": true,
   "name": "send_email",
-  "description": "Default tool for ordinary outgoing email from Jarvis through the configured n8n/Mailgun service, optionally with stash attachments. Use for 'email Boss', 'send an email to Frank', 'email me that image', or 'send this PDF by email' when no specific email service is requested. Use the requested provider's available tools for service-specific delivery or mailbox actions; report if that requested service is unavailable. Do not use for 'check my email', 'what's in my inbox', or 'draft an email'. Contacts are looked up by name (e.g., 'Frank', 'Mom', 'Boss'). Use the attachment parameter with a stash ref or file path. If stash has expired, say so rather than inventing an attachment. Always compose the email body with context: who is sending and why.",
+  "description": "Default tool for ordinary outgoing email from Jarvis through the configured n8n/Mailgun service, optionally with stash attachments. Use for 'email Boss', 'send an email to Frank', 'email me that image', or 'send this PDF by email' when no specific email service is requested. Use the requested provider's available tools for service-specific delivery or mailbox actions; report if that requested service is unavailable. Do not use for 'check my email', 'what's in my inbox', or 'draft an email'. Pass a supplied contact name or explicit address directly: Jarvis resolves local aliases from config/contacts.json before sending. Use email_contacts for a read-only local contact lookup when needed. Memory search and Google Contacts are separate sources; a miss there does not establish that a local contact is absent or that a direct address is unsupported. Use the attachment parameter with a stash ref or file path. If stash has expired, say so rather than inventing an attachment. Always compose the email body with context: who is sending and why.",
   "script": "send_email.py",
   "parameters": {
     "type": "object",
     "properties": {
       "to": {
         "type": "string",
-        "description": "Recipient name (from contacts) or email address. Examples: 'work', 'mom', 'Boss', 'recipient@example.com'"
+        "description": "Local contact key/display name (resolved from config/contacts.json) or an explicit email address. Examples: 'work', 'mom', 'Boss', 'recipient@example.com'. Unknown names fail before sending. For read-only lookup, use email_contacts rather than memory or Google Contacts."
       },
       "subject": {
         "type": "string",

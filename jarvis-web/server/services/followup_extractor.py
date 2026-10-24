@@ -592,6 +592,10 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'dependency_security_check': [
         'status', 'complete', 'checked_at', 'packages_queried', 'issue_count',
     ],
+    'email_contacts': [
+        'status', 'source', 'contacts_file', 'lookup_complete',
+        'count', 'total_matches', 'truncated',
+    ],
     'stash': ['space_id', 'file_id', 'name', 'mime_type', 'size_bytes'],
     'screenshot_url': ['url', 'screenshot_path'],
     'phone_call': [
@@ -3105,6 +3109,19 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             field_value = payload.get(field)
             if field_value not in (None, '', [], {}):
                 extracted[field] = field_value
+
+        if key == 'email_contacts':
+            contacts = payload.get('contacts')
+            if isinstance(contacts, list):
+                selected = contacts[:max_candidates]
+                extracted['contacts'] = [
+                    {field: item[field] for field in ('key', 'name', 'email')
+                     if isinstance(item.get(field), str)}
+                    for item in selected if isinstance(item, dict)
+                ]
+                extracted['contacts_truncated'] = (
+                    payload.get('truncated') is True or len(selected) < len(contacts)
+                )
 
         if key == 'dependency_security_check':
             findings = payload.get('findings')

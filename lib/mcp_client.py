@@ -1617,6 +1617,9 @@ class MCPRemoteClient:
                 if stash:
                     from google_workspace import stash_workspace_download
                     normalized = stash_workspace_download(self, normalized, space_id)
+                if self.name == "google_workspace" and raw:
+                    from google_workspace_images import stash_workspace_images
+                    normalized = stash_workspace_images(raw, normalized)
                 response_holder["result"] = normalized
             except Exception as e:
                 response_holder["error"] = e

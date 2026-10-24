@@ -29,6 +29,12 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "email_contacts": _case({
+        "status": "found", "source": "jarvis_local_contacts",
+        "contacts_file": "config/contacts.json", "lookup_complete": True,
+        "contacts": [{"key": "test_bot", "name": "Test Bot", "email": "bot@example.test"}],
+        "count": 1, "total_matches": 1, "truncated": False,
+    }, {"query": "test_bot"}),
     "dependency_security_check": _case({
         "status": "findings", "complete": True, "packages_queried": 153,
         "checked_at": "2026-10-24T16:00:00+00:00", "issue_count": 1,
@@ -2032,6 +2038,52 @@ def test_malwarebytes_batch_preserves_ten_indicator_verdicts():
 
 def test_every_enabled_local_tool_has_an_audited_payload_sample():
     assert set(LOCAL_TOOL_SAMPLES) == _enabled_local_tool_names()
+
+
+def test_email_contact_followup_keeps_verified_recipient_and_source_without_private_fields():
+    payload, arguments = deepcopy(LOCAL_TOOL_SAMPLES["email_contacts"])
+    payload["contacts"][0].update(notes="PRIVATE_NOTE", phone="PRIVATE_PHONE")
+    payload["jarvis_email"] = {"approved_senders": ["PRIVATE_SENDER"]}
+    before = deepcopy(payload)
+    result = followup.extract_followup_data({
+        "email_contacts": payload,
+        "_tool_trace": [{"tool": "email_contacts", "ok": True, "arguments": arguments}],
+    })["email_contacts"]
+    assert result["source"] == "jarvis_local_contacts"
+    assert result["contacts_file"] == "config/contacts.json"
+    assert result["lookup_complete"] is True
+    assert result["status"] == "found"
+    assert result["contacts"] == [{"key": "test_bot", "name": "Test Bot", "email": "bot@example.test"}]
+    assert "PRIVATE_" not in json.dumps(result)
+    assert json.loads(json.dumps(result)) == result
+    assert payload == before
+
+
+@pytest.mark.parametrize("status,complete", [
+    ("not_found", True), ("unavailable", False), ("not_configured", False),
+])
+def test_email_contact_followup_distinguishes_completed_miss_from_incomplete_lookup(status, complete):
+    result = followup.extract_followup_data({"email_contacts": {
+        "status": status, "source": "jarvis_local_contacts", "lookup_complete": complete,
+        "contacts": [], "count": 0, "total_matches": 0, "truncated": False,
+    }})["email_contacts"]
+    assert result["lookup_complete"] is complete
+    assert result["status"] == status
+    assert result["contacts"] == []
+    assert result["count"] == result["total_matches"] == 0
+
+
+@pytest.mark.parametrize("tool_truncated", [False, True])
+def test_email_contact_followup_marks_omitted_matches_without_changing_lookup_count(tool_truncated):
+    payload, _ = deepcopy(LOCAL_TOOL_SAMPLES["email_contacts"])
+    payload.update(contacts=payload["contacts"] * 3, count=3,
+                   total_matches=4 if tool_truncated else 3, truncated=tool_truncated)
+    result = followup.extract_followup_data({"email_contacts": payload}, max_candidates=1)["email_contacts"]
+    assert result["contacts"] == payload["contacts"][:1]
+    assert result["contacts_truncated"] is True
+    assert result["truncated"] is tool_truncated
+    assert result["count"] == 3
+    assert result["total_matches"] == payload["total_matches"]
 
 
 def test_dependency_security_followup_preserves_exact_packages_and_published_fixes():

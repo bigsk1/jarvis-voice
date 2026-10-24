@@ -15,6 +15,9 @@ leave a fresh clone usable. Preserve the pinned container digest, explicit
 environment allowlist, private storage, localhost binding and Bearer wrapper.
 Keep complete-tier/full-access tools unless the user requests different access.
 Consumer accounts cannot use Workspace Chat or domain-wide delegation.
+Retain the hash-locked container security overlay when rebuilding: the upstream
+v2.2.0 lock predates newer pypdf, FastMCP and OpenTelemetry fixes. Recheck the
+installed container packages rather than assuming the upstream tag is advisory-free.
 
 Check credentials by presence only. Use an existing authorized OAuth client if
 available; account/app passwords cannot replace it. If Google Cloud administration
@@ -70,7 +73,7 @@ rejection of an unlisted Host even with a matching Origin. Keep
 `WORKSPACE_MCP_ALLOWED_HOSTS` entries as bare hosts, without schemes or ports;
 the maintained list covers native loopback and the Docker service name.
 
-Use existing tools for the v2.1.2 features. New Markdown documents use
+Use existing tools for formatted documents. New Markdown documents use
 `import_to_google_doc` with `source_format="md"` or a `.md` filename;
 `create_doc` content is plain text. Existing tabs use
 `manage_doc_tab(action="populate_from_markdown")` after inspecting `tab_id`.
@@ -88,3 +91,20 @@ Sender-alias checks are best effort and can be bypassed when signatures are
 disabled or settings are unreadable; do not promise sender enforcement.
 Keep generic outgoing email routed to the native `send_email` when available,
 and use Gmail for explicit Gmail delivery or existing Gmail replies/forwards.
+
+The pinned v2.2.0 replaces `get_page_thumbnail` with `render_page_to_image`:
+use `size`, omit the removed `inline` argument, and start at `MEDIUM`. Returned
+slide/Drive raster images become bounded Stash artifacts; call `analyze_image`
+with their references for visual inspection. An upstream read alone is not
+evidence that the model saw the image. Inspect `image_delivery` for partial or
+unavailable saves. The bridge permits four images, 8 MiB each, 16 MiB aggregate
+and 40 million pixels per image, using validated inline bytes without URL fetches.
+
+Docs heading edits replace a section by default; use `end_of_segment=true` to
+append, inspect tabs/duplicate headings, and retain a recovery copy for major
+rewrites. `include_colors=true` reads explicit text colors. Contacts incremental
+sync requires consuming every full-sync page before reusing the final token;
+expired tokens need a fresh full sync, and local aliases remain separate.
+Gmail `reply_all=true` derives participants unless explicit recipients override
+them; use only for a requested reply-all. Calendar special event writes require
+timezone-aware boundaries. Keep consumer-account restrictions explicit.

@@ -1,6 +1,6 @@
 """Normalize Workspace MCP receipts and preserve bounded follow-up handles.
 
-Upstream v2.1.2 mostly returns human-readable text, not Google API objects.
+Upstream v2.2.0 returns human-readable receipts and optional inline images.
 Keep its actual response and explicitly labeled IDs; never invent an API receipt.
 """
 
@@ -24,7 +24,8 @@ _REQUEST_KEYS = frozenset({
     "page_token", "full", "attachment_id", "attachment_index", "sheet_name", "to", "start_time", "end_time", "script_id",
     "deployment_id", "version_number", "response_id", "permission_id", "role",
     "email_address", "body_format", "time_min", "time_max", "stash", "stash_space_id", "stash_ref",
-    "tab_id", "replace_existing", "copy_comments",
+    "tab_id", "replace_existing", "copy_comments", "request_sync_token", "sync_token",
+    "page_object_id", "size", "heading", "heading_level", "include_colors", "color_id", "reply_all",
 })
 _REQUEST_ID_LISTS = frozenset({"message_ids", "thread_ids", "add_label_ids", "remove_label_ids"})
 _LINK = re.compile(r"https?://[^\s<>\"'\[\]]+")
@@ -179,12 +180,16 @@ def gmail_attachment_metadata(text: str, message_id: str) -> list[dict]:
 
 
 def normalize_workspace_result(tool_name: str, result: dict, arguments: dict | None = None) -> dict:
+    from google_workspace_images import image_delivery, without_image_bytes
+
     content = result.get("content") or []
+    image_count = sum(isinstance(item, dict) and item.get("type") == "image" for item in content)
     text = "\n".join(
         item["text"] for item in content
         if isinstance(item, dict) and isinstance(item.get("text"), str)
     )
-    structured = result.get("structuredContent")
+    text = without_image_bytes(text)
+    structured = without_image_bytes(result.get("structuredContent"))
     if not text and structured is not None:
         text = json.dumps(structured, ensure_ascii=False, default=str)
     text = normalize_labeled_ids(text)
@@ -214,6 +219,21 @@ def normalize_workspace_result(tool_name: str, result: dict, arguments: dict | N
     if request_counts:
         data["request_list_counts"] = request_counts
         data["request_lists_truncated"] = request_truncated
+    if image_count:
+        data["image_delivery"] = image_delivery(image_count, 0, ["Inline images have not been saved locally"])
+    # This cursor follows the full contact listing, often beyond both text and
+    # reference limits. Only an explicitly requested sync's final footer is
+    # control metadata; contact bodies can contain matching lines themselves.
+    sync_token = (arguments or {}).get("sync_token")
+    sync_requested = ((arguments or {}).get("request_sync_token") is True
+                      or isinstance(sync_token, str) and bool(sync_token.strip()))
+    next_sync = (re.search(r"(?im)^Next sync token:[ \t]*([^\s]+)[ \t\r\n]*\Z", text)
+                 if tool_name == "list_contacts" and not failed and sync_requested else None)
+    if next_sync:
+        if len(next_sync[1]) <= 1000:
+            data["next_sync_token"] = next_sync[1]
+        else:
+            data["next_sync_token_unavailable"] = "Google sync token exceeds the 1000-character replay limit"
     if batch_outcomes is not None:
         data["batch_outcomes"] = batch_outcomes
     if tool_name == "get_gmail_message_content" and (arguments or {}).get("body_format", "text") == "text":
@@ -286,7 +306,7 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
         "source", "tool", "ok", "authentication_required", "configuration_required", "request", "references",
         "links", "artifacts", "stash_error", "google_ok", "response_truncated", "external_content_trust",
         "content_links_untrusted", "batch_outcomes", "google_export_ok", "download_ok", "download_error",
-        "request_list_counts", "request_lists_truncated",
+        "request_list_counts", "request_lists_truncated", "image_delivery", "next_sync_token", "next_sync_token_unavailable",
     ) if key in payload}
     projected = deepcopy(projected)
     trimmed = any(projected[key] != payload[key] for key in projected)
@@ -368,7 +388,8 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
     for key in ("stash_error", "download_error", "configuration_required", "response_excerpt", "links", "references", "artifacts",
                 "request", "external_content_trust", "tool", "source", "content_links_untrusted",
                 "response_truncated", "authentication_required", "google_ok", "google_export_ok", "download_ok",
-                "request_list_counts", "request_lists_truncated", "batch_outcomes", "ok"):
+                "request_list_counts", "request_lists_truncated", "batch_outcomes", "image_delivery",
+                "next_sync_token", "next_sync_token_unavailable", "ok"):
         if size() <= max_chars:
             break
         if key in projected:
@@ -390,6 +411,11 @@ def extend_workspace_schema(tool_name: str, parameters: dict, description: str) 
     """Add Jarvis-only options; the upstream schema stays unchanged."""
     props = parameters.setdefault("properties", {})
     hints = []
+    if tool_name in {"get_drive_file_content", "render_page_to_image"}:
+        hints.append("Inline PNG/JPEG/GIF/WebP images are saved to Jarvis Stash (up to 4 images, "
+                     "8 MiB each, 16 MiB total). The result contains metadata and stash:// references, "
+                     "not visual analysis. Use analyze_image with those references to inspect images; "
+                     "check image_delivery for unavailable or partial saves.")
     if tool_name in {"send_gmail_message", "draft_gmail_message"}:
         for key in ("to", "cc", "bcc"):
             if key in props:
@@ -402,8 +428,17 @@ def extend_workspace_schema(tool_name: str, parameters: dict, description: str) 
                      "send_email, such as Boss. Pass the requested contact name directly; "
                      "Jarvis resolves it from config/contacts.json before calling Google. Unknown "
                      "names fail without sending.")
+        hints.append("For a read-only lookup of those local aliases, use email_contacts. "
+                     "Google list_contacts/search_contacts inspect a separate Google address book; "
+                     "no Google or memory match does not mean the local alias is missing. "
+                     "Explicit recipient addresses are supported without a saved contact.")
         hints.append("Use this tool for 'use Gmail to email Boss'." if tool_name == "send_gmail_message"
                      else "Use this tool for 'draft a Gmail email to Boss'; it creates an unsent draft.")
+    if tool_name in {"list_contacts", "search_contacts", "get_contact"}:
+        hints.append("Reads Google Contacts, not Jarvis config/contacts.json or conversational memory. "
+                     "Use email_contacts to inspect Jarvis local aliases shared by send_email and "
+                     "Gmail send/draft. An empty Google result does not establish that a local "
+                     "email alias is missing.")
     if tool_name == "get_gmail_message_content" and "message_id" in props:
         props["message_id"]["description"] = (
             "Gmail Message ID from search_gmail_messages. A Draft ID (r123456789) is not a Message ID; "

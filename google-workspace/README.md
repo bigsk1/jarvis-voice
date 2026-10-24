@@ -2,7 +2,7 @@
 
 Jarvis can use a dedicated **consumer Gmail account** through
 [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp).
-The pinned v2.1.2 container exposes 111 tools in its complete tier for Gmail,
+The pinned v2.2.0 container exposes 111 tools in its complete tier for Gmail,
 Drive, Calendar, Docs, Sheets, Slides, Forms, Tasks, Contacts and Apps Script.
 This standalone Compose project is optional. A fresh clone has the MCP ENV
 gate off and never connects to or starts this service.
@@ -158,6 +158,13 @@ file still permits explicit addresses. Lookup reads the current file on each
 call, and only the selected recipient addresses are sent to Google. The local
 contact list is separate from Google Contacts and does not select the sending
 account or configure Gmail Send As aliases.
+
+The read-only `email_contacts` tool lists or searches these local aliases without
+sending mail; use `tool_search` to discover it if needed. A lookup is optional
+when the user already supplied a recipient. Google Workspace
+`list_contacts`, `search_contacts`, and `get_contact` inspect Google Contacts,
+not `config/contacts.json`. Neither a Google Contacts miss nor a memory miss
+establishes that a local alias is absent or that an explicit address cannot be used.
 
 Tool descriptions prefer `send_email` for ordinary outgoing email when that
 tool is available. Explicit Gmail/Google Workspace delivery and Gmail replies
@@ -360,11 +367,12 @@ names or sending Stash options to Google:
 For example, download a Drive PDF with `file_id` and `stash=true`, then pass the
 returned `data.artifacts[0].ref` (`stash://...`) to a PDF or file manipulation tool.
 Upload a resulting Stash file with `create_drive_file(file_name=..., stash_ref=...)`.
-Account identity is supplied automatically. Routine Google searches, reads,
-edits and sharing do not create Stash copies.
+Account identity is supplied automatically. Routine Google searches, text reads,
+edits and sharing do not create Stash copies. Inline images returned by the
+v2.2.0 image readers use the bounded image bridge described below.
 
-The service keeps its own temporary attachment cache. Only an explicit Stash
-transfer adds a persistent copy, using the canonical helper and the active
+The service keeps its own temporary attachment cache. Explicit Stash transfers
+and returned inline images add persistent copies, using the canonical helper and the active
 mode's `STASH_DIR` / runtime override, with normal source-artifact retention
 (default 120 days). No Stash directory is mounted in the Google container and
 no symlinks are created. A reentrant lock on the Stash root directory inode
@@ -418,19 +426,67 @@ stored vector below the dense threshold does not gain this exception. `BLOCKED_T
 excluded. Changing enablement, credentials or profiles still needs the normal
 registry reload; temporary downtime no longer requires restarting Jarvis.
 
-## Upgrading to 2.1.2
+## Upgrading to 2.2.0
 
-The [2.1.0](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.1.0)
-and [2.1.1](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.1.1)
-releases, followed by [2.1.2](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.1.2),
-retain this setup's transport, OAuth scopes, CLI flags and 111-tool
-catalog. Existing OAuth grants and the private service token can be reused.
-The Dockerfile pins the reviewed upstream source and image digest; rebuilding
-keeps the existing `data/` bind mount.
-The reviewed v2.1.2 source is
-`49e5e29bc1202ebf4e7218419cd8ff501de556f3`. The container includes the newer
-Google API Python client required for Drive's `copy_comments` option; Jarvis
-does not need that dependency in its own Python environment.
+The [v2.2.0 release](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.2.0)
+retains this setup's transport, OAuth scopes, CLI flags and 111-tool count.
+Existing OAuth grants and the private service token can be reused. Rebuilding
+keeps the existing `data/` bind mount. The Dockerfile pins reviewed source
+`b5cf07e6078ae10a596710d77569e9430e01ebd4` and its immutable image digest.
+Upstream updates `certifi` to 2026.10.19 but still includes packages with newer
+published advisories. The container-only `security-requirements.txt` overlay
+pins artifact hashes for `pypdf` 6.21.2, FastMCP 4.1.2 and OpenTelemetry 1.45.1,
+plus their required matching packages. The Docker build installs those exact
+replacements without resolving unrelated dependencies, then checks installed
+requirements for compatibility. These changes remain isolated from Jarvis's
+own Python environments; do not re-run upstream `uv sync` inside the built
+container, which would restore its older lockfile versions.
+
+The breaking tool rename is `get_page_thumbnail` → `render_page_to_image`.
+Replace `thumbnail_size` with `size` and remove `inline`; the server now attempts
+to attach the rendered image on every call. Existing workflows using the old
+name must be updated. Re-sync Tool RAG and reload registries so the removed tool
+is no longer offered. This checkout has no workflow using the removed name.
+
+Useful capabilities through the existing tools:
+
+- **Slide and Drive images:** `render_page_to_image(presentation_id=...,
+  page_object_id=..., size="MEDIUM")` returns an image of a slide or notes page.
+  `MEDIUM` is 800 pixels wide; use `LARGE` for small labels. `get_drive_file_content`
+  returns PNG/JPEG/GIF/WebP images and raster images embedded in SVGs. Jarvis saves
+  returned image blocks to Stash, then the existing `analyze_image` tool can
+  inspect their references. A successful read alone does not establish that the
+  model has visually inspected an image. See the delivery status for unavailable
+  or partially saved images. The bridge accepts at most four images, 8 MiB per
+  image and 16 MiB total, with a 40-million-pixel limit per image. It validates
+  inline bytes and never fetches temporary image URLs. BMP/TIFF and compressed
+  SVG inputs do not gain native image-block support.
+- **Docs sections:** `modify_doc_text(heading="Status", text=...)` replaces the
+  section under a unique heading, preserving the heading. Use
+  `end_of_segment=true` to append; omit `text` to apply formatting only. Narrow
+  duplicate headings with `heading_level`; multi-tab documents need `tab_id`.
+  Inspect the document and keep a recovery copy before replacing important
+  content. `get_doc_as_markdown(include_colors=true)` reads explicit foreground
+  colors as `[color: #rrggbb]` annotations; theme colors are not included.
+- **Contacts changes:** start with `list_contacts(request_sync_token=true)`,
+  follow every page, then use the final `next_sync_token` as `sync_token` on
+  later reads. Deleted contacts are explicitly marked. Tokens expire after
+  seven days; an expired token needs a fresh full sync. This exposes the upstream
+  incremental API, without adding a background contact cache or mirroring Google
+  Contacts into local email aliases.
+- **Gmail replies:** sends can inherit the thread subject when it is omitted.
+  Sends and drafts support `reply_all=true` with `thread_id`; explicit `to`/`cc`
+  override derived recipients. This can include other thread participants, so
+  use it when the user requests reply-all. Drafting remains available without
+  sending mail.
+- **Calendar colors:** `manage_event` accepts color names or IDs 1–11 in
+  `color_id`. Out-of-Office and Focus Time writes now require timezone-aware
+  boundaries. These special event types remain subject to Google account support.
+
+Apps Script deployment/version listings now read every page. The release also
+fixes Drive query escaping, Sheets row/column resizing, contact-address clearing
+with an empty value, and several validation errors. Chat changes do not enable
+Chat for this dedicated consumer account.
 
 ```bash
 bin/jarvis-google start
@@ -442,21 +498,17 @@ source "$HOME/jarvis-venv/bin/activate"
 
 Sync each enabled Jarvis mode separately. For a Docker Jarvis deployment, use
 the existing stack and Google overlay command instead of the standalone helper.
-The refreshed schemas carry optional Gmail direction, conversation label IDs,
-Sheets formatting/tab-style arguments, Docs table tab IDs and Drive comment
-copying. Local discovery guidance adds the appropriate inspection schemas
-within the existing router bounds; exclusions and profiles still apply.
+Local discovery guidance supplements the refreshed upstream schemas; existing
+router bounds, exclusions, profiles and autonomous approval settings still apply.
 
-Gmail sends and forwards now make only one send attempt. A timeout, connection
+Gmail sends and forwards retain the single-send behavior from v2.1.2. A timeout, connection
 drop or server error can mean delivery already happened: inspect Sent before
 trying again. Jarvis's HTTP transport also avoids replaying ambiguous failures.
 The corrected destructive annotation on `send_gmail_message` does not change
 this setup's configured autonomous approval policy.
 
-Other changes include forwarded-message drafts, Calendar pagination, Gmail
-search labels, attachment-name handling, Docs table-border validation and Apps
-Script deployment updates. The upstream Google API socket timeout returns to
-60 seconds. Jarvis configures a 90-second per-call Google MCP budget through
+The upstream Google API socket timeout remains 60 seconds. Jarvis configures a
+90-second per-call Google MCP budget through
 `tool_call_timeout_seconds` in `config/mcp-servers.json`; its executor allows
 95 seconds, including the cleanup margin. Other MCP servers keep their existing
 timeouts. Tools making several Google requests can still exceed the overall
@@ -518,7 +570,8 @@ must return 403, and authorized discovery must succeed.
 The downloaded `client_secret*.json` filenames are ignored by Git and excluded
 from application build archives. The entire standalone `google-workspace/`
 folder is excluded from the Jarvis application image; its own image uses the
-existing allowlist containing only Dockerfile and entrypoint.py.
+allowlist containing only Dockerfile, entrypoint.py and the public
+security-requirements.txt overlay.
 
 ### Email inbox attachments
 

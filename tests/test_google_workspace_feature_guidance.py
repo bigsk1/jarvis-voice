@@ -1,4 +1,4 @@
-"""Workspace feature discovery and v2.1.2 argument contracts without Google calls."""
+"""Workspace feature discovery and v2.2.0 argument contracts without Google calls."""
 
 import json
 import sys
@@ -26,18 +26,58 @@ def _nullable(kind: str) -> dict:
 # metadata must supplement discovery without replacing those schemas.
 FEATURE_PARAMETERS = {
     "send_gmail_message": {
-        "to": {"type": "string"},
-        "subject": {"type": "string"},
-        "body": {"type": "string"},
+        "to": _nullable("string"),
+        "subject": _nullable("string"),
+        "body": _nullable("string"),
+        "thread_id": _nullable("string"),
+        "reply_all": {"type": "boolean", "default": False},
         "from_email": _nullable("string"),
         "direction": {"type": "string", "enum": ["auto", "ltr", "rtl"], "default": "auto"},
         "quote_original": {"type": "boolean", "default": False},
     },
     "draft_gmail_message": {
-        "subject": {"type": "string"},
-        "body": {"type": "string"},
+        "to": _nullable("string"),
+        "subject": _nullable("string"),
+        "body": _nullable("string"),
+        "thread_id": _nullable("string"),
+        "reply_all": {"type": "boolean", "default": False},
         "direction": {"type": "string", "enum": ["auto", "ltr", "rtl"], "default": "auto"},
     },
+    "modify_doc_text": {
+        "document_id": {"type": "string"},
+        "start_index": _nullable("integer"),
+        "end_index": _nullable("integer"),
+        "text": _nullable("string"),
+        "heading": _nullable("string"),
+        "heading_level": _nullable("integer"),
+        "tab_id": _nullable("string"),
+        "end_of_segment": {"type": "boolean", "default": False},
+    },
+    "get_doc_as_markdown": {
+        "document_id": {"type": "string"},
+        "tab_id": _nullable("string"),
+        "include_colors": {"type": "boolean", "default": False},
+        "suggestions_view_mode": {"type": "string", "default": "DEFAULT_FOR_CURRENT_ACCESS"},
+    },
+    "list_contacts": {
+        "page_size": {"type": "integer", "default": 100},
+        "page_token": _nullable("string"),
+        "sort_order": _nullable("string"),
+        "request_sync_token": {"type": "boolean", "default": False},
+        "sync_token": _nullable("string"),
+    },
+    "manage_event": {
+        "action": {"type": "string"},
+        **{name: _nullable("string") for name in (
+            "color_id", "timezone", "start_timezone", "end_timezone", "start_time", "end_time",
+        )},
+    },
+    "render_page_to_image": {
+        "presentation_id": {"type": "string"},
+        "page_object_id": {"type": "string"},
+        "size": {"type": "string", "default": "MEDIUM"},
+    },
+    "get_drive_file_content": {"file_id": {"type": "string"}},
     "batch_modify_gmail_message_labels": {
         name: {"type": "array", "items": {"type": "string"}, "default": None}
         for name in ("message_ids", "thread_ids", "add_label_ids", "remove_label_ids")
@@ -186,6 +226,30 @@ def test_feature_metadata_preserves_provider_schemas_and_account_binding(tool_na
         "to": "recipient@example.test", "subject": "Test", "body": "Hello",
         "direction": "ltr",
     }),
+    ("send_gmail_message", {
+        "thread_id": "thread-123", "body": "Reply with inherited subject", "reply_all": True,
+    }),
+    ("draft_gmail_message", {
+        "thread_id": "thread-123", "body": "Unsent reply with inherited subject", "reply_all": True,
+    }),
+    ("modify_doc_text", {
+        "document_id": "doc-123", "heading": "Results", "heading_level": 2,
+        "tab_id": "t.1", "text": "**Additional result**", "end_of_segment": True,
+    }),
+    ("get_doc_as_markdown", {
+        "document_id": "doc-123", "tab_id": "t.1", "include_colors": True,
+        "suggestions_view_mode": "PREVIEW_WITHOUT_SUGGESTIONS",
+    }),
+    ("list_contacts", {"request_sync_token": True, "page_size": 50, "page_token": "next-page"}),
+    ("list_contacts", {"sync_token": "sync-token", "page_size": 50}),
+    ("manage_event", {
+        "action": "create", "color_id": "tomato", "start_timezone": "Asia/Jerusalem",
+        "end_timezone": "Europe/Amsterdam", "start_time": "2027-01-15T13:45:00",
+        "end_time": "2027-01-15T17:50:00",
+    }),
+    ("render_page_to_image", {
+        "presentation_id": "slides-123", "page_object_id": "page-123", "size": "LARGE",
+    }),
     ("debug_table_structure", {"document_id": "doc-123", "tab_id": "t.1"}),
     ("import_to_google_doc", {
         "file_name": "Report.md", "source_format": "md", "content": "# Report",
@@ -238,3 +302,45 @@ def test_guidance_keeps_gmail_routing_and_destructive_boundaries_explicit():
     assert "including checkboxes" in metadata["format_sheet_range"]["description_prefix"]
     assert "partial receipt" in metadata["batch_modify_gmail_message_labels"]["description_prefix"]
     assert "not a named revision or automatic undo" in metadata["copy_drive_file"]["description_prefix"]
+
+
+def test_v220_guidance_explains_new_modes_without_implying_extra_authority():
+    metadata = _config()["tool_metadata"]
+    heading = metadata["modify_doc_text"]["description_prefix"]
+    assert "matches exactly one heading case-insensitively" in heading
+    assert "replaces the body below that heading" in heading
+    assert "end_of_segment=true appends" in heading
+    assert "Multi-tab documents require tab_id" in heading
+    assert "Do not combine heading with start_index, end_index or segment_id" in heading
+    assert "theme colors are not shown" in metadata["get_doc_as_markdown"]["description_prefix"]
+    contacts = metadata["list_contacts"]["description_prefix"]
+    assert "Keep all other arguments unchanged" in contacts
+    assert "sort_order is not allowed while syncing" in contacts
+    assert "expire after seven days" in contacts and "requires a new full sync" in contacts
+    assert "does not synchronize or edit config/contacts.json" in contacts
+    calendar = metadata["manage_event"]["description_prefix"]
+    assert "tomato or numeric IDs 1-11" in calendar
+    assert "Explicit RFC3339 offsets preserve the exact instant" in calendar
+    assert "All-day end dates are exclusive" in calendar
+    for tool_name in ("send_gmail_message", "draft_gmail_message"):
+        assert "inherit the parent message's subject" in metadata[tool_name]["description_prefix"]
+        assert "explicit to/cc win" in metadata[tool_name]["description_prefix"]
+
+
+def test_image_guidance_uses_stash_analysis_instead_of_claiming_automatic_vision():
+    metadata = _config()["tool_metadata"]
+    for tool_name in ("render_page_to_image", "get_drive_file_content"):
+        text = metadata[tool_name]["description_prefix"]
+        assert "Stash" in text and "analyze_image" in text
+        assert "not automatically" in text
+    assert "size=MEDIUM" in metadata["render_page_to_image"]["description_prefix"]
+    assert "do not share" in metadata["render_page_to_image"]["description_prefix"]
+
+
+def test_v220_catalog_replaces_slide_thumbnail_without_growing_the_tool_set():
+    fixture = json.loads((ROOT / "tests/fixtures/google_workspace_tool_names.json").read_text())
+    assert fixture['image'].endswith(':2.2.0')
+    assert fixture['upstream_commit'] == 'b5cf07e6078ae10a596710d77569e9430e01ebd4'
+    assert len(fixture['tools']) == len(set(fixture['tools'])) == 111
+    assert 'render_page_to_image' in fixture['tools']
+    assert 'get_page_thumbnail' not in fixture['tools']

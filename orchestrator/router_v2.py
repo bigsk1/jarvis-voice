@@ -1123,10 +1123,17 @@ Rules:
 - Use one sentence, at most two. Be original; avoid stock lines such as "Hope you're having a great day!"
 - Skip the opener for urgent, transactional, troubleshooting, coding, or "just do the thing" requests, and when the user jumps straight into a task."""
 
+        recipient_lookup_policy = """CONFIGURED EMAIL RECIPIENTS:
+Honor the requested email provider; discover its sending tool when necessary and continue an authorized send despite empty memory results.
+email_contacts reads Jarvis's configured aliases. Google Contacts searches only Google's address book; neither an empty Google result nor a memory miss proves a local alias is absent.
+Supported email tools resolve supplied aliases or direct addresses before sending. Pass the supplied recipient through; known aliases and literal addresses need no preliminary memory search or full contact listing. Use read-only email_contacts for uncertain recipients, then ask only if unresolved or ambiguous.
+Claim missing configuration or unsupported address formats only from current tool evidence. Follow existing approval requirements; lookup-only requests never authorize sending."""
+
         base_prompt = "\n\n".join(
             part.strip()
             for part in (
                 self._system_prompt_base,
+                recipient_lookup_policy,
                 runtime_context,
                 location_block,
                 greeting_hint,

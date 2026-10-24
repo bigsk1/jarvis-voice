@@ -1,6 +1,6 @@
 {
-  "image": "ghcr.io/taylorwilsdon/google_workspace_mcp:2.1.2",
-  "upstream_commit": "49e5e29bc1202ebf4e7218419cd8ff501de556f3",
+  "image": "ghcr.io/taylorwilsdon/google_workspace_mcp:2.2.0",
+  "upstream_commit": "b5cf07e6078ae10a596710d77569e9430e01ebd4",
   "tools": [
     "append_table_rows",
     "batch_modify_gmail_message_labels",
@@ -41,7 +41,6 @@
     "get_gmail_thread_content",
     "get_gmail_threads_content_batch",
     "get_page",
-    "get_page_thumbnail",
     "get_presentation",
     "get_script_activity",
     "get_script_project",
@@ -100,6 +99,7 @@
     "move_sheet_rows",
     "query_freebusy",
     "read_sheet_values",
+    "render_page_to_image",
     "resize_sheet_dimensions",
     "run_script_function",
     "search_contacts",

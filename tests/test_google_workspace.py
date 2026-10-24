@@ -151,7 +151,11 @@ def test_gmail_draft_hints_and_search_prerequisite_reach_registered_schema():
 
 
 @pytest.mark.parametrize('tool_name', ['send_gmail_message', 'draft_gmail_message'])
-def test_local_contact_hints_reach_registered_gmail_schema(tool_name):
+@pytest.mark.parametrize('existing_prerequisites', [
+    None, ['mcp_google_workspace_search_gmail_messages'],
+    ['email_contacts', 'mcp_google_workspace_search_gmail_messages'],
+])
+def test_local_contact_hints_reach_registered_gmail_schema(tool_name, existing_prerequisites):
     client = discovery_helpers.FakeRemoteClient()
     client.name = 'google_workspace'
     client.list_tools = lambda: [{
@@ -161,13 +165,85 @@ def test_local_contact_hints_reach_registered_gmail_schema(tool_name):
             for key in ('to', 'cc', 'bcc', 'from_email')
         }},
     }]
-    registry = discovery_helpers.TestMCPDiscoveryGraceful()._build_registry(client)
+    metadata = {tool_name: {'prerequisite_tools': existing_prerequisites}}
+    registry = discovery_helpers.TestMCPDiscoveryGraceful()._build_registry(client, tool_metadata=metadata)
     schema = registry.get_tool('mcp_google_workspace_' + tool_name)
     assert 'config/contacts.json' in schema.description
     assert 'Unknown names fail without sending' in schema.description
+    assert 'use email_contacts' in schema.description
+    assert 'separate Google address book' in schema.description
+    assert 'no Google or memory match does not mean the local alias is missing' in schema.description
+    assert 'Explicit recipient addresses are supported without a saved contact' in schema.description
+    assert schema.prerequisite_tools == (existing_prerequisites or [])
     for key in ('to', 'cc', 'bcc'):
         assert 'contact key or display name' in schema.parameters['properties'][key]['description']
     assert schema.parameters['properties']['from_email']['description'] == 'Upstream email parameter.'
+
+
+@pytest.mark.parametrize('sender_name', ['send_email', 'mcp_google_workspace_send_gmail_message'])
+def test_optional_contact_lookup_does_not_displace_sender_at_three_schema_limit(sender_name):
+    from test_tool_rag_limits import _cap_tool_names_for_schema, expand_prerequisite_tool_names
+    from tool_schema import ToolSchema
+
+    client = discovery_helpers.FakeRemoteClient()
+    client.name = 'google_workspace'
+    client.list_tools = lambda: [{
+        'name': 'send_gmail_message', 'description': 'Send a Gmail message.',
+        'inputSchema': {'type': 'object', 'properties': {}},
+    }]
+    registry = discovery_helpers.TestMCPDiscoveryGraceful()._build_registry(client)
+    for name in ('send_email', 'email_contacts'):
+        registry.tools[name] = ToolSchema.from_json_file(str(ROOT / 'skills' / (name + '.tool.json')))
+    ghosts = ['search_memory', 'remember', 'tool_search', 'workflow']
+    expanded, added = expand_prerequisite_tool_names(
+        [*ghosts, sender_name], registry, {*registry.tools, *ghosts},
+    )
+    capped = _cap_tool_names_for_schema(expanded, 3, ghost_tools=ghosts)
+    assert added == []
+    assert capped == ['tool_search', 'workflow', sender_name]
+
+
+@pytest.mark.parametrize('tool_name', ['list_contacts', 'search_contacts', 'get_contact'])
+def test_registered_google_contact_tools_explain_their_separate_source(tool_name):
+    client = discovery_helpers.FakeRemoteClient()
+    client.name = 'google_workspace'
+    upstream_parameters = {'type': 'object', 'properties': {'query': {'type': 'string'}}}
+    client.list_tools = lambda: [{
+        'name': tool_name, 'description': 'Upstream Google contact operation.',
+        'inputSchema': deepcopy(upstream_parameters),
+    }]
+    registry = discovery_helpers.TestMCPDiscoveryGraceful()._build_registry(client)
+    schema = registry.get_tool('mcp_google_workspace_' + tool_name)
+    assert 'Reads Google Contacts, not Jarvis config/contacts.json or conversational memory' in schema.description
+    assert 'Use email_contacts to inspect Jarvis local aliases' in schema.description
+    assert 'An empty Google result does not establish that a local email alias is missing' in schema.description
+    assert schema.description.endswith('Upstream Google contact operation.')
+    assert schema.parameters == upstream_parameters
+    assert 'email_contacts' not in schema.prerequisite_tools
+
+
+@pytest.mark.parametrize('tool_name', ['send_gmail_message', 'draft_gmail_message'])
+def test_explicit_gmail_recipient_works_without_a_saved_local_contact(tmp_path, monkeypatch, tool_name):
+    import email_contacts
+
+    monkeypatch.setattr(email_contacts, 'CONTACTS_FILE', tmp_path / 'missing-contacts.json')
+    client = MCPRemoteClient('google_workspace', 'http://localhost/mcp', 'http')
+    client.tool_defaults = {'user_google_email': 'dedicated@example.test'}
+    sent = []
+
+    def protocol(method, parameters):
+        sent.append((method, parameters))
+        return {'content': [{'type': 'text', 'text': 'Message ID: message-123'}]}
+
+    monkeypatch.setattr(client, '_send_request', protocol)
+    result = client.call_tool(tool_name, {
+        'to': 'explicit@example.test', 'subject': 'Example', 'body': 'Example body',
+    })
+    assert result['ok']
+    assert len(sent) == 1 and sent[0][0] == 'tools/call'
+    assert sent[0][1]['arguments']['to'] == 'explicit@example.test'
+    assert sent[0][1]['arguments']['user_google_email'] == 'dedicated@example.test'
+    assert result['data']['request']['to'] == 'explicit@example.test'
 
 
 @pytest.mark.parametrize('draft_id', ['r1234567890123456789', 'r-123456789'])
