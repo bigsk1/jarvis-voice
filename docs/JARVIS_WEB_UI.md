@@ -254,6 +254,9 @@ resolve the same pair, and evaluator calls disable provider-native search.
   duplicate search rail is suppressed and the large playable top-result embed
   remains independent below the composite. Direct YouTube detail and
   downloaded-media results retain their existing specialized players.
+- Downloaded media play through their Stash IDs. Unicode titles and filenames,
+  including emoji, are preserved; the standard encoded `Content-Disposition`
+  header supplies the filename without breaking file streaming or byte ranges.
 - Add a future structured display with
   `window.structuredResultsRenderer.register(toolName, adapter)`. Keep provider
   payload parsing inside the adapter and return only the small shared

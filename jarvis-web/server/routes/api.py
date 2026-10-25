@@ -68,6 +68,7 @@ from ..services.settings_manager import (
     CLOUD_TTS_PROVIDER_OPTIONS,
     LOCAL_TTS_PROVIDER_OPTIONS,
     STATUS_PHRASE_MODE_OPTIONS,
+    SettingsValidationError,
     get_settings_manager,
 )
 from ..config import (
@@ -322,7 +323,7 @@ def _status_tts_cache_settings(provider, get_setting):
     }
 
 
-def _status_tts_cache_paths(mode, provider, text, get_setting):
+def _status_tts_cache_paths(mode, provider, text, get_setting) -> tuple[Path, Path]:
     settings = _status_tts_cache_settings(provider, get_setting)
     digest = hashlib.sha256(json.dumps({
         'version': 1,
@@ -1128,7 +1129,6 @@ def update_web_settings():
         # Validate the full payload against the REQUESTED mode before
         # persisting anything (including the mode itself) so a rejected
         # request leaves web_config.json completely untouched.
-        from ..services.settings_manager import SettingsValidationError
         if requested_mode is not None:
             settings.mode = requested_mode  # in-memory only; persisted below
         try:
@@ -2733,7 +2733,7 @@ def text_to_speech():
             purpose == 'status'
             and get_jarvis_setting('STATUS_CACHE_ENABLED', 'true').strip().lower() == 'true'
         )
-        status_cache_paths = None
+        status_cache_paths: tuple[Path, Path] | None = None
         if status_cache_enabled:
             status_cache_paths = _status_tts_cache_paths(
                 mode,
@@ -3303,7 +3303,6 @@ def _serve_stash_file(space_id, file_id):
     mimetype = mime_types.get(ext, 'application/octet-stream')
     
     response = send_from_directory(str(space_path), file_path.name, mimetype=mimetype)
-    response.headers['X-Stash-Filename'] = file_path.name
     response.headers['X-Stash-Ref'] = f"stash://{space_id}/{file_id}"
     return response
 
@@ -4121,6 +4120,11 @@ def enhance_prompt():
         ).strip().lower()
         provider_model = mode_config.get('llm_model')
         vision_warning = None
+        action_label = {
+            'video': 'image-to-video generation',
+            'image': 'image editing',
+            'analyze': 'image analysis',
+        }.get(image_action, 'an image task')
 
         # Vision-grounded enhancement for an attached image. Resolve only the
         # server-owned upload filename; never fetch an arbitrary client URL.
@@ -4142,11 +4146,6 @@ def enhance_prompt():
             ):
                 return jsonify({'ok': False, 'error': 'Attached upload could not be resolved'}), 400
 
-            action_label = {
-                'video': 'image-to-video generation',
-                'image': 'image editing',
-                'analyze': 'image analysis',
-            }.get(image_action, 'an image task')
             grounded_prompt = f"""Inspect the attached image and rewrite the user's instruction as a concise, production-ready prompt for {action_label}.
 
 Rules:
