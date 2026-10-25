@@ -110,9 +110,15 @@ conditionally render `$json.body.image_url`, `$json.body.link_url`, and
 **What it does:**
 1. Resolves contact name → email (from `contacts.json`)
 2. Looks up `send_email` webhook URL (from `webhook_registry.json`)
-3. Checks rate limit (10 seconds per recipient)
-4. POSTs to n8n webhook
-5. n8n sends email via SMTP with HTML template
+3. Checks the existing recipient cooldown before probing a proxy
+4. Selects the route using that entry's `proxy_policy` (missing means direct)
+5. Reserves the send attempt (10 seconds per recipient)
+6. POSTs once to the n8n webhook, without following redirects or resending
+7. n8n sends email via SMTP with HTML template
+
+The HTTP receipt confirms webhook acceptance, not arrival in the recipient's
+mailbox. `send_email` uses the same routing and delivery receipt rules as
+`send_webhook`; see [registry routing](#per-destination-proxy-routing).
 
 ---
 
@@ -208,6 +214,7 @@ but the destination state or receiving workflow execution verifies that result.
         "Authorization": "Bearer ${WEBHOOK_NAME_TOKEN}"
       },
       "required_fields": ["field1", "field2"],
+      "proxy_policy": "off",
       "rate_limit_seconds": 10,
       "enabled": true,
       "example": {
@@ -228,6 +235,7 @@ but the destination state or receiving workflow execution verifies that result.
 | `headers` | ⚠️ | Trusted headers; explicitly named `${ENV_VAR}` placeholders are resolved from the active Jarvis environment |
 | `required_fields` | ⚠️ | Array of required data fields (validated before sending) |
 | `payload_schema` | ⚠️ | Optional JSON Schema for the body; validates nested required fields, types, enums, and other configured constraints before sending |
+| `proxy_policy` | ⚠️ | `off` (default), `prefer`, or `require`; selects the route before one POST. Applies to both `send_webhook` and the `send_email` entry used by `send_email`. |
 | `rate_limit_seconds` | ⚠️ | Min seconds between calls (default: 5) |
 | `enabled` | ⚠️ | Set to `false` to disable (default: true) |
 | `example` | ⚠️ | Credential-free example body returned to the model during listing; replace sample values for each actual request |
@@ -237,6 +245,34 @@ Keep URLs and credential headers in their existing registry fields. Do not place
 secrets in descriptions, schemas, or example bodies, which are returned during
 discovery. JSON Schema `format` annotations are not enforced; use explicit
 constraints such as `pattern` when the receiver needs a particular string shape.
+
+### Per-destination proxy routing
+
+Set `proxy_policy` on each registry entry. Values are trimmed and case-insensitive;
+unsupported values fail before sending. A missing policy means `off`, so existing
+entries and direct-URL `send_webhook` calls use direct networking.
+
+- `off`: Send directly, ignoring Jarvis and conventional proxy settings.
+- `prefer`: Probe `LOCAL_PROXY`, then `LOCAL_PROXY2`, skipping malformed or
+  unreachable candidates. Select the first reachable proxy, or direct access
+  when none is usable.
+- `require`: Select a reachable proxy in the same order; fail before sending if
+  none is usable. Never send directly.
+
+These are operator settings, not tool-call arguments. `send_email` reads the
+policy from its `send_email` registry entry. `NO_PROXY` cannot bypass an explicit
+policy, including `require`. Leave LAN/n8n destinations `off` unless the selected
+proxy can safely reach them. A TCP probe confirms the proxy listener is reachable;
+it does not verify authentication or access to the destination.
+
+Once a route is selected, both tools make at most one POST. A response, redirect,
+connection failure, or timeout never triggers another proxy or a direct retry.
+Proxy HTTP 407 is reported as `proxy_rejected` without claiming destination
+delivery. Other proxy error responses report unknown delivery; check the receiver
+before retrying. Direct endpoint rejections remain distinct from proxy failures.
+The receipt retains the selected route under `data.proxy` without proxy URLs or
+credentials. For the full contract and disabled example, see
+[network proxy configuration](NETWORK_PROXY.md#named-webhook-routing).
 
 ---
 
@@ -438,6 +474,7 @@ headers = {"X-Timestamp": str(int(time.time()))}
   "send_email": {
     "url": "http://localhost:5678/webhook/jarvis-email",
     "description": "Send email via n8n SMTP",
+    "proxy_policy": "off",
     "required_fields": ["to", "subject", "body"],
     "rate_limit_seconds": 10
   }

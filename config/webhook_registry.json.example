@@ -18,6 +18,22 @@
       "example": {"message": "Sample notification"},
       "rate_limit_seconds": 10,
       "enabled": false
+    },
+    "example_proxy_notification": {
+      "url": "https://example.com/webhook",
+      "description": "Example destination using the first reachable configured proxy; replace the URL before enabling.",
+      "proxy_policy": "prefer",
+      "required_fields": ["message"],
+      "payload_schema": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": {"type": "string", "minLength": 1}
+        }
+      },
+      "example": {"message": "Sample notification through the selected route"},
+      "rate_limit_seconds": 10,
+      "enabled": false
     }
   }
 }

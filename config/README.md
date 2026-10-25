@@ -224,6 +224,28 @@ JARVIS_RESPONSE_STYLE="auto"  # Recommended
 
 For networks that require an HTTP(S) proxy for outbound API calls and downloads, configure `LOCAL_PROXY` and optionally `LOCAL_PROXY2` in `cloud.env` / `local.env`. See **[Network proxy (`LOCAL_PROXY` / `LOCAL_PROXY2`)](../docs/NETWORK_PROXY.md)** for behavior, tool coverage, and MCP limitations.
 
+### Named webhook routing
+
+Copy `webhook_registry.json.example` to `webhook_registry.json` to configure
+named `send_webhook` destinations. Each entry can set `proxy_policy` to `off`,
+`prefer`, or `require` (trimmed, case-insensitive). A missing policy means `off`
+(direct), including for existing entries. `send_email` follows the policy on
+the `send_email` registry entry. Direct-URL `send_webhook` calls also use direct
+networking. Unsupported policies fail before sending.
+
+The disabled `example_proxy_notification` entry shows `https://example.com/webhook`
+with `proxy_policy: "prefer"` and a small JSON payload schema. Replace its URL
+with your receiver and enable it when ready. Proxy URLs belong in the selected
+mode's `LOCAL_PROXY` / `LOCAL_PROXY2` settings.
+
+`prefer` selects the first reachable valid proxy listener, skipping malformed or
+unreachable candidates, or direct access if none is usable. `require` fails
+before sending when no candidate is usable. `NO_PROXY` cannot override these
+policies; leave LAN/n8n targets `off` unless the proxy can safely reach them.
+After choosing a route, Jarvis makes one POST; failures and timeouts do not
+trigger another proxy or a direct retry. These are operator registry settings,
+not model-callable tool arguments. See [webhook routing details](../docs/NETWORK_PROXY.md#named-webhook-routing).
+
 ## Security Notes
 
 1. Keep secrets in `cloud.env` / `local.env` only — both are listed in `.gitignore`.

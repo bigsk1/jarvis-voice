@@ -15,6 +15,11 @@ import send_webhook  # noqa: E402
 THREE_XX_STATUS_CODES = (300, 301, 302, 303, 304, 305, 306, 307, 308, 399)
 
 
+@pytest.fixture(autouse=True)
+def isolated_cooldown(monkeypatch, tmp_path):
+    monkeypatch.setattr(send_webhook, "RATE_LIMIT_FILE", str(tmp_path / "webhook-rate-limit.json"))
+
+
 def test_registry_header_expands_only_explicit_placeholder(monkeypatch):
     requested = []
 
@@ -67,7 +72,7 @@ def test_main_rejects_placeholder_before_network_request(monkeypatch, capsys):
     def unexpected_post(*_args, **_kwargs):
         raise AssertionError("network request should not run")
 
-    monkeypatch.setattr(send_webhook.requests, "post", unexpected_post)
+    monkeypatch.setattr(send_webhook, "post_webhook", unexpected_post)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -120,7 +125,7 @@ def test_main_sends_registry_credential_and_literal_tool_header(monkeypatch, cap
         calls.append((url, kwargs))
         return FakeResponse()
 
-    monkeypatch.setattr(send_webhook.requests, "post", fake_post)
+    monkeypatch.setattr(send_webhook, "post_webhook", fake_post)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -143,14 +148,14 @@ def test_main_sends_registry_credential_and_literal_tool_header(monkeypatch, cap
         (
             "https://example.test/webhook",
             {
-                "json": {"event": "test"},
+                "data": {"event": "test"},
                 "headers": {
                     "Authorization": "Bearer registry-secret",
                     "X-Trace-ID": "deployment-42",
                     "Content-Type": "application/json",
                 },
                 "timeout": 15,
-                "allow_redirects": False,
+                "proxies": {},
             },
         )
     ]
@@ -181,7 +186,7 @@ def test_main_refuses_3xx_without_followup_request_or_body_output(
         calls.append((url, kwargs))
         return RedirectResponse(status_code)
 
-    monkeypatch.setattr(send_webhook.requests, "post", fake_post)
+    monkeypatch.setattr(send_webhook, "post_webhook", fake_post)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -200,7 +205,7 @@ def test_main_refuses_3xx_without_followup_request_or_body_output(
     assert "127.0.0.1" not in output
     assert "redirect body" not in output
     assert len(calls) == 1
-    assert calls[0][1]["allow_redirects"] is False
+    assert calls[0][1]["proxies"] == {}
 
 
 def test_direct_url_redirect_is_refused_after_initial_validation(
@@ -224,7 +229,7 @@ def test_direct_url_redirect_is_refused_after_initial_validation(
         calls.append((url, kwargs))
         return RedirectResponse()
 
-    monkeypatch.setattr(send_webhook.requests, "post", fake_post)
+    monkeypatch.setattr(send_webhook, "post_webhook", fake_post)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -245,4 +250,4 @@ def test_direct_url_redirect_is_refused_after_initial_validation(
     assert result["data"]["redirect_blocked"] is True
     assert "169.254.169.254" not in output
     assert len(calls) == 1
-    assert calls[0][1]["allow_redirects"] is False
+    assert calls[0][1]["proxies"] == {}

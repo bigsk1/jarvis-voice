@@ -176,6 +176,50 @@ def test_history_retains_unknown_delivery_without_converting_it_to_false():
     assert projected['retry_safe'] is False
 
 
+@pytest.mark.parametrize('delivery_status,request_sent,status_code', [
+    ('proxy_rejected', False, 407), ('unknown', None, 502),
+])
+def test_proxy_receipt_survives_next_turn_saved_followup_and_history(delivery_status, request_sent, status_code):
+    proxy = {'policy': 'require', 'used': True, 'slot': 'LOCAL_PROXY2', 'basis': 'webhook_route'}
+    receipt = {'webhook': 'sample_notification', 'request_sent': request_sent,
+               'response_received': True, 'delivery_status': delivery_status, 'retry_safe': False,
+               'status_code': status_code, 'proxy': proxy}
+    result = {'ok': False, 'error': 'Proxy response; check receiver before retrying.', 'data': receipt}
+    instance = orchestrator()
+    preview = json.loads(instance._build_llm_result_context_preview('send_webhook', result)[0])['data']
+    assert preview['proxy'] == proxy and preview['request_sent'] is request_sent
+    assert preview['delivery_status'] == delivery_status
+    context = instance._build_turn_context('Did it arrive?', [{
+        'tool': 'send_webhook', 'arguments': {'webhook': 'sample_notification', 'data': {}}, 'result': result,
+    }])
+    assert 'LOCAL_PROXY2' in context and delivery_status in context
+    saved = followup.extract_followup_data({'_tool_trace': [{
+        'tool': 'send_webhook', 'ok': False, 'result_data': receipt,
+    }]})['send_webhook']
+    assert saved['proxy'] == proxy and saved['request_sent'] is request_sent
+    assert project_webhook_runs(saved)['proxy'] == proxy
+    history = instance._format_conversation_context('Did it arrive?', [{
+        'role': 'assistant', 'content': 'Proxy error', 'tool_results': {'send_webhook': saved},
+    }])
+    projected = json.loads(history.split('send_webhook data: ', 1)[1].splitlines()[0])
+    assert projected['proxy'] == proxy and projected['request_sent'] is request_sent
+
+
+def test_proxy_projection_cannot_copy_credentials_or_arbitrary_nested_data():
+    proxy = {'policy': 'prefer', 'used': True, 'slot': 'LOCAL_PROXY', 'basis': 'webhook_route',
+             'url': 'http://user:SECRET_SENTINEL@private-proxy.test:8000',
+             'headers': {'Proxy-Authorization': 'SECRET_SENTINEL'}}
+    result = {'data': {'request_sent': None, 'delivery_status': 'unknown', 'proxy': proxy}}
+    before = deepcopy(result)
+    projected = project_webhook_data(result)
+    assert projected['proxy'] == {key: proxy[key] for key in ('policy', 'used', 'slot', 'basis')}
+    assert 'SECRET_SENTINEL' not in json.dumps(projected)
+    assert 'private-proxy.test' not in json.dumps(projected)
+    assert result == before and project_webhook_data(projected) == projected
+    result['data']['proxy'] = {'policy': ['SECRET_SENTINEL'], 'slot': 'http://SECRET_SENTINEL'}
+    assert 'proxy' not in project_webhook_data(result)
+
+
 @pytest.mark.parametrize('launch_path', ['web', 'package'])
 def test_webhook_followup_uses_real_helpers_without_ambient_paths(launch_path, tmp_path):
     """Both supported imports must project receipts without pytest's lib path."""

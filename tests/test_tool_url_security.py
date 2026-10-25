@@ -19,7 +19,8 @@ import send_webhook  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def isolated_services(monkeypatch):
+def isolated_services(monkeypatch, tmp_path):
+    monkeypatch.setattr(send_webhook, "RATE_LIMIT_FILE", str(tmp_path / "webhook-rate-limit.json"))
     monkeypatch.setattr(send_webhook, "load_config", lambda: None)
     monkeypatch.setattr(send_webhook, "load_webhook_registry", lambda: {})
     monkeypatch.setattr(screenshot_url, "load_config", lambda: None)
@@ -33,7 +34,7 @@ def isolated_services(monkeypatch):
 
     monkeypatch.setattr(send_webhook, "check_rate_limit", reject)
     monkeypatch.setattr(api_call.requests, "request", reject)
-    monkeypatch.setattr(send_webhook.requests, "post", reject)
+    monkeypatch.setattr(send_webhook, "post_webhook", reject)
 
 
 @pytest.mark.parametrize("tool", [api_call, screenshot_url, send_webhook])
@@ -94,14 +95,14 @@ def test_explicitly_configured_tailnet_webhook_still_works(monkeypatch, capsys):
 
     def post(url, **kwargs):
         calls.append(url)
-        assert kwargs["allow_redirects"] is False
+        assert kwargs["proxies"] == {}
         return Response()
 
     def reject_dns(*_args, **_kwargs):
         raise AssertionError("Configured webhook must not enter arbitrary-URL validation")
 
     monkeypatch.setattr(socket, "getaddrinfo", reject_dns)
-    monkeypatch.setattr(send_webhook.requests, "post", post)
+    monkeypatch.setattr(send_webhook, "post_webhook", post)
     monkeypatch.setattr(sys, "argv", ["send_webhook", json.dumps({"webhook": "configured"})])
     assert send_webhook.main() == 0
     assert json.loads(capsys.readouterr().out)["ok"] is True

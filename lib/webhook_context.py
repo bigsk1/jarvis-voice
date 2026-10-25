@@ -16,6 +16,22 @@ RECEIPT_FIELDS = ('webhook', 'request_sent', 'response_received', 'delivery_stat
                   'catalog_compacted', 'contract_lookup', 'webhooks_omitted')
 
 
+def _proxy_route(value):
+    """Keep route decisions in follow-ups without copying proxy credentials."""
+    if not isinstance(value, dict):
+        return {}
+    allowed = {
+        'policy': ('off', 'prefer', 'require'),
+        'slot': ('LOCAL_PROXY', 'LOCAL_PROXY2'),
+        'basis': ('webhook_route',),
+        'direct_reason': ('policy_off', 'no_reachable_proxy'),
+    }
+    route = {key: value[key] for key, choices in allowed.items() if value.get(key) in choices}
+    if 'used' in value and (isinstance(value['used'], bool) or value['used'] is None):
+        route['used'] = value['used']
+    return route
+
+
 def _contract(value):
     result = {key: copy.deepcopy(value[key]) for key in CONTRACT_FIELDS if key in value}
     if 'example' in result:
@@ -31,6 +47,9 @@ def project_webhook_data(value, max_chars=6000):
     if not isinstance(data, dict):
         return {}
     result = {key: copy.deepcopy(data[key]) for key in RECEIPT_FIELDS if key in data}
+    proxy = _proxy_route(data.get('proxy'))
+    if proxy:
+        result['proxy'] = proxy
     result.update(_contract(data))
     for key in ('error', 'speech'):
         if value.get(key):

@@ -7,20 +7,28 @@ Supports file attachments from stash or direct paths.
 Input: { "to": "sample_contact" or "recipient@example.com", "subject": "...", "body": "...", "attachment": "stash://..." }
 Output: { "ok": bool, "speech": str, "data": dict }
 """
-import sys
-import os
-import json
-import time
-import hashlib
 import base64
-import requests
+import hashlib
+import json
+import math
+import os
+import sys
+import time
 from pathlib import Path
+
+import requests
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import get_config_value, load_config
 from email_contacts import load_contacts, resolve_email
-from stash_helper import safe_resolve_file, extract_filename_from_stash_ref
+from stash_helper import extract_filename_from_stash_ref, safe_resolve_file
+from webhook_transport import (
+    policy_for_webhook,
+    post_webhook,
+    prepare_webhook_route,
+    webhook_response_receipt,
+)
 
 # Rate limit storage (simple file-based)
 RATE_LIMIT_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', '.email_rate_limit')
@@ -65,9 +73,31 @@ def check_rate_limit(email: str) -> bool:
         return True  # Allow on error
 
 
+def rate_limit_remaining(email: str) -> int:
+    """Read the recipient cooldown without reserving an attempt or probing."""
+    try:
+        with open(RATE_LIMIT_FILE, 'r') as stream:
+            limits = json.load(stream)
+        last_sent = limits.get(hashlib.md5(email.encode()).hexdigest()[:8]) if isinstance(limits, dict) else None
+        if not isinstance(last_sent, (int, float)) or not math.isfinite(last_sent):
+            return 0
+        return max(0, math.ceil(last_sent + RATE_LIMIT_SECONDS - time.time()))
+    except (OSError, ValueError, TypeError):
+        return 0
+
+
+def return_rate_limited(display_name: str, remaining: int) -> None:
+    print(json.dumps({
+        "ok": False, "error": "rate_limited",
+        "speech": f"Please wait {remaining} seconds before sending another email to {display_name}",
+        "data": {"request_sent": False, "retry_after_seconds": remaining},
+    }))
+
+
 def send_email_webhook(to: str, subject: str, body: str, webhook_url: str, 
                        image_url: str = None, link_url: str = None, link_text: str = None,
-                       attachment_path: str = None, attachment_filename: str = None) -> dict:
+                       attachment_path: str = None, attachment_filename: str = None,
+                       *, proxies: dict | None = None) -> dict:
     """Send email via n8n webhook
     
     Args:
@@ -80,6 +110,7 @@ def send_email_webhook(to: str, subject: str, body: str, webhook_url: str,
         link_text: Optional link display text
         attachment_path: Path to file to attach
         attachment_filename: Name for the attachment
+        proxies: Route selected from the trusted send_email registry entry; defaults direct.
     """
     payload = {
         "to": to,
@@ -130,22 +161,25 @@ def send_email_webhook(to: str, subject: str, body: str, webhook_url: str,
         except Exception as e:
             payload["attachment_error"] = str(e)
     
-    response = requests.post(
+    response = post_webhook(
         webhook_url,
-        json=payload,
+        data=payload,
         headers={"Content-Type": "application/json"},
+        proxies=proxies or {},
         timeout=30  # Longer timeout for attachments
     )
     
     return {
         "status_code": response.status_code,
         "ok": 200 <= response.status_code < 300,
-        "response": response.text[:200] if response.text else "",
+        "response": response.text[:200] if not 300 <= response.status_code < 400 and response.text else "",
         "had_attachment": bool(attachment_path)
     }
 
 
 def main():
+    proxy_metadata = None
+    attempted = False
     try:
         # Parse arguments
         if len(sys.argv) > 1:
@@ -219,6 +253,8 @@ def main():
         # Get webhook URL (resolve ${VAR} references from config)
         import re
         email_webhook = webhooks.get('send_email', {})
+        if not email_webhook.get('enabled', True):
+            raise ValueError("Email webhook 'send_email' is disabled")
         webhook_url = email_webhook.get('url', '')
         webhook_url = re.sub(
             r'\$\{([^}]+)\}',
@@ -228,30 +264,39 @@ def main():
         
         if not webhook_url:
             raise ValueError("Email webhook not configured in config/webhook_registry.json")
+
+        remaining = rate_limit_remaining(email)
+        if remaining:
+            return_rate_limited(display_name, remaining)
+            sys.exit(1)
+
+        # Select one route before reserving a recipient send attempt. The model
+        # cannot override the registry policy or trigger delivery failover.
+        proxies, proxy_metadata = prepare_webhook_route(policy_for_webhook(email_webhook))
         
         # Check rate limit
         if not check_rate_limit(email):
-            print(json.dumps({
-                "ok": False,
-                "error": "rate_limited",
-                "speech": f"Please wait a few seconds before sending another email to {display_name}"
-            }))
+            return_rate_limited(display_name, max(1, rate_limit_remaining(email)))
             sys.exit(1)
         
         # Send email
+        attempted = True
         result = send_email_webhook(
             email, subject, body, webhook_url,
             image_url=image_url, link_url=link_url, link_text=link_text,
-            attachment_path=resolved_attachment, attachment_filename=attachment_filename
+            attachment_path=resolved_attachment, attachment_filename=attachment_filename,
+            proxies=proxies,
         )
+        receipt = webhook_response_receipt(result["status_code"], proxy_metadata)
         
         if result['ok']:
-            speech = f"Email sent to {display_name}"
+            speech = f"Email request accepted for {display_name}"
             data = {
                 "to": email,
                 "to_name": display_name,
                 "subject": subject,
-                "status": "sent"
+                "status": "sent",
+                **receipt,
             }
             
             # Include attachment info
@@ -269,25 +314,52 @@ def main():
                 "data": data
             }))
         else:
+            status = result["status_code"]
+            if receipt["delivery_status"] == "proxy_rejected":
+                error = "Email proxy authentication rejected (HTTP 407); no webhook reached the destination."
+            elif proxy_metadata["used"]:
+                error = (f"Email webhook HTTP {status} received through proxy; destination delivery is unknown. "
+                         "Check the receiver before retrying.")
+            elif receipt["delivery_status"] == "redirect_refused":
+                error = f"Email webhook redirect refused (HTTP {status}); configure the final webhook URL."
+            else:
+                error = f"Email webhook rejected the request (HTTP {status})."
             print(json.dumps({
                 "ok": False,
-                "error": f"Email failed: {result.get('response', 'Unknown error')}",
-                "speech": f"Failed to send email to {display_name}"
+                "error": error,
+                "speech": error,
+                "data": {"to": email, "to_name": display_name, "subject": subject, **receipt},
             }))
             sys.exit(1)
         
+    except requests.RequestException as e:
+        error = (f"Email webhook request failed ({type(e).__name__}); destination delivery is unknown. "
+                 "Check the receiver before retrying.")
+        print(json.dumps({
+            "ok": False, "error": error, "speech": error,
+            "data": {"request_sent": None, "response_received": False, "delivery_status": "unknown",
+                     "retry_safe": False, "proxy": proxy_metadata},
+        }))
+        sys.exit(1)
     except ValueError as e:
+        error = ("Email webhook processing failed (ValueError); destination delivery is unknown. "
+                 "Check the receiver before retrying.") if attempted else str(e)
+        data = ({"request_sent": None, "response_received": False, "delivery_status": "unknown",
+                 "retry_safe": False, "proxy": proxy_metadata} if attempted else {"request_sent": False})
         print(json.dumps({
             "ok": False,
-            "error": str(e),
-            "speech": str(e)
+            "error": error, "speech": error, "data": data,
         }))
         sys.exit(1)
     except Exception as e:
         print(json.dumps({
             "ok": False,
-            "error": str(e),
-            "speech": f"Error sending email: {e}"
+            "error": f"Error sending email ({type(e).__name__})",
+            "speech": ("Email webhook delivery is unknown; check the receiver before retrying."
+                       if attempted else f"Error preparing email ({type(e).__name__})"),
+            "data": {"request_sent": None if attempted else False, "response_received": False,
+                     "delivery_status": "unknown" if attempted else "not_sent", "retry_safe": False,
+                     "proxy": proxy_metadata},
         }))
         sys.exit(1)
 

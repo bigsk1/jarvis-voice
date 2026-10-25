@@ -69,6 +69,51 @@ Native `*.tool.json` manifests and individual entries in
 The field is runtime metadata. It is not included in the function schema shown
 to the LLM and cannot be changed by a model tool call.
 
+## Named webhook routing
+
+`send_webhook` selects its route per named destination in
+`config/webhook_registry.json`; `send_email` uses the policy on the `send_email`
+entry in the same registry. This registry has its own direct default:
+
+| Entry `proxy_policy` | Behavior before sending |
+|----------------------|-------------------------|
+| Omitted / `off` | Send directly, ignoring Jarvis and conventional proxy settings. |
+| `prefer` | Check `LOCAL_PROXY`, then `LOCAL_PROXY2`, skipping malformed or unreachable candidates; select the first reachable proxy listener. Select direct access when none is usable. |
+| `require` | Select the first reachable valid proxy listener in that order. Fail before sending if none is usable. |
+
+Only `off`, `prefer`, and `require` are supported for registry entries; strings
+are trimmed and case-insensitive. Unsupported policies fail before sending. Calls
+using a direct webhook URL also use `off`. The model cannot override this policy
+through tool arguments. The tool manifest preserves available proxy configuration;
+the registry entry chooses whether to use it.
+
+`NO_PROXY` cannot override a registry policy or bypass `require`. Leave LAN/n8n
+destinations `off` unless the configured proxy can safely reach them. The tools
+ignore conventional proxy variables when selecting their explicit route, while
+preserving the selected mode's `REQUESTS_CA_BUNDLE` / `CURL_CA_BUNDLE` trust settings.
+
+Each invocation makes at most **one POST** after selecting its route. An HTTP
+response, redirect, connection failure, or timeout never triggers another proxy
+attempt or a direct retry. In particular, `prefer` permits direct selection
+only during preflight when no proxy listener is reachable. A reachable proxy
+may still fail to relay to the receiver; that failure ends the call on the
+selected route. A timeout can leave delivery unknown, so check the receiver
+before manually retrying.
+
+Proxy HTTP 407 yields `delivery_status: "proxy_rejected"` and `request_sent: false`.
+Other proxy error responses preserve `delivery_status: "unknown"` and
+`request_sent: null`; they do not prove that the receiver rejected the request.
+Direct endpoint errors remain `rejected` with `request_sent: true`. These receipts
+never authorize automatic resending. Route metadata under `data.proxy` contains
+the policy and source slot, without proxy URLs or credentials.
+
+The preflight checks TCP listener reachability, not target access or proxy
+authentication. The disabled `example_proxy_notification` entry in
+[`config/webhook_registry.json.example`](../config/webhook_registry.json.example)
+shows `https://example.com/webhook`, `proxy_policy: "prefer"`, and a JSON payload
+schema. Replace the URL and enable the destination to use your own receiver.
+Existing entries without a policy continue to send directly.
+
 ## Behavior (`lib/http_client.py`)
 
 Central API: **`http_request()`**, **`get_proxy_chain()`**, **`get_proxy_config()`**, **`get_proxy_url_chain()`**.
@@ -87,6 +132,7 @@ Central API: **`http_request()`**, **`get_proxy_chain()`**, **`get_proxy_config(
 | Area | Mechanism |
 |------|-----------|
 | Weather, SerpApi helpers, stash URL downloads, crypto/HTTP-using paths | `http_request()` → policy-aware chain + tunnel status handling |
+| Named `send_webhook` destinations and `send_email` | Registry policy selects one route before a single POST; no delivery retries across routes |
 | **yfinance** (`skills/stock_price.py`) | Sets `http_proxy` / `https_proxy` env per proxy in order, then clears and retries direct on tunnel-style failures |
 | **GitHub** (`skills/git_release_notes.py`) | Session GETs with each proxy in chain, then direct |
 | **yt-dlp** (`youtube_video`, `youtube_transcript`) | Manifests use `proxy_policy: "prefer"`: try `LOCAL_PROXY`, then `LOCAL_PROXY2`, then direct |

@@ -26,6 +26,12 @@ from jsonschema.validators import validator_for
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import get_config_value, load_config
+from webhook_transport import (
+    policy_for_webhook,
+    post_webhook,
+    prepare_webhook_route,
+    webhook_response_receipt,
+)
 
 # Rate limit storage
 RATE_LIMIT_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', '.webhook_rate_limit')
@@ -126,16 +132,38 @@ def get_webhook_url(webhook_name: str, url: str, webhooks: dict) -> tuple[str, d
     raise ValueError("Either 'webhook' (name) or 'url' is required")
 
 
+def _load_rate_limits() -> dict:
+    try:
+        with open(RATE_LIMIT_FILE, 'r') as f:
+            limits = json.load(f)
+            return limits if isinstance(limits, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def rate_limit_remaining(identifier: str, limit_seconds: int) -> int:
+    """Check existing cooldown without reserving an attempt or probing a proxy."""
+    id_hash = hashlib.md5(identifier.encode()).hexdigest()[:8]
+    last_sent = _load_rate_limits().get(id_hash)
+    if not isinstance(last_sent, (int, float)) or not math.isfinite(last_sent):
+        return 0
+    return max(0, math.ceil(last_sent + limit_seconds - time.time()))
+
+
+def return_rate_limited(webhook_name: str | None, remaining: int) -> None:
+    unit = "second" if remaining == 1 else "seconds"
+    return_error(
+        f"Rate limited. Please wait {remaining} {unit} before sending again. No webhook was sent.",
+        data={"webhook": webhook_name, "request_sent": False, "retry_after_seconds": remaining},
+    )
+
+
 def check_rate_limit(identifier: str, limit_seconds: int) -> tuple[bool, int]:
     """Reserve an outbound attempt after local validation; return retry seconds."""
     id_hash = hashlib.md5(identifier.encode()).hexdigest()[:8]
     
     try:
-        if os.path.exists(RATE_LIMIT_FILE):
-            with open(RATE_LIMIT_FILE, 'r') as f:
-                limits = json.load(f)
-        else:
-            limits = {}
+        limits = _load_rate_limits()
         
         last_sent = limits.get(id_hash, 0)
         now = time.time()
@@ -288,27 +316,37 @@ def main():
     if "Content-Type" not in merged_headers:
         merged_headers["Content-Type"] = "application/json"
 
-    # Only attempts ready to reach the endpoint consume the cooldown.
     rate_limit = webhook_config.get('rate_limit_seconds', DEFAULT_RATE_LIMIT)
     identifier = webhook_name or resolved_url
+    remaining = rate_limit_remaining(identifier, rate_limit)
+    if remaining:
+        return_rate_limited(webhook_name, remaining)
+        return 1
+
+    # Route selection belongs to the trusted registry, never tool arguments.
+    # Do this before reserving a delivery attempt, and never switch routes later.
+    try:
+        proxies, proxy_metadata = prepare_webhook_route(policy_for_webhook(webhook_config))
+    except ValueError as e:
+        return_error(str(e), data={"webhook": webhook_name, "request_sent": False})
+        return 1
+
+    # Only attempts ready to reach the endpoint consume the cooldown.
     ok, remaining = check_rate_limit(identifier, rate_limit)
     if not ok:
-        unit = "second" if remaining == 1 else "seconds"
-        return_error(
-            f"Rate limited. Please wait {remaining} {unit} before sending again. No webhook was sent.",
-            data={"webhook": webhook_name, "request_sent": False, "retry_after_seconds": remaining},
-        )
+        return_rate_limited(webhook_name, remaining)
         return 1
     
     # Send webhook
     try:
-        response = requests.post(
+        response = post_webhook(
             resolved_url,
-            json=data,
+            data=data,
             headers=merged_headers,
+            proxies=proxies,
             timeout=15,
-            allow_redirects=False,
         )
+        receipt = webhook_response_receipt(response.status_code, proxy_metadata)
 
         if 300 <= response.status_code < 400:
             return_error(
@@ -319,12 +357,7 @@ def main():
                 data={
                     "webhook": webhook_name,
                     "url": resolved_url,
-                    "status_code": response.status_code,
-                    "redirect_blocked": True,
-                    "request_sent": True,
-                    "response_received": True,
-                    "delivery_status": "redirect_refused",
-                    "retry_safe": False,
+                    **receipt,
                 },
             )
             return 1
@@ -338,26 +371,25 @@ def main():
                 data={
                     "webhook": webhook_name,
                     "url": resolved_url,
-                    "status_code": response.status_code,
                     "response": response.text[:200] if response.text else "",
-                    "request_sent": True,
-                    "response_received": True,
-                    "delivery_status": "accepted",
+                    **receipt,
                 }
             )
             return 0
         else:
+            speech = f"Webhook failed with status {response.status_code}"
+            if receipt['delivery_status'] == 'proxy_rejected':
+                speech = "Proxy authentication rejected the webhook (HTTP 407); no webhook reached the destination."
+            elif receipt['delivery_status'] == 'unknown':
+                speech = (f"HTTP {response.status_code} received through the proxy; destination delivery is unknown. "
+                          "Check the destination before retrying.")
             return_error(
-                speech=f"Webhook failed with status {response.status_code}",
+                speech=speech,
                 data={
                     "url": resolved_url,
-                    "status_code": response.status_code,
                     "error": response.text[:200] if response.text else "",
                     "webhook": webhook_name,
-                    "request_sent": True,
-                    "response_received": True,
-                    "delivery_status": "rejected",
-                    "retry_safe": False,
+                    **receipt,
                 }
             )
             return 1
@@ -366,21 +398,21 @@ def main():
         return_error(
             "Webhook request timed out; it may have reached the destination. Check its state before retrying.",
             data={'webhook': webhook_name, 'request_sent': None, 'response_received': False,
-                  'delivery_status': 'unknown', 'retry_safe': False},
+                  'delivery_status': 'unknown', 'retry_safe': False, 'proxy': proxy_metadata},
         )
         return 1
     except requests.RequestException as e:
         return_error(
-            f"Webhook request failed: {str(e)}. Delivery is unknown; check the destination before retrying.",
+            f"Webhook request failed ({type(e).__name__}). Delivery is unknown; check the destination before retrying.",
             data={'webhook': webhook_name, 'request_sent': None, 'response_received': False,
-                  'delivery_status': 'unknown', 'retry_safe': False},
+                  'delivery_status': 'unknown', 'retry_safe': False, 'proxy': proxy_metadata},
         )
         return 1
     except Exception as e:
         return_error(
-            f"Unexpected webhook error: {str(e)}. Delivery is unknown; check the destination before retrying.",
+            f"Unexpected webhook error ({type(e).__name__}). Delivery is unknown; check the destination before retrying.",
             data={'webhook': webhook_name, 'request_sent': None, 'response_received': False,
-                  'delivery_status': 'unknown', 'retry_safe': False},
+                  'delivery_status': 'unknown', 'retry_safe': False, 'proxy': proxy_metadata},
         )
         return 1
 
