@@ -19,6 +19,44 @@ DEFAULT_EMAIL_TOOLS = [
     "tavily_search",
     "tavily_extract",
 ]
+_FORBIDDEN_EMAIL_TOOLS = {
+    "email_inbox",
+    "workflow",
+    "send_email",
+    "mcp_google_workspace_send_gmail_message",
+    "mcp_google_workspace_draft_gmail_message",
+}
+
+
+def _email_tools(value, field: str, *, single: bool = False) -> list[str]:
+    if single and isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list) or any(not isinstance(t, str) or not t.strip() for t in value):
+        raise ValueError(f"{field} must contain exact tool names")
+    if single and any(t != t.strip() for t in value):
+        raise ValueError(f"{field} must contain exact tool names without surrounding whitespace")
+    if _FORBIDDEN_EMAIL_TOOLS.intersection(value):
+        raise ValueError("Email delivery and workflows belong to the dispatcher, not email requests")
+    return sorted(set(value) | {"tool_search"})
+
+
+def _sender_tool_limits(contacts: dict, approved: set[str]) -> dict[str, list[str]]:
+    """Bind contact limits to canonical sender addresses, independent of aliases."""
+    limits = {}
+    for contact in contacts.values():
+        if not isinstance(contact, dict):
+            continue
+        if "allowed_tools_limted" in contact:
+            raise ValueError("Use the contact field allowed_tools_limited, not allowed_tools_limted")
+        if "allowed_tools_limited" not in contact:
+            continue
+        sender = canonical_email(contact.get("email", ""))
+        extras = _email_tools(contact["allowed_tools_limited"], "allowed_tools_limited", single=True)
+        effective = sorted(set(DEFAULT_EMAIL_TOOLS) | set(extras))
+        if sender in limits and limits[sender] != effective:
+            raise ValueError("Contacts sharing an email address have conflicting allowed_tools_limited")
+        limits[sender] = effective
+    return {sender: tools for sender, tools in limits.items() if sender in approved}
 
 
 def canonical_email(value: str) -> str:
@@ -66,24 +104,12 @@ def load_email_channel(mode: str) -> dict:
         if not resolved:
             raise ValueError("An approved sender does not resolve to a contact address")
         senders.add(canonical_email(resolved))
-    tools = settings.get("allowed_tools", DEFAULT_EMAIL_TOOLS)
-    if not isinstance(tools, list) or any(not isinstance(t, str) or not t.strip() for t in tools):
-        raise ValueError("jarvis_email.allowed_tools must be a list of exact tool names")
-    forbidden = {
-        "email_inbox",
-        "workflow",
-        "send_email",
-        "mcp_google_workspace_send_gmail_message",
-        "mcp_google_workspace_draft_gmail_message",
-    }
-    if forbidden.intersection(tools):
-        raise ValueError(
-            "Email delivery and workflows belong to the dispatcher, not email requests"
-        )
+    tools = _email_tools(settings.get("allowed_tools", DEFAULT_EMAIL_TOOLS), "jarvis_email.allowed_tools")
     policy = {
         "enabled": True,
         "senders": sorted(senders),
-        "allowed_tools": sorted(set(tools) | {"tool_search"}),
+        "allowed_tools": tools,
+        "sender_allowed_tools": _sender_tool_limits(contacts, senders),
     }
     attachments = settings.get("attachments_enabled", True)
     if type(attachments) is not bool:

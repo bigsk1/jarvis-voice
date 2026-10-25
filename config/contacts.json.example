@@ -27,6 +27,12 @@
       "name": "Work",
       "email": "work@example.com",
       "notes": "Work email alias"
+    },
+    "restricted_contact": {
+      "name": "Restricted Contact",
+      "email": "robot@example.com",
+      "allowed_tools_limited": ["printer"],
+      "notes": "Optional inbound policy: built-in email tools plus printer. Approval in jarvis_email.approved_senders is still required."
     }
   },
   

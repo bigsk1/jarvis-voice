@@ -1,4 +1,5 @@
 """Native and MCP email routes share local recipient lookup, without live sends."""
+# ruff: noqa: E402 - match the app's lib import bootstrap
 
 import importlib.util
 import json
@@ -143,3 +144,129 @@ def test_native_send_email_uses_same_lookup_and_webhook_path(contacts_file, monk
     native.main()
     assert webhook.call_args.args == ("boss@example.test", "Test", "Hello", "https://webhook.example.test")
     assert json.loads(capsys.readouterr().out)["data"]["to_name"] == "The Boss"
+
+
+@pytest.fixture
+def inbound_policy_file(contacts_file):
+    data = json.loads(contacts_file.read_text())
+    data["jarvis_email"] = {
+        "enabled": True, "mode": "cloud", "approved_senders": ["boss"],
+        "allowed_tools": ["get_time", "crawl_url"],
+    }
+    return contacts_file, data
+
+
+@pytest.mark.parametrize("limited,additions", [
+    ("printer", {"printer"}),
+    (["printer", "analyze_image", "printer"], {"printer", "analyze_image"}),
+    ([], set()),
+    (["get_time", "tool_search"], set()),
+])
+def test_contact_limit_uses_baseline_plus_exact_additions(inbound_policy_file, limited, additions):
+    path, data = inbound_policy_file
+    data["contacts"]["boss"]["allowed_tools_limited"] = limited
+    path.write_text(json.dumps(data))
+    policy = email_contacts.load_email_channel("cloud")
+    assert policy["allowed_tools"] == ["crawl_url", "get_time", "tool_search"]
+    assert set(policy["sender_allowed_tools"]["boss@example.test"]) == (
+        set(email_contacts.DEFAULT_EMAIL_TOOLS) | additions | {"tool_search"}
+    )
+    assert "crawl_url" not in policy["sender_allowed_tools"]["boss@example.test"]
+
+
+@pytest.mark.parametrize("approved", ["boss", "The Boss", "BOSS@EXAMPLE.TEST"])
+def test_contact_limit_matches_canonical_sender_even_for_bare_approval(inbound_policy_file, approved):
+    path, data = inbound_policy_file
+    data["contacts"]["boss"]["email"] = "Boss@Example.Test"
+    data["contacts"]["boss"]["allowed_tools_limited"] = "printer"
+    data["jarvis_email"]["approved_senders"] = [approved]
+    path.write_text(json.dumps(data))
+    policy = email_contacts.load_email_channel("cloud")
+    assert policy["senders"] == ["boss@example.test"]
+    assert set(policy["sender_allowed_tools"]) == {"boss@example.test"}
+    assert "printer" in policy["sender_allowed_tools"]["boss@example.test"]
+
+
+def test_absent_limit_keeps_global_policy_for_existing_family_contacts(inbound_policy_file):
+    path, data = inbound_policy_file
+    data["jarvis_email"]["approved_senders"] = ["boss", "Sample Recipient One"]
+    data["contacts"]["boss"]["allowed_tools_limited"] = []
+    path.write_text(json.dumps(data))
+    policy = email_contacts.load_email_channel("cloud")
+    assert policy["allowed_tools"] == ["crawl_url", "get_time", "tool_search"]
+    assert "recipient.one@example.test" not in policy["sender_allowed_tools"]
+    assert "boss@example.test" in policy["sender_allowed_tools"]
+
+
+def test_limit_field_does_not_approve_contact_or_change_outgoing_resolution(inbound_policy_file):
+    path, data = inbound_policy_file
+    data["contacts"]["recipient_one"]["allowed_tools_limited"] = "printer"
+    path.write_text(json.dumps(data))
+    policy = email_contacts.load_email_channel("cloud")
+    assert policy["senders"] == ["boss@example.test"]
+    assert "recipient.one@example.test" not in policy["sender_allowed_tools"]
+    assert email_contacts.resolve_email("Sample Recipient One", email_contacts.load_contacts())[0] == "recipient.one@example.test"
+
+
+@pytest.mark.parametrize("limited", [
+    None, "", " \t", True, 1, {}, {"tools": ["printer"]}, [["printer"]],
+    [None], [True], [""], ["printer", 5], "printer ", [" printer"], "send_email ",
+])
+def test_invalid_contact_limit_fails_closed_even_for_unapproved_contact(inbound_policy_file, limited):
+    path, data = inbound_policy_file
+    data["contacts"]["recipient_one"]["allowed_tools_limited"] = limited
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError):
+        email_contacts.load_email_channel("cloud")
+
+
+@pytest.mark.parametrize("tool", [
+    "email_inbox", "workflow", "send_email", "mcp_google_workspace_send_gmail_message",
+    "mcp_google_workspace_draft_gmail_message",
+])
+@pytest.mark.parametrize("as_list", [False, True])
+def test_dispatcher_tools_cannot_be_granted_by_contact_limit(inbound_policy_file, tool, as_list):
+    path, data = inbound_policy_file
+    data["contacts"]["boss"]["allowed_tools_limited"] = [tool] if as_list else tool
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError):
+        email_contacts.load_email_channel("cloud")
+
+
+def test_conflicting_same_email_limits_fail_closed(inbound_policy_file):
+    path, data = inbound_policy_file
+    data["contacts"]["boss"]["allowed_tools_limited"] = "printer"
+    data["contacts"]["boss_alias"] = {"email": "BOSS@EXAMPLE.TEST", "allowed_tools_limited": ["analyze_image"]}
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError):
+        email_contacts.load_email_channel("cloud")
+
+
+@pytest.mark.parametrize("alias_limit", [None, ["printer", "get_time", "printer"]])
+def test_equivalent_or_unspecified_same_email_alias_does_not_remove_limit(inbound_policy_file, alias_limit):
+    path, data = inbound_policy_file
+    data["contacts"]["boss"]["allowed_tools_limited"] = "printer"
+    alias = {"email": "BOSS@EXAMPLE.TEST"}
+    if alias_limit is not None:
+        alias["allowed_tools_limited"] = alias_limit
+    data["contacts"]["boss_alias"] = alias
+    path.write_text(json.dumps(data))
+    policy = email_contacts.load_email_channel("cloud")
+    assert set(policy["sender_allowed_tools"]["boss@example.test"]) == set(email_contacts.DEFAULT_EMAIL_TOOLS) | {"printer", "tool_search"}
+
+
+def test_same_email_aliases_compare_effective_baseline_not_just_extras(inbound_policy_file):
+    path, data = inbound_policy_file
+    data["contacts"]["boss"]["allowed_tools_limited"] = []
+    data["contacts"]["boss_alias"] = {"email": "BOSS@EXAMPLE.TEST", "allowed_tools_limited": "get_time"}
+    path.write_text(json.dumps(data))
+    policy = email_contacts.load_email_channel("cloud")
+    assert set(policy["sender_allowed_tools"]["boss@example.test"]) == set(email_contacts.DEFAULT_EMAIL_TOOLS) | {"tool_search"}
+
+
+def test_misspelled_contact_limit_does_not_silently_use_global_tools(inbound_policy_file):
+    path, data = inbound_policy_file
+    data["contacts"]["boss"]["allowed_tools_limted"] = "printer"
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="allowed_tools_limited"):
+        email_contacts.load_email_channel("cloud")

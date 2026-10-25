@@ -59,6 +59,8 @@ and PNG/JPEG/WebP/SVG export controls. Vector copies are available as
 
    `status` reads local policy and ledger state without MCP discovery or a
    mailbox health check, so it remains usable during a Workspace outage.
+   It reports the global tool list and effective per-contact sender tool lists
+   separately, so you can inspect the permissions before polling.
    Commands print JSON to stdout and diagnostics to stderr. The native launcher
    uses `~/jarvis-venv` or `JARVIS_VENV`, matching the production Jarvis CLI.
 4. Run one actual poll when ready:
@@ -274,6 +276,55 @@ Omitting `allowed_tools` uses the defaults. An explicit `[]` permits only
 discovery; it does not mean all tools. `crawl_url` is excluded from the defaults
 because its general URL fetcher can reach private network addresses. Adding it,
 or memory tools, explicitly grants that broader access.
+
+### Per-contact inbound tools
+
+An approved sender can have a separate tool policy through
+`allowed_tools_limited` on their entry inside `contacts`. For example, merge
+this entry into your existing contacts map:
+
+```json
+"contacts": {
+  "restricted_contact": {
+    "name": "Restricted Contact",
+    "email": "robot@example.com",
+    "allowed_tools_limited": ["printer"]
+  }
+}
+```
+
+The field accepts one exact tool-name string, such as `"printer"`, or a list of
+exact tool names. The key is **`allowed_tools_limited`**; the common typo
+`allowed_tools_limted` is rejected with a corrective error.
+
+| Contact field | Effective tools for that approved sender |
+|---------------|------------------------------------------|
+| Omitted | The existing global `jarvis_email.allowed_tools`, or the built-in defaults if the global list is omitted, plus `tool_search`. |
+| `[]` | The built-in email defaults listed above, plus `tool_search`. |
+| `"printer"` or `["printer"]` | The built-in email defaults, plus `printer` and `tool_search`. |
+
+A present field replaces the global tool-list selection for this sender. Its
+extras are added to the built-in defaults; they are **not intersected with**
+`jarvis_email.allowed_tools`, and tools granted only by that global list are
+not inherited. In particular, an empty contact list keeps the baseline tools,
+while an empty global list permits only discovery. This is a fixed baseline,
+not a read-only policy: `stash` includes artifact writes and its explicit
+`remember` action. Normal mode/profile/credential checks still apply.
+
+Approval remains separate. Add the contact key, its display name, or its bare
+address to `jarvis_email.approved_senders` only when you intend to authorize
+inbound commands. The authenticated canonical sender address selects the contact
+policy, so approving `robot@example.com` directly does not bypass the settings on
+`restricted_contact`. Adding the contact or its tool field alone grants no
+approval and does not change outgoing email lookup or delivery.
+
+Invalid field values and forbidden tools fail closed instead of falling back to
+the global or full tool set. Duplicate contacts for the same canonical email
+share its explicit limit; an alias with the field omitted does not bypass it.
+Multiple explicit lists must grant the same effective tools; conflicting lists
+fail closed rather than merging permissions. The dispatcher-only exclusions
+above still apply. To authorize
+another tool, edit the operator-owned contact policy; email text cannot expand it.
 
 Before admission, code checks the exact approved sender and the first receiving
 Gmail `Authentication-Results` header: `mx.google.com`, passing DKIM aligned to

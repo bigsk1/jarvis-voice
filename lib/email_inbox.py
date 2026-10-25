@@ -959,6 +959,14 @@ class EmailInbox:
                         )
                         row["state"] = "reply_ready"
                 if row["state"] == "pending":
+                    # Attachment preparation may take time. Re-read permissions
+                    # immediately before dispatching the sender's request.
+                    current = load_email_channel(self.mode)
+                    if not current.get("enabled") or envelope["sender"] not in current["senders"]:
+                        self.store.transition(
+                            row["id"], "pending", "ignored", error="Sender approval removed before execution"
+                        )
+                        continue
                     if not self.store.transition(row["id"], "pending", "running"):
                         continue
                     try:
@@ -966,7 +974,9 @@ class EmailInbox:
                             self.mode,
                             envelope,
                             self.store.history(envelope["thread_id"], envelope["sender"]),
-                            current["allowed_tools"],
+                            current.get("sender_allowed_tools", {}).get(
+                                envelope["sender"], current["allowed_tools"]
+                            ),
                             self.account,
                         )
                         answer = (
@@ -1106,6 +1116,7 @@ def execute_inbox(mode: str, args: dict, executor) -> dict:
                     "enabled": True,
                     "approved_sender_count": len(settings["senders"]),
                     "allowed_tools": settings["allowed_tools"],
+                    "sender_allowed_tools": settings["sender_allowed_tools"],
                     "attachments_enabled": settings["attachments_enabled"],
                     "max_attachment_bytes": settings["max_attachment_bytes"],
                     "max_attachments": settings["max_attachments"],

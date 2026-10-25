@@ -114,6 +114,124 @@ def test_contact_lookup_is_independent_of_inbound_approval(channel):
     assert email_contacts.resolve_email("Boss", email_contacts.load_contacts())[0] == SENDER
 
 
+@pytest.mark.parametrize("approved", ["boss", "The Owner", "OWNER@EXAMPLE.TEST"])
+def test_authenticated_sender_receives_contact_limit_instead_of_global_tools(channel, approved):
+    inbox, contacts = channel
+    data = json.loads(contacts.read_text())
+    data["contacts"]["boss"].update(name="The Owner", allowed_tools_limited="printer")
+    data["jarvis_email"].update(approved_senders=[approved], allowed_tools=["get_time", "crawl_url"])
+    contacts.write_text(json.dumps(data))
+    inbox.settings = email_contacts.load_email_channel("cloud")
+    assert inbox.poll()["ok"]
+    allowed = inbox.runner.call_args.args[3]
+    assert set(allowed) == set(email_contacts.DEFAULT_EMAIL_TOOLS) | {"tool_search", "printer"}
+    assert "crawl_url" not in allowed
+    assert inbox.runner.call_args.args[1]["sender"] == SENDER
+
+
+def test_family_without_limit_keeps_custom_global_tools(channel):
+    inbox, contacts = channel
+    data = json.loads(contacts.read_text())
+    data["contacts"]["limited_guest"] = {"email": "guest@example.test", "allowed_tools_limited": []}
+    data["jarvis_email"]["allowed_tools"] = ["get_time", "crawl_url"]
+    contacts.write_text(json.dumps(data))
+    inbox.settings = email_contacts.load_email_channel("cloud")
+    assert inbox.poll()["ok"]
+    assert set(inbox.runner.call_args.args[3]) == {"get_time", "crawl_url", "tool_search"}
+
+
+def test_queued_request_reloads_sender_limit_before_execution(channel):
+    inbox, contacts = channel
+    data = json.loads(contacts.read_text())
+    data["jarvis_email"]["allowed_tools"] = ["get_time", "crawl_url"]
+    contacts.write_text(json.dumps(data))
+    inbox.settings = email_contacts.load_email_channel("cloud")
+    inbox.discover()
+    assert inbox.store.rows()[0]["state"] == "pending"
+    inbox.runner.assert_not_called()
+    data["contacts"]["boss"]["allowed_tools_limited"] = []
+    contacts.write_text(json.dumps(data))
+    assert inbox.poll()["ok"]
+    assert set(inbox.runner.call_args.args[3]) == set(email_contacts.DEFAULT_EMAIL_TOOLS) | {"tool_search"}
+    assert "crawl_url" not in inbox.runner.call_args.args[3]
+
+
+def test_invalid_queued_sender_limit_preserves_pending_request_without_execution(channel):
+    inbox, contacts = channel
+    inbox.discover()
+    data = json.loads(contacts.read_text())
+    data["contacts"]["boss"]["allowed_tools_limited"] = {"tools": ["printer"]}
+    contacts.write_text(json.dumps(data))
+    with pytest.raises(ValueError):
+        inbox.poll()
+    inbox.runner.assert_not_called()
+    assert inbox.store.rows()[0]["state"] == "pending"
+    assert all(name != SEND for name, _ in inbox.executor.calls)
+
+
+@pytest.mark.parametrize("change", ["remove_printer", "revoke_sender"])
+def test_permissions_reload_after_attachment_preparation_before_running(channel, monkeypatch, change):
+    inbox, contacts = channel
+    data = json.loads(contacts.read_text())
+    data["contacts"]["boss"]["allowed_tools_limited"] = "printer"
+    data["jarvis_email"]["allowed_tools"] = ["get_time", "crawl_url"]
+    contacts.write_text(json.dumps(data))
+    inbox.settings = email_contacts.load_email_channel("cloud")
+
+    def prepare_attachments(_envelope, settings):
+        assert "printer" in settings["sender_allowed_tools"][SENDER]
+        updated = json.loads(contacts.read_text())
+        if change == "remove_printer":
+            updated["contacts"]["boss"]["allowed_tools_limited"] = []
+        else:
+            updated["jarvis_email"]["approved_senders"] = ["other@example.test"]
+        contacts.write_text(json.dumps(updated))
+
+    monkeypatch.setattr(inbox, "_prepare_attachments", prepare_attachments)
+    assert inbox.poll()["ok"]
+    if change == "revoke_sender":
+        inbox.runner.assert_not_called()
+        assert inbox.store.rows()[0]["state"] == "ignored"
+        assert all(name != SEND for name, _ in inbox.executor.calls)
+    else:
+        inbox.runner.assert_called_once()
+        assert set(inbox.runner.call_args.args[3]) == set(email_contacts.DEFAULT_EMAIL_TOOLS) | {"tool_search"}
+        assert "printer" not in inbox.runner.call_args.args[3]
+        assert "crawl_url" not in inbox.runner.call_args.args[3]
+        assert inbox.store.rows()[0]["state"] == "completed"
+
+
+def test_contact_limit_alone_does_not_admit_unapproved_sender(channel):
+    inbox, contacts = channel
+    data = json.loads(contacts.read_text())
+    data["contacts"]["unapproved"] = {"email": "guest@example.test", "allowed_tools_limited": "printer"}
+    contacts.write_text(json.dumps(data))
+    inbox.settings = email_contacts.load_email_channel("cloud")
+    inbox.executor.mail["abc1"] = raw_message(sender="guest@example.test")
+    inbox.poll()
+    inbox.runner.assert_not_called()
+    assert inbox.store.rows()[0]["state"] == "ignored"
+
+
+def test_sender_limit_cannot_be_bypassed_by_discovery_or_executor_recovery(channel):
+    _, contacts = channel
+    data = json.loads(contacts.read_text())
+    data["jarvis_email"]["approved_senders"] = [SENDER]
+    data["jarvis_email"]["allowed_tools"] = ["crawl_url"]
+    data["contacts"]["boss"]["allowed_tools_limited"] = "printer"
+    contacts.write_text(json.dumps(data))
+    allowed = email_contacts.load_email_channel("cloud")["sender_allowed_tools"][SENDER]
+    executor = ToolExecutor.__new__(ToolExecutor)
+    executor.registry = Mock()
+    executor.excluded_tools = set()
+    executor.set_allowed_tools(allowed)
+    assert not executor.execute("crawl_url", {})["ok"]
+    executor.registry.get_tool.assert_not_called()
+    executor.registry.list_tools.return_value = ["printer", "crawl_url", "tool_search"]
+    assert "crawl_url" in executor._effective_exclusions()
+    assert "printer" not in executor._effective_exclusions()
+
+
 @pytest.mark.parametrize("value", [None, [], {}, {"enabled": False}])
 def test_absent_or_disabled_policy_opts_out(channel, value):
     _, contacts = channel
