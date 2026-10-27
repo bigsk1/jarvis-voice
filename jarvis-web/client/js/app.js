@@ -584,8 +584,7 @@ class JarvisApp {
     }
     for (const mediaType of ['image', 'video']) {
       document.getElementById(`setting-${mediaType}-model`)?.addEventListener('change', (event) => {
-        const provider = document.getElementById(`setting-${mediaType}-provider`)?.value
-          || this._settingsData?.[mediaType]?.provider?.default;
+        const provider = this._getMediaProviderSelection(mediaType);
         const metadata = this._settingsData?.[`${mediaType}_providers`]?.[provider];
         if (metadata) {
           metadata.model_is_override = !!event.target.value;
@@ -1932,17 +1931,7 @@ class JarvisApp {
         this._updateMediaProviderDetail('image');
         
         // Populate Video Provider
-        this._populateMediaProviderDropdown('video');
-        const videoSelect = document.getElementById('setting-video-provider');
-        videoSelect.value = s.video?.provider?.is_override ? s.video.provider.value : '';
-        const videoDefault = document.getElementById('video-provider-default');
-        videoDefault.textContent = `(${envFile}: ${s.video?.provider?.default || 'xai'})`;
-        videoDefault.className = s.video?.provider?.is_override ? 'setting-default setting-override' : 'setting-default';
-        if (s.video?.provider?.is_override) {
-          videoDefault.textContent = `⚡ override: ${s.video.provider.value}`;
-        }
-        this._populateMediaModelDropdown('video');
-        this._updateMediaProviderDetail('video');
+        this._populateVideoProviderSettings(envFile);
 
         // Populate Music Provider
         this._populateMediaProviderDropdown('music');
@@ -3387,18 +3376,42 @@ class JarvisApp {
     if (!select) return;
     const providers = this._settingsData?.[`${mediaType}_providers`] || {};
     select.replaceChildren();
-    select.add(new Option('Use env default', ''));
+    const setting = this._settingsData?.[mediaType]?.provider;
+    const needsChoice = setting?.selection_required || (mediaType === 'video' && setting?.default === null);
+    const placeholder = new Option(needsChoice ? 'Choose video provider' : 'Use env default', '');
+    placeholder.disabled = !!needsChoice;
+    select.add(placeholder);
     for (const [provider, metadata] of Object.entries(providers)) {
       const summary = this._formatMediaProviderSummary(metadata, mediaType, true);
       select.add(new Option(`${metadata.name || provider}${summary ? ` — ${summary}` : ''}`, provider));
     }
   }
 
+  _getMediaProviderSelection(mediaType) {
+    const selected = document.getElementById(`setting-${mediaType}-provider`)?.value;
+    const setting = this._settingsData?.[mediaType]?.provider;
+    return selected || (setting?.selection_required ? '' : setting?.default);
+  }
+
+  _populateVideoProviderSettings(envFile) {
+    const setting = this._settingsData?.video?.provider || {};
+    this._populateMediaProviderDropdown('video');
+    const select = document.getElementById('setting-video-provider');
+    select.value = setting.is_override ? setting.value : '';
+    const label = document.getElementById('video-provider-default');
+    label.textContent = setting.selection_required
+      ? 'Choose a video provider to enable video generation.'
+      : `(${envFile}: ${setting.default || 'Choose video provider'})`;
+    label.className = setting.is_override ? 'setting-default setting-override' : 'setting-default';
+    if (setting.is_override) label.textContent = `⚡ override: ${setting.value}`;
+    this._populateMediaModelDropdown('video');
+    this._updateMediaProviderDetail('video');
+  }
+
   _populateMediaModelDropdown(mediaType) {
     const select = document.getElementById(`setting-${mediaType}-model`);
     if (!select) return;
-    const provider = document.getElementById(`setting-${mediaType}-provider`)?.value
-      || this._settingsData?.[mediaType]?.provider?.default;
+    const provider = this._getMediaProviderSelection(mediaType);
     const metadata = this._settingsData?.[`${mediaType}_providers`]?.[provider] || {};
     const models = Array.isArray(metadata.models) ? metadata.models : [];
     const defaultModel = metadata.model_default || metadata.model || '';
@@ -3418,6 +3431,7 @@ class JarvisApp {
       ));
     }
     select.value = metadata.model_is_override ? (metadata.model || '') : '';
+    select.disabled = !provider;
 
     const envFile = this._settingsData?.mode === 'local' ? 'local.env' : 'cloud.env';
     const defaultLabel = document.getElementById(`${mediaType}-model-default`);
@@ -3426,7 +3440,7 @@ class JarvisApp {
         defaultLabel.textContent = `⚡ override: ${metadata.model} · (${envFile} default: ${defaultModel})`;
         defaultLabel.className = 'setting-default setting-override';
       } else {
-        defaultLabel.textContent = `(${envFile}: ${defaultModel || 'catalog default'})`;
+        defaultLabel.textContent = provider ? `(${envFile}: ${defaultModel || 'catalog default'})` : 'Choose a provider first.';
         defaultLabel.className = 'setting-default';
       }
     }
@@ -3491,6 +3505,7 @@ class JarvisApp {
 
   _formatMediaProviderPrice(pricing) {
     if (!pricing) return '';
+    const estimate = pricing.estimated ? 'estimated ' : '';
     const values = Object.values(pricing.usd_by_resolution || pricing.usd_by_size || {})
       .map(Number)
       .filter(value => Number.isFinite(value));
@@ -3498,7 +3513,7 @@ class JarvisApp {
       const minimum = Math.min(...values);
       const amount = `$${minimum.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}`;
       const suffix = pricing.unit === 'second' ? '/s' : '/image';
-      return `${new Set(values).size > 1 ? 'from ' : ''}${amount}${suffix}`;
+      return `${estimate}${new Set(values).size > 1 ? 'from ' : ''}${amount}${suffix}`;
     }
     const flatAmount = Number(pricing.usd);
     if (Number.isFinite(flatAmount)) {
@@ -3513,8 +3528,7 @@ class JarvisApp {
     const select = document.getElementById(`setting-${mediaType}-provider`);
     const detail = document.getElementById(`${mediaType}-provider-capabilities`);
     if (!select || !detail) return;
-    const defaultProvider = this._settingsData?.[mediaType]?.provider?.default;
-    const provider = select.value || defaultProvider;
+    const provider = this._getMediaProviderSelection(mediaType);
     const providerMetadata = this._settingsData?.[`${mediaType}_providers`]?.[provider];
     const modelSelect = document.getElementById(`setting-${mediaType}-model`);
     const modelId = modelSelect?.value || providerMetadata?.model_default || providerMetadata?.model;
@@ -4694,6 +4708,11 @@ class JarvisApp {
         completion_guard_eval_model: document.getElementById('setting-completion-guard-eval-model').value || null,
         history_limit: parseInt(document.getElementById('setting-history-limit').value) || 20
       };
+      if (this._settingsData?.video?.provider?.selection_required && !settings.video_provider) {
+        // Preserve the unavailable saved choice when editing unrelated fields.
+        delete settings.video_provider;
+        delete settings.video_model;
+      }
 
       let saveToast = 'Settings saved!';
       if (settings.tts_enabled) {

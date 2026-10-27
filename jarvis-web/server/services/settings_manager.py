@@ -369,6 +369,7 @@ PROVIDER_KEY_REQUIREMENTS = {
     'xai': 'XAI_API_KEY',
     'gemini': 'GEMINI_API_KEY',
     'elevenlabs': 'ELEVENLABS_API_KEY',
+    'heygen': 'HEYGEN_API_KEY',
 }
 
 # Short UI labels for credential availability. Native select option text does
@@ -380,6 +381,7 @@ PROVIDER_DISPLAY_NAMES = {
     'xai': 'xAI',
     'gemini': 'Gemini',
     'elevenlabs': 'ElevenLabs',
+    'heygen': 'HeyGen',
 }
 
 # Curated credential readiness shown in Settings -> API Keys. Requirements are
@@ -408,6 +410,13 @@ API_CREDENTIAL_SECTIONS = (
                 'name': 'GEMINI_API_KEY',
                 'description': 'Gemini chat, vision, image, video, and music',
                 'all_of': ('GEMINI_API_KEY',),
+            },
+            {
+                'id': 'heygen',
+                'name': 'HEYGEN_API_KEY',
+                'description': 'Optional HeyGen video and avatar generation',
+                'all_of': ('HEYGEN_API_KEY',),
+                'optional': True,
             },
             {
                 'id': 'ollama',
@@ -684,6 +693,9 @@ class SettingsManager:
 
         options = get_media_provider_options(media_type, effective_models)
         env_options = get_media_provider_options(media_type, env_models)
+        if media_type == 'video' and not str(get_jarvis_setting('HEYGEN_API_KEY', '') or '').strip():
+            options.pop('heygen', None)
+            env_options.pop('heygen', None)
         for provider, metadata in options.items():
             env_metadata = env_options.get(provider, {})
             metadata['model_default'] = env_metadata.get('model', '')
@@ -865,6 +877,15 @@ class SettingsManager:
             web_video_models = {}
         image_providers = self._get_effective_media_providers('image', web_image_models)
         video_providers = self._get_effective_media_providers('video', web_video_models)
+        if str(env_video_provider).strip().lower() == 'heygen':
+            env_video_provider = 'heygen'
+        saved_video_provider = mode_overrides.get('video_provider') or env_video_provider
+        video_selection_required = (
+            str(saved_video_provider).strip().lower() == 'heygen'
+            and 'heygen' not in video_providers
+        )
+        if env_video_provider == 'heygen' and 'heygen' not in video_providers:
+            env_video_provider = None
         music_providers = self._get_effective_media_providers('music')
         tts_providers = self._get_tts_providers_for_ui()
         web_provider = mode_overrides.get('llm_provider')
@@ -883,6 +904,8 @@ class SettingsManager:
             web_router_prompt_version = None
         web_image = mode_overrides.get('image_provider')
         web_video = mode_overrides.get('video_provider')
+        if str(web_video).strip().lower() == 'heygen':
+            web_video = 'heygen'
         web_music = mode_overrides.get('music_provider')
         if web_image not in (None, *image_providers):
             web_image = None
@@ -934,7 +957,7 @@ class SettingsManager:
         effective_thinking_effort = web_thinking_effort or displayed_env_thinking_effort
         effective_router_prompt_version = web_router_prompt_version or env_router_prompt_version
         effective_image = web_image or env_image_provider
-        effective_video = web_video or env_video_provider
+        effective_video = None if video_selection_required else web_video or env_video_provider
         image_model_metadata = image_providers.get(effective_image, {})
         video_model_metadata = video_providers.get(effective_video, {})
         effective_music = web_music or env_music_provider
@@ -1063,6 +1086,7 @@ class SettingsManager:
                     'value': effective_video,
                     'default': env_video_provider,
                     'is_override': web_video is not None,
+                    **({'selection_required': True} if video_selection_required else {}),
                     'options': list(video_providers.keys())
                 },
                 'model': {
@@ -1403,6 +1427,8 @@ class SettingsManager:
                     if all_of
                     else any(bool(str(get_jarvis_setting(key, '') or '').strip()) for key in any_of)
                 )
+                if definition.get('optional') and not configured:
+                    continue
                 not_required = self.mode in definition.get('not_required_modes', ())
                 status = (
                     'configured'
@@ -1487,7 +1513,7 @@ class SettingsManager:
         llm_options = self._get_llm_provider_options()
         guard_options = ['ollama'] if self.mode == 'local' else get_catalog_providers()
         image_options = list(get_media_catalog_providers('image'))
-        video_options = list(get_media_catalog_providers('video'))
+        video_options = list(self._get_effective_media_providers('video'))
         music_options = list(get_media_catalog_providers('music'))
         tts_options = self._get_tts_provider_options()
         return {
@@ -1545,7 +1571,7 @@ class SettingsManager:
                 continue  # clearing an override is always allowed
             requested = str(requested).strip().lower()
             effective = str(current_effective[field] or '').strip().lower()
-            if requested == effective:
+            if requested == effective and not (field == 'video_provider' and requested == 'heygen'):
                 continue  # not a new selection
             domain = {
                 'llm_provider': 'llm',

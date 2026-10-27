@@ -29,6 +29,16 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "generate_avatar_video": _case({
+        "provider": "heygen", "model": "avatar_iv", "kind": "avatar", "provider_video_id": "avatar_render_7",
+        "status": "completed", "receipt_stash_ref": "stash://space_receipt/f_avatar_job",
+        "duration": 12, "aspect_ratio": "16:9", "resolution": "720p", "estimated_cost_usd": 0.462,
+        "saved": {"stash_ref": "stash://space_video/f_avatar", "filename": "heygen_avatar_render_7.mp4"},
+    }, {"script": "Welcome to the demonstration.", "avatar_id": "ready_look_7", "voice_id": "voice_7"}),
+    "heygen": _case({
+        "provider": "heygen", "action": "list_avatars", "has_more": True, "next_cursor": "opaque-page-2",
+        "items": [{"id": "ready_look_7", "name": "Presenter look", "avatar_group_id": "group_7", "status": "ready"}],
+    }, {"action": "list_avatars", "limit": 20}),
     "email_contacts": _case({
         "status": "found", "source": "jarvis_local_contacts",
         "contacts_file": "config/contacts.json", "lookup_complete": True,
@@ -1968,6 +1978,54 @@ def _enabled_local_tool_names():
         if config.get("enabled", True):
             names.add(config["name"])
     return names
+
+
+@pytest.mark.parametrize("tool_name", ["generate_video", "generate_avatar_video", "heygen"])
+def test_heygen_followup_retains_same_job_recovery_evidence(tool_name):
+    payload = {
+        "provider": "heygen", "kind": "avatar", "model": "avatar_iv", "status": "pending",
+        "provider_video_id": "native_video_7", "request_id": "request_7",
+        "receipt_stash_ref": "stash://receipts/job_7",
+    }
+    result = followup.extract_followup_data({tool_name: {
+        "ok": False, "completion": "unknown", "error": "Still processing; collect this existing job",
+        "data": payload,
+    }})[tool_name]
+    for key, value in payload.items():
+        assert result[key] == value
+    assert result["completion"] == "unknown"
+    assert "collect this existing job" in result["error"]
+
+
+@pytest.mark.parametrize("action,id_key", [("list_avatars", "id"), ("list_voices", "voice_id")])
+def test_heygen_followup_keeps_exact_catalog_ids_and_pagination(action, id_key):
+    payload = {
+        "provider": "heygen", "action": action, "has_more": True, "next_cursor": "opaque+/= page2",
+        "items": [{id_key: "native_look_7", "name": "Presenter"}, {id_key: "native_look_8", "name": "Second"}],
+    }
+    result = followup.extract_followup_data({"heygen": {"ok": True, "data": payload}}, max_candidates=1)["heygen"]
+    assert result["next_cursor"] == payload["next_cursor"]
+    assert result["has_more"] is True
+    assert result["candidates"][0][id_key] == "native_look_7"
+    assert len(result["candidates"]) == 1
+    assert result["candidates_truncated"] is True
+
+
+def test_heygen_followup_preserves_saved_avatar_artifact_and_bounded_account_data():
+    payload, _ = LOCAL_TOOL_SAMPLES["generate_avatar_video"]
+    result = followup.extract_followup_data({"generate_avatar_video": {"ok": True, "data": payload}})["generate_avatar_video"]
+    assert result["stash_ref"] == payload["saved"]["stash_ref"]
+    assert result["filename"] == payload["saved"]["filename"]
+    assert result["estimated_cost_usd"] == payload["estimated_cost_usd"]
+    account = followup.extract_followup_data({"heygen": {"ok": True, "data": {
+        "provider": "heygen", "action": "account", "billing_type": "wallet",
+        "wallet": {"balance": 15, "currency": "USD", "api_key": "SECRET_SENTINEL"},
+        "usage_based": {"status": "enabled", "notes": "bounded " * 500},
+    }}})["heygen"]
+    assert account["wallet"]["balance"] == 15
+    assert account["wallet"]["currency"] == "USD"
+    assert "SECRET_SENTINEL" not in json.dumps(account)
+    assert len(json.dumps(account["usage_based"])) < 1200
 
 
 def test_malwarebytes_followup_keeps_unknown_verdict_and_indicator_identity():

@@ -360,6 +360,7 @@ const makeSelect=value=>({
   add(item){this.children.push(item);},
   replaceChildren(){this.children=[];},
   appendChild(item){this.children.push(item);},
+  querySelector(selector){return this.children.find(item=>selector===`option[value="${item.value}"]`)||null;},
 });
 const elements={
   imgActionVideoProvider:makeSelect('gemini'),

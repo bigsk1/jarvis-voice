@@ -151,6 +151,7 @@ def test_trusted_child_env_policy_reaches_subprocess_without_other_credentials(
     assert env['BROWSER_USE_CLOUD_WORKSPACE_ID'] == 'saved-workspace'
     assert env['JARVIS_MODE'] == 'cloud'
     assert env['HOME'] == env['TMPDIR']
+    assert env['JARVIS_RESTRICTED_TOOL_ENV'] == '1'
     assert env['JARVIS_WEB_CONVERSATION_ID'] == 'conversation-1'
     assert 'BROWSER_USE_CLOUD_PROFILE_ID' not in env
     assert 'GEMINI_API_KEY' not in env
@@ -170,8 +171,70 @@ def test_profile_id_enters_narrow_child_env_only_for_true_argument():
     signed_in = restrict_child_environment(source, policy, {'use_profile': True}, '/tmp/scratch')
     assert anonymous == {'BROWSER_USE_API_KEY': 'browser-key',
                          'BROWSER_USE_CLOUD_WORKSPACE_ID': 'saved-workspace',
-                         'HOME': '/tmp/scratch'}
+                         'HOME': '/tmp/scratch', 'JARVIS_RESTRICTED_TOOL_ENV': '1'}
     assert signed_in == {**anonymous, 'BROWSER_USE_CLOUD_PROFILE_ID': 'saved-profile'}
+
+
+@pytest.mark.parametrize('mode', ['cloud', 'local'])
+def test_restricted_background_child_cannot_rehydrate_mode_secrets(tmp_path, mode):
+    """Exercise the child's real loader, rather than only its prelaunch env."""
+    import subprocess
+
+    from lib.background_tasks.local_skill import restrict_child_environment
+
+    config = tmp_path / 'config'
+    config.mkdir()
+    (config / f'{mode}.env').write_text(
+        'HEYGEN_API_KEY=file-key\nVIDEO_TOOL_PROVIDER=xai\n'
+        'HEYGEN_VIDEO_MODEL=file-model\nUNRELATED_PROVIDER_KEY=private-mode-key\n'
+    )
+    scratch = tmp_path / 'home'
+    scratch.mkdir()
+    source = {
+        'PATH': str(Path(sys.executable).parent), 'JARVIS_MODE': mode,
+        'HEYGEN_API_KEY': 'admitted-key', 'VIDEO_TOOL_PROVIDER': 'heygen',
+        'HEYGEN_VIDEO_MODEL': 'admitted-model', 'STASH_DIR': str(tmp_path / 'stash'),
+        'JARVIS_OVERRIDE_STASH_DIR': str(tmp_path / 'stash'),
+        'UNRELATED_PROVIDER_KEY': 'parent-key',
+        'JARVIS_OVERRIDE_UNRELATED_PROVIDER_KEY': 'parent-override',
+    }
+    environment = restrict_child_environment(
+        source, production.CHILD_ENVIRONMENT_POLICIES['generate_video'], {}, scratch,
+    )
+    script = '''
+import json
+import os
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[2])
+import config_loader
+config_loader.get_project_root = lambda: Path(sys.argv[1])
+loaded = config_loader.load_config()
+print(json.dumps({
+    "mode": config_loader.get_active_config_mode(),
+    "key": config_loader.get_config_value("HEYGEN_API_KEY"),
+    "provider": config_loader.get_config_value("VIDEO_TOOL_PROVIDER"),
+    "model": config_loader.get_config_value("HEYGEN_VIDEO_MODEL"),
+    "stash": config_loader.get_config_value("STASH_DIR"),
+    "home": os.environ.get("HOME"),
+    "secret_in_loaded": "UNRELATED_PROVIDER_KEY" in loaded,
+    "secret_in_env": "UNRELATED_PROVIDER_KEY" in os.environ,
+    "secret_in_lookup": config_loader.get_config_value("UNRELATED_PROVIDER_KEY"),
+    "override_in_env": "JARVIS_OVERRIDE_UNRELATED_PROVIDER_KEY" in os.environ,
+}))
+'''
+    completed = subprocess.run(
+        [sys.executable, '-c', script, str(tmp_path), str(ROOT / 'lib')],
+        env={key: str(value) for key, value in environment.items()},
+        capture_output=True, text=True, timeout=10, check=True,
+    )
+    observed = json.loads(completed.stdout)
+    assert observed == {
+        'mode': mode, 'key': 'admitted-key', 'provider': 'heygen',
+        'model': 'admitted-model', 'stash': str(tmp_path / 'stash'), 'home': str(scratch),
+        'secret_in_loaded': False, 'secret_in_env': False, 'secret_in_lookup': None,
+        'override_in_env': False,
+    }
 
 
 def test_foreground_restricted_tool_needs_trusted_background_environment(probe):

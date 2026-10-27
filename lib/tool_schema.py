@@ -328,31 +328,47 @@ class ToolSchema:
             if isinstance(tool_name, str) and tool_name.strip()
         ))
     
+    def _export_metadata(self) -> tuple[str, dict[str, Any]]:
+        """Apply the active request's optional-provider gate to a fresh projection."""
+        if self.name == 'generate_video':
+            from media_tool_metadata import video_metadata_without_heygen
+            from tool_availability import is_env_configured
+
+            if not is_env_configured('HEYGEN_API_KEY'):
+                projected = video_metadata_without_heygen({
+                    'description': self.description, 'parameters': self.parameters,
+                })
+                return projected['description'], projected['parameters']
+        return self.description, self.parameters
+
     def to_openai_format(self) -> dict[str, Any]:
         """Convert to OpenAI function calling format."""
+        description, parameters = self._export_metadata()
         return {
             "type": "function",
             "function": {
                 "name": self.name,
-                "description": self.description,
-                "parameters": _sanitize_schema_for_openai(self.parameters, is_root=True)
+                "description": description,
+                "parameters": _sanitize_schema_for_openai(parameters, is_root=True)
             }
         }
     
     def to_anthropic_format(self) -> dict[str, Any]:
         """Convert to Anthropic tool calling format."""
+        description, parameters = self._export_metadata()
         return {
             "name": self.name,
-            "description": self.description,
-            "input_schema": self.parameters
+            "description": description,
+            "input_schema": parameters
         }
     
     def to_ollama_description(self) -> str:
         """Convert to plain text description for Ollama structured prompts."""
+        description, parameters = self._export_metadata()
         params_desc = []
-        if "properties" in self.parameters:
-            for param_name, param_info in self.parameters["properties"].items():
-                required = param_name in self.parameters.get("required", [])
+        if "properties" in parameters:
+            for param_name, param_info in parameters["properties"].items():
+                required = param_name in parameters.get("required", [])
                 req_str = "(required)" if required else "(optional)"
                 param_type = param_info.get("type", "string")
                 param_desc = param_info.get("description", "")
@@ -361,7 +377,7 @@ class ToolSchema:
         params_str = "\n".join(params_desc) if params_desc else "  No parameters"
         
         return f"""Tool: {self.name}
-Description: {self.description}
+Description: {description}
 Parameters:
 {params_str}"""
     
@@ -559,7 +575,7 @@ class ToolRegistry:
 
                 if not effective:
                     if verbose:
-                        if name in self._profile_overrides and not self._profile_overrides[name]:
+                        if base_enabled or (name in self._profile_overrides and not self._profile_overrides[name]):
                             reason = f"disabled by tool profile '{self._profile_name}'"
                         else:
                             reason = f"disabled in {tool_file.name}"

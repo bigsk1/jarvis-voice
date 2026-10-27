@@ -5,7 +5,10 @@ Auto-loads tools from skills/*.tool.json AND memory_db (includes MCP tools)
 import sys
 import threading
 from pathlib import Path
-from ..config import SKILLS_PATH, JARVIS_ROOT, get_web_setting
+
+from ..config import JARVIS_ROOT, SKILLS_PATH, get_web_setting
+
+_HEYGEN_TOOLS = {'heygen', 'generate_avatar_video'}
 
 
 def _ensure_lib_path():
@@ -51,9 +54,12 @@ class ToolDiscoveryService:
 
         profile_overrides = _tool_profile_overrides()
         _ensure_lib_path()
-        from tool_availability import check_tool_availability
+        from media_tool_metadata import video_metadata_without_heygen
+        from tool_availability import check_tool_availability, is_env_configured
         from tool_manifest_files import iter_tool_manifests
         from tool_profiles import effective_enabled
+
+        self._heygen_configured = is_env_configured('HEYGEN_API_KEY')
 
         # 1. Use the runtime's supported folders and duplicate-name ownership.
         local_names = set()
@@ -63,6 +69,13 @@ class ToolDiscoveryService:
                 try:
                     name = tool.get('name', tool_file.stem.replace('.tool', ''))
                     local_names.add(name)
+                    # Keep local ownership above this visibility gate so stale
+                    # enabled Tool RAG rows cannot restore an optional tool.
+                    if not self._heygen_configured:
+                        if name in _HEYGEN_TOOLS:
+                            continue
+                        if name == 'generate_video':
+                            tool = video_metadata_without_heygen(tool)
                     is_blocked = name in blocked_tools
                     base_enabled = tool.get('enabled', True)
                     effective = effective_enabled(name, base_enabled, profile_overrides)
@@ -106,6 +119,8 @@ class ToolDiscoveryService:
             all_db_tools = db.get_enabled_tool_names()
             
             for tool_name in all_db_tools:
+                if tool_name in _HEYGEN_TOOLS and not self._heygen_configured:
+                    continue
                 # Only add if not already loaded from local files
                 if tool_name not in local_names:
                     # DB says enabled=1; still respect profile overrides (same as ToolRegistry)
@@ -153,9 +168,19 @@ class ToolDiscoveryService:
     def _refresh_dependencies(self):
         """Refresh dependency diagnostics without starting/recovering MCP clients."""
         from config_loader import get_config_value
-        from tool_availability import check_tool_availability, resolve_tool_dependencies
+        from tool_availability import (
+            check_tool_availability,
+            is_env_configured,
+            resolve_tool_dependencies,
+        )
         from tool_schema import peek_tool_registry
 
+        # Every public getter comes through here. Only an on/off key transition
+        # invalidates this snapshot; never retain the key itself in UI state.
+        with self._run_in_mode_scope():
+            if self._heygen_configured != is_env_configured('HEYGEN_API_KEY'):
+                self._load_tools()
+                return
         manifests = getattr(self, '_dependent_manifests', {})
         if not manifests:
             return

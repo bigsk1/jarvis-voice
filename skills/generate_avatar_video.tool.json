@@ -1,0 +1,32 @@
+{
+  "enabled": true,
+  "name": "generate_avatar_video",
+  "description": "Create a short talking-avatar video with HeyGen Avatar IV. Supply an exact script (maximum 75 words and 1000 characters) plus voice_id, OR existing audio of at most 30 seconds. Supply a discovered avatar LOOK ID, OR a source image. Images/audio accept Stash references, permitted local paths or HTTPS URLs. This makes a paid video; it does not train avatars or clone voices. Use heygen list_avatars/list_voices for exact IDs. Saves the completed MP4 to Stash. If a response includes provider_video_id, kind and receipt_stash_ref, use heygen status/collect for that same job; never submit another video to poll or recover it. After Web background admission wait for automatic delivery; Jarvis background job_id is not the provider_video_id.",
+  "script": "generate_avatar_video.py",
+  "complementary_tools": ["heygen", "stash", "analyze_video"],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "script": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "Exact words to speak, preserved verbatim. Maximum 75 words; about a 30-second cost-bounded first release. Requires voice_id. Omit with audio_source."},
+      "audio_source": {"type": "string", "description": "Existing WAV/MP3 audio, at most 30 seconds: stash:// reference, permitted local path or public HTTPS URL. Alternative to script/voice_id."},
+      "avatar_id": {"type": "string", "description": "Exact ready avatar LOOK ID from heygen action=list_avatars; do not use an avatar group ID. Alternative to image_source."},
+      "image_source": {"type": "string", "description": "A source portrait: stash:// reference, permitted local path or public HTTPS URL. Alternative to avatar_id. The source image is uploaded to HeyGen."},
+      "voice_id": {"type": "string", "description": "Exact voice ID from heygen action=list_voices. Required with script; omit with audio_source."},
+      "title": {"type": "string", "maxLength": 200, "description": "Optional video title."},
+      "aspect_ratio": {"type": "string", "enum": ["16:9", "9:16", "1:1", "auto"], "default": "16:9"},
+      "resolution": {"type": "string", "enum": ["720p", "1080p"], "default": "720p"}
+    },
+    "additionalProperties": false
+  },
+  "permissions": {"dangerous": false, "bash": false, "network": true, "filesystem": true, "auto_approve": true},
+  "availability": {"all_of_env": ["HEYGEN_API_KEY"], "setup_hint": "Set HEYGEN_API_KEY in the selected mode to enable optional paid HeyGen generation."},
+  "child_environment": {
+    "mode": "restricted", "from_availability": true,
+    "allow": ["HEYGEN_WAIT_SECONDS", "STASH_DIR", "STASH_DEFAULT_TTL_DAYS", "STASH_MAX_SPACE_SIZE_MB", "STASH_SOURCE_ARTIFACT_TTL_DAYS", "STASH_GENERATED_MEDIA_TTL_DAYS"]
+  },
+  "execution": {"background": {
+    "supported": true, "adapter": "remote_skill_v1", "completion_scope": "remote_work",
+    "timeout_seconds": 1200, "progress_label": "Generating HeyGen avatar video",
+    "limits": {"memory_bytes": 1073741824, "file_bytes": 536870912, "input_bytes": 536870912, "output_bytes": 2097152}
+  }}
+}

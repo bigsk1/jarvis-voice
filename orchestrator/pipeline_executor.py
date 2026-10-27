@@ -8,29 +8,31 @@ The LLM is only used for parameter filling and content validation, not tool sele
 This provides deterministic multi-tool execution while still leveraging LLM intelligence
 for flexible parameter resolution.
 """
-import os
-import sys
 import json
+import os
 import re
+import sys
 import time
+from collections.abc import Callable
 from contextlib import contextmanager, nullcontext
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
-from datetime import date, datetime, timedelta
 
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import (
     config_override_scope,
+    config_scope,
     get_config_value,
     get_scoped_config,
     load_config,
 )
+from llm_logger import LLMLogger
 from llm_provider import create_configured_provider, has_usage_accounting_data
 from tool_logger import ToolLogger
-from llm_logger import LLMLogger
+
 try:
     from .workflow_availability import (
         check_workflow_registry_availability,
@@ -45,6 +47,76 @@ except ImportError:
 
 class _WorkflowLLMError(RuntimeError):
     """A workflow-internal LLM request failed before producing usable content."""
+
+
+def _heygen_recovery(step: dict, result: dict) -> dict:
+    """Project only bounded native recovery handles from a failed HeyGen step."""
+    data = result.get("data")
+    if not isinstance(data, dict):
+        return {}
+    tool = step.get("tool")
+    if tool not in ("heygen", "generate_avatar_video", "generate_video"):
+        return {}
+    if tool == "generate_video" and data.get("provider") != "heygen" and (step.get("params") or {}).get("provider") != "heygen":
+        return {}
+    recovery = {}
+    for field in ("provider_video_id", "request_id"):
+        value = data.get(field)
+        if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,160}", value):
+            recovery[field] = value
+    receipt = data.get("receipt_stash_ref")
+    if isinstance(receipt, str) and re.fullmatch(r"stash://[A-Za-z0-9_-]{1,160}/[A-Za-z0-9_-]{1,160}", receipt):
+        recovery["receipt_stash_ref"] = receipt
+    if not recovery:
+        return {}
+    recovery["provider"] = "heygen"
+    kind = data.get("kind") or ("avatar" if tool == "generate_avatar_video" else "model")
+    if kind in ("avatar", "model"):
+        recovery["kind"] = kind
+    if result.get("completion") in ("unknown", "rejected", "completed"):
+        recovery["completion"] = result["completion"]
+    return recovery
+
+
+def _heygen_recovery_speech(recovery: dict) -> str:
+    handles = "; ".join(f"{key}={recovery[key]}" for key in (
+        "provider_video_id", "kind", "request_id", "receipt_stash_ref",
+    ) if key in recovery)
+    if recovery.get("provider_video_id") and recovery.get("kind"):
+        instruction = "Use heygen status or collect for this same video ID and kind."
+    elif recovery.get("provider_video_id"):
+        instruction = "Inspect the receipt for this video's job kind before checking the existing job."
+    else:
+        instruction = "No provider video ID was confirmed; inspect the request receipt before submitting again."
+    return f"HeyGen recovery: {handles}. {instruction} Do not rerun this workflow to recover the existing request."
+
+
+def _heygen_abort_recovery_speech(step: dict, result: dict) -> str:
+    """Retain per-item handles while bounding the spoken loop-abort summary."""
+    outputs = result.get("outputs")
+    if not isinstance(outputs, list):
+        recovery = _heygen_recovery(step, result)
+        if recovery:
+            result["recovery"] = recovery
+            return _heygen_recovery_speech(recovery)
+        return ""
+
+    details = []
+    omitted = 0
+    for index, output in enumerate(outputs, start=1):
+        if not isinstance(output, dict) or output.get("ok"):
+            continue
+        recovery = _heygen_recovery(step, output)
+        if not recovery:
+            continue
+        output["recovery"] = recovery
+        if len(details) < 5:
+            details.append(f"Item {index}: {_heygen_recovery_speech(recovery)}")
+        else:
+            omitted += 1
+    if omitted:
+        details.append(f"Recovery details for {omitted} additional failed items are retained on their item cards.")
+    return " ".join(details)
 
 
 class PipelineExecutor:
@@ -857,6 +929,8 @@ class PipelineExecutor:
                             **step_identity,
                             "ok": False,
                             "data": step_result.get("data"),
+                            **({"completion": step_result["completion"]}
+                               if step_result.get("completion") in ("unknown", "rejected", "completed") else {}),
                             "error": step_result.get("error") or step_result.get("speech"),
                             "duration_ms": step_duration_ms
                         })
@@ -895,6 +969,23 @@ class PipelineExecutor:
         return self._build_success_response(workflow, results, variables, tools_used, 
                                             start_time=start_time, query=query)
     
+    def _execute_workflow_tool(self, step: dict, tool_name: str, params: dict) -> dict:
+        """Honor a recipe's literal media provider without changing saved settings.
+
+        A reviewed workflow is a trusted caller, like the media modal. Model-filled
+        parameters and query substitutions cannot create this configuration scope.
+        """
+        from lib.background_tasks.admission import MEDIA_SELECTIONS, media_job_overrides
+
+        declared = (step.get("params") or {}).get("provider")
+        if tool_name not in MEDIA_SELECTIONS or not isinstance(declared, str) or "${" in declared:
+            return self.executor.execute(tool_name, params)
+        arguments = {**params, "provider": declared.strip().lower()}
+        overrides = media_job_overrides(tool_name, arguments)
+        scope = config_override_scope(overrides) if get_scoped_config() is not None else config_scope(self.mode, overrides)
+        with scope:
+            return self.executor.execute(tool_name, arguments)
+
     def _execute_single(self, step: dict, tool_name: str, action: str,
                         tool_defaults: dict, variables: dict,
                         validation_policy: dict) -> dict[str, Any]:
@@ -930,7 +1021,7 @@ class PipelineExecutor:
         
         # Execute tool
         source_params = params.copy()
-        result = self.executor.execute(tool_name, params)
+        result = self._execute_workflow_tool(step, tool_name, params)
         from lib.background_tasks.admission import reject_background_result
         result = reject_background_result(result)
         self._merge_component_usage(result, tool_name=tool_name)
@@ -1147,7 +1238,7 @@ class PipelineExecutor:
             # Execute tool
             item_start_time = time.time()
             source_params = params.copy()
-            result = self.executor.execute(tool_name, params)
+            result = self._execute_workflow_tool(step, tool_name, params)
             from lib.background_tasks.admission import reject_background_result
             result = reject_background_result(result)
             self._merge_component_usage(result, tool_name=tool_name)
@@ -2267,6 +2358,9 @@ class PipelineExecutor:
         speech_template = failed_step.get("abort_speech") or workflow.get("abort_speech", "Workflow aborted.")
         speech = speech_template
         speech = speech.replace("${topic}", variables.get("topic", ""))
+        recovery_speech = _heygen_abort_recovery_speech(failed_step, results[-1]) if results else ""
+        if recovery_speech:
+            speech = f"{speech} {recovery_speech}"
         
         tools_used = [r.get("tool") for r in results if r.get("tool")]
         
@@ -2353,6 +2447,7 @@ class PipelineExecutor:
 def main():
     """CLI for testing pipeline executor."""
     import argparse
+
     from executor import ToolExecutor
     from workflow_loader import WorkflowLoader
     

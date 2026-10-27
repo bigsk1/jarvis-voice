@@ -9,6 +9,8 @@
     "generate_image": false,
     "generate_music": false,
     "generate_video": false,
+    "generate_avatar_video": false,
+    "heygen": false,
     "memory_deduper": false,
     "phone_call": false,
     "openclaw": false,

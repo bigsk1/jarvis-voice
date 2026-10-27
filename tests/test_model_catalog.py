@@ -49,7 +49,7 @@ class ModelCatalogTests(unittest.TestCase):
 
     def test_media_env_keys_and_ui_provider_metadata_come_from_catalog(self):
         self.assertEqual(get_media_model_env_key("image", "gemini"), "GEMINI_IMAGE_MODEL")
-        self.assertEqual(set(get_media_catalog_providers("video")), {"xai", "gemini"})
+        self.assertEqual(set(get_media_catalog_providers("video")), {"xai", "gemini", "heygen"})
         self.assertEqual(get_media_model_env_key("music", "elevenlabs"), "ELEVENLABS_MUSIC_MODEL")
         self.assertEqual(get_media_model_env_key("music", "gemini"), "GEMINI_MUSIC_MODEL")
         self.assertEqual(get_media_provider_options("image")["gemini"]["model"], "gemini-3.1-flash-image")

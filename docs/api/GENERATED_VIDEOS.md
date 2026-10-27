@@ -2,6 +2,10 @@
 
 Manage AI-generated videos in the local `data/generated_videos/` folder.
 
+The generation endpoint also accepts `provider: "heygen"` when the selected
+mode has `HEYGEN_API_KEY`. HeyGen-specific avatar submission, catalog and
+status/collection routes are documented in [HeyGen](../HEYGEN.md).
+
 ## Base URL
 
 ```

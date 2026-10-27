@@ -712,6 +712,7 @@ MEDIA_MODEL_ENV_KEYS: dict[str, dict[str, str]] = {
     "video": {
         "xai": "XAI_VIDEO_MODEL",
         "gemini": "GEMINI_VIDEO_MODEL",
+        "heygen": "HEYGEN_VIDEO_MODEL",
     },
     "music": {
         "elevenlabs": "ELEVENLABS_MUSIC_MODEL",
@@ -998,6 +999,27 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                 },
             ],
         },
+        "heygen": {
+            "name": "HeyGen",
+            "required_env": "HEYGEN_API_KEY",
+            "models": [
+                {
+                    "id": "heygen-video-1",
+                    "name": "HeyGen Video 1",
+                    "default": True,
+                    "capabilities": ["text_to_video", "image_to_video", "audio"],
+                    "resolutions": ["480p", "768p", "1080p", "2k"],
+                    "aspect_ratios": ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"],
+                    "duration_seconds": {"min": 5, "max": 15},
+                    "pricing": {
+                        "unit": "second",
+                        "usd_by_resolution": {"480p": 0.01, "768p": 0.018, "1080p": 0.04, "2k": 0.05},
+                        "estimated": True,
+                        "note": "Estimated API pricing for clips up to 15s, checked 2026-10-26",
+                    },
+                },
+            ],
+        },
     },
     "music": {
         "elevenlabs": {
@@ -1193,6 +1215,11 @@ def get_media_provider_options(
     """Return provider metadata and selectable models for optional model pins."""
     options = {}
     for provider, entry in MEDIA_MODEL_CATALOG.get(media_type, {}).items():
+        if entry.get("required_env"):
+            from config_loader import get_config_value
+
+            if not str(get_config_value(entry["required_env"], "") or "").strip():
+                continue
         configured_model = (configured_models or {}).get(provider)
         model = resolve_media_model(media_type, provider, configured_model)
         metadata = get_media_model_metadata(media_type, provider, model) or {}

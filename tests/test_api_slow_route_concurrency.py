@@ -32,6 +32,11 @@ def slow_api(tmp_path, monkeypatch):
     def load(name):
         path = routes / f"{name}.py"
         shutil.copyfile(ROOT / "api" / "routes" / path.name, path)
+        if name == "generated_videos":
+            # The video launcher enforces its real reviewed child-env policy.
+            skills = tmp_path / "skills"
+            skills.mkdir()
+            shutil.copyfile(ROOT / "skills" / "generate_video.tool.json", skills / "generate_video.tool.json")
         alias = f"_slow_api_concurrency_{name}"
         spec = importlib.util.spec_from_file_location(alias, path)
         assert spec is not None and spec.loader is not None
@@ -226,7 +231,7 @@ def test_generation_wait_does_not_block_alert_requests(slow_api, monkeypatch, mo
         assert response["audio_url"] == "/api/generated-music/fixture.music"
     assert len(calls) == 1
     command, kwargs, thread_id, actual_mode, setting = calls[0]
-    assert command[0] == (sys.executable if kind == "music" else "python3")
+    assert command[0] == (sys.executable if kind in {"music", "videos"} else "python3")
     assert Path(command[1]) == module.PROJECT_ROOT / "skills" / script
     args = json.loads(command[2])
     assert args["prompt"] == body["prompt"]
@@ -247,6 +252,11 @@ def test_generation_wait_does_not_block_alert_requests(slow_api, monkeypatch, mo
     assert kwargs["timeout"] == expected_timeout
     assert kwargs["cwd"] == str(module.PROJECT_ROOT)
     assert kwargs["env"]["JARVIS_MODE"] == mode
+    if kind == "videos":
+        assert kwargs["env"]["VIDEO_TOOL_PROVIDER"] == body["provider"]
+        assert kwargs["env"]["JARVIS_RESTRICTED_TOOL_ENV"] == "1"
+        assert "API_CONCURRENCY_SETTING" not in kwargs["env"]
+        assert not Path(kwargs["env"]["HOME"]).exists()
     assert thread_id != loop_thread
     assert (actual_mode, setting) == (mode, "scoped-value")
 

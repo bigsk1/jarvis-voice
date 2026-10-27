@@ -1957,6 +1957,8 @@ class ChatUI {
     } else if (selected === 'video') {
       this._updateVideoProviderOptions();
     }
+    const confirm = document.getElementById('confirmImageAction');
+    if (confirm && selected !== 'video') confirm.disabled = false;
   }
 
   /**
@@ -2076,7 +2078,24 @@ class ChatUI {
    * Populate video resolutions from the effective model in the shared catalog.
    */
   _updateVideoProviderOptions(resetModel = false) {
-    const provider = document.getElementById('imgActionVideoProvider')?.value || 'xai';
+    const selectionRequired = window.jarvisApp?._settingsData?.video?.provider?.selection_required === true;
+    const provider = document.getElementById('imgActionVideoProvider')?.value || (selectionRequired ? '' : 'xai');
+    const unavailable = window.jarvisApp?._settingsData?.provider_availability?.video?.[provider]?.status === 'unavailable'
+      || (provider === 'heygen' && !window.jarvisApp?._settingsData?.video_providers?.heygen);
+    const confirm = document.getElementById('confirmImageAction');
+    const action = this.imageActionModal?.querySelector('input[name="imageAction"]:checked')?.value;
+    if (confirm && action === 'video') confirm.disabled = !provider || (selectionRequired && unavailable);
+    for (const id of ['imgActionVideoModel', 'imgActionVideoResolution', 'imgActionVideoDuration', 'imgActionVideoRatio']) {
+      const control = document.getElementById(id);
+      if (control) control.disabled = !provider;
+    }
+    if (!provider) {
+      const model = document.getElementById('imgActionVideoModel');
+      if (model) model.replaceChildren();
+      const description = document.getElementById('imgActionVideoModelDesc');
+      if (description) description.textContent = 'Choose an available video provider to continue.';
+      return;
+    }
     const select = document.getElementById('imgActionVideoResolution');
     const { modelMetadata } = this._populateImageActionModel('video', resetModel);
     const resolutions = Array.isArray(modelMetadata?.resolutions) && modelMetadata.resolutions.length
@@ -2196,12 +2215,15 @@ class ChatUI {
   }
 
   _getEffectiveVideoProvider() {
+    if (window.jarvisApp?._settingsData?.video?.provider?.selection_required === true) return '';
+    const providers = ['xai', 'gemini'];
+    if (window.jarvisApp?._settingsData?.video_providers?.heygen) providers.push('heygen');
     const select = document.getElementById('setting-video-provider');
-    if (select?.value && ['xai', 'gemini'].includes(select.value)) {
+    if (select?.value && providers.includes(select.value)) {
       return select.value;
     }
     const value = window.jarvisApp?._settingsData?.video?.provider?.value;
-    return ['xai', 'gemini'].includes(value) ? value : 'xai';
+    return providers.includes(value) ? value : 'xai';
   }
 
   /**
@@ -2240,7 +2262,15 @@ class ChatUI {
     const videoRatio = document.getElementById('imgActionVideoRatio');
     const videoDuration = document.getElementById('imgActionVideoDuration');
     const videoResolution = document.getElementById('imgActionVideoResolution');
-    if (videoProvider) videoProvider.value = this._getEffectiveVideoProvider();
+    if (videoProvider) {
+      const providers = window.jarvisApp?._settingsData?.video_providers;
+      // HeyGen is opt-in and is never offered without server-supplied metadata.
+      videoProvider.querySelector('option[value="heygen"]')?.remove();
+      if (providers?.heygen) videoProvider.add(new Option(providers.heygen.name || 'HeyGen', 'heygen'));
+      videoProvider.querySelector('option[value=""]')?.remove();
+      if (!this._getEffectiveVideoProvider()) videoProvider.add(new Option('Choose video provider', ''));
+      videoProvider.value = this._getEffectiveVideoProvider();
+    }
     if (videoRatio) videoRatio.value = '16:9';
     if (videoDuration) videoDuration.value = '5';
     this._updateVideoProviderOptions(true);
@@ -2296,7 +2326,8 @@ class ChatUI {
       settings.aspect_ratio = document.getElementById('imgActionVideoRatio')?.value || '16:9';
       settings.duration = parseInt(document.getElementById('imgActionVideoDuration')?.value) || 5;
       settings.resolution = document.getElementById('imgActionVideoResolution')?.value || '720p';
-      settings.provider = document.getElementById('imgActionVideoProvider')?.value || 'xai';
+      settings.provider = document.getElementById('imgActionVideoProvider')?.value
+        || (window.jarvisApp?._settingsData?.video?.provider?.selection_required ? '' : 'xai');
       settings.model = document.getElementById('imgActionVideoModel')?.value || undefined;
     } else if (action === 'image') {
       const provider = document.getElementById('imgActionImageProvider')?.value || 'gemini';
@@ -2343,6 +2374,13 @@ class ChatUI {
     if (!this.pendingImageBatch?.length) return;
     
     const { action, settings } = this._collectImageActionSettings();
+    if (action === 'video' && (!settings.provider
+        || (settings.provider === 'heygen' && !window.jarvisApp?._settingsData?.video_providers?.heygen)
+        || (window.jarvisApp?._settingsData?.video?.provider?.selection_required
+          && window.jarvisApp?._settingsData?.provider_availability?.video?.[settings.provider]?.status === 'unavailable'))) {
+      Utils.toast('Choose an available video provider before continuing.', 'info');
+      return;
+    }
     let batch = this.pendingImageBatch;
     if (action === 'craft') {
       const context = this._attachmentContext();
@@ -6561,6 +6599,27 @@ class ChatUI {
     return workflows;
   }
 
+  _getHeyGenWorkflowRecovery(toolName, data) {
+    if (!['heygen', 'generate_avatar_video', 'generate_video'].includes(toolName)
+        || !data || typeof data !== 'object' || Array.isArray(data)
+        || (toolName === 'generate_video' && data.provider !== 'heygen')) return null;
+    const recovery = {};
+    for (const key of ['provider_video_id', 'request_id']) {
+      if (typeof data[key] === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(data[key])) {
+        recovery[key] = data[key];
+      }
+    }
+    if (typeof data.receipt_stash_ref === 'string'
+        && /^stash:\/\/[A-Za-z0-9_-]{1,160}\/[A-Za-z0-9_-]{1,160}$/.test(data.receipt_stash_ref)) {
+      recovery.receipt_stash_ref = data.receipt_stash_ref;
+    }
+    if (!Object.keys(recovery).length) return null;
+    recovery.provider = 'heygen';
+    if (['model', 'avatar'].includes(data.kind)) recovery.kind = data.kind;
+    if (['unknown', 'rejected', 'completed'].includes(data.completion)) recovery.completion = data.completion;
+    return recovery;
+  }
+
   _getWorkflowStepTraceEntries(toolResultsData = {}, selectedWorkflow = null) {
     let workflowData = selectedWorkflow;
     if (!workflowData) {
@@ -6597,6 +6656,9 @@ class ChatUI {
             error: outputData.error || null,
             reason: outputData.reason || null,
             speech: outputData.speech || null,
+            result_data: outputData.ok === false
+              ? this._getHeyGenWorkflowRecovery(step.tool, outputData.recovery || outputData.data)
+              : null,
             workflow_step: step.step != null ? `${step.step}_${outputIndex}` : null
           });
         });
@@ -6612,6 +6674,9 @@ class ChatUI {
         error: step.error || null,
         reason: step.reason || null,
         speech: step.speech || step.reason || null,
+        result_data: step.ok === false
+          ? this._getHeyGenWorkflowRecovery(step.tool, step.recovery || step.data)
+          : null,
         workflow_step: step.step ?? null
       });
     }

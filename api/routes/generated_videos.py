@@ -12,8 +12,10 @@ Endpoints:
 - GET  /api/generated-videos/health       - Health check
 """
 import json
+import math
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, NoReturn, Optional
@@ -32,6 +34,7 @@ from catalog_lock import catalog_lock
 from config_loader import export_config_environment, get_config_value, load_config
 from model_catalog import get_media_model_env_key, resolve_media_model
 from stash_helper import get_stash_dir
+from tool_child_environment import parse_child_environment_policy, restrict_child_environment  # noqa: E402
 from video_catalog import (
     load_video_catalog as _load_video_catalog,
     lookup_stash_metadata as _lookup_stash_metadata,
@@ -153,7 +156,7 @@ class GenerateRequest(BaseModel):
     image_url: Optional[str] = Field(None, description="Image for image-to-video (all providers). Accepts: URL, local path, or stash ref (stash://space_xxx/file_id)")
     video_url: Optional[str] = Field(None, description="Video to edit with xAI. MUST be a public http(s) URL (use source_url from /info endpoint, expires ~4h). Cannot change duration/aspect.")
     negative_prompt: Optional[str] = Field(None, description="What to avoid in video (Gemini only)")
-    provider: Optional[Literal["xai", "gemini"]] = Field(None, description="Override provider: 'xai' or 'gemini'")
+    provider: Optional[Literal["xai", "gemini", "heygen"]] = Field(None, description="Override provider: 'xai', 'gemini', or configured 'heygen'")
     save: bool = Field(True, description="Save to disk and stash")
     mode: Literal["cloud", "local"] = Field(
         "cloud",
@@ -167,6 +170,7 @@ class GenerateResponse(BaseModel):
     speech: Optional[str] = None
     error: Optional[str] = None
     data: Optional[dict] = None
+    completion: Optional[Literal["rejected", "completed", "unknown"]] = None
 
 
 class VideoShareFilenameRequest(BaseModel):
@@ -383,34 +387,48 @@ async def generate_video(request: GenerateRequest):
         # Call generate_video tool
         tool_path = PROJECT_ROOT / "skills" / "generate_video.py"
         
-        # Set environment for mode
+        # A request is a trusted provider selection; ordinary model tool args
+        # cannot override the saved mode configuration by themselves.
         env = export_config_environment(request.mode)
-        
-        # Video generation can take a long time (30-120+ seconds)
-        result = await run_in_threadpool(
-            subprocess.run,
-            ["python3", str(tool_path), json.dumps(args)],
-            capture_output=True,
-            text=True,
-            timeout=600,  # 10 minute timeout for video generation
-            cwd=str(PROJECT_ROOT),
-            env=env
-        )
-        
-        if result.returncode != 0:
-            error = result.stderr or "Unknown error"
-            return GenerateResponse(ok=False, error=error)
-        
+        if request.provider:
+            env["JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER"] = request.provider
+        manifest = json.loads(tool_path.with_suffix(".tool.json").read_text())
+        names = parse_child_environment_policy(manifest.get("child_environment"), manifest.get("availability"))
+        if names is None:
+            raise ValueError("Video tool requires a reviewed child environment")
+        with tempfile.TemporaryDirectory(prefix="jarvis-video-api-") as home:
+            env = restrict_child_environment(env, names, home=home, proxy_policy=manifest.get("proxy_policy", "inherit"))
+            timeout = 600
+            if env.get("VIDEO_TOOL_PROVIDER", "xai").strip().lower() == "heygen":
+                if not env.get("HEYGEN_API_KEY", "").strip():
+                    return GenerateResponse(ok=False, error="HEYGEN_API_KEY is required for HeyGen video generation", completion="rejected")
+                try:
+                    wait = float(env.get("HEYGEN_WAIT_SECONDS", "300"))
+                except ValueError:
+                    wait = 300
+                if not math.isfinite(wait):
+                    wait = 300
+                timeout = max(0, min(wait, 900)) + 180
+            result = await run_in_threadpool(
+                subprocess.run,
+                [sys.executable, str(tool_path), json.dumps(args)],
+                capture_output=True, text=True, timeout=timeout,
+                cwd=str(PROJECT_ROOT), env=env,
+            )
+
         # Parse tool output
         try:
             output = json.loads(result.stdout)
             
-            if not output.get("ok", False):
+            if not isinstance(output, dict):
+                return GenerateResponse(ok=False, error="Invalid video tool output")
+            if result.returncode != 0 or not output.get("ok", False):
                 return GenerateResponse(
                     ok=False,
                     speech=output.get("speech"),
                     error=output.get("error"),
-                    data=output.get("data")
+                    data=output.get("data"),
+                    completion=output.get("completion"),
                 )
             
             return GenerateResponse(
@@ -420,10 +438,10 @@ async def generate_video(request: GenerateRequest):
                 data=output.get("data")
             )
         except json.JSONDecodeError:
-            return GenerateResponse(ok=False, error=f"Invalid tool output: {result.stdout[:200]}")
+            return GenerateResponse(ok=False, error="Video tool failed without a structured response", completion="unknown")
         
     except subprocess.TimeoutExpired:
-        return GenerateResponse(ok=False, error="Video generation timed out (10 min limit)")
+        return GenerateResponse(ok=False, error="Video generation observation timed out; check the existing job before generating again", completion="unknown")
     except Exception as e:
         return GenerateResponse(ok=False, error=str(e))
 

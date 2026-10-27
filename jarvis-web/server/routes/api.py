@@ -4224,9 +4224,10 @@ User instruction: {user_input}"""
         ])
         selected_tool_context = ""
         if selected_tool_hints:
+            # Give up to three explicit hints richer descriptions, without schemas.
             selected_descriptions = "\n".join(
                 f"- {name}: "
-                f"{available_tools_by_name[name].get('description', 'No description')[:280]}"
+                f"{available_tools_by_name[name].get('description', 'No description')[:1000]}"
                 for name in selected_tool_hints
             )
             selected_tool_context = f"""

@@ -13,6 +13,8 @@ Shape:
 
 If a tool name is absent from overrides, the value from the tool's .tool.json is used.
 If present, the override wins (so you can force-enable a tool that is disabled in the file).
+Compatibility: the new HeyGen tools inherit an explicit generate_video=False
+when their own override is absent. An explicit per-tool override still wins.
 """
 from __future__ import annotations
 
@@ -85,6 +87,10 @@ def effective_enabled(tool_name: str, base_enabled: bool, overrides: dict[str, b
         return base_enabled
     if tool_name in overrides:
         return overrides[tool_name]
+    # Older installed/custom profiles predate these paid video siblings.
+    # Preserve their video restriction without rewriting the user's files.
+    if tool_name in {"heygen", "generate_avatar_video"} and overrides.get("generate_video") is False:
+        return False
     return base_enabled
 
 

@@ -209,6 +209,8 @@
     "flight_search": "_family_travel",
     "forget": "_family_memory",
     "generate_video": "_family_video",
+    "generate_avatar_video": "_family_video",
+    "heygen": "_family_video",
     "get_recent_conversations": "_family_memory",
     "get_time": "_family_lookup",
     "git_release_notes": "_family_developer_ops",

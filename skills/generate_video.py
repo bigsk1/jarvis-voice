@@ -82,6 +82,8 @@ def _resolve_configured_video_model(
     provider: str,
     requested_model: str | None = None,
 ) -> str:
+    if requested_model is not None and not isinstance(requested_model, str):
+        raise ValueError("Video model must be a string")
     env_key = get_media_model_env_key("video", provider)
     configured = requested_model or (get_config_value(env_key, "") if env_key else "")
     model = resolve_media_model("video", provider, configured)
@@ -694,25 +696,52 @@ def generate_video(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
     # ordinary tool arguments do not outrank saved Web/ENV provider settings.
     provider = str(get_config_value('VIDEO_TOOL_PROVIDER', provider or 'xai')).strip().lower()
 
-    supported_providers = {'xai', 'gemini'}
+    supported_providers = {'xai', 'gemini', 'heygen'}
     if provider not in supported_providers:
         raise ValueError(
-            f"Unsupported video provider '{provider}'. Choose xai or gemini."
+            f"Unsupported video provider '{provider}'. Choose xai, gemini, or configured heygen."
+        )
+
+    # These formats were added for HeyGen. Do not silently purchase a different
+    # format from the saved provider when a model requests one of them.
+    if provider != 'heygen' and (
+        str(aspect_ratio).strip() == '21:9'
+        or str(resolution).strip().lower() in {'768p', '2k'}
+    ):
+        raise RemoteCompletionError(
+            f"The selected {provider} provider does not support this video format. "
+            "Choose a supported aspect ratio and resolution before generating.",
+            'rejected',
         )
 
     # Credential preflight: fail with configured alternatives instead of a
     # provider-specific API error. Never auto-switches providers.
     from tool_availability import media_provider_preflight
+    provider_keys = {'xai': ['XAI_API_KEY'], 'gemini': ['GEMINI_API_KEY']}
+    if provider == 'heygen' or str(get_config_value('HEYGEN_API_KEY', '') or '').strip():
+        provider_keys['heygen'] = ['HEYGEN_API_KEY']
     preflight_error = media_provider_preflight(
         provider,
-        {
-            'xai': ['XAI_API_KEY'],
-            'gemini': ['GEMINI_API_KEY'],
-        },
+        provider_keys,
     )
     if preflight_error:
+        if provider == 'heygen':
+            raise RemoteCompletionError(preflight_error, 'rejected')
         raise ValueError(preflight_error)
 
+    if provider == 'heygen':
+        if video_url or negative_prompt:
+            raise RemoteCompletionError("HeyGen Video 1 supports text/image clips; video editing and negative_prompt are not supported", "rejected")
+        from heygen_client import HeyGenClient
+
+        try:
+            heygen_model = _resolve_configured_video_model("heygen", model)
+        except ValueError as exc:
+            raise RemoteCompletionError(str(exc), "rejected") from None
+        return HeyGenClient().generate_clip(
+            prompt, duration=duration, aspect_ratio=aspect_ratio, resolution=resolution,
+            image_source=image_url, model=heygen_model,
+        )
     if provider == 'gemini':
         return generate_video_gemini(
             prompt=prompt,
@@ -739,11 +768,11 @@ def generate_video(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
 def download_video(video_url: str, filename: str, video_bytes: bytes = None) -> Path:
     """Download video from URL to local file, or save bytes directly."""
     
-    videos_dir = Path(__file__).parent.parent / 'data' / 'generated_videos'
+    videos_dir = GENERATED_VIDEOS_DIR
     videos_dir.mkdir(exist_ok=True)
     
     video_path = videos_dir / filename
-    
+
     # If we already have bytes (Gemini may provide these directly), save them
     if video_bytes:
         video_path.write_bytes(video_bytes)
@@ -855,6 +884,7 @@ def save_to_stash(video_path: Path, prompt: str, video_data: dict) -> dict:
     provider_name = {
         'xai': 'xAI',
         'gemini': 'Gemini',
+        'heygen': 'HeyGen',
     }.get(str(provider).lower(), str(provider))
     try:
         upsert_video_catalog_entry(
@@ -885,6 +915,8 @@ def save_to_stash(video_path: Path, prompt: str, video_data: dict) -> dict:
 
 def main():
     provider_completed = False
+    result = {}
+    args = {}
     try:
         load_config()
         
@@ -926,22 +958,23 @@ def main():
         # Download and save video
         save_info = None
         if save and (result.get('video_url') or result.get('video_bytes')):
-            # Generate filename from prompt
-            safe_prompt = "".join(c if c.isalnum() or c in ' -_' else '' for c in prompt[:40])
-            safe_prompt = safe_prompt.replace(' ', '_').lower()
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"video_{safe_prompt}_{timestamp}_{uuid.uuid4().hex}.mp4"
-            
-            # Download video (may have bytes directly from Gemini)
-            video_path = download_video(
-                result.get('video_url', ''), 
-                filename,
-                video_bytes=result.get('video_bytes')
-            )
-            
-            # Save to stash
-            save_info = save_to_stash(video_path, prompt, result)
-            
+            if result.get('provider') == 'heygen':
+                # The normal path and later collection must reuse one artifact.
+                from heygen_media import save_result
+
+                result = save_result(result, prompt)["data"]
+                save_info = result["saved"]
+            else:
+                safe_prompt = "".join(c if c.isalnum() or c in ' -_' else '' for c in prompt[:40])
+                safe_prompt = safe_prompt.replace(' ', '_').lower()
+                filename = f"video_{safe_prompt}_{timestamp}_{uuid.uuid4().hex}.mp4"
+                video_path = download_video(
+                    result.get('video_url', ''), filename,
+                    video_bytes=result.get('video_bytes'),
+                )
+                save_info = save_to_stash(video_path, prompt, result)
+
             # Also save to memory for cross-session discovery
             try:
                 from memory_db import MemoryDB
@@ -982,6 +1015,7 @@ def main():
             "ok": True,
             "speech": speech,
             "data": {
+                **(result if provider_used == 'heygen' else {}),
                 "prompt": prompt,
                 "provider": provider_used,
                 "model": result['model'],
@@ -993,6 +1027,9 @@ def main():
         }
         if result.get("interaction_id"):
             response["data"]["interaction_id"] = result["interaction_id"]
+        for key in ("provider_video_id", "receipt_stash_ref", "estimated_cost_usd"):
+            if result.get(key) is not None:
+                response["data"][key] = result[key]
         
         # Add mode indicators and source references
         if result.get('from_image'):
@@ -1015,6 +1052,19 @@ def main():
         print(json.dumps(response))
         
     except Exception as e:
+        provider = str(get_config_value('VIDEO_TOOL_PROVIDER', args.get('provider') or 'xai')).strip().lower()
+        if provider == 'heygen':
+            from heygen_client import heygen_error_result
+
+            failure = heygen_error_result(e)
+            if provider_completed:
+                failure["completion"] = "completed"
+            data = failure.setdefault("data", {})
+            for key in ("provider_video_id", "receipt_stash_ref", "estimated_cost_usd"):
+                if result.get(key) is not None:
+                    data[key] = result[key]
+            print(json.dumps(failure))
+            sys.exit(1)
         print(json.dumps({
             "ok": False,
             "completion": completion_for_error(e, provider_completed=provider_completed),

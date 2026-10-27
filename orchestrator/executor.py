@@ -246,7 +246,13 @@ class ToolExecutor:
         if tool_name == "generate_music":
             return 600  # 10 minutes for music generation (can take 3-5min for longer tracks)
         if tool_name == "generate_video":
-            return 600  # 10 minutes for video generation (typically 2-3 min, up to 5 min for 4k)
+            # Keep HeyGen's observer deadline plus upload/download and cleanup
+            # inside the outer process timeout; other providers retain 10 min.
+            return max(600, min(900, get_int("HEYGEN_WAIT_SECONDS", 300)) + 180)
+        if tool_name == "generate_avatar_video":
+            return max(0, min(900, get_int("HEYGEN_WAIT_SECONDS", 300))) + 180
+        if tool_name == "heygen":
+            return 180 if (args or {}).get("action") == "collect" else 90
         if tool_name == "document_ocr":
             return 1200  # 20 minutes for large GPU OCR jobs plus optional local extraction
         if tool_name == "docling_convert":

@@ -252,6 +252,10 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - API: `POST /api/generated-music/generate`
   - See [`docs/tools/generate-music-tool/README.md`](docs/tools/generate-music-tool/README.md)
   - See [`docs/api/GENERATED_MUSIC.md`](docs/api/GENERATED_MUSIC.md)
+- **Optional HeyGen video**: `HEYGEN_API_KEY` enables text/image clips and short
+  Avatar IV presenter videos, with Stash inputs, saved gallery output, and
+  native job receipts for checking or collecting existing work. Without the
+  key, HeyGen stays hidden in the Web UI. See [setup and demo](docs/HEYGEN.md).
 - **Feedback System**: LLM self-critique for continuous improvement
   - Per-query feedback: `--feedback` flag on orchestrator
   - Batch testing: `./bin/jarvis-feedback batch tests/queries.txt`

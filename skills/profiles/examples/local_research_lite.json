@@ -6,6 +6,8 @@
     "generate_image": false,
     "generate_music": false,
     "generate_video": false,
+    "generate_avatar_video": false,
+    "heygen": false,
     "git_release_notes": false,
     "mcp_playwright_browser_navigate": false,
     "mcp_playwright_browser_snapshot": false,

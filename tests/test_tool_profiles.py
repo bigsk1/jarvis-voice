@@ -13,6 +13,15 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 
 class TestToolProfiles(unittest.TestCase):
+    def test_offline_templates_disable_optional_heygen_even_with_credentials(self):
+        for profile_name in ("offline.json", "offline_lan_first.json"):
+            with self.subTest(profile=profile_name):
+                overrides = json.loads(
+                    (ROOT / "skills/profiles/examples" / profile_name).read_text()
+                )["overrides"]
+                self.assertIs(overrides.get("generate_avatar_video"), False)
+                self.assertIs(overrides.get("heygen"), False)
+
     def test_offline_templates_disable_malwarebytes_lookups(self):
         config = json.loads((ROOT / "config/mcp-servers.json").read_text())
         for profile_name in ("offline.json", "offline_lan_first.json"):
@@ -223,6 +232,37 @@ class TestToolProfiles(unittest.TestCase):
 
         ov = {"weather": True}
         self.assertTrue(effective_enabled("weather", False, ov))
+
+    def test_legacy_video_restriction_covers_new_heygen_tools(self):
+        from tool_profiles import effective_enabled
+
+        for tool in ("heygen", "generate_avatar_video"):
+            with self.subTest(tool=tool):
+                self.assertFalse(effective_enabled(tool, True, {"generate_video": False}))
+                self.assertTrue(effective_enabled(tool, False, {"generate_video": False, tool: True}))
+                self.assertFalse(effective_enabled(tool, True, {"generate_video": True, tool: False}))
+                self.assertFalse(effective_enabled(tool, False, {"generate_video": True}))
+                self.assertTrue(effective_enabled(tool, True, {}))
+        self.assertTrue(effective_enabled("generate_image", True, {"generate_video": False}))
+
+    def test_legacy_profile_cannot_register_paid_heygen_tools(self):
+        from config_loader import config_scope
+        from tool_schema import ToolRegistry
+
+        with TemporaryDirectory() as tmp:
+            skills_dir = Path(tmp)
+            for name in ("generate_video", "heygen", "generate_avatar_video"):
+                (skills_dir / f"{name}.tool.json").write_text(
+                    (ROOT / "skills" / f"{name}.tool.json").read_text()
+                )
+            with (
+                config_scope("cloud", {"HEYGEN_API_KEY": "fixture-key"}),
+                patch("tool_profiles.load_active_profile_overrides", return_value={"generate_video": False}),
+                patch("tool_profiles.warn_missing_profile_file"),
+            ):
+                registry = ToolRegistry(str(skills_dir))
+                self.assertNotIn("heygen", registry.list_tools())
+                self.assertNotIn("generate_avatar_video", registry.list_tools())
 
     def test_load_profile_overrides_from_file(self):
         from tool_profiles import load_profile_overrides

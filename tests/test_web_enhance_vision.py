@@ -1,5 +1,6 @@
 """Regression test for vision-grounded Web prompt enhancement."""
 
+import json
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -95,6 +96,69 @@ def test_enhance_prompt_prioritizes_valid_music_hint_without_exposing_schema():
     assert "Do not invent operational parameters" in prompt
     assert "Use qualitative tempo language rather than inventing an exact BPM" in prompt
     assert "Do not introduce artist/band names" in prompt
+
+
+def test_enhance_prompt_includes_richer_hints_beyond_general_catalog_with_bounded_context():
+    app = Flask(__name__)
+    app.register_blueprint(api_module.api_bp)
+    captured = {}
+
+    def enhance(message, system_prompt=None, max_tokens=None):
+        captured["system_prompt"] = system_prompt
+        return "Create a cinematic video with soft lighting and a slow camera move."
+
+    video_manifest = json.loads(
+        (PROJECT_ROOT / "skills" / "generate_video.tool.json").read_text()
+    )
+    video_description = video_manifest["description"]
+    long_description = "Detailed capability. " * 60
+    tools = [
+        {"name": f"catalog_{index:03d}", "description": "a" * 100 + "GENERAL_TAIL"}
+        for index in range(100)
+    ] + [
+        {
+            "name": "generate_video",
+            "description": video_description,
+            "parameters": {"SCHEMA_MUST_STAY_OUT": {"type": "string"}},
+        },
+        {"name": "long_tool", "description": long_description},
+        {"name": "third_hint", "description": "THIRD_HINT_CONTEXT"},
+        {"name": "fourth_hint", "description": "FOURTH_HINT_MUST_STAY_OUT"},
+    ]
+
+    with patch.object(
+        web_config,
+        "load_web_config",
+        return_value={"cloud": {"llm_provider": "openai", "llm_model": "gpt-test"}},
+    ), patch(
+        "llm_provider.create_provider", return_value=SimpleNamespace(chat=enhance)
+    ), patch.object(
+        api_module, "get_tool_service",
+        return_value=SimpleNamespace(get_tools_summary=lambda: tools),
+    ):
+        response = app.test_client().post(
+            "/api/enhance-prompt",
+            json={
+                "input": "make a video",
+                "mode": "cloud",
+                "tool_hints": [
+                    "generate_video", "generate_video", "long_tool", "third_hint", "fourth_hint"
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.get_json()["tool_hints"] == ["generate_video", "long_tool", "third_hint"]
+    prompt = captured["system_prompt"]
+    assert f"- generate_video: {video_description[:1000]}\n" in prompt
+    assert "HeyGen" in prompt
+    assert f"- long_tool: {long_description[:1000]}\n" in prompt
+    assert long_description[:1001] not in prompt
+    assert "THIRD_HINT_CONTEXT" in prompt
+    assert "FOURTH_HINT_MUST_STAY_OUT" not in prompt
+    assert "SCHEMA_MUST_STAY_OUT" not in prompt
+    assert "GENERAL_TAIL" not in prompt
+    assert "Do not invent operational parameters" in prompt
 
 
 def test_enhance_prompt_can_infer_music_without_tool_hint():

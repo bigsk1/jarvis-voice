@@ -56,6 +56,7 @@ SINGLE_CALL_TOOLS = frozenset({
     # Failed first attempts still block a second try for these tools — intentional
     # for side-effecting generators; canvas uses separate success-aware caps instead.
     "generate_video",
+    "generate_avatar_video",
     "generate_image",
     "generate_music",
     "send_email",

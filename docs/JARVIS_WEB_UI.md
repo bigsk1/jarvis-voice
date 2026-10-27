@@ -1582,6 +1582,9 @@ Replaces input field text
 - Only enhances text - the SEND goes through full orchestrator
 - Won't enhance if input starts with `/` or `@` (those are explicit)
 - Validates and prioritizes `#tool` hints while keeping them separate from the clean task text
+- For text enhancement, includes up to three selected tools' descriptions (up to
+  1,000 characters each), even outside the general 100-tool list. General tool
+  descriptions remain limited to 100 characters each; schemas are excluded.
 - For media requests, enriches creative direction without inventing provider,
   model, duration, dimensions, file type, output format, or other operational
   values the user did not supply

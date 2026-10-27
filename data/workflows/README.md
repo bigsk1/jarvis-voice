@@ -72,6 +72,23 @@ never choose on its own.
 
 ## Execution and context boundary
 
+Literal `params.provider` selections in reviewed `generate_image`,
+`generate_video`, or `generate_music` steps run in a temporary configuration
+scope, like an explicit media-modal choice. They do not change the saved default.
+Model-filled parameters and `${...}` provider substitutions do not create this
+scope. `/heygen_intro` demonstrates an explicitly selected optional provider and
+a Stash image-to-video handoff; see [HeyGen](../../docs/HEYGEN.md).
+
+If a required HeyGen step fails after submission, the abort response and Web
+failure card retain validated native video IDs, job kind, and request/receipt
+handles. Use `heygen` status or collect for that existing video. If only a
+request receipt is available, inspect it before another submission; no video ID
+is invented. Rerunning the workflow starts new paid work rather than recovering
+the earlier request.
+For an aborted `for_each` step, speech identifies up to five failed items with
+validated recovery handles; every remaining handle stays on its own item card.
+Successful items are excluded from that failure summary.
+
 For autonomous `workflow(run)` execution, a workflow can be understood as a
 **bounded sub-agent**: the parent router LLM selects the recipe, then
 `PipelineExecutor` runs its deterministic step order. The analogy stops there;

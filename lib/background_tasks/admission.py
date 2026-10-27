@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 MEDIA_SELECTIONS = {
     'generate_image': ('image', 'gemini', {'gemini', 'openai', 'xai'}),
-    'generate_video': ('video', 'xai', {'gemini', 'xai'}),
+    'generate_video': ('video', 'xai', {'gemini', 'xai', 'heygen'}),
     'generate_music': ('music', 'elevenlabs', {'gemini', 'elevenlabs'}),
 }
 
@@ -45,6 +45,8 @@ def _media_arguments_for_worker(tool, args):
     if not isinstance(provider, str) or provider.strip().lower() not in supported:
         raise AdmissionDenied(f'Unsupported {media_type} provider')
     provider = provider.strip().lower()
+    if provider == 'heygen' and not str(get_config_value('HEYGEN_API_KEY', '') or '').strip():
+        raise AdmissionDenied('HEYGEN_API_KEY is required for HeyGen video generation')
     if media_type == 'music':
         # Music exposes a provider choice, but no per-request model parameter.
         return {**args, 'provider': provider}

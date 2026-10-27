@@ -2,6 +2,11 @@
 
 Generate AI videos using xAI Grok or Google Gemini directly from Jarvis.
 
+With `HEYGEN_API_KEY` set in the active mode, HeyGen also appears as an optional
+text/image-to-video provider. Short Avatar IV presenter videos have their own
+tool. Both accept Stash inputs and retain native job IDs for recovery. Without
+the key, HeyGen stays hidden. See [HeyGen setup and demo](../../HEYGEN.md).
+
 To understand an existing clip or screen recording, see [Video analysis](ANALYSIS.md).
 
 ## Overview

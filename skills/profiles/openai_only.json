@@ -15,6 +15,8 @@
     "email_inbox": false,
     "generate_music": false,
     "generate_video": false,
+    "generate_avatar_video": false,
+    "heygen": false,
     "mcp_brave_search_brave_image_search": false,
     "mcp_brave_search_brave_local_search": false,
     "mcp_brave_search_brave_news_search": false,

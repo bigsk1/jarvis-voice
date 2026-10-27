@@ -335,7 +335,13 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     ],
     # --- Media generation ---
     'generate_video': ['provider', 'model', 'duration', 'aspect_ratio', 'resolution',
-                       'video_url', 'generated_from', 'source_image'],
+                       'video_url', 'generated_from', 'source_image', 'provider_video_id', 'kind',
+                       'receipt_stash_ref', 'request_id', 'estimated_cost_usd', 'status'],
+    'generate_avatar_video': ['provider', 'model', 'kind', 'provider_video_id', 'receipt_stash_ref',
+                              'request_id', 'status', 'duration', 'aspect_ratio', 'resolution',
+                              'estimated_cost_usd', 'mime_type'],
+    'heygen': ['provider', 'action', 'kind', 'model', 'status', 'provider_video_id', 'receipt_stash_ref',
+               'request_id', 'next_cursor', 'has_more', 'duration', 'failure_code', 'failure_message', 'billing_type'],
     'generate_image': [
         'provider', 'model', 'aspect_ratio', 'image_size', 'size', 'quality',
         'style', 'is_edit', 'mime_type', 'filename',
@@ -3073,6 +3079,15 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             continue
 
         extracted = {}
+        if key in {'generate_video', 'generate_avatar_video', 'heygen'} and payload.get('provider') == 'heygen':
+            # A native recovery ID is useful only with its truthful completion
+            # boundary: an observer timeout must never look like saved output.
+            if value.get('completion') in {'unknown', 'rejected', 'completed'}:
+                extracted['completion'] = value['completion']
+            if value.get('ok') is False:
+                extracted['ok'] = False
+            if isinstance(value.get('error'), str):
+                extracted['error'] = _truncate_followup_text(value['error'], 500)
         if bound_arguments is not None:
             source_ref = _source_ref_for_run(key, payload, request_context)
             if source_ref:
@@ -3109,6 +3124,13 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             field_value = payload.get(field)
             if field_value not in (None, '', [], {}):
                 extracted[field] = field_value
+
+        if key == 'heygen':
+            for field in ('wallet', 'subscription', 'usage_based'):
+                if isinstance(payload.get(field), dict):
+                    extracted[field] = _bounded_structured_followup_value(payload[field], max_chars=800)
+            if isinstance(payload.get('items'), list) and len(payload['items']) > max_candidates:
+                extracted['candidates_truncated'] = True
 
         if key == 'email_contacts':
             contacts = payload.get('contacts')

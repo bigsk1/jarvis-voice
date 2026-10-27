@@ -85,6 +85,7 @@ def _provider_from_tags(tags: list) -> Optional[str]:
         'runway': 'Runway',
         'pika': 'Pika',
         'kling': 'Kling',
+        'heygen': 'HeyGen',
     }
     for tag, display_name in providers.items():
         if tag in tags:

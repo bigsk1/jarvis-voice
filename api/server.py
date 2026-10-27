@@ -25,6 +25,7 @@ from lib.config_loader import get_config_value, get_active_config_mode
 from lib.webhook_integrations.http import CallbackBoundary, callback_namespace, callback_path
 from api.routes.task_callbacks import router as task_callbacks_router
 from api.routes.notifications import router as notifications_router
+from api.routes.heygen import router as heygen_router
 
 
 # ============================================================================
@@ -421,6 +422,7 @@ app.include_router(images_router)
 app.include_router(generated_images_router)
 app.include_router(generated_music_router)
 app.include_router(generated_videos_router)
+app.include_router(heygen_router)
 app.include_router(docs_router)
 app.include_router(scheduled_tasks_router)
 app.include_router(task_callbacks_router)

@@ -44,7 +44,18 @@ def test_media_settings_admit_chat_then_late_artifact(web_tasks, monkeypatch, na
     for tool in MEDIA:
         shutil.copyfile(ROOT / 'skills' / (tool + '.tool.json'), skills / (tool + '.tool.json'))
         shutil.copyfile(ROOT / 'tests/fixtures/background_media_skill.py', skills / (tool + '.py'))
-    runner = LocalSkillRunner(installation, dict.fromkeys(MEDIA, REMOTE_ADAPTER))
+    # Retain each tool's production restriction while letting the isolated
+    # bootstrap locate this checkout and its disposable output/config roots.
+    fixture_keys = {'FIXTURE_JARVIS_ROOT', 'FIXTURE_MEDIA_OUTPUT', 'FIXTURE_CONFIG_ROOT'}
+    child_policies = {
+        tool: {**policy, 'always': policy['always'] | fixture_keys}
+        for tool, policy in production.CHILD_ENVIRONMENT_POLICIES.items()
+        if tool in MEDIA
+    }
+    runner = LocalSkillRunner(
+        installation, dict.fromkeys(MEDIA, REMOTE_ADAPTER),
+        child_environment_policies=child_policies,
+    )
     monkeypatch.setattr(production, 'runner', lambda: runner)
     h.background.adapters = production.bindings()
     with config_scope(mode):

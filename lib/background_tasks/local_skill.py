@@ -71,6 +71,8 @@ def validate_arguments(schema, args):
 
 def restrict_child_environment(environment, policy, args, scratch):
     """Apply a trusted per-tool child env policy after worker mode resolution."""
+    from tool_child_environment import RESTRICTED_ENV_MARKER
+
     allowed = set(policy['always'])
     allowed.update(env_key for arg_name, env_key in policy['if_true'].items()
                    if args.get(arg_name) is True)
@@ -78,6 +80,9 @@ def restrict_child_environment(environment, policy, args, scratch):
     # Prevent requests and other libraries from finding the worker user's
     # .netrc or other home-scoped credentials automatically.
     narrowed['HOME'] = str(scratch)
+    # Scripts call load_config() after launch. Do not let that reload the
+    # private mode file and undo this trusted environment restriction.
+    narrowed[RESTRICTED_ENV_MARKER] = '1'
     return narrowed
 
 

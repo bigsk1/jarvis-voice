@@ -17,6 +17,10 @@ These files are **templates only**. Jarvis loads profiles from `skills/profiles/
 ## Design notes
 
 - **Omitted tools** keep whatever `enabled` is in each `*.tool.json`.
+  Compatibility exception: `heygen` and `generate_avatar_video` inherit an
+  explicit `generate_video: false` when their own overrides are absent. This
+  keeps older installed video-restricted profiles closed; explicitly setting
+  either HeyGen tool to `true` overrides that inheritance.
 - **Overrides** only list tools this profile turns **off** (or **on** with `true` to force-enable).
 - If a tool is already **`"enabled": false`** in its `*.tool.json`, you do **not** need to list it again as `"tool_name": false` in a profile—that is redundant; the tool is already off unless a profile sets it to **`true`**.
 - **Unknown names** in `overrides` (e.g. MCP tools you never installed, typos, or tools you deleted) are **ignored** at runtime—no error. Keys only apply when a matching tool is actually registered.

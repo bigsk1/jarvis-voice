@@ -18,6 +18,7 @@ TRUSTED_BINDINGS = {
     'convert_file': ADAPTER,
     'generate_image': REMOTE_ADAPTER,
     'generate_video': REMOTE_ADAPTER,
+    'generate_avatar_video': REMOTE_ADAPTER,
     'generate_music': REMOTE_ADAPTER,
     'create_social_clip': REMOTE_ADAPTER,
     'craft_image': REMOTE_ADAPTER,
@@ -66,6 +67,31 @@ CHILD_ENVIRONMENT_POLICIES = {
         'if_true': {'use_profile': 'BROWSER_USE_CLOUD_PROFILE_ID'},
     },
 }
+
+# Media credentials, paths and the optional embedding-backed artifact index.
+# This is independent of the foreground manifest's restricted environment.
+_VIDEO_CHILD_KEYS = frozenset({
+    'PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'JARVIS_MODE',
+    'VIDEO_TOOL_PROVIDER', 'XAI_API_KEY', 'XAI_VIDEO_MODEL',
+    'GEMINI_API_KEY', 'GEMINI_VIDEO_MODEL', 'HEYGEN_API_KEY', 'HEYGEN_VIDEO_MODEL',
+    'HEYGEN_WAIT_SECONDS', 'STASH_DIR', 'JARVIS_OVERRIDE_STASH_DIR',
+    'STASH_DEFAULT_TTL_DAYS', 'STASH_GENERATED_MEDIA_TTL_DAYS', 'STASH_SOURCE_ARTIFACT_TTL_DAYS',
+    'STASH_MAX_SPACE_SIZE_MB', 'STASH_MAX_TOTAL_SIZE_GB',
+    'STASH_CLEANUP_MAX_SPACES', 'STASH_CLEANUP_MAX_BYTES_MB',
+    'OLLAMA_BASE_URL', 'OLLAMA_EMBEDDING_FALLBACK_URL', 'OLLAMA_EMBEDDING_MODEL',
+    'OLLAMA_EMBEDDING_MODEL_DIGEST', 'OLLAMA_EMBEDDING_CONTEXT_WINDOW',
+    'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
+})
+CHILD_ENVIRONMENT_POLICIES['generate_video'] = {'always': _VIDEO_CHILD_KEYS, 'if_true': {}}
+_HEYGEN_CHILD_KEYS = frozenset({
+    'PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'JARVIS_MODE',
+    'HEYGEN_API_KEY', 'HEYGEN_WAIT_SECONDS', 'STASH_DIR', 'JARVIS_OVERRIDE_STASH_DIR',
+    'STASH_DEFAULT_TTL_DAYS', 'STASH_GENERATED_MEDIA_TTL_DAYS', 'STASH_SOURCE_ARTIFACT_TTL_DAYS',
+    'STASH_MAX_SPACE_SIZE_MB', 'STASH_MAX_TOTAL_SIZE_GB',
+    'STASH_CLEANUP_MAX_SPACES', 'STASH_CLEANUP_MAX_BYTES_MB',
+    'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
+})
+CHILD_ENVIRONMENT_POLICIES['generate_avatar_video'] = {'always': _HEYGEN_CHILD_KEYS, 'if_true': {}}
 
 
 # Craft clients receive their own connection settings and Stash paths only.

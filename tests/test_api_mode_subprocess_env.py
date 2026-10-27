@@ -59,10 +59,12 @@ def isolated_mode_configs(monkeypatch, tmp_path):
     configs = {
         "cloud": {
             "CLOUD_ONLY_SENTINEL": "cloud-value",
+            "XAI_API_KEY": "synthetic-cloud-video-key",
             "TTS_PROVIDER": "elevenlabs",
         },
         "local": {
             "LOCAL_ONLY_SENTINEL": "local-value",
+            "XAI_API_KEY": "synthetic-local-video-key",
             "TTS_PROVIDER": "kokoro",
         },
     }
@@ -133,8 +135,14 @@ def test_generated_media_routes_export_isolated_request_mode_environment(
         assert response.ok is True
 
     assert len(child_environments) == 3
-    for env in child_environments:
+    for env in child_environments[:2]:
         _assert_local_child_environment(env)
+    video_env = child_environments[2]
+    assert video_env["JARVIS_MODE"] == "local"
+    assert video_env["XAI_API_KEY"] == "synthetic-local-video-key"
+    assert video_env["JARVIS_RESTRICTED_TOOL_ENV"] == "1"
+    assert "CLOUD_ONLY_SENTINEL" not in video_env
+    assert "LOCAL_ONLY_SENTINEL" not in video_env
 
 
 def test_voice_route_exports_request_mode_environment_before_overrides(

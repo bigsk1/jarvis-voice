@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from test_background_tasks import config_root as config_root, receipt, store as store
-from lib.background_tasks import AdmissionDenied, Conflict
+from lib.background_tasks import AdmissionDenied, Conflict, production
 from lib.background_tasks.admission import BackgroundAdmissionService
 from lib.background_tasks.local_contract import REMOTE_ADAPTER
 from lib.background_tasks.local_skill import LocalSkillRunner
@@ -61,7 +61,7 @@ import config_loader
 config_loader.get_project_root = lambda: Path(CONFIG_ROOT)
 config_loader.load_config()
 tool = importlib.import_module(TOOL_MODULE)
-assert os.environ['JARVIS_OVERRIDE_' + PROVIDER_KEY] == 'gemini'
+assert config_loader.get_config_value(PROVIDER_KEY) == 'gemini'
 from google import genai
 from google.genai import types
 
@@ -107,7 +107,13 @@ print(json.dumps({'ok': True, 'data': data}))
     }.items():
         script = script.replace(marker, repr(value))
     (skills / f'{name}.py').write_text(script)
-    runner = LocalSkillRunner(installation, {name: REMOTE_ADAPTER})
+    # Exercise the reviewed restriction too. Fixture paths are embedded above,
+    # so this bootstrap needs no additional inherited settings or credentials.
+    child_policy = production.CHILD_ENVIRONMENT_POLICIES.get(name)
+    runner = LocalSkillRunner(
+        installation, {name: REMOTE_ADAPTER},
+        child_environment_policies={name: child_policy} if child_policy is not None else {},
+    )
     store.configure(background_tools=[name])
     store.touch_worker('media-worker', {REMOTE_ADAPTER})
     service = BackgroundAdmissionService(store, adapters={name: REMOTE_ADAPTER},
