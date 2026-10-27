@@ -2,7 +2,7 @@
 
 Jarvis can use a dedicated **consumer Gmail account** through
 [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp).
-The pinned v2.2.0 container exposes 111 tools in its complete tier for Gmail,
+The pinned v2.2.1 container exposes 111 tools in its complete tier for Gmail,
 Drive, Calendar, Docs, Sheets, Slides, Forms, Tasks, Contacts and Apps Script.
 This standalone Compose project is optional. A fresh clone has the MCP ENV
 gate off and never connects to or starts this service.
@@ -426,13 +426,89 @@ stored vector below the dense threshold does not gain this exception. `BLOCKED_T
 excluded. Changing enablement, credentials or profiles still needs the normal
 registry reload; temporary downtime no longer requires restarting Jarvis.
 
-## Upgrading to 2.2.0
+## Upgrading to 2.2.1
+
+The [v2.2.1 release](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.2.1)
+keeps the existing 111 tool names, transport, OAuth scopes and command-line
+options. Reuse the current grants, private service token and `data/` bind mount.
+The image and reviewed source `0801afb3e58f51754f5a40161c07675f50565448` are
+pinned in the Dockerfile. Python 3.13 is now the upstream container default;
+Jarvis's own Python environments are unaffected. Keep the hash-locked security
+overlay: this upstream release still does not include all of its patched
+package versions. Do not run upstream `uv sync` inside the built container.
+
+Useful changes through existing tools:
+
+- **Email links:** use `include_links=true` with `body_format="text"` when
+  reading an email for its links. This applies to `get_gmail_message_content`,
+  `get_gmail_messages_content_batch`, `get_gmail_thread_content`, and
+  `get_gmail_threads_content_batch`. It adds a LINKS section for HTTP(S) URLs
+  in the HTML body that plain text omits; it defaults to false and has no
+  effect for HTML/raw or metadata-only reads. These links remain untrusted
+  message content, not verified destinations or commands.
+- **Body-only reads:** only `get_gmail_message_content` accepts
+  `include_headers=false`. It omits the Subject/From/To/Date summary, so retain
+  the original Message ID from search/request context for follow-ups. It
+  requires `format="full"`; inline raw MIME cannot hide headers, so use text
+  or export raw MIME with `full=true`. Headerless full exports use the Message
+  ID as filename. This is a presentation option, not a way to remove raw MIME
+  headers or authenticate a sender. Thread and batch tools do not accept it.
+- **Read reliability:** non-UTF-8 message bodies use their declared charset,
+  and text/HTML parts stored behind Gmail attachment IDs are fetched instead
+  of appearing empty. Complete EML exports and the command inbox retain their
+  existing independent byte/authentication checks. Signature spacing is fixed.
+- **This and following events:** `manage_event(action="update",
+  this_and_following=true, event_id=...)` needs a recurring instance ID from
+  `get_events`. It ends the original series before that occurrence and creates
+  a new series for it and later occurrences, retaining earlier ones. Use a
+  series ID for a whole-series edit; changing that series' start or recurrence
+  can drop past occurrences. Fixed-COUNT series require an explicit recurrence
+  for the new series, and RDATE series cannot be split. Do not substitute a
+  whole-series rewrite for an unsupported split. Inspect the resulting IDs
+  before retrying an uncertain request; restoring the original recurrence on
+  insertion failure is best effort, not a transaction across both writes.
+- **Comment corrections:** `manage_document_comment`,
+  `manage_spreadsheet_comment`, and `manage_presentation_comment` add
+  `action="update"` with `comment_id` and `comment_content`, or
+  `action="delete"` with `comment_id`. List the file's comments first to obtain
+  the real ID. Update/delete apply to top-level comments authored by the
+  dedicated account, not another user's comments or reply IDs. A Sheets `cell`
+  target is for create only. Deleting removes a comment; resolving retains it.
+- **Docs chips:** `batch_update_doc` accepts an operation such as
+  `{"type":"insert_person","email":"person@example.com","end_of_segment":true}`.
+  Use the intended `tab_id`, or inspect the real index before indexed insertion.
+  A person chip does not grant document sharing. Existing dropdown chips now
+  render their selected label in Markdown/plain-text reads; that read fix does
+  not add dropdown creation or expose every option. Markdown imports use
+  paragraph spacing instead of extra empty paragraphs between blocks.
+
+The comment tools now advertise `destructiveHint=true` because deletion is
+available. Jarvis still classifies those side effects and preserves the existing
+dedicated-account `auto_approve=true` policy. This does not add confirmation
+screens, scopes, services or database migrations. The new parameters arrive via
+normal upstream schema discovery; local description prefixes guide their use.
+
+```bash
+bin/jarvis-google start
+bin/jarvis-google check --live
+source "$HOME/jarvis-venv/bin/activate"
+./bin/sync-tools.py cloud
+# Reload Jarvis registries to use the refreshed schemas and descriptions.
+```
+
+Sync every enabled mode separately. Docker Jarvis installations use their
+existing stack and Google overlay instead of the standalone helper. No new
+consent is required just for the version upgrade; normal revoked/expired-grant
+recovery still applies.
+
+### Earlier 2.2.0 migration notes
 
 The [v2.2.0 release](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.2.0)
 retains this setup's transport, OAuth scopes, CLI flags and 111-tool count.
 Existing OAuth grants and the private service token can be reused. Rebuilding
-keeps the existing `data/` bind mount. The Dockerfile pins reviewed source
-`b5cf07e6078ae10a596710d77569e9430e01ebd4` and its immutable image digest.
+keeps the existing `data/` bind mount. Its reviewed source was
+`b5cf07e6078ae10a596710d77569e9430e01ebd4`; the current Dockerfile pin is listed
+in the 2.2.1 section above.
 Upstream updates `certifi` to 2026.10.19 but still includes packages with newer
 published advisories. The container-only `security-requirements.txt` overlay
 pins artifact hashes for `pypdf` 6.21.2, FastMCP 4.1.2 and OpenTelemetry 1.45.1,

@@ -1,5 +1,5 @@
-# Upstream v2.2.0, reviewed source: b5cf07e6078ae10a596710d77569e9430e01ebd4.
-FROM ghcr.io/taylorwilsdon/google_workspace_mcp:2.2.0@sha256:af95ed31eef19fc4c74fea4ee7f174e000ea57aef3b8ab2480467bcc2d985e45
+# Upstream v2.2.1, reviewed source: 0801afb3e58f51754f5a40161c07675f50565448.
+FROM ghcr.io/taylorwilsdon/google_workspace_mcp:2.2.1@sha256:a44e788e21371ae8afbe40de327dd562efa1c74c172dfb76be75d233610fb855
 COPY --chown=app:app security-requirements.txt /app/jarvis-security-requirements.txt
 # Upstream's frozen lock predates newer pypdf, FastMCP and OpenTelemetry fixes.
 # Hash-locked replacements retain all other packages from the pinned base.

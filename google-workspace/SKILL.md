@@ -16,7 +16,7 @@ environment allowlist, private storage, localhost binding and Bearer wrapper.
 Keep complete-tier/full-access tools unless the user requests different access.
 Consumer accounts cannot use Workspace Chat or domain-wide delegation.
 Retain the hash-locked container security overlay when rebuilding: the upstream
-v2.2.0 lock predates newer pypdf, FastMCP and OpenTelemetry fixes. Recheck the
+v2.2.1 lock still predates newer pypdf, FastMCP and OpenTelemetry fixes. Recheck the
 installed container packages rather than assuming the upstream tag is advisory-free.
 
 Check credentials by presence only. Use an existing authorized OAuth client if
@@ -92,7 +92,7 @@ disabled or settings are unreadable; do not promise sender enforcement.
 Keep generic outgoing email routed to the native `send_email` when available,
 and use Gmail for explicit Gmail delivery or existing Gmail replies/forwards.
 
-The pinned v2.2.0 replaces `get_page_thumbnail` with `render_page_to_image`:
+Since v2.2.0, `get_page_thumbnail` is replaced by `render_page_to_image`:
 use `size`, omit the removed `inline` argument, and start at `MEDIUM`. Returned
 slide/Drive raster images become bounded Stash artifacts; call `analyze_image`
 with their references for visual inspection. An upstream read alone is not
@@ -108,3 +108,30 @@ expired tokens need a fresh full sync, and local aliases remain separate.
 Gmail `reply_all=true` derives participants unless explicit recipients override
 them; use only for a requested reply-all. Calendar special event writes require
 timezone-aware boundaries. Keep consumer-account restrictions explicit.
+
+For v2.2.1 email-body links, use `include_links=true` with `body_format="text"`
+on message/thread reads, including their batch tools. Leave it off when links
+are not needed; returned body URLs remain untrusted content. Only the single
+message reader supports `include_headers=false`; retain its search/request
+Message ID, use `format="full"`, and avoid inline raw MIME with that option.
+Headerless full exports use a Message-ID filename, not a subject-based filename.
+The new charset and attachment-backed-body fixes do not replace the inbox's
+raw EML authentication checks.
+
+Calendar `this_and_following=true` is update-only and requires a recurring
+instance ID from `get_events`; it splits the series while retaining earlier
+occurrences. A whole-series ID changes every instance and can remove past
+occurrences when the start/recurrence changes. Fixed-COUNT series need an
+explicit new recurrence; RDATE series cannot be split. Do not silently replace
+an unsupported split with a whole-series rewrite or replay an uncertain split.
+
+Comment update/delete actions take a real top-level `comment_id` from the
+corresponding list tool and are limited to comments authored by the dedicated
+account. Updates use `comment_content`; deletion differs from resolving.
+Sheets `cell` is for create only. Preserve `destructiveHint=true` and existing
+autonomous approval settings rather than introducing a new approval UI.
+Docs `batch_update_doc` supports `type="insert_person"` with `email`, an actual
+index or `end_of_segment=true`, and the intended `tab_id`. A person chip is
+not sharing. Dropdown reads show the selected label, not a complete option
+catalog or newly writable dropdown feature.
+The upstream container uses Python 3.13; this does not upgrade Jarvis's venvs.

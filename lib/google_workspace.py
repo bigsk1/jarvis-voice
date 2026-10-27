@@ -1,6 +1,6 @@
 """Normalize Workspace MCP receipts and preserve bounded follow-up handles.
 
-Upstream v2.2.0 returns human-readable receipts and optional inline images.
+Upstream v2.2.1 returns human-readable receipts and optional inline images.
 Keep its actual response and explicitly labeled IDs; never invent an API receipt.
 """
 
@@ -26,8 +26,9 @@ _REQUEST_KEYS = frozenset({
     "email_address", "body_format", "time_min", "time_max", "stash", "stash_space_id", "stash_ref",
     "tab_id", "replace_existing", "copy_comments", "request_sync_token", "sync_token",
     "page_object_id", "size", "heading", "heading_level", "include_colors", "color_id", "reply_all",
+    "include_headers", "include_links", "this_and_following", "comment_id", "recurrence",
 })
-_REQUEST_ID_LISTS = frozenset({"message_ids", "thread_ids", "add_label_ids", "remove_label_ids"})
+_REQUEST_ID_LISTS = frozenset({"message_ids", "thread_ids", "add_label_ids", "remove_label_ids", "recurrence"})
 _LINK = re.compile(r"https?://[^\s<>\"'\[\]]+")
 _HANDLE = re.compile(
     r"(?im)\b((?:File|Document|Spreadsheet|Presentation|Form|Message|Thread|Draft|"
@@ -113,6 +114,21 @@ def _gmail_label_outcomes(text: str, arguments: dict) -> tuple[dict, bool]:
         if isinstance(requested, list) and requested:
             complete = complete and reports.get(kind, {}).get("total") == len(requested)
     return reports, complete
+
+
+def _split_series_id(tool_name: str, text: str, arguments: dict) -> str | None:
+    """Read only the pinned Calendar split receipt, never a reader's body text."""
+    if (tool_name != "manage_event" or arguments.get("action") != "update"
+            or arguments.get("this_and_following") is not True):
+        return None
+    match = re.match(
+        r"\ASuccessfully modified '[^\r\n]*' from instance ([A-Za-z0-9_-]{1,512}) "
+        r"onward for [^\s]+\. Earlier instances keep the original series; this and "
+        r"following instances are now series ID ([A-Za-z0-9_-]{1,512})\. Link: ", text,
+    )
+    if match and match[1] == arguments.get("event_id"):
+        return match[2]
+    return None
 
 
 _PROVIDER_HOSTS = frozenset({
@@ -236,6 +252,9 @@ def normalize_workspace_result(tool_name: str, result: dict, arguments: dict | N
             data["next_sync_token_unavailable"] = "Google sync token exceeds the 1000-character replay limit"
     if batch_outcomes is not None:
         data["batch_outcomes"] = batch_outcomes
+    new_series_id = _split_series_id(tool_name, text, arguments or {}) if not failed else None
+    if new_series_id:
+        data["new_series_id"] = new_series_id
     if tool_name == "get_gmail_message_content" and (arguments or {}).get("body_format", "text") == "text":
         data["gmail_attachments"] = gmail_attachment_metadata(text, (arguments or {}).get("message_id", ""))
     if structured is not None:
@@ -307,6 +326,7 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
         "links", "artifacts", "stash_error", "google_ok", "response_truncated", "external_content_trust",
         "content_links_untrusted", "batch_outcomes", "google_export_ok", "download_ok", "download_error",
         "request_list_counts", "request_lists_truncated", "image_delivery", "next_sync_token", "next_sync_token_unavailable",
+        "new_series_id",
     ) if key in payload}
     projected = deepcopy(projected)
     trimmed = any(projected[key] != payload[key] for key in projected)
@@ -389,7 +409,7 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
                 "request", "external_content_trust", "tool", "source", "content_links_untrusted",
                 "response_truncated", "authentication_required", "google_ok", "google_export_ok", "download_ok",
                 "request_list_counts", "request_lists_truncated", "batch_outcomes", "image_delivery",
-                "next_sync_token", "next_sync_token_unavailable", "ok"):
+                "next_sync_token", "next_sync_token_unavailable", "new_series_id", "ok"):
         if size() <= max_chars:
             break
         if key in projected:

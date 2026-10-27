@@ -1,4 +1,4 @@
-"""Workspace feature discovery and v2.2.0 argument contracts without Google calls."""
+"""Workspace feature discovery and v2.2.1 argument contracts without Google calls."""
 
 import json
 import sys
@@ -25,6 +25,31 @@ def _nullable(kind: str) -> dict:
 # Representative added fields from the tagged upstream schemas. The local
 # metadata must supplement discovery without replacing those schemas.
 FEATURE_PARAMETERS = {
+    "get_gmail_message_content": {
+        "message_id": {"type": "string"},
+        "body_format": {"type": "string", "enum": ["text", "html", "raw"], "default": "text"},
+        "format": {"type": "string", "enum": ["full", "metadata"], "default": "full"},
+        "full": {"type": "boolean", "default": False},
+        "include_headers": {"type": "boolean", "default": True},
+        "include_links": {"type": "boolean", "default": False},
+    },
+    "get_gmail_messages_content_batch": {
+        "message_ids": {"type": "array", "items": {"type": "string"}},
+        "format": {"type": "string", "enum": ["full", "metadata"], "default": "full"},
+        "body_format": {"type": "string", "enum": ["text", "html", "raw"], "default": "text"},
+        "include_links": {"type": "boolean", "default": False},
+    },
+    "get_gmail_thread_content": {
+        "thread_id": {"type": "string"},
+        "body_format": {"type": "string", "enum": ["text", "html", "raw"], "default": "text"},
+        "include_analysis": {"type": "boolean", "default": False},
+        "include_links": {"type": "boolean", "default": False},
+    },
+    "get_gmail_threads_content_batch": {
+        "thread_ids": {"type": "array", "items": {"type": "string"}},
+        "body_format": {"type": "string", "enum": ["text", "html", "raw"], "default": "text"},
+        "include_links": {"type": "boolean", "default": False},
+    },
     "send_gmail_message": {
         "to": _nullable("string"),
         "subject": _nullable("string"),
@@ -68,6 +93,8 @@ FEATURE_PARAMETERS = {
     },
     "manage_event": {
         "action": {"type": "string"},
+        "event_id": _nullable("string"),
+        "this_and_following": {"type": "boolean", "default": False},
         **{name: _nullable("string") for name in (
             "color_id", "timezone", "start_timezone", "end_timezone", "start_time", "end_time",
         )},
@@ -126,6 +153,27 @@ FEATURE_PARAMETERS = {
         "content": _nullable("string"),
         "source_format": _nullable("string"),
     },
+    "batch_update_doc": {
+        "document_id": {"type": "string"},
+        "operations": {"type": "array", "items": {
+            "type": "object", "properties": {
+                "type": {"type": "string", "const": "insert_person"},
+                "email": {"type": "string", "minLength": 1},
+                "index": _nullable("integer"), "tab_id": _nullable("string"),
+                "end_of_segment": {"type": "boolean", "default": False},
+            }, "required": ["type", "email"],
+        }},
+    },
+    **{
+        f"manage_{app}_comment": {
+            f"{app}_id": {"type": "string"},
+            "action": {"type": "string"},
+            "comment_id": _nullable("string"),
+            "comment_content": _nullable("string"),
+            **({"cell": _nullable("string")} if app == "spreadsheet" else {}),
+        }
+        for app in ("document", "spreadsheet", "presentation")
+    },
 }
 
 
@@ -179,7 +227,8 @@ def test_feature_metadata_preserves_provider_schemas_and_account_binding(tool_na
     assert schema.description.endswith(f"Upstream {tool_name} contract.")
     expected = FEATURE_PARAMETERS[tool_name]
     properties = schema.parameters["properties"]
-    assert properties.keys() == expected.keys()
+    bridge_fields = {"stash", "stash_space_id"} if tool_name == "get_gmail_message_content" else set()
+    assert properties.keys() == expected.keys() | bridge_fields
     for name, contract in expected.items():
         assert {key: properties[name][key] for key in contract} == contract
     projections = [
@@ -196,6 +245,39 @@ def test_feature_metadata_preserves_provider_schemas_and_account_binding(tool_na
 
 
 @pytest.mark.parametrize(("tool_name", "argument"), [
+    ("get_gmail_message_content", {
+        "message_id": "18abc123", "include_links": True,
+        "include_headers": False, "body_format": "text", "format": "full",
+    }),
+    ("get_gmail_message_content", {
+        "message_id": "18abc123", "include_headers": False,
+        "body_format": "raw", "full": True,
+    }),
+    ("get_gmail_messages_content_batch", {
+        "message_ids": ["18abc123"], "include_links": True, "body_format": "text",
+    }),
+    ("get_gmail_thread_content", {
+        "thread_id": "18def456", "include_links": True, "body_format": "text",
+    }),
+    ("get_gmail_threads_content_batch", {
+        "thread_ids": ["18def456"], "include_links": True, "body_format": "text",
+    }),
+    ("manage_event", {
+        "action": "update", "event_id": "series123_20271101T170000Z",
+        "this_and_following": True, "summary": "Updated future meetings",
+    }),
+    ("batch_update_doc", {
+        "document_id": "doc-123", "operations": [
+            {"type": "insert_person", "email": "person@example.test", "tab_id": "t.1", "end_of_segment": True},
+        ],
+    }),
+    *[
+        (f"manage_{app}_comment", {
+            f"{app}_id": "owned-file-123", "action": action, "comment_id": "comment-123",
+            **({"comment_content": "Corrected comment"} if action == "update" else {}),
+        })
+        for app in ("document", "spreadsheet", "presentation") for action in ("update", "delete")
+    ],
     ("manage_doc_tab", {
         "document_id": "doc-123", "tab_id": "t.1", "action": "populate_from_markdown",
         "markdown_text": "| Name | Status |\n| --- | --- |\n| Test | Open |",
@@ -337,10 +419,84 @@ def test_image_guidance_uses_stash_analysis_instead_of_claiming_automatic_vision
     assert "do not share" in metadata["render_page_to_image"]["description_prefix"]
 
 
-def test_v220_catalog_replaces_slide_thumbnail_without_growing_the_tool_set():
+def test_v221_catalog_keeps_v220_slide_rename_without_growing_the_tool_set():
     fixture = json.loads((ROOT / "tests/fixtures/google_workspace_tool_names.json").read_text())
-    assert fixture['image'].endswith(':2.2.0')
-    assert fixture['upstream_commit'] == 'b5cf07e6078ae10a596710d77569e9430e01ebd4'
+    assert fixture['image'].endswith(':2.2.1')
+    assert fixture['upstream_commit'] == '0801afb3e58f51754f5a40161c07675f50565448'
     assert len(fixture['tools']) == len(set(fixture['tools'])) == 111
     assert 'render_page_to_image' in fixture['tools']
     assert 'get_page_thumbnail' not in fixture['tools']
+
+
+def test_v221_guidance_uses_optin_links_and_retains_headerless_message_identity():
+    metadata = _config()["tool_metadata"]
+    for tool in ("get_gmail_message_content", "get_gmail_messages_content_batch",
+                 "get_gmail_thread_content", "get_gmail_threads_content_batch"):
+        text = metadata[tool]["description_prefix"]
+        assert "include_links=true" in text
+        assert 'body_format="text"' in text
+        assert FEATURE_PARAMETERS[tool]["include_links"]["default"] is False
+    message = metadata["get_gmail_message_content"]["description_prefix"]
+    assert "include_headers=false" in message
+    assert "retain the original Message ID" in message
+    assert "inline raw MIME cannot hide headers" in message
+    for tool in ("get_gmail_messages_content_batch", "get_gmail_thread_content",
+                 "get_gmail_threads_content_batch"):
+        assert "does not accept include_headers" in metadata[tool]["description_prefix"]
+        assert "include_headers" not in FEATURE_PARAMETERS[tool]
+
+
+def test_v221_guidance_distinguishes_series_split_from_whole_series_rewrite():
+    calendar = _config()["tool_metadata"]["manage_event"]["description_prefix"]
+    assert "this_and_following=true" in calendar
+    assert 'action="update"' in calendar
+    assert "recurring instance ID from get_events" in calendar
+    assert "preserving earlier occurrences" in calendar
+    assert "Fixed-COUNT" in calendar and "RDATE" in calendar
+    assert "Do not silently switch" in calendar
+
+
+@pytest.mark.parametrize("app", ["document", "spreadsheet", "presentation"])
+def test_comment_actions_keep_dedicated_account_autonomy_and_lookup_prerequisites(app):
+    registry = _registry()
+    name = f"manage_{app}_comment"
+    schema = registry.get_tool(PREFIX + name)
+    assert schema is not None
+    assert schema.permissions["dangerous"] is True
+    assert schema.permissions["auto_approve"] is True
+    assert schema.requires_confirmation() is False
+    text = schema.description
+    assert "update requires comment_id and comment_content" in text
+    assert "top-level comments written by the dedicated account" in text
+    assert "not another author or a reply ID" in text
+    assert "do not describe it as resolving" in text
+    metadata = _config()["tool_metadata"][name]
+    assert metadata["prerequisite_tools"] == [PREFIX + f"list_{app}_comments"]
+
+
+def test_person_chips_and_dropdown_reading_do_not_imply_new_sharing_or_writes():
+    metadata = _config()["tool_metadata"]
+    person = metadata["batch_update_doc"]["description_prefix"]
+    assert '"type":"insert_person"' in person
+    assert '"end_of_segment":true' in person
+    assert "inspect_doc_structure first" in person
+    assert "not a sharing permission grant" in person
+    dropdown = metadata["get_doc_as_markdown"]["description_prefix"]
+    assert "selected label" in dropdown
+    assert "does not expose all dropdown choices or edit" in dropdown
+
+
+def test_comment_lookup_prerequisites_respect_profiles_and_router_bounds():
+    blocked = PREFIX + "list_document_comments"
+    registry = _registry({blocked: False})
+    comments = [PREFIX + f"manage_{app}_comment" for app in ("document", "spreadsheet", "presentation")]
+    names, added = expand_prerequisite_tool_names(
+        comments, registry, registry.list_tools(), max_added=2,
+    )
+    assert blocked not in names
+    assert set(comments) <= set(names)
+    assert len(added) == 2
+    assert {edge.split(":", 1)[1] for edge in added} == {
+        PREFIX + "list_spreadsheet_comments", PREFIX + "list_presentation_comments",
+    }
+    assert names.index(PREFIX + "list_spreadsheet_comments") < names.index(PREFIX + "manage_spreadsheet_comment")

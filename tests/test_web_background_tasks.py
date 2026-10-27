@@ -28,6 +28,31 @@ def eventually(predicate, timeout=6):
     raise AssertionError("Expected condition did not become true")
 
 
+def _stop_fixture_worker(worker):
+    """Reap an unresponsive test child without hiding its shutdown failure."""
+    worker.terminate()
+    try:
+        worker.communicate(timeout=6)
+    except subprocess.TimeoutExpired:
+        worker.kill()
+        worker.communicate(timeout=6)
+        raise
+
+
+def test_unresponsive_fixture_worker_is_reaped_and_shutdown_timeout_is_preserved():
+    from unittest.mock import Mock
+
+    timeout = subprocess.TimeoutExpired('inert-fixture-worker', 6)
+    worker = Mock()
+    worker.communicate.side_effect = [timeout, ('', '')]
+    with pytest.raises(subprocess.TimeoutExpired) as failure:
+        _stop_fixture_worker(worker)
+    assert failure.value is timeout
+    worker.terminate.assert_called_once()
+    worker.kill.assert_called_once()
+    assert worker.communicate.call_count == 2
+
+
 @pytest.fixture
 def web_tasks(journey, monkeypatch):
     import executor
@@ -230,18 +255,21 @@ print(json.dumps({"ok": True, "speech": "The foreground clock returned.", "data"
     try:
         yield harness
     finally:
-        (root / "finish").touch()
-        (root / "foreground_finish").touch()
-        for thread in threads:
-            thread.join(5)
-        background.close()
-        for client in clients:
-            if client.is_connected():
-                client.disconnect()
-        worker.terminate()
-        worker.communicate(timeout=6)
-        for lease in list(handler.runs.leases.values()):
-            lease.release()
+        try:
+            (root / "finish").touch()
+            (root / "foreground_finish").touch()
+            for thread in threads:
+                thread.join(5)
+            background.close()
+            for client in clients:
+                if client.is_connected():
+                    client.disconnect()
+        finally:
+            try:
+                _stop_fixture_worker(worker)
+            finally:
+                for lease in list(handler.runs.leases.values()):
+                    lease.release()
 
 
 def test_background_context_is_gated_without_wrapping_user_request_in_receipt_policy(web_tasks):

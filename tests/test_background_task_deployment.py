@@ -282,6 +282,8 @@ def test_tmux_stop_does_not_signal_external_worker(tmux_cli):
 
 
 def test_tmux_shutdown_escalates_only_after_grace_period(tmux_cli, monkeypatch, capsys):
+    from types import SimpleNamespace
+
     from lib.background_tasks import cli
 
     h = tmux_cli
@@ -290,8 +292,21 @@ def test_tmux_shutdown_escalates_only_after_grace_period(tmux_cli, monkeypatch, 
         monkeypatch.setenv(key, h.env[key])
     monkeypatch.setenv('TEST_TMUX_STUCK', '1')
     waits = []
-    monkeypatch.setattr(cli.time, 'sleep', waits.append)
+    original_sleep = time.sleep
+    # Replacing time.sleep itself also intercepts subprocess timeout polling and
+    # other threads, whose waits then contaminate the grace-period measurement.
+    # Only this CLI module should use the no-delay sleep double.
+    monkeypatch.setattr(cli, 'time', SimpleNamespace(sleep=waits.append))
+    original_tmux = cli._tmux
+
+    def checked_tmux(*arguments, **kwargs):
+        if arguments[0] == 'kill-session':
+            assert sum(waits) == 10
+        return original_tmux(*arguments, **kwargs)
+
+    monkeypatch.setattr(cli, '_tmux', checked_tmux)
     assert cli.manage_tmux('stop', h.store) == 0
+    assert time.sleep is original_sleep
     assert sum(waits) == 10
     commands = h.commands()
     assert commands[-1] == ['kill-session', '-t', 'jarvis-task-worker']
