@@ -117,6 +117,11 @@ When adding a new curated cloud chat model:
 2. Include display name, context window, pricing, aliases if needed, and mark `default: true` only if it should become the curated fallback
 3. Update docs/examples only if you want the new model surfaced in human-facing guidance
 
+The OpenAI catalog default is `gpt-6.1-terra`. Tool calling with this model
+requires `OPENAI_API_MODE=responses` and `OPENAI_RESPONSES_TOOLS=true` (already
+enabled in `cloud.env.example`). Existing mode ENV pins and saved Web model
+selections take precedence over the catalog fallback.
+
 For Anthropic, audit the curated catalog against the Models API before and after an update:
 
 ```bash

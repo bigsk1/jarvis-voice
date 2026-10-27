@@ -219,8 +219,9 @@ class ModelCatalogTests(unittest.TestCase):
     def test_openai_options_are_newest_first(self):
         models = [entry["id"] for entry in get_provider_model_options("openai")]
         self.assertEqual(
-            models[:10],
+            models[:11],
             [
+                "gpt-6.1-terra",
                 "gpt-6.1-sol",
                 "gpt-6-sol",
                 "gpt-6-luna",
@@ -233,6 +234,35 @@ class ModelCatalogTests(unittest.TestCase):
                 "gpt-5.4-nano",
             ],
         )
+
+    def test_gpt_6_1_terra_resolves_with_official_metadata_and_is_default(self):
+        model = "gpt-6.1-terra"
+        self.assertEqual(get_default_model_id("openai"), model)
+        self.assertEqual(get_provider_fallback_model("openai"), model)
+        self.assertEqual(get_model_context_window("openai", model), 1_050_000)
+        self.assertEqual(get_model_context_label("openai", model), "1.05M")
+        metadata = get_model_metadata("openai", model)
+        self.assertEqual(metadata["max_output_tokens"], 128_000)
+        self.assertEqual(metadata["input_modalities"], ["text", "image"])
+        self.assertEqual(metadata["output_modalities"], ["text"])
+        self.assertEqual(
+            metadata["reasoning_effort_values"],
+            ["none", "low", "medium", "high", "xhigh", "max"],
+        )
+        self.assertEqual(metadata["reasoning_effort_default"], "medium")
+        self.assertTrue(metadata["default"])
+        self.assertFalse(get_model_metadata("openai", "gpt-5.6-luna").get("default", False))
+        self.assertEqual(get_model_pricing("openai", model), {
+            "input": 1.00, "output": 5.00, "cached": 0.05,
+            "long_context": {
+                "threshold": 272_000, "input": 2.00, "output": 7.50, "cached": 0.10,
+            },
+        })
+        option = get_provider_model_options("openai")[0]
+        self.assertEqual(option["id"], model)
+        self.assertEqual(option["context"], "1.05M")
+        self.assertEqual(option["capabilities"], ["vision", "tools", "thinking"])
+        self.assertTrue(option["vision"])
 
     def test_gpt_6_1_sol_resolves_with_official_metadata(self):
         model = "gpt-6.1-sol"
@@ -256,7 +286,7 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(pricing["long_context"]["cached"], 0.20)
         self.assertEqual(pricing["long_context"]["output"], 15.00)
 
-        option = get_provider_model_options("openai")[0]
+        option = next(entry for entry in get_provider_model_options("openai") if entry["id"] == model)
         self.assertEqual(option["id"], model)
         self.assertEqual(option["context"], "1.05M")
         self.assertEqual(option["capabilities"], ["vision", "tools", "thinking"])
@@ -298,7 +328,7 @@ class ModelCatalogTests(unittest.TestCase):
         for provider, model_id in (
             ("xai", "grok-4.7"),
             ("anthropic", "claude-sonnet-5-5"),
-            ("openai", "gpt-5.6-luna"),
+            ("openai", "gpt-6.1-terra"),
         ):
             options = {
                 entry["id"]: entry
@@ -645,7 +675,7 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertLess(opus_index, models.index("claude-opus-4-6"))
 
     def test_catalog_defaults_are_explicit(self):
-        self.assertEqual(get_default_model_id("openai"), "gpt-5.6-luna")
+        self.assertEqual(get_default_model_id("openai"), "gpt-6.1-terra")
         self.assertEqual(get_default_model_id("xai"), "grok-4.7")
         self.assertEqual(get_default_model_id("anthropic"), "claude-sonnet-5-5")
 

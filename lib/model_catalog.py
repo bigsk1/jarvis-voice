@@ -483,6 +483,28 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
     ],
     "openai": [
         {
+            # https://developers.openai.com/api/docs/models/gpt-6.1-terra
+            # Tool calling requires Jarvis's Responses API configuration.
+            "id": "gpt-6.1-terra",
+            "name": "GPT-6.1 Terra (Catalog default)",
+            "context_tokens": 1_050_000,
+            "max_output_tokens": 128_000,
+            "default": True,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_6,
+            "pricing": {
+                "input": 1.00,
+                "output": 5.00,
+                "cached": 0.05,
+                "long_context": {
+                    "threshold": 272_000,
+                    "input": 2.00,
+                    "output": 7.50,
+                    "cached": 0.10,
+                },
+            },
+        },
+        {
             # https://developers.openai.com/api/docs/models/gpt-6.1-sol
             # Tool calling requires Jarvis's Responses API configuration.
             "id": "gpt-6.1-sol",
@@ -562,10 +584,9 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
         },
         {
             "id": "gpt-5.6-luna",
-            "name": "GPT-5.6 Luna (Catalog default)",
+            "name": "GPT-5.6 Luna",
             "context_tokens": 1_050_000,
             "max_output_tokens": 128_000,
-            "default": True,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
             **_OPENAI_REASONING_5_6,
             "pricing": {"input": 2.00, "output": 12.00, "cached": 0.20},
