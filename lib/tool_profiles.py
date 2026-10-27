@@ -14,7 +14,9 @@ Shape:
 If a tool name is absent from overrides, the value from the tool's .tool.json is used.
 If present, the override wins (so you can force-enable a tool that is disabled in the file).
 Compatibility: the new HeyGen tools inherit an explicit generate_video=False
-when their own override is absent. An explicit per-tool override still wins.
+when their own override is absent. Speech generation similarly inherits an
+explicit generate_music=False, and voice lookup inherits the speech restriction.
+An explicit per-tool override still wins.
 """
 from __future__ import annotations
 
@@ -90,6 +92,14 @@ def effective_enabled(tool_name: str, base_enabled: bool, overrides: dict[str, b
     # Older installed/custom profiles predate these paid video siblings.
     # Preserve their video restriction without rewriting the user's files.
     if tool_name in {"heygen", "generate_avatar_video"} and overrides.get("generate_video") is False:
+        return False
+    # Older generation-restricted profiles predate standalone speech tools.
+    # An explicit speech setting takes precedence over its music ancestor.
+    if tool_name == "generate_audio" and overrides.get("generate_music") is False:
+        return False
+    if tool_name == "audio_voices" and overrides.get(
+        "generate_audio", overrides.get("generate_music")
+    ) is False:
         return False
     return base_enabled
 

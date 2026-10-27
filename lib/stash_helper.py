@@ -384,7 +384,7 @@ def get_default_ttl() -> int:
 def get_retention_policy(labels: list[str] = None, scope: str = 'session') -> tuple[str, int]:
     """Return the automatic retention class and TTL for a stash space."""
     normalized = {str(label).strip().lower() for label in (labels or [])}
-    if normalized & {'generated_images', 'generated_videos', 'generated_music'}:
+    if normalized & {'generated_images', 'generated_videos', 'generated_music', 'generated_audio'}:
         return 'generated_media', get_int('STASH_GENERATED_MEDIA_TTL_DAYS', 30)
     if scope in {'project', 'user'} or normalized & {
         'web_upload', 'uploaded', 'youtube_downloads', 'youtube_transcripts',

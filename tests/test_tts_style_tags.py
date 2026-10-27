@@ -41,6 +41,8 @@ def test_prompt_gate_uses_effective_tts_provider_model_and_toggle(provider, mode
     if expected:
         assert "FINAL SPOKEN RESPONSE only" in instruction
         assert "tool arguments" in instruction
+        assert "generate_audio.text" in instruction
+        assert "selected provider/model capabilities from audio_voices" in instruction
         assert "word limit" in instruction
 
 

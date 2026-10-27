@@ -29,6 +29,21 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "audio_voices": _case({
+        "provider": "elevenlabs", "current_provider": "elevenlabs", "source": "live_account",
+        "count": 1, "has_more": True, "next_cursor": "voice-page-2",
+        "items": [{"provider": "elevenlabs", "id": "voice_7", "voice_id": "voice_7",
+                   "name": "British narrator", "language": "en", "kind": "cloned",
+                   "preview_url": "https://example.test/preview.mp3"}],
+    }, {"provider": "elevenlabs", "search": "British", "limit": 20}),
+    "generate_audio": _case({
+        "provider": "elevenlabs", "model": "eleven_v3", "voice": "voice_7",
+        "stash_ref": "stash://space_voice/f_audio", "script_ref": "stash://space_voice/f_script",
+        "duration_seconds": 65.3, "mime_type": "audio/mpeg", "filename": "narration.mp3",
+        "file_path": "/tmp/generated_audio/narration.mp3",
+        "text": "FULL_SCRIPT_SENTINEL " * 3000,
+        "saved": {"stash_ref": "stash://space_voice/f_audio", "filename": "narration.mp3"},
+    }, {"text": "A reusable spoken voiceover.", "provider": "elevenlabs", "voice": "voice_7"}),
     "generate_avatar_video": _case({
         "provider": "heygen", "model": "avatar_iv", "kind": "avatar", "provider_video_id": "avatar_render_7",
         "status": "completed", "receipt_stash_ref": "stash://space_receipt/f_avatar_job",

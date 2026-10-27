@@ -453,6 +453,16 @@
       "progress": ["Password ready"]
     },
     
+    "audio_voices": {
+      "start": ["Looking up speech voices", "Checking available voices"],
+      "progress": ["Reading the voice catalog"]
+    },
+
+    "generate_audio": {
+      "start": ["Creating your voiceover", "Generating a speech recording"],
+      "progress": ["Preparing the audio file", "Your recording is taking shape"]
+    },
+
     "generate_music": {
       "start": ["Composing your track", "Creating music", "ElevenLabs is jamming"],
       "progress": ["Music is cooking", "Melody coming together"]

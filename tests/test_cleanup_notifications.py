@@ -224,7 +224,7 @@ def test_filesystem_failures_propagate_and_never_record_success(tmp_path, helper
     assert result.returncode == 44, result.stdout + result.stderr
     assert len(_alerts(env)) == 1
     assert _alerts(env)[0]["payload"]["metadata"]["failed_stage"] == (
-        "Logs" if folder == "logs" else "Runtime audio"
+        "Logs" if folder == "logs" else "Runtime and generated audio"
     )
     assert not _notices(log)
     assert target.exists()

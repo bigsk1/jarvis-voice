@@ -105,6 +105,7 @@ class CanvasDuplicateGuardTests(unittest.TestCase):
         self.assertIn("generate_video", SINGLE_CALL_TOOLS)
         self.assertIn("generate_image", SINGLE_CALL_TOOLS)
         self.assertIn("generate_music", SINGLE_CALL_TOOLS)
+        self.assertIn("generate_audio", SINGLE_CALL_TOOLS)
 
     def test_canvas_is_not_single_call_capped(self):
         self.assertNotIn("canvas", SINGLE_CALL_TOOLS)

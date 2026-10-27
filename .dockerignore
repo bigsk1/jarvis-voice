@@ -60,6 +60,7 @@ data/canvas/
 data/generated_images/
 data/generated_videos/
 data/generated_music/
+data/generated_audio/
 data/web_conversations/
 data/stash/
 **/.docling-recovery/

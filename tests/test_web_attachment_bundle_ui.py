@@ -92,6 +92,52 @@ assert.equal(ui.filePreviewContainer.children[3].children[0].children[0].textCon
 """)
 
 
+def test_generated_speech_uses_stash_audio_player_without_autoplay():
+    run_browser(r"""
+const ui = chat();
+for (const result of [
+  {stash_ref:'stash://speech_space/f_recording',filename:'voiceover.mp3',mime_type:'audio/mpeg',duration_seconds:65.3,title:'Voiceover'},
+  {data:{stash_ref:'stash://speech_space/f_recording',filename:'voiceover.mp3',mime_type:'audio/mpeg',duration_seconds:65.3,title:'Voiceover'}}
+]) {
+  const media = ui._findAudioFromToolResults({generate_audio:result});
+  assert.equal(media.audioUrl,'/api/stash/speech_space/f_recording');
+  assert.equal(media.audioDuration,65.3);
+  assert.equal(media.audioTitle,'Voiceover');
+  const html = ChatUI.prototype._renderAudioPlayerHtml.call(ui,media);
+  assert.match(html,/<audio controls/);
+  assert.match(html,/voiceover\.mp3/);
+  assert.match(html,/Download/);
+  assert.doesNotMatch(html,/autoplay/);
+}
+""")
+
+
+def test_failed_generated_speech_renders_local_recovery_without_stash():
+    run_browser(r"""
+const ui = chat();
+const filename = 'speech_recovery_20261027_000000_' + 'a'.repeat(32) + '.mp3';
+const audioUrl = '/api/generated-audio/' + filename;
+const result = {ok:false,completion:'completed',error:'Saving all artifacts failed',data:{
+  audio_url:audioUrl,file_path:'/tmp/generated_audio/'+filename,filename,
+  mime_type:'audio/mpeg',duration_seconds:7.7,title:'Recovered recording'
+}};
+const media = ui._findAudioFromToolResults({generate_audio:result});
+assert.equal(media.audioUrl,audioUrl);
+assert.equal(media.audioTitle,'Recovered recording');
+const html = ChatUI.prototype._renderAudioPlayerHtml.call(ui,media);
+assert.match(html,/<audio controls/);
+assert.match(html,/Download/);
+assert.match(html,/api\/generated-audio/);
+assert.doesNotMatch(html,/autoplay/);
+for (const untrusted of ['https://evil.test/clip.mp3','//evil.test/clip.mp3','/api/generated-audio/../private.mp3','/api/generated-audio/'+filename+'?redirect=evil']) {
+  result.data.audio_url=untrusted;
+  assert.equal(ui._findAudioFromToolResults({generate_audio:result}),null);
+}
+result.data.audio_url=audioUrl;
+assert.equal(ui._findAudioFromToolResults({unrelated_tool:result}),null);
+""")
+
+
 def test_chat_source_save_promotes_exact_reference_in_original_mode():
     run_browser(r"""
 const ui = chat();

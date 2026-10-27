@@ -466,6 +466,91 @@ class OrchestratorDirectSpeechToolTests(unittest.TestCase):
         orchestrator.executor.execute.assert_called_once_with("stock_price", arguments)
         orchestrator._format_auto_mode.assert_called_once()
 
+    def test_audio_generation_failure_does_not_trigger_another_paid_attempt(self):
+        arguments = {"text": "Hello, Andrew.", "provider": "elevenlabs"}
+        recovery = {
+            "file_path": "/tmp/generated_audio/voiceover.mp3", "provider": "elevenlabs",
+            "audio_url": "/api/generated-audio/speech_voiceover.mp3",
+            "recovery_available": True, "saved": {"saved": True, "stash": False},
+        }
+        actual_error = (
+            "The audio was generated and saved locally, but saving all artifacts failed. "
+            "Reuse the existing recording; do not regenerate it."
+        )
+        self.assertEqual(len(actual_error), 127)
+        orchestrator = self._build_orchestrator(
+            routes=[
+                {"intent": "tool", "tool_name": "generate_audio", "arguments": arguments},
+                {"intent": "tool", "tool_name": "generate_audio",
+                 "arguments": {**arguments, "provider": "openai"}},
+            ],
+            results=[{
+                "ok": False, "speech": actual_error,
+                "error": actual_error,
+                "completion": "completed", "data": recovery,
+            }],
+        )
+        result = orchestrator.process("Create a voiceover with ElevenLabs.")
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["terminal_failure"])
+        orchestrator.executor.execute.assert_called_once_with("generate_audio", arguments)
+        self.assertEqual(orchestrator.router.route.call_count, 1)
+        self.assertEqual(result["speech"], actual_error)
+        self.assertEqual(result["completion"], "completed")
+        self.assertEqual(result["tool_trace"][0]["result_data"], recovery)
+        self.assertEqual(result["tool_trace"][0]["completion"], "completed")
+        self.assertFalse(result["tool_trace"][0]["ok"])
+        self.assertEqual(result["data"]["generate_audio"]["audio_url"], recovery["audio_url"])
+        self.assertFalse(result["data"]["generate_audio"]["ok"])
+        self.assertEqual(result["data"]["generate_audio"]["completion"], "completed")
+        orchestrator.status_updater.update_error.assert_not_called()
+
+    def test_audio_unknown_outcome_preserves_billing_warning_without_retrying(self):
+        arguments = {"text": "Hello.", "provider": "elevenlabs"}
+        orchestrator = self._build_orchestrator(
+            routes=[{"intent": "tool", "tool_name": "generate_audio", "arguments": arguments}],
+            results=[{
+                "ok": False, "completion": "unknown", "error": "Timeout",
+                "speech": "Tool generate_audio timed out",
+            }],
+        )
+        result = orchestrator.process("Create an ElevenLabs recording.")
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["terminal_failure"])
+        self.assertEqual(result["completion"], "unknown")
+        self.assertIn("may have been billed", result["speech"])
+        self.assertIn("do not retry it automatically", result["speech"])
+        self.assertIn("Check existing recordings", result["speech"])
+        self.assertEqual(result["tool_trace"][0]["completion"], "unknown")
+        orchestrator.executor.execute.assert_called_once_with("generate_audio", arguments)
+        self.assertEqual(orchestrator.router.route.call_count, 1)
+        orchestrator.status_updater.update_error.assert_not_called()
+
+    def test_audio_terminal_speech_uses_completion_evidence_without_raw_error(self):
+        from orchestrator_v2 import _format_terminal_tool_failure
+
+        unsafe = "secret-header http://user:password@private-host/internal " * 8
+        for completion in ("completed", "unknown"):
+            with self.subTest(completion=completion):
+                speech = _format_terminal_tool_failure(
+                    "generate_audio", unsafe, result={"ok": False, "completion": completion},
+                )
+                self.assertIn("may have been billed", speech)
+                self.assertNotIn("technical error", speech)
+                self.assertNotIn("secret", speech)
+                self.assertNotIn("password", speech)
+
+    def test_rejected_audio_request_keeps_existing_preflight_failure_behavior(self):
+        from orchestrator_v2 import _format_terminal_tool_failure
+
+        self.assertEqual(
+            _format_terminal_tool_failure(
+                "generate_audio", "A nonempty text script is required",
+                result={"ok": False, "completion": "rejected"},
+            ),
+            "Generate audio failed because A nonempty text script is required.",
+        )
+
     def test_mixed_duplicate_recovery_scopes_the_reminder_exception(self):
         reminder = {"intent": "tool", "tool_name": "create_reminder",
                     "arguments": {"title": "Call the plumber", "when": "tomorrow at noon"}}

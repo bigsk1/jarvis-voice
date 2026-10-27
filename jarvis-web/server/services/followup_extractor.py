@@ -59,6 +59,7 @@ _AMAZON_FOLLOWUP_TOOL_NAMES = frozenset({
     'serpapi_search',  # Read-only compatibility for saved pre-rename turns.
 })
 _DEDICATED_FOLLOWUP_BRANCHES = (
+    'audio_voices',
     'weather',
     'generate_password',
     'serpapi_amazon_search',
@@ -352,6 +353,15 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'instrumental', 'tempo', 'mime_type', 'size_bytes', 'song_id',
         'output_format', 'requested_output_format', 'synthid_watermarked',
         'file_path',
+    ],
+    'generate_audio': [
+        'provider', 'model', 'voice', 'title', 'duration_seconds', 'mime_type', 'filename',
+        'file_path', 'script_ref', 'script_path', 'size_bytes', 'text_chars',
+        'save_error', 'duration_warning', 'audio_url', 'recovery_available',
+    ],
+    'audio_voices': [
+        'provider', 'current_provider', 'source', 'model', 'count', 'has_more',
+        'next_cursor', 'partial', 'warning',
     ],
     # --- File/artifact producers ---
     'docling_convert': ['task_id', 'state', 'partial', 'recovery_available', 'source_stash_ref', 'space_id', 'file_id',
@@ -2831,6 +2841,24 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         max_candidates = FOLLOWUP_DEFAULT_MAX_CANDIDATES
     followup: dict = {}
 
+    # Older/trace-only failed audio runs still own an already paid recording.
+    # Reconstruct only when the canonical accumulated result is absent.
+    if 'generate_audio' not in data:
+        for row in reversed(data.get('_tool_trace') or []):
+            if not isinstance(row, dict) or row.get('tool') != 'generate_audio' or row.get('ok') is not False:
+                continue
+            payload = row.get('result_data')
+            payload = payload if isinstance(payload, dict) else {}
+            completion = row.get('completion')
+            if completion not in {'completed', 'rejected', 'unknown'}:
+                saved = payload.get('saved')
+                completion = 'completed' if isinstance(saved, dict) and saved.get('saved') is True else 'unknown'
+            data = {**data, 'generate_audio': {
+                'ok': False, 'completion': completion,
+                'error': row.get('error'), 'data': payload,
+            }}
+            break
+
     # Failed webhook contracts live in the trace; successful runs are accumulated
     # separately. Retain both so a later correction has the same destination body.
     successful = data.get('send_webhook', [])
@@ -3079,9 +3107,12 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             continue
 
         extracted = {}
-        if key in {'generate_video', 'generate_avatar_video', 'heygen'} and payload.get('provider') == 'heygen':
-            # A native recovery ID is useful only with its truthful completion
-            # boundary: an observer timeout must never look like saved output.
+        if key == 'generate_audio' or (
+            key in {'generate_video', 'generate_avatar_video', 'heygen'}
+            and payload.get('provider') == 'heygen'
+        ):
+            # Keep artifact/recovery handles with their truthful completion
+            # boundary so saving failures never invite another paid generation.
             if value.get('completion') in {'unknown', 'rejected', 'completed'}:
                 extracted['completion'] = value['completion']
             if value.get('ok') is False:
@@ -3131,6 +3162,38 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                     extracted[field] = _bounded_structured_followup_value(payload[field], max_chars=800)
             if isinstance(payload.get('items'), list) and len(payload['items']) > max_candidates:
                 extracted['candidates_truncated'] = True
+
+        if key == 'audio_voices':
+            capabilities = payload.get('delivery_capabilities')
+            if isinstance(capabilities, dict):
+                allowed = {
+                    field: capabilities[field]
+                    for field in ('instructions_supported', 'inline_tags_supported',
+                                  'wrapping_tags_supported', 'instructions_field', 'note',
+                                  'inline_tag_examples', 'wrapping_tag_examples')
+                    if field in capabilities
+                }
+                extracted['delivery_capabilities'] = _bounded_structured_followup_value(
+                    allowed, max_chars=1500,
+                )
+            voices = payload.get('items')
+            if isinstance(voices, list):
+                # Keep provider identity with every ID so a later selection
+                # cannot accidentally send an ElevenLabs voice to HeyGen.
+                extracted['candidates'] = [
+                    {field: (
+                        _truncate_followup_text(item[field], 300)
+                        if field == 'description' else item[field]
+                     )
+                     for field in ('provider', 'id', 'voice_id', 'name', 'preview_url',
+                                   'language', 'kind', 'gender', 'accent', 'description')
+                     if isinstance(item.get(field), str) and item[field]
+                     and (field == 'description' or len(item[field]) <= 2000)}
+                    for item in voices[:max_candidates] if isinstance(item, dict)
+                ]
+                extracted['candidate_source'] = 'items'
+                if len(voices) > max_candidates:
+                    extracted['candidates_truncated'] = True
 
         if key == 'email_contacts':
             contacts = payload.get('contacts')

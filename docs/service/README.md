@@ -290,12 +290,14 @@ find logs -type f -size +10M
 find logs -type f -name "*.jsonl" -printf '%T+ %p\n' | sort | head -10
 ```
 
-### Automated Cleanup (Active)
+### Automated Cleanup
 
-Weekly cleanup runs every Sunday at 3am via cron:
+An existing `cleanup-all` cron entry also handles standalone generated speech;
+no separate speech-cleanup job is needed. The standard weekly schedule is Sunday
+at 3 a.m. in the cron host's timezone:
 
 ```bash
-# Current crontab entry:
+# Example crontab entry (check with crontab -l):
 0 3 * * 0 ~/jarvis-voice/bin/cleanup-all >> ~/jarvis-voice/logs/cleanup.log 2>&1
 ```
 
@@ -332,12 +334,21 @@ Dry runs never create alerts, including when the preview fails.
 |-----------|-----------|---------|
 | `logs/` | 60 days | LLM calls, services, API, tools |
 | `audio/` | 30 days | Runtime TTS output, mic recordings, and QA audio/logs |
+| `data/generated_audio/` | 60 days | Standalone speech audio, scripts, and metadata |
 | `data/generated_images/` | 120 days | Primary AI-generated image files |
 | `jarvis-web/data/uploads/` | 60 days if unreferenced | Saved-conversation attachments are preserved |
 | `data/stash/` | 7/30/120 days by policy | Temporary/generated-media/source artifacts; pins and saved-conversation references are preserved |
 
-`cleanup-audio` is intentionally scoped to `audio/`; it does not scan the Canvas
-Audio Gallery in `data/generated_music/`. `cleanup-all` currently has no local
+`cleanup-audio` uses separate policies for runtime `audio/` (30 days) and
+standalone speech `data/generated_audio/` (60 days). The speech scan includes
+only regular MP3, WAV, text-script, and JSON-metadata files directly in that
+folder, based on modification time; nested paths and symlinks are skipped.
+Files become eligible after 60 days and are removed on the next cleanup run;
+a weekly schedule can therefore keep them for almost another week.
+This deletion does not depend on whether a conversation references the durable
+file. Stash copies retain their separate policy and conversation protections.
+It does not scan the Canvas Audio Gallery in `data/generated_music/`.
+`cleanup-all` currently has no local
 file cleanup for generated music or `data/generated_videos/`. A generated
 music stash copy remains subject to its separate stash retention policy.
 
@@ -347,8 +358,8 @@ music stash copy remains subject to its separate stash retention policy.
 # Logs only
 ./bin/cleanup-logs [--days N] [--dry-run]
 
-# Runtime TTS/STT audio only (not data/generated_music/)
-./bin/cleanup-audio [--days N] [--dry-run]
+# Runtime TTS/STT (default 30d) and standalone speech (default 60d); excludes music
+./bin/cleanup-audio [--days N] [--generated-days N] [--dry-run]
 ```
 
 ### Stash vs Generated Images

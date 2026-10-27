@@ -5,6 +5,7 @@
 # Runs all cleanup tasks with appropriate retention periods:
 #   - Logs: 60 days
 #   - Runtime audio under audio/ (TTS, mic, QA): 30 days
+#   - Standalone speech under data/generated_audio/: 60 days (audio/script/metadata)
 #   - Generated images: 120 days, favorites preserved
 #   - Web conversations: 90 days, pinned conversations preserved
 #   - Web uploads: 60 days when unreferenced; saved-conversation assets are preserved
@@ -21,7 +22,7 @@
 #
 # For individual control:
 #   ./bin/cleanup-logs [--days N] [--dry-run]
-#   ./bin/cleanup-audio [--days N] [--dry-run]
+#   ./bin/cleanup-audio [--days N] [--generated-days N] [--dry-run]
 #   ./bin/cleanup-generated-images [--days N] [--dry-run]
 #   ./bin/cleanup-web-conversations [--days N] [--dry-run]
 
@@ -126,7 +127,7 @@ echo "╔═══════════════════════�
 echo "║             Jarvis Master Cleanup                            ║"
 echo "║                                                              ║"
 echo "║ Logs: 60d | TTS/STT audio: 30d | Images: 120d | Chats: 90d*  ║"
-echo "║ Uploads: 60d* | Stash TTL                                    ║"
+echo "║ Speech: 60d | Uploads: 60d* | Stash TTL                       ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -136,10 +137,10 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 "$SCRIPT_DIR/cleanup-logs" --days 60 $DRY_RUN
 echo ""
 
-# 2. Cleanup runtime TTS/STT audio (30 days; not generated music)
-CLEANUP_STAGE="Runtime audio"
+# 2. Runtime TTS/STT audio (30 days), standalone speech (60 days; not music)
+CLEANUP_STAGE="Runtime and generated audio"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-"$SCRIPT_DIR/cleanup-audio" --days 30 $DRY_RUN
+"$SCRIPT_DIR/cleanup-audio" --days 30 --generated-days 60 $DRY_RUN
 echo ""
 
 # 3. Cleanup generated images (120 days)
@@ -181,7 +182,7 @@ echo "📦 Stash Spaces Cleanup (TTL-based)"
 CLEANUP_STAGE="Disk usage summary"
 echo ""
 echo "📊 Current disk usage:"
-for d in logs logs/server-side-tools audio data/generated_images data/web_conversations jarvis-web/data/uploads data/stash; do
+for d in logs logs/server-side-tools audio data/generated_audio data/generated_images data/web_conversations jarvis-web/data/uploads data/stash; do
     if [[ -d "$PROJECT_ROOT/$d" ]]; then
         if usage=$(du -sh "$PROJECT_ROOT/$d"); then
             size=${usage%%[[:space:]]*}
@@ -210,7 +211,7 @@ from pathlib import Path
 
 payload = {
     "title": "Jarvis cleanup completed",
-    "message": "Cleanup completed successfully. Logs, runtime audio, generated images, "
+    "message": "Cleanup completed successfully. Logs, runtime audio, generated speech, generated images, "
                "Web conversations, uploads and expired Stash were checked. "
                "See logs/cleanup.log or command output for details.",
     "source": "cleanup_all",

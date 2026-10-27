@@ -265,8 +265,9 @@ reference, and creation time. Catalog updates preserve an existing favorite.
 
 ### Retention
 
-`cleanup-audio` only handles runtime TTS/STT files under `audio/`; it does not
-scan `data/generated_music/`. `cleanup-all` currently has no local-file cleanup
+`cleanup-audio` handles runtime TTS/STT files under `audio/` and standalone
+speech under `data/generated_audio/` with separate retention periods; it does
+not scan `data/generated_music/`. `cleanup-all` currently has no local-file cleanup
 for generated music. The separate stash copy remains subject to stash retention.
 
 ## Audio Gallery

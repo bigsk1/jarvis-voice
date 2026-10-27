@@ -414,6 +414,16 @@
         "progress": ["YOUR NEW PASSWORD IS READY FOR BATTLE"]
       },
   
+      "audio_voices": {
+        "start": ["AUDITIONING THE VOICE LINEUP", "CHECKING THE VOCAL TALENT"],
+        "progress": ["READING THE VOICE CATALOG"]
+      },
+
+      "generate_audio": {
+        "start": ["GIVING YOUR WORDS A VOICE", "WAKING THE NARRATOR"],
+        "progress": ["THE VOICEOVER IS TAKING SHAPE", "PREPARING YOUR DIGITAL MONOLOGUE"]
+      },
+
       "generate_music": {
         "start": ["COMPOSING A SYMPHONY OF CHAOS", "ELEVENLABS IS SCREAMING INTO THE VOID", "MANIFESTING AUDIO NIGHTMARES"],
         "progress": ["THE BEAT DROPPED SO HARD IT CAUSED AN EARTHQUAKE", "MUSIC THAT WILL HAUNT YOUR DREAMS"]

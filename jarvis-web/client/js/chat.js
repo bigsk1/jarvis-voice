@@ -4848,7 +4848,7 @@ class ChatUI {
     `;
   }
 
-  /** Find the first generic Stash-backed audio artifact from any tool result. */
+  /** Find Stash audio, or a validated local speech recovery recording. */
   _findAudioFromToolResults(toolResultsData, excludeTools = []) {
     if (!toolResultsData || typeof toolResultsData !== 'object') return null;
 
@@ -4861,7 +4861,10 @@ class ChatUI {
         if (!media) continue;
         if (!this._isAudioMedia(media.filename, media.mimeType, media.directUrl)) continue;
 
-        const audioUrl = Utils.stashRefToApiUrl(media.stashRef);
+        const localSpeechUrl = toolName === 'generate_audio'
+          && /^\/api\/generated-audio\/speech_[a-z0-9_]+_[a-f0-9]{32}\.(mp3|wav)$/.test(String(media.directUrl || ''))
+          ? media.directUrl : null;
+        const audioUrl = localSpeechUrl || Utils.stashRefToApiUrl(media.stashRef);
         if (!audioUrl) continue;
         const title = String(media.title || media.filename || 'Audio');
 

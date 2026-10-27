@@ -1,10 +1,11 @@
 #!/bin/bash
 #
-# cleanup-audio - Remove old TTS/STT runtime audio files from Jarvis
+# cleanup-audio - Remove old runtime audio and standalone speech artifacts
 #
 # Usage:
-#   ./bin/cleanup-audio              # Delete audio older than 30 days
-#   ./bin/cleanup-audio --days 14    # Delete audio older than 14 days
+#   ./bin/cleanup-audio              # Runtime: 30 days; generated speech: 60 days
+#   ./bin/cleanup-audio --days 14    # Runtime retention only; speech stays 60 days
+#   ./bin/cleanup-audio --generated-days 90  # Override standalone speech retention
 #   ./bin/cleanup-audio --dry-run    # Preview what would be deleted
 #
 # Directories cleaned:
@@ -13,6 +14,7 @@
 #   - audio/local/tts/         - TTS output (local mode)
 #   - audio/local/mic/         - Microphone recordings (local mode)
 #   - audio/local/logs/        - QA log text files
+#   - data/generated_audio/   - Standalone speech audio, scripts and metadata (60 days)
 #
 # This script does NOT clean generated music in data/generated_music/.
 #
@@ -26,16 +28,30 @@ set -eo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 AUDIO_DIR="$PROJECT_ROOT/audio"
+GENERATED_AUDIO_DIR="$PROJECT_ROOT/data/generated_audio"
 
 # Default retention: 30 days
 RETENTION_DAYS=30
+GENERATED_RETENTION_DAYS=60
 DRY_RUN=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         --days)
+            if [[ $# -lt 2 || ! "$2" =~ ^[0-9]+$ ]]; then
+                echo "--days requires a nonnegative integer" >&2
+                exit 2
+            fi
             RETENTION_DAYS="$2"
+            shift 2
+            ;;
+        --generated-days)
+            if [[ $# -lt 2 || ! "$2" =~ ^[0-9]{1,5}$ ]] || (( 10#$2 < 1 || 10#$2 > 36500 )); then
+                echo "--generated-days requires an integer from 1 to 36500" >&2
+                exit 2
+            fi
+            GENERATED_RETENTION_DAYS=$((10#$2))
             shift 2
             ;;
         --dry-run)
@@ -43,10 +59,11 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            echo "Usage: cleanup-audio [--days N] [--dry-run]"
+            echo "Usage: cleanup-audio [--days N] [--generated-days N] [--dry-run]"
             echo ""
             echo "Options:"
-            echo "  --days N     Delete audio older than N days (default: 30)"
+            echo "  --days N     Runtime audio retention in days (default: 30)"
+            echo "  --generated-days N  Standalone speech retention in days (default: 60)"
             echo "  --dry-run    Preview what would be deleted without deleting"
             echo ""
             exit 0
@@ -57,6 +74,49 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Standalone speech is flat, separate from the runtime cache and Canvas music.
+# Never traverse a symlinked data directory/root, child directory or file.
+cleanup_generated_audio() {
+    echo ""
+    echo "🗣️  Generated Speech Cleanup"
+    echo "   Retention: $GENERATED_RETENTION_DAYS days"
+    echo "   Directory: $GENERATED_AUDIO_DIR"
+    if [[ -L "$PROJECT_ROOT/data" || -L "$GENERATED_AUDIO_DIR" ]]; then
+        echo "   Skipped symlinked generated speech directory"
+        return
+    fi
+    if [[ ! -d "$GENERATED_AUDIO_DIR" ]]; then
+        echo "   No generated speech directory found"
+        return
+    fi
+
+    local generated_scan generated_count=0 generated_bytes=0 file size
+    generated_scan=$(mktemp)
+    # Reuse the script's cleanup trap; a failed find must never process a
+    # partial scan, nor leave its temporary candidate list behind.
+    SCAN_FILE="$generated_scan"
+    trap 'rm -f "$SCAN_FILE"' EXIT
+    find "$GENERATED_AUDIO_DIR" -maxdepth 1 -type f \
+        \( -name "*.mp3" -o -name "*.wav" -o -name "*.txt" -o -name "*.json" \) \
+        -mtime +"$((GENERATED_RETENTION_DAYS - 1))" -print0 > "$generated_scan"
+    while IFS= read -r -d '' file; do
+        size=$(stat -c%s -- "$file")
+        generated_count=$((generated_count + 1))
+        generated_bytes=$((generated_bytes + size))
+        if $DRY_RUN; then
+            echo "   Would delete generated speech: $file"
+        else
+            rm -f -- "$file"
+        fi
+    done < "$generated_scan"
+    rm -f "$generated_scan"
+    if $DRY_RUN; then
+        echo "   Would remove $generated_count generated speech files ($generated_bytes bytes)"
+    else
+        echo "   Removed $generated_count generated speech files ($generated_bytes bytes)"
+    fi
+}
 
 echo "🎵 Jarvis Runtime Audio Cleanup (TTS/STT)"
 echo "   Retention: $RETENTION_DAYS days"
@@ -70,6 +130,7 @@ echo ""
 # Check if audio dir exists
 if [[ ! -d "$AUDIO_DIR" ]]; then
     echo "⚠️  Audio directory not found: $AUDIO_DIR"
+    cleanup_generated_audio
     exit 0
 fi
 
@@ -178,3 +239,6 @@ else
         echo "   Size:  $AFTER_SIZE"
     fi
 fi
+
+rm -f "$SCAN_FILE"
+cleanup_generated_audio

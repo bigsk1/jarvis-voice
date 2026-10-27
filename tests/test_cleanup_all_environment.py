@@ -117,7 +117,7 @@ def test_cleanup_selects_production_python_and_preserves_arguments(tmp_path, dep
     records = [json.loads(line) for line in log.read_text().splitlines()]
     expected = [
         ("cleanup-logs", ["--days", "60"]),
-        ("cleanup-audio", ["--days", "30"]),
+        ("cleanup-audio", ["--days", "30", "--generated-days", "60"]),
         ("cleanup-generated-images", ["--days", "120"]),
         ("cleanup-web-conversations", ["--days", "90"]),
         ("cleanup-retention", ["uploads", "--days", "60"]),

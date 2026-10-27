@@ -1,0 +1,41 @@
+{
+  "enabled": true,
+  "name": "audio_voices",
+  "description": "Find available speech voices and exact provider-specific voice IDs for generate_audio. Search voices by name, language, gender, accent, or description before selecting a voice; do not invent IDs. Supports ElevenLabs, OpenAI, xAI, Qwen3-TTS and Kokoro. Omit provider to use AUDIO_TOOL_PROVIDER; choose another provider only when requested. Read-only lookup: does not generate speech, play audio, edit ENV, change Jarvis's speaking voice, or save preferences. Results identify catalog source, pagination, and public preview URLs when supplied by the provider. To hear an available preview, use stash to save its public preview URL; otherwise ask generate_audio for a short custom sample. Remember a provider and voice with existing memory tools only when the user requests it. For HeyGen's own voices use heygen list_voices; its voice IDs are different.",
+  "script": "audio_voices.py",
+  "proxy_policy": "off",
+  "complementary_tools": ["generate_audio", "stash", "remember"],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "provider": {"type": "string", "enum": ["elevenlabs", "openai", "xai", "qwen3-tts", "kokoro"], "description": "Speech provider to inspect when the user requests it; omit for AUDIO_TOOL_PROVIDER. Requires that provider's existing credentials or server URL."},
+      "search": {"type": "string", "maxLength": 200, "description": "Optional name, language, gender, accent, or description to filter voices. An empty result does not authorize inventing a voice ID."},
+      "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20, "description": "Maximum voices per page, from 1 to 50."},
+      "cursor": {"type": "string", "maxLength": 12000, "description": "Exact next_cursor from the same provider/search/model lookup; omit for the first page."},
+      "model": {"type": "string", "maxLength": 160, "description": "Optional speech model for provider-specific catalog filtering. Omit for the configured model/default."}
+    },
+    "additionalProperties": false
+  },
+  "permissions": {"dangerous": false, "bash": false, "network": true, "filesystem": false, "auto_approve": true},
+  "availability": {
+    "all_of_env": ["AUDIO_TOOL_PROVIDER"],
+    "provider_setting": "AUDIO_TOOL_PROVIDER",
+    "require_selected_provider": true,
+    "provider_requirements": {
+      "elevenlabs": {"all_of_env": ["ELEVENLABS_API_KEY"]},
+      "openai": {"all_of_env": ["OPENAI_API_KEY"]},
+      "xai": {"all_of_env": ["XAI_API_KEY"]},
+      "qwen3-tts": {"all_of_env": ["QWEN3_TTS_URL"]},
+      "kokoro": {"all_of_env": ["KOKORO_TTS_URL"]}
+    },
+    "setup_hint": "Set AUDIO_TOOL_PROVIDER and its existing speech credentials/server URL in the selected mode ENV to enable voice lookup and speech generation."
+  },
+  "child_environment": {
+    "mode": "restricted",
+    "allow": [
+      "AUDIO_TOOL_PROVIDER", "AUDIO_TOOL_MODEL",
+      "ELEVENLABS_API_KEY", "ELEVENLABS_TTS_MODEL", "OPENAI_API_KEY", "TTS_MODEL",
+      "XAI_API_KEY", "QWEN3_TTS_URL", "KOKORO_TTS_URL"
+    ]
+  }
+}

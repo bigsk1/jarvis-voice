@@ -1363,7 +1363,7 @@ crontab -e
 # Keep only last 30 days of database backups
 0 4 * * * find $HOME/jarvis-voice/data/backups/ -name "jarvis_memory-*.db" -mtime +30 -delete
 
-# Jarvis weekly cleanup (logs 60d, audio 30d, images 120d,
+# Jarvis weekly cleanup (logs 60d, runtime audio 30d, generated speech 60d, images 120d,
 # unreferenced uploads 60d, policy-based stash TTL)
 0 3 * * 0 $HOME/jarvis-voice/bin/cleanup-all >> $HOME/jarvis-voice/logs/cleanup.log 2>&1
 
@@ -1377,6 +1377,12 @@ command to opt out for that invocation. Dry runs never notify, and failures
 retain their existing alert. Without `JARVIS_MODE`, the success notice appears
 in Cloud notification history. Notification content retention runs automatically
 after 90 days for both modes and needs no additional cron entry.
+Standalone `generate_audio` recordings, scripts, and metadata under
+`data/generated_audio/` become eligible after 60 days and are removed by the next
+run of the same cleanup job;
+runtime speech files retain their separate 30-day policy. Existing `cleanup-all`
+cron entries need no update. A fresh installation needs the cron entry above;
+the scripts do not install a scheduler by themselves.
 See [notification setup](tools/notification-tool/README.md).
 
 ---

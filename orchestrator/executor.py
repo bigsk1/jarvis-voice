@@ -245,6 +245,12 @@ class ToolExecutor:
             return 300  # 5 minutes for AI image generation (especially with grounding)
         if tool_name == "generate_music":
             return 600  # 10 minutes for music generation (can take 3-5min for longer tracks)
+        if tool_name == "audio_voices":
+            return 90  # Bounded catalog requests plus process cleanup; no synthesis.
+        if tool_name == "generate_audio":
+            from audio_generation import audio_timeout_seconds
+
+            return audio_timeout_seconds() + 30  # Provider deadline plus artifact/process cleanup.
         if tool_name == "generate_video":
             # Keep HeyGen's observer deadline plus upload/download and cleanup
             # inside the outer process timeout; other providers retain 10 min.
@@ -695,6 +701,15 @@ class ToolExecutor:
                 "speech": f"Tool {tool_name} timed out",
                 "error": "Timeout"
             }
+            if tool_name == "generate_audio":
+                output.update({
+                    "completion": "unknown",
+                    "speech": (
+                        "Audio generation timed out before its result could be confirmed. "
+                        "The request may have been billed. Check existing recordings before trying again; "
+                        "do not retry it automatically."
+                    ),
+                })
             output = self._with_serpapi_incident_context(
                 tool_name,
                 args,

@@ -92,7 +92,7 @@ from tool_sync_status import read_tool_sync_status
 from vision_multimodal import max_vision_images
 from retention_cleanup import find_upload_stash_fallback
 from router_prompt_catalog import available_router_prompt_versions
-from stash_helper import get_stash_dir
+from stash_helper import get_stash_dir, safe_resolve_file
 
 
 def _get_jarvis_version():
@@ -363,6 +363,9 @@ IMAGES_PATH = JARVIS_ROOT / 'data' / 'generated_images'
 
 # Path to generated music
 MUSIC_PATH = JARVIS_ROOT / 'data' / 'generated_music'
+
+# Durable speech recordings also provide recovery when Stash enrollment fails.
+GENERATED_AUDIO_PATH = JARVIS_ROOT / 'data' / 'generated_audio'
 
 # Path to generated videos
 VIDEOS_PATH = JARVIS_ROOT / 'data' / 'generated_videos'
@@ -3146,6 +3149,24 @@ def serve_music(filename):
         abort(404)
     
     return send_from_directory(str(MUSIC_PATH), filename)
+
+
+@api_bp.route('/generated-audio/<filename>', methods=['GET'])
+def serve_generated_audio(filename):
+    """Serve a generated speech recording through the existing Web API auth."""
+    import re
+
+    if not re.fullmatch(r'speech_[a-z0-9_]+_[a-f0-9]{32}\.(mp3|wav)', filename):
+        abort(404)
+    path = GENERATED_AUDIO_PATH / filename
+    if (GENERATED_AUDIO_PATH.is_symlink() or GENERATED_AUDIO_PATH.parent.is_symlink()
+            or path.is_symlink() or not path.is_file()
+            or path.resolve().parent != GENERATED_AUDIO_PATH.resolve()):
+        abort(404)
+    # Reuse Stash's shared restricted-read policy as well as the fixed root.
+    if not safe_resolve_file(file_path=str(path)).get('found'):
+        abort(404)
+    return send_from_directory(str(GENERATED_AUDIO_PATH), filename, conditional=True)
 
 
 @api_bp.route('/videos/<filename>', methods=['GET'])

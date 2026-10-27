@@ -1,0 +1,138 @@
+{
+  "enabled": true,
+  "name": "generate_audio",
+  "description": "Generate spoken audio from text: voiceovers, narration, messages, and reusable speech recordings. Supports ElevenLabs, OpenAI, xAI, Qwen3-TTS and Kokoro. Use for 'create an audio file', 'generate a voiceover', 'read this into an MP3', or 'make ElevenLabs audio with this voice ID'. This creates an audio artifact; it does not change Jarvis's speaking voice or automatically play audio. Use the configured AUDIO_TOOL_PROVIDER unless the user requests a provider. Accept an exact provider-specific voice ID/name; use audio_voices to look up names, exact IDs, previews and delivery capabilities; never invent voice IDs. Preserve supplied text exactly. When writing an unspecified script, prefer about 30 seconds; longer supplied text is allowed within provider character limits. Supports native speech tags for ElevenLabs v3/v4 and xAI. Use audio_voices delivery_capabilities to check syntax for the provider/model; OpenAI mini-TTS uses separate instructions instead. Preserve inline cues in the script. Saves audio and the original script to Stash. For HeyGen avatars, pass the returned audio stash_ref as audio_source and omit script/voice_id; HeyGen voice IDs are different from ElevenLabs IDs. HeyGen's 30-second input limit does not limit this audio tool. For songs/music use generate_music; for audio-to-text use transcribe_audio. No caching, automatic paid retries, provider fallback, or background execution.",
+  "script": "generate_audio.py",
+  "proxy_policy": "off",
+  "complementary_tools": [
+    "audio_voices",
+    "generate_avatar_video",
+    "stash",
+    "transcribe_audio"
+  ],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Exact text to speak. Preserve the user's supplied script verbatim. Longer recordings are allowed within provider limits; no automatic truncation or splitting. Native delivery cues are supported for ElevenLabs v3/v4 (e.g. [whispering]) and xAI (e.g. [pause], <whisper>text</whisper>); check audio_voices capabilities before adding cues. Unsupported known cues are rejected before submission."
+      },
+      "provider": {
+        "type": "string",
+        "enum": [
+          "elevenlabs",
+          "openai",
+          "xai",
+          "qwen3-tts",
+          "kokoro"
+        ],
+        "description": "Optional provider for this request when the user specifically asks. Otherwise omit to use AUDIO_TOOL_PROVIDER. Never switch providers to recover a failed paid request."
+      },
+      "voice": {
+        "type": "string",
+        "description": "Optional exact voice ID/name for the selected provider. Use audio_voices to resolve a requested name or discover choices, unless the user supplied an exact ID. Overrides only this recording. Omit for the tool/provider ENV default; IDs are not portable across providers."
+      },
+      "model": {
+        "type": "string",
+        "description": "Optional exact supported speech model for the selected provider. Omit to use the tool/provider ENV default. Model IDs are not portable across providers."
+      },
+      "title": {
+        "type": "string",
+        "maxLength": 200,
+        "description": "Optional short label for the saved recording; not spoken."
+      },
+      "instructions": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096,
+        "description": "Optional delivery direction separate from spoken text, e.g. warm and calm. Supported only by OpenAI gpt-4o-mini-tts models. Other providers/models reject this argument; use their native tags where supported. Not spoken or shared with Jarvis reply playback."
+      }
+    },
+    "required": [
+      "text"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "AUDIO_TOOL_PROVIDER"
+    ],
+    "provider_setting": "AUDIO_TOOL_PROVIDER",
+    "require_selected_provider": true,
+    "provider_requirements": {
+      "elevenlabs": {
+        "all_of_env": [
+          "ELEVENLABS_API_KEY"
+        ]
+      },
+      "openai": {
+        "all_of_env": [
+          "OPENAI_API_KEY"
+        ]
+      },
+      "xai": {
+        "all_of_env": [
+          "XAI_API_KEY"
+        ]
+      },
+      "qwen3-tts": {
+        "all_of_env": [
+          "QWEN3_TTS_URL"
+        ]
+      },
+      "kokoro": {
+        "all_of_env": [
+          "KOKORO_TTS_URL"
+        ]
+      }
+    },
+    "setup_hint": "Set AUDIO_TOOL_PROVIDER and its existing speech credentials/server URL in the selected mode ENV. Optional AUDIO_TOOL_VOICE and AUDIO_TOOL_MODEL override that provider's defaults."
+  },
+  "child_environment": {
+    "mode": "restricted",
+    "allow": [
+      "AUDIO_TOOL_PROVIDER",
+      "AUDIO_TOOL_VOICE",
+      "AUDIO_TOOL_MODEL",
+      "AUDIO_TOOL_TIMEOUT_SECONDS",
+      "ELEVENLABS_API_KEY",
+      "ELEVENLABS_TTS_VOICE",
+      "ELEVENLABS_TTS_MODEL",
+      "ELEVENLABS_TTS_STABILITY",
+      "ELEVENLABS_TTS_SIMILARITY_BOOST",
+      "ELEVENLABS_TTS_STYLE",
+      "ELEVENLABS_TTS_USE_SPEAKER_BOOST",
+      "OPENAI_API_KEY",
+      "VOICE",
+      "TTS_MODEL",
+      "XAI_API_KEY",
+      "XAI_TTS_VOICE",
+      "XAI_TTS_LANGUAGE",
+      "XAI_TTS_CODEC",
+      "XAI_TTS_SAMPLE_RATE",
+      "XAI_TTS_BIT_RATE",
+      "XAI_TTS_MAX_CHARS",
+      "XAI_TTS_TIMEOUT",
+      "QWEN3_TTS_URL",
+      "QWEN3_TTS_VOICE",
+      "QWEN3_TTS_SPEED",
+      "QWEN3_TTS_FORMAT",
+      "KOKORO_TTS_URL",
+      "KOKORO_TTS_VOICE",
+      "KOKORO_TTS_SPEED",
+      "STASH_DIR",
+      "STASH_DEFAULT_TTL_DAYS",
+      "STASH_MAX_SPACE_SIZE_MB",
+      "STASH_MAX_TOTAL_SIZE_GB",
+      "STASH_GENERATED_MEDIA_TTL_DAYS"
+    ]
+  }
+}

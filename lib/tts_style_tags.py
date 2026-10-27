@@ -136,7 +136,10 @@ def tts_style_tags_instruction(
     else:
         instruction += "Use exact square-bracket syntax. Do not use XML, SSML, or wrapping tags. "
     return instruction + (
-        "Use only the listed tags. Never put speech tags in tool arguments, code, URLs, "
+        "Use only the listed tags for reply speech. For generate_audio.text, follow that "
+        "tool's selected provider/model capabilities from audio_voices instead; its native "
+        "speech cues are allowed independently of reply-TTS settings. Never put speech tags "
+        "in other tool arguments, code, URLs, "
         "filenames, IDs, prices, data tables, or factual lists. Do not tag every sentence. "
         "Keep the configured word limit; tags should not add extra content."
     )

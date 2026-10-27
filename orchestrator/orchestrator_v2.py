@@ -59,6 +59,7 @@ SINGLE_CALL_TOOLS = frozenset({
     "generate_avatar_video",
     "generate_image",
     "generate_music",
+    "generate_audio",
     "send_email",
     "opencode",
     "browser_use",
@@ -165,8 +166,33 @@ def _format_terminal_tool_failure(
     tool_name: str,
     error: Any,
     arguments: dict[str, Any] | None = None,
+    *,
+    result: dict[str, Any] | None = None,
 ) -> str:
     """Build truthful user-facing speech for a non-retryable tool failure."""
+    if tool_name == "generate_audio":
+        audio_result = result or {}
+        completion = audio_result.get("completion", "unknown")
+        if completion == "completed":
+            data = audio_result.get("data")
+            data = data if isinstance(data, dict) else {}
+            saved = data.get("saved")
+            saved = saved if isinstance(saved, dict) else {}
+            if data.get("recovery_available") is True or saved.get("saved") is True:
+                return (
+                    "The audio was generated and saved locally, but saving all artifacts failed. "
+                    "Reuse the existing recording; do not regenerate it."
+                )
+            return (
+                "The audio provider completed the request, but the recording could not be delivered. "
+                "It may have been billed. Do not regenerate it automatically."
+            )
+        if completion == "unknown":
+            return (
+                "Audio generation stopped before the result could be confirmed. "
+                "The request may have been billed. Check existing recordings before trying again; "
+                "do not retry it automatically."
+            )
     error_text = str(error or "Unknown error")
     error_lower = error_text.lower()
     arguments = arguments or {}
@@ -180,6 +206,7 @@ def _format_terminal_tool_failure(
         "generate_video": "video",
         "generate_image": "image",
         "generate_music": "audio",
+        "generate_audio": "audio",
     }.get(tool_name, "output")
 
     if "third-party content" in error_lower:
@@ -2265,6 +2292,7 @@ Mode: {self.mode}
                     "error": str(result.get("error", ""))[:500] if isinstance(result, dict) and result.get("error") else None,
                     "speech": str(result.get("speech", ""))[:500] if isinstance(result, dict) else "",
                     "result_data": failed_trace_data,
+                    **({"completion": result.get("completion", "unknown")} if tool_name == "generate_audio" else {}),
                     "workflow_run_started": bool(
                         tool_name == "workflow"
                         and isinstance(result, dict)
@@ -2422,6 +2450,19 @@ Mode: {self.mode}
                     # Failure - check if we should retry
                     error = result.get("error", "Unknown error")
                     speech = result.get("speech", f"Failed to execute {tool_name}")
+                    if tool_name == "generate_audio" and isinstance(result.get("data"), dict) and result["data"]:
+                        # A paid request can finish while artifact delivery fails.
+                        # Keep recovery handles available to Web and follow-up
+                        # context, but explicitly retain the failed outcome.
+                        recovery = {**result["data"], "ok": False,
+                                    "completion": result.get("completion", "unknown")}
+                        existing = state.accumulated_data.get(tool_name)
+                        if existing is None:
+                            state.accumulated_data[tool_name] = recovery
+                        elif isinstance(existing, list):
+                            existing.append(recovery)
+                        else:
+                            state.accumulated_data[tool_name] = [existing, recovery]
                     if sys.stdout.isatty():
                         print(f"❌ Tool failed ({tool_duration_ms}ms): {error}")
                     
@@ -2475,7 +2516,7 @@ Mode: {self.mode}
                     # one attempt. Do not invite an LLM retry that the single-call cap
                     # will reject, and never switch a user-selected provider silently.
                     if is_single_call_failure:
-                        final_speech = _format_terminal_tool_failure(tool_name, error, arguments)
+                        final_speech = _format_terminal_tool_failure(tool_name, error, arguments, result=result)
                         attempted_tools = list(dict.fromkeys([*state.tools_used, tool_name]))
                         self._log_conversation(conversation_query, final_speech, attempted_tools, success=False)
                         self.status_updater.mark_complete()
@@ -2490,6 +2531,7 @@ Mode: {self.mode}
                             "tool_trace": state.tool_trace,
                             "retries": retry_count,
                             "terminal_failure": True,
+                            **({"completion": result.get("completion", "unknown")} if tool_name == "generate_audio" else {}),
                             "usage": state.total_usage if self._has_usage_data(state.total_usage) else None,
                             "server_side_tools": state.total_usage.get("server_side_tools", {}),
                         }

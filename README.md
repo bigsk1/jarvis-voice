@@ -833,6 +833,8 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `schedule_task` - **Scheduled tasks**: create/list/update/cancel/delete future query or workflow runs, inspect run history, and queue `run_now`
 - `workflow` - **Deterministic workflow discovery**: search/describe eligible shared or personal recipes and synchronously run one in the current orchestration turn
 - [`generate_music`](docs/tools/generate-music-tool/README.md) - **AI Music**: provider-ready music generation with genres, moods, tempo, stash integration
+- [`generate_audio`](docs/tools/generate-audio/README.md) - **Spoken audio**: optional voiceovers from exact scripts using ElevenLabs, OpenAI, xAI, Qwen3-TTS, or Kokoro; saved files and Stash references
+- [`audio_voices`](docs/tools/generate-audio/README.md#find-and-preview-voices) - **Speech voices**: search provider catalogs for usable voice IDs and available preview samples without generating audio or changing Jarvis's voice
 - `generate_password` - **Password generation**: Secure passwords with length, complexity, memorable options
 - `openclaw` - **Multi-agent**: Chat with a remote OpenClaw agent, delegate tasks, fire-and-forget webhooks
 - `deep_memory_search` - **Comprehensive search**: Multi-source search across memory, conversations, intel, canvas, stash

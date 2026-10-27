@@ -7,6 +7,8 @@
     "docling_convert": false,
     "flight_search": false,
     "generate_image": false,
+    "generate_audio": false,
+    "audio_voices": false,
     "generate_music": false,
     "generate_video": false,
     "generate_avatar_video": false,
