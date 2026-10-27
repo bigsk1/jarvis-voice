@@ -368,6 +368,8 @@ The helper deliberately does not run `uv sync` against the long-lived Jarvis
 environment, so unrelated packages are not removed. Routine updates change
 `uv.lock`; the minimum versions in `pyproject.toml` and `requirements.txt`
 should only be raised when an older yt-dlp release must be disallowed.
+Jarvis currently requires `yt-dlp[default]>=2026.10.26`; update both dependency
+files together when raising the minimum for YouTube compatibility.
 
 Security updates may also require changing a directly pinned dependency before
 running the helper. The [2026.10.21 release](https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.21)
