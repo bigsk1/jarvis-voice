@@ -39,6 +39,18 @@ Allocate enough Docker Desktop memory for the image build and Python services. T
 
 Live configuration files and databases are gitignored. They remain in the cloned repository on the host and are bind-mounted into the Linux containers.
 
+Docker API authentication defaults on. Set a nonblank `JARVIS_API_KEY` in the
+selected mode file before starting; the API refuses to start without it. An
+existing explicit `JARVIS_DOCKER_API_AUTH=false` in root `.env` still opts out for
+local testing. This is separate from the Web UI password.
+
+If you do not run Ollama on the host or LAN, the optional
+[CPU Ollama overlay](README.md#optional-cpu-ollama-service) downloads and verifies
+Jarvis's embedding model automatically. Add
+`-f docker-compose.yml -f docker-compose.ollama.yml` after `docker compose` on
+the commands below to use it. The same command syntax works in PowerShell,
+Command Prompt, and macOS Terminal. The base commands keep using external Ollama.
+
 ## macOS installation
 
 Open Terminal and run:

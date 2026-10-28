@@ -1,0 +1,85 @@
+# Opt in with both files on every Compose command:
+# docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d --build
+x-jarvis-ollama-client: &jarvis-ollama-client
+  environment:
+    # Selecting this overlay explicitly chooses the private daemon instead of
+    # a native/LAN endpoint from .env or config/<mode>.env.
+    JARVIS_DOCKER_OLLAMA_BASE_URL: http://jarvis-ollama:11434
+    JARVIS_OVERRIDE_OLLAMA_EMBEDDING_FALLBACK_URL: ""
+  depends_on:
+    jarvis-ollama-init:
+      condition: service_completed_successfully
+
+services:
+  jarvis-ollama:
+    image: "${JARVIS_DOCKER_OLLAMA_IMAGE:-ollama/ollama:0.40.12}"
+    restart: unless-stopped
+    networks:
+      - jarvis-net
+    environment:
+      OLLAMA_HOST: "0.0.0.0:11434"
+      OLLAMA_VULKAN: "0"
+    # No host port, GPU devices, Docker socket, or Jarvis configuration mounts.
+    volumes:
+      - jarvis-ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+
+  jarvis-ollama-init:
+    build:
+      context: .
+    image: jarvis-voice:local
+    restart: "no"
+    user: "${JARVIS_DOCKER_UID:-1000}:${JARVIS_DOCKER_GID:-1000}"
+    networks:
+      - jarvis-net
+    # Bypass normal Jarvis initialization: no credentials, data mounts, or DBs.
+    entrypoint: ["/opt/venv/bin/python", "/app/docker/bootstrap-ollama.py"]
+    environment:
+      HOME: /tmp
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      OLLAMA_BASE_URL: http://jarvis-ollama:11434
+      JARVIS_OLLAMA_BOOTSTRAP_READY_TIMEOUT_SECONDS: "${JARVIS_OLLAMA_BOOTSTRAP_READY_TIMEOUT_SECONDS:-120}"
+      JARVIS_OLLAMA_BOOTSTRAP_PULL_TIMEOUT_SECONDS: "${JARVIS_OLLAMA_BOOTSTRAP_PULL_TIMEOUT_SECONDS:-900}"
+      JARVIS_OLLAMA_BOOTSTRAP_EMBED_TIMEOUT_SECONDS: "${JARVIS_OLLAMA_BOOTSTRAP_EMBED_TIMEOUT_SECONDS:-180}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    depends_on:
+      jarvis-ollama:
+        condition: service_healthy
+
+  jarvis-api:
+    <<: *jarvis-ollama-client
+
+  jarvis-web:
+    <<: *jarvis-ollama-client
+
+  jarvis-services:
+    <<: *jarvis-ollama-client
+
+  jarvis-canvas:
+    <<: *jarvis-ollama-client
+
+  jarvis-library-worker:
+    <<: *jarvis-ollama-client
+
+  jarvis-task-worker:
+    <<: *jarvis-ollama-client
+
+  jarvis-memory:
+    <<: *jarvis-ollama-client
+
+  jarvis-intelligence:
+    <<: *jarvis-ollama-client
+
+  jarvis-docs:
+    <<: *jarvis-ollama-client
+
+volumes:
+  jarvis-ollama-models:

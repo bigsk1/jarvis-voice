@@ -8,6 +8,7 @@ python-version = "3.12"
 project-includes = [
     "api",
     "bin",
+    "docker",
     "jarvis-canvas/server",
     "jarvis-docs/server",
     "jarvis-intelligence/server",

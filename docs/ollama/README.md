@@ -55,6 +55,12 @@ Run the official [`ollama/ollama`](https://hub.docker.com/r/ollama/ollama)
 image as a separate service. Jarvis containers connect to that daemon; they do
 not bundle Ollama or its model weights.
 
+Jarvis provides an opt-in [CPU Ollama Compose overlay](../docker/README.md#optional-cpu-ollama-service)
+for this service. It persists models in a named volume, automatically pulls and
+verifies the pinned Jarvis embedding artifact when missing, and gates Jarvis
+startup on a working embedding. The default Compose stack continues to use an
+external Ollama daemon. Chat and helper models remain separately configured.
+
 Official client libraries are also available for
 [Python](https://github.com/ollama/ollama-python) and
 [JavaScript](https://github.com/ollama/ollama-js), but Jarvis does not require
@@ -127,8 +133,8 @@ local.
 
 Native and Docker cloud/local installs can route selected lightweight helper
 roles to an Ollama daemon without changing the primary chat provider. Docker
-does not run Ollama or store model weights inside the Jarvis image; it connects
-to a host or LAN daemon just like the required embedding path.
+does not store model weights inside the Jarvis image; it connects to a host/LAN
+daemon or the optional Docker Ollama service, just like the embedding path.
 
 Pull the versioned Jarvis helper model onto the configured helper daemon:
 

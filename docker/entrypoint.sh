@@ -11,6 +11,9 @@ export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$VIRTUAL_ENV}"
 export PATH="$VIRTUAL_ENV/bin:$PATH"
 export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
 export JARVIS_DEPLOYMENT="${JARVIS_DEPLOYMENT:-docker}"
+# Keep direct image launches aligned with Compose. This override also makes
+# internal clients use authentication even if the mounted mode file says false.
+export JARVIS_OVERRIDE_JARVIS_API_AUTH="${JARVIS_OVERRIDE_JARVIS_API_AUTH:-true}"
 
 apply_docker_override() {
   local docker_key="$1"
@@ -37,6 +40,28 @@ if [ ! -f "config/${JARVIS_MODE}.env" ]; then
   echo "Required Docker startup config not found: config/${JARVIS_MODE}.env" >&2
   exit 1
 fi
+
+validate_api_auth() {
+  # Use the runtime loader: keys can come from the selected mode file or an
+  # explicit override, and must never be printed or parsed as shell code.
+  python - <<'PY'
+import sys
+
+from lib.config_loader import get_config_value, load_config
+
+load_config()
+auth = get_config_value("JARVIS_API_AUTH", "true").lower()
+if auth not in {"true", "false"}:
+    sys.exit("Docker API authentication must be true or false (JARVIS_DOCKER_API_AUTH).")
+api_key = get_config_value("JARVIS_API_KEY", "").strip()
+if auth == "true" and api_key in {"", "your-secure-api-key-here"}:
+    sys.exit(
+        "Docker API authentication requires JARVIS_API_KEY in the selected mode config; "
+        "replace the example placeholder with your own secret. "
+        "For isolated local testing only, set JARVIS_DOCKER_API_AUTH=false in root .env."
+    )
+PY
+}
 
 if [ ! -f skills/profiles/docker.json ] && [ -f skills/profiles/examples/docker.json ]; then
   cp skills/profiles/examples/docker.json skills/profiles/docker.json
@@ -177,6 +202,8 @@ case "${1:-web}" in
     exec ./bin/jarvis-library-worker
     ;;
   api)
+    # Validate even when init is skipped, before migrations or tool sync.
+    validate_api_auth
     run_init
     exec ./bin/jarvis-api "${mode_args[@]}"
     ;;

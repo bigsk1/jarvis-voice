@@ -40,7 +40,7 @@ https://github.com/user-attachments/assets/101c682d-7ed3-4734-b156-fc238d2d4077
 Bare minimum to try Jarvis in the **browser** (Web UI chat — no local mic or speakers required):
 
 Every mode requires an [Ollama](docs/ollama/README.md) daemon reachable through
-`OLLAMA_BASE_URL`, on localhost or a LAN host, with the pinned
+`OLLAMA_BASE_URL`, on the host/LAN or through the optional Docker service, with the pinned
 [Jarvis Embedding](docs/ollama/JARVIS_EMBEDDING_MODEL.md) artifact installed:
 
 ```bash
@@ -49,8 +49,8 @@ ollama pull bigsk1/jarvis-embedding:bf16-v1
 
 | Path | Native (Ubuntu 24.04+, Python 3.12+) | Windows / macOS |
 |------|----------------------------------------|-----------------|
-| **Cloud** | `OPENAI_API_KEY` in `config/cloud.env` + Ollama with Jarvis Embedding | [Docker](docs/docker/MAC-WINDOWS.md) + `OPENAI_API_KEY` + Ollama with Jarvis Embedding on the host/LAN |
-| **Local** | Ollama with Jarvis Embedding and a local chat model + a local TTS server (default in example: Kokoro — see `config/local.env.example`) | [Docker](docs/docker/MAC-WINDOWS.md) + Ollama with Jarvis Embedding and a local chat model on the host/LAN + Kokoro or Qwen3-TTS |
+| **Cloud** | `OPENAI_API_KEY` in `config/cloud.env` + Ollama with Jarvis Embedding | [Docker](docs/docker/MAC-WINDOWS.md) + `OPENAI_API_KEY` + Ollama on the host/LAN or the optional CPU embedding service |
+| **Local** | Ollama with Jarvis Embedding and a local chat model + a local TTS server (default in example: Kokoro — see `config/local.env.example`) | [Docker](docs/docker/MAC-WINDOWS.md) + Ollama on the host/LAN or in Docker (pull a chat model separately) + Kokoro or Qwen3-TTS |
 
 Jarvis currently uses Ollama-native `/api/tags` and `/api/embed` endpoints and
 verifies the published model manifest digest. A bare llama.cpp or
@@ -650,6 +650,13 @@ and [`docs/ollama/README.md`](docs/ollama/README.md) for detailed configuration 
 ### Optional Docker Web Stack
 
 Jarvis can run its Web UIs, API, Canvas, and background services in Docker while wake word, CLI, TUI, and host-integrated tools remain native. Existing databases and runtime files are reused through bind mounts.
+
+Docker API authentication defaults on; configure `JARVIS_API_KEY` in the selected
+mode file. Existing explicit `JARVIS_DOCKER_API_AUTH=false` values remain valid
+for local testing. If you need an Ollama daemon, add
+`-f docker-compose.yml -f docker-compose.ollama.yml` to the commands below for
+the [optional CPU service](docs/docker/README.md#optional-cpu-ollama-service),
+which automatically pulls and verifies Jarvis's embedding model.
 
 ```bash
 cp docker.env.example .env

@@ -28,7 +28,8 @@ Host-only tools (Spotify, phone, printer, OpenCode, etc.) are disabled by the tr
 ## Prerequisites
 
 - Docker Engine + Docker Compose v2
-- Git clone of this repo with `config/cloud.env` and/or `config/local.env` configured (same as native install)
+- Git clone of this repo with `config/cloud.env` and/or `config/local.env` configured (same as native install), including `JARVIS_API_KEY` for Docker's default API authentication
+- A reachable Ollama embedding daemon, or the [optional CPU Ollama service](#optional-cpu-ollama-service) below
 - Existing `./data` databases are reused via bind mounts — nothing is wiped on container recreate
 - `./jarvis-intel` is shared across API, Web, Memory, and Intelligence containers, so Web profile edits and ingestion operate on the same files
 - `./jarvis-web/data/prompts/personal` is mounted read-write only into Jarvis Web,
@@ -44,7 +45,8 @@ Host-only tools (Spotify, phone, printer, OpenCode, etc.) are disabled by the tr
 cd ~/jarvis-voice
 
 # One-time host prep (gitignored paths — Compose will not create the settings file)
-# Cloud mode defaults to OpenAI and also requires the configured Ollama embedding daemon.
+# Cloud mode defaults to OpenAI and also needs Ollama for embeddings.
+# Use an external daemon or the optional docker-compose.ollama.yml overlay below.
 cp config/cloud.env.example config/cloud.env
 # cp config/local.env.example config/local.env   # local/Ollama mode instead
 mkdir -p audio jarvis-web/data/uploads
@@ -72,7 +74,8 @@ The worker also retains its **`background-tasks`** profile for core-only deploym
 | `jarvis-task-worker` | — | yes | Long-running Web tool jobs; also available by itself with `--profile background-tasks` |
 
 ```bash
-# Edit config/cloud.env (or local.env) with provider credentials, and edit .env with mode, tool profile, and UID/GID, then build
+# Edit config/cloud.env (or local.env) with provider credentials and JARVIS_API_KEY.
+# Edit .env with mode, tool profile, and UID/GID, then build.
 docker compose build
 
 # Core stack: API, Web UI, Canvas, library worker, background daemons
@@ -344,13 +347,91 @@ used by Jarvis Embedding and all other daemon-backed Ollama paths. Multiple
 intentional fallback hosts may be comma-separated. See
 [Ollama in Jarvis](../ollama/README.md) for setup and diagnostics.
 
+### Optional CPU Ollama service
+
+If you do not already have a reachable Ollama daemon, include the opt-in
+`docker-compose.ollama.yml` overlay. The base stack alone keeps the external
+Ollama setup described above. The optional service uses the official
+[`ollama/ollama` CPU image](https://docs.ollama.com/docker#cpu-only), pinned to
+`0.40.12` by default; no GPU runtime or host Ollama installation is required.
+
+After completing the normal config, API-key, UID/GID, and settings-file setup:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d --build
+# Add --profile extras before up to include the optional UIs and task worker.
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml logs -f jarvis-ollama-init
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml ps -a
+```
+
+The overlay adds two services:
+
+- `jarvis-ollama`: a CPU daemon on the private Compose network, with no published
+  host port. Its `jarvis-ollama-models` named volume persists models across
+  container recreation and ordinary `down` / `up` cycles.
+- `jarvis-ollama-init`: a one-shot initializer using the Jarvis image, without
+  config, credentials, or database mounts. It waits for Ollama, pulls
+  `bigsk1/jarvis-embedding:bf16-v1` only when missing, verifies the canonical
+  manifest digest, and checks that the model produces a finite, nonzero
+  768-dimensional embedding. All nine Jarvis services wait for successful
+  initialization before starting, including their initial Tool RAG sync.
+
+This dependency gate applies to Compose-managed `up` operations. Automatic
+container restarts and `docker compose restart` do not rerun the one-shot gate;
+Jarvis's existing runtime embedding checks still enforce the model identity.
+
+An initializer exit code of zero is success. A failed download, wrong existing
+model digest, or failed embedding probe stops startup; inspect its logs, correct
+the cause, then repeat the same `up` command. Existing models are reused rather
+than downloaded on each start. Initialization does not rebuild or change the
+identity of existing database vectors. See the
+[embedding artifact contract](../ollama/JARVIS_EMBEDDING_MODEL.md).
+
+Selecting the overlay sets `http://jarvis-ollama:11434` as the Ollama endpoint for
+every Jarvis container, taking precedence over native/LAN endpoints in `.env`
+or the mode files. It also clears the embedding-only fallback URL in containers.
+The mode files on the host remain unchanged. Omit the overlay to keep using your
+external daemon. Do not point a container at its own `localhost` for this service.
+
+The first download needs internet access and about 622 MB for the model weights,
+plus the Ollama image and runtime overhead. Allow additional RAM and disk for
+Ollama alongside the Jarvis services; CPU speed determines indexing latency.
+Only the embedding model is automatic. Chat, helper, vision, TTS, and other
+provider configuration still apply. For example, a cloud chat API can run with
+this CPU embedding service; a local Ollama chat model needs a separate pull.
+
+Keep both `-f` arguments on subsequent commands, including rebuilds and shutdown:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml down
+```
+
+Do not add `--volumes` unless you intend to delete the downloaded models. With
+the optional MCP overlay, append `-f docker-compose.mcp.yml` as the third file;
+its existing socket/GID setup still applies. A Compose-based deployment platform
+must likewise include both base and Ollama files. Published API/UI ports and
+authentication are configured separately from the private Ollama service.
+
+Optional root `.env` settings are listed in `docker.env.example`:
+`JARVIS_DOCKER_OLLAMA_IMAGE` selects the image version, and
+`JARVIS_OLLAMA_BOOTSTRAP_{READY,PULL,EMBED}_TIMEOUT_SECONDS` control the bounded
+readiness, pull, and embedding requests (defaults: 120, 900, and 180 seconds).
+Increase the pull timeout on a slow first download. After changing initializer
+code, rebuild the Jarvis image before starting it again.
+
 ### Optional helper LLM
 
-The helper model also runs on an external Ollama daemon; it is not installed in
-the Jarvis image. Pull it on the daemon first:
+The helper model is not installed in the Jarvis image or pulled by the embedding
+initializer. Pull it on the selected daemon first. For an external daemon:
 
 ```bash
 ollama pull bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v3
+```
+
+For the optional Docker daemon, after it has started:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml exec jarvis-ollama ollama pull bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v3
 ```
 
 When `JARVIS_HELPER_LLM_BASE_URL` is unset, the helper uses the effective
@@ -522,41 +603,48 @@ The watchdog reads `logs/self_healing_daemon.pid`. Docker uses `logs/docker/*.pi
 
 ## API authentication (`JARVIS_DOCKER_API_AUTH`)
 
-On native installs you may have `JARVIS_API_AUTH=true` in `config/cloud.env`. Docker defaults auth to **off** via compose:
+Docker defaults API authentication to **on**, independently of native settings:
 
 ```yaml
-JARVIS_OVERRIDE_JARVIS_API_AUTH: "${JARVIS_DOCKER_API_AUTH:-false}"
+JARVIS_OVERRIDE_JARVIS_API_AUTH: "${JARVIS_DOCKER_API_AUTH:-true}"
 ```
 
-That override wins over `cloud.env` inside containers. First-time Docker bring-up keeps internal traffic simple while you validate the stack.
+Set your own nonblank `JARVIS_API_KEY` in the selected `config/cloud.env` or
+`config/local.env`. The Docker API entrypoint refuses to start without it when
+authentication is enabled, including when initialization is skipped. The example
+placeholder is also rejected. The key stays in the read-only config mount; do
+not put it in root `.env` or the image. If both cloud and local mode files are
+configured, use the same `JARVIS_API_KEY` in both: this stack has one API server,
+whose authentication identity is fixed by its startup mode.
 
-**To enable auth in Docker:**
-
-1. Set `JARVIS_API_KEY` in `config/cloud.env` (or `local.env`) — required; auth disables itself if the key is missing.
-2. Set in root `.env`:
-   ```env
-   JARVIS_DOCKER_API_AUTH=true
-   ```
-3. Recreate containers: `docker compose up -d --force-recreate`
+The Compose override wins over the mode's `JARVIS_API_AUTH`. Existing root `.env`
+files with `JARVIS_DOCKER_API_AUTH=false` retain their explicit opt-out. For local
+testing without API authentication, set that value deliberately and recreate
+containers. Native defaults are unchanged. This setting covers FastAPI; Web UI
+login and reverse-proxy access rules remain separate.
 
 Internal services (`jarvis-web`, background daemons) already call the API with `get_internal_api_headers()` and send `Authorization: Bearer …` when auth is on.
 
-**What still works without a token:**
+Health/status and the existing documentation/metrics routes remain public, and
+requests originating inside the API container on loopback retain the existing
+local trust rule. Ordinary browser API traffic proxied through `jarvis-web`
+uses server-side authentication headers. Host-port forwarding may appear as a
+bridge address to the API, so host scripts should send
+`Authorization: Bearer YOUR_JARVIS_API_KEY` for protected routes too. Missing
+credentials return 401; incorrect credentials return 403.
 
-- Health checks inside the API container (`127.0.0.1`)
-- Host scripts calling `http://127.0.0.1:8880` (localhost is whitelisted)
-- Browser traffic through `jarvis-web` (proxied server-side with auth headers)
-
-**What needs a token when auth is on:**
-
-- Remote webhooks posting to the API from another machine (API is bound to `127.0.0.1` by default — expose via reverse proxy or change the bind if needed)
-- Any external client that is not localhost
+The API host port remains bound to `127.0.0.1` by default. A public HTTPS or remote
+webhook deployment needs an intentionally configured reverse proxy and API token;
+turning this flag on does not publish a new route.
 
 ---
 
 ## Services and restart policy
 
-All services use `restart: unless-stopped`. If Docker is running, you intend the stack to stay up; stop with `docker compose down` when you are done.
+Long-running services use `restart: unless-stopped`. The optional Ollama
+initializer is a one-shot service with no automatic restart. If Docker is
+running, you intend the stack to stay up; stop with `docker compose down` when
+you are done (retain any overlay `-f` arguments).
 
 | Compose service | Role |
 |---------------|------|
