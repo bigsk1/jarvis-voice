@@ -851,6 +851,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `youtube_video` - **YouTube download**: Download videos or audio-only via yt-dlp, save to stash
 - `bookmark_search` - **Firefox bookmarks**: Search bookmark export (HTML) by keyword, tags, folders, domains (`*` in Web UI)
 - `crawl_url` - **Web scraping**: Crawl4AI to extract markdown from any webpage (stealth mode, JS wait)
+- [`rss_feed`](docs/RSS_FEEDS.md) - **RSS/Atom digests**: fresh public feed reads, configurable interests, bounded story selection and article enrichment, and a concise recurring Canvas page through `/rss_digest`
 - `supa_crawl_knowledge` - **Supa-Crawl-Chat corpus**: read-only search and site/page inspection over your self-hosted Supabase/pgvector index (configure `SUPA_CRAWL_CHAT_URL`; optional API auth via `SUPA_API_KEY` / `SUPA_API_KEY_STYLE`)
 - `brave_llm_context` - **Brave LLM Context API**: compact source snippets for LLM grounding (retrieval/context, not a final-answer generator)
 - `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
@@ -1100,6 +1101,7 @@ picker for the authoritative current surface.
 | `/night_out <occasion or preference>` | Build a date-aware local evening plan; an explicit destination wins, otherwise use the active mode default location/postal code, and weather is skipped when the requested date exceeds the 10-day horizon | optional weather, serpapi_google_local, optional serpapi_yelp_search, optional serpapi_tripadvisor, canvas |
 | `/note <text>` | Save note to memory + Canvas | get_time, remember, canvas |
 | `/research <topic>` | Multi-source research with Brave + crawling | mcp_brave_search_brave_web_search, crawl_url, stash, remember, canvas |
+| [`/rss_digest [profile]`](docs/RSS_FEEDS.md) | Select fresh stories from configured RSS/Atom feeds and refresh one concise Canvas digest | rss_feed, optional crawl_url, canvas |
 | `/serpapi_amazon <query>` | SerpApi Amazon workflow: listings + Stash export + Canvas comparison | serpapi_amazon_search, stash, canvas |
 | `/status` | Daily status briefing (weather, crypto, stocks, alerts) | get_time, weather, crypto_price, crypto_chart, stock_price, list_alerts, list_reminders, system_monitor, canvas |
 | `/status_visual` | Status briefing + AI-generated dashboard image + same Canvas crypto charts as `/status` | get_time, weather, crypto_price, crypto_chart, stock_price, list_alerts, list_reminders, system_monitor, generate_image, canvas |

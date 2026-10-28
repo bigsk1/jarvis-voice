@@ -20,6 +20,7 @@ config/ntfy.json.lock
 # Interrupted atomic notification-settings writes contain private credentials.
 config/.ntfy-*
 config/webhook_registry.json
+config/rss_feeds.yaml
 config/webhook_registry.json.template
 config/elevenlabs_voices.json
 config/ssh.json
@@ -56,6 +57,7 @@ data/task-workspaces/
 data/backups/
 data/cache/
 data/release-watch/
+data/rss-feeds/
 data/canvas/
 data/generated_images/
 data/generated_videos/

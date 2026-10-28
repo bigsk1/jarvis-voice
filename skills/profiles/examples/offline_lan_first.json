@@ -38,6 +38,7 @@
     "network_tools": false,
     "opencode": false,
     "phone_call": false,
+    "rss_feed": false,
     "openclaw": false,
     "screenshot_url": false,
     "send_email": false,

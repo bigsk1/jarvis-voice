@@ -31,6 +31,17 @@ automatic GitHub parent/source metadata check; URLs are never repaired by
 guessing upstream owners or issue numbers. Unavailable optional searches are
 skipped through normal workflow availability rules.
 
+### RSS digest
+
+`/rss_digest daily_tech` reads the named private profile from
+`config/rss_feeds.yaml`, shortlists fresh candidate IDs with one model call,
+optionally crawls only selected articles, and writes a concise complete Canvas
+page with a second model call. The profile's exact Canvas title is reused on
+later runs. Acknowledgment follows verified publication; no-new results keep
+the existing page, and no recurring task is installed automatically. See
+[RSS setup, coverage and state](../../docs/RSS_FEEDS.md). Input limits apply
+per dataset, not to the total combined model prompt.
+
 ---
 
 ## Top-level object (required shape)
@@ -434,6 +445,7 @@ the same orchestration turn; it is not a durable background run.
 | `upcoming_tv_radar.json` | `/upcoming_tv_radar <genre criteria>` | Explicit/scheduled TMDB-first series-premiere radar with required included-genre inference, provider-side genre exclusion, a separate rolling Canvas page per resolved primary genre, optional Brave enrichment, public-poster email fields, and one shared sent-ID ledger for cross-genre deduplication after confirmed email delivery |
 | `pdf_ingest.json` | `/pdf_ingest <attached PDF, stash ref, or URL>` | Extract searchable PDF text, use OCR for scanned documents when needed, create a semantic Intel file, ingest it synchronously, and publish a source-attributed Canvas briefing |
 | `quick_note.json` | `/note <text>` | Quick note to memory and canvas |
+| `rss_digest.json` | `/rss_digest [profile]` | Fresh configured RSS/Atom candidates, bounded editorial shortlist, optional selected-article reads, and a concise stable Canvas page with published-link deduplication |
 | `serpapi_amazon_search.json` | `/serpapi_amazon <query>` | Search Amazon, save a normalized Stash export, and create a Canvas comparison report |
 | `server_health_check.json` | `/health <host>` | SSH health check on remote server |
 | `team_outlook.json` | `/team_outlook <sport> <team>` | Resolve one team ID for current games, focused team standings, and roster views, then add optional current news and a Canvas outlook; `football` means American football and `soccer` means association football |

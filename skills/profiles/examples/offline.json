@@ -38,6 +38,7 @@
     "opencode": false,
     "phone_call": false,
     "release_watch": false,
+    "rss_feed": false,
     "openclaw": false,
     "screenshot_url": false,
     "send_email": false,

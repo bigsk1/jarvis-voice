@@ -18,6 +18,13 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+try:
+    from rss_feeds.context import project_rss_feed_data
+except ModuleNotFoundError as exc:
+    if exc.name not in {"rss_feeds", "rss_feeds.context"}:
+        raise
+    from lib.rss_feeds.context import project_rss_feed_data
+
 try:  # Launchers expose repo/lib directly; package imports also support tests.
     from deepwiki_context import DEEPWIKI_TOOL_NAMES, project_deepwiki_data
 except ModuleNotFoundError as exc:
@@ -803,6 +810,9 @@ def workflow_step_tool_results(workflow_data: dict) -> dict:
         name = str(tool_name or '').strip()
         if not name or name == 'unknown' or payload in (None, ''):
             return
+        if name == 'rss_feed' and isinstance(payload, dict) and envelope.get('ok') is False:
+            payload = {**payload, 'ok': False,
+                       'error': envelope.get('error') or payload.get('error') or 'RSS feed request failed.'}
         if name in DEEPWIKI_TOOL_NAMES and isinstance(payload, dict) and envelope.get('ok') is False:
             payload = {
                 **payload, 'ok': False,
@@ -2894,6 +2904,11 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             continue
         if key in FOLLOWUP_DATA_SKIP_KEYS:
             continue
+        if key == 'rss_feed':
+            projected = project_rss_feed_data(value, max_items=max_candidates)
+            if projected:
+                followup[key] = projected
+            continue
         external_runs = value if isinstance(value, list) else [value]
         if external_runs and all(is_external_result(run) for run in external_runs):
             selected = external_runs[-3:]
@@ -3035,6 +3050,7 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         continue
                     if (isinstance(component_value, list)
                             and component_name not in _SOURCE_RESULT_TOOLS
+                            and component_name != 'rss_feed'
                             and component_name not in DEEPWIKI_TOOL_NAMES):
                         runs = []
                         for run_value in component_value[:max_candidates]:

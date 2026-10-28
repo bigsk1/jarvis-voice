@@ -13,6 +13,57 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 
 class TestToolProfiles(unittest.TestCase):
+    def test_offline_templates_explicitly_disable_rss(self):
+        for name in ("offline.json", "offline_lan_first.json"):
+            with self.subTest(profile=name):
+                profile = json.loads((ROOT / "skills/profiles/examples" / name).read_text())
+                self.assertIs(profile["overrides"].get("rss_feed"), False)
+
+    def test_legacy_rss_restriction_requires_both_http_paths_disabled(self):
+        from tool_profiles import effective_enabled
+
+        offline = {"api_call": False, "crawl_url": False}
+        self.assertFalse(effective_enabled("rss_feed", True, offline))
+        self.assertTrue(effective_enabled("weather", True, offline))
+        for overrides in (None, {}, {"api_call": False}, {"crawl_url": False},
+                          {"api_call": True, "crawl_url": False},
+                          {"api_call": False, "crawl_url": True}):
+            with self.subTest(overrides=overrides):
+                self.assertTrue(effective_enabled("rss_feed", True, overrides))
+                self.assertFalse(effective_enabled("rss_feed", False, overrides))
+        self.assertTrue(effective_enabled("rss_feed", False, {**offline, "rss_feed": True}))
+        self.assertFalse(effective_enabled("rss_feed", True, {"rss_feed": False}))
+
+    def test_online_shipped_profiles_retain_rss(self):
+        from tool_profiles import effective_enabled
+
+        for name in ("default.json", "openai_only.json", "examples/local_minimal_assistant.json"):
+            with self.subTest(profile=name):
+                overrides = json.loads((ROOT / "skills/profiles" / name).read_text())["overrides"]
+                self.assertTrue(effective_enabled("rss_feed", True, overrides))
+
+    def test_registry_applies_legacy_offline_rss_restriction_and_explicit_choice(self):
+        from config_loader import config_scope
+        from tool_schema import ToolRegistry
+
+        cases = [({"api_call": False, "crawl_url": False}, False),
+                 ({"api_call": False, "crawl_url": False, "rss_feed": True}, True),
+                 ({"crawl_url": False}, True), ({}, True)]
+        with TemporaryDirectory() as tmp:
+            skills_dir = Path(tmp)
+            (skills_dir / "rss_feed.tool.json").write_text(
+                (ROOT / "skills/rss_feed.tool.json").read_text()
+            )
+            for overrides, enabled in cases:
+                with (
+                    self.subTest(overrides=overrides),
+                    config_scope("cloud", {"JARVIS_TOOL_PROFILE": "fixture"}),
+                    patch("tool_profiles.load_active_profile_overrides", return_value=overrides),
+                    patch("tool_profiles.warn_missing_profile_file"),
+                ):
+                    registry = ToolRegistry(str(skills_dir))
+                    self.assertIs("rss_feed" in registry.list_tools(), enabled)
+
     def test_offline_templates_disable_optional_heygen_even_with_credentials(self):
         for profile_name in ("offline.json", "offline_lan_first.json"):
             with self.subTest(profile=profile_name):

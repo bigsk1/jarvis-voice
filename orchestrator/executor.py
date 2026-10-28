@@ -247,6 +247,8 @@ class ToolExecutor:
             return 600  # 10 minutes for music generation (can take 3-5min for longer tracks)
         if tool_name == "audio_voices":
             return 90  # Bounded catalog requests plus process cleanup; no synthesis.
+        if tool_name == "rss_feed":
+            return 120  # Shared 45s feed-pool deadline, parsing, and publication receipt locking.
         if tool_name == "generate_audio":
             from audio_generation import audio_timeout_seconds
 

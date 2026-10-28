@@ -16,6 +16,7 @@ If present, the override wins (so you can force-enable a tool that is disabled i
 Compatibility: the new HeyGen tools inherit an explicit generate_video=False
 when their own override is absent. Speech generation similarly inherits an
 explicit generate_music=False, and voice lookup inherits the speech restriction.
+RSS inherits offline restrictions only when both api_call and crawl_url are false.
 An explicit per-tool override still wins.
 """
 from __future__ import annotations
@@ -100,6 +101,11 @@ def effective_enabled(tool_name: str, base_enabled: bool, overrides: dict[str, b
     if tool_name == "audio_voices" and overrides.get(
         "generate_audio", overrides.get("generate_music")
     ) is False:
+        return False
+    # Older offline profiles predate RSS. Both online HTTP paths must be
+    # disabled: online profiles may disable crawling without disabling feeds.
+    if (tool_name == "rss_feed" and overrides.get("api_call") is False
+            and overrides.get("crawl_url") is False):
         return False
     return base_enabled
 

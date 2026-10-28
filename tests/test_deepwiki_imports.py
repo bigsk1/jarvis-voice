@@ -39,9 +39,11 @@ else:
 if launch_path == "package":
     from lib.deepwiki import normalize_deepwiki_result
     from lib.deepwiki_context import project_deepwiki_data
+    from lib.rss_feeds.context import project_rss_feed_data
 else:
     from deepwiki import normalize_deepwiki_result
     from deepwiki_context import project_deepwiki_data
+    from rss_feeds.context import project_rss_feed_data
     from mcp_client import _normalize_call_tool_result
     assert str(root) not in sys.path
     assert "lib" not in sys.modules
@@ -57,8 +59,16 @@ assert project_deepwiki_data(result)["answer"] == result["data"]["answer"]
 assembler = ContextAssembler.__new__(ContextAssembler)
 preview = json.loads(assembler.build_llm_result_context_preview(tool, result)[0])
 assert preview["data"]["answer"] == result["data"]["answer"]
+rss = {"ok": True, "data": {"action": "read", "profile": "daily_tech", "batch_id": "batch_7",
+       "items": [{"id": "article_7", "url": "https://example.org/article?edition=2026",
+                  "title": "A research release", "summary": "Feed evidence", "content": "OMIT_BODY"}]}}
+assert project_rss_feed_data(rss)["batch_id"] == "batch_7"
+rss_preview = json.loads(assembler.build_llm_result_context_preview("rss_feed", rss)[0])
+assert rss_preview["data"]["items"][0]["url"] == "https://example.org/article?edition=2026"
+assert "OMIT_BODY" not in json.dumps(rss_preview)
 if launch_path in {"web", "package"}:
     assert extract_followup_data({tool: result})[tool]["repo_names"] == ["pallets/flask"]
+    assert extract_followup_data({"rss_feed": rss})["rss_feed"]["batch_id"] == "batch_7"
     assert "webhook_context" not in sys.modules
     assert "lib.webhook_context" not in sys.modules
 if launch_path != "package":

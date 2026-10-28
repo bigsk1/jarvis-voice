@@ -62,6 +62,16 @@ cp local.env.example local.env    # local mode
 | `cloud.env.example` / `local.env.example` | Committed templates — safe to browse in git |
 | `cloud.env` / `local.env` | Your machine-specific settings and secrets (not committed) |
 | `mcp-servers.json` | Jarvis MCP server definitions (committed; no secrets in git) |
+| `rss_feeds.yaml.example` / `rss_feeds.yaml` | Public template / private RSS digest profiles; feeds, interests, exclusions and Canvas titles, reloaded on each call |
+
+### RSS digest profiles
+
+From the repository root, copy `config/rss_feeds.yaml.example` to
+`config/rss_feeds.yaml`, then edit its named profiles. `/rss_digest daily_tech`
+uses that profile's feeds, interests and stable Canvas title. Direct `rss_feed`
+URL reads work without this file. No schedule is created automatically. See
+[RSS feeds and daily digests](../docs/RSS_FEEDS.md) for fields, limits,
+freshness, publication history and Docker dependency rebuilds.
 
 ### Startup env mode
 

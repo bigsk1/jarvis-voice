@@ -18,6 +18,13 @@ import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
+try:
+    from rss_feeds.context import project_rss_feed_data
+except ModuleNotFoundError as exc:
+    if exc.name not in {"rss_feeds", "rss_feeds.context"}:
+        raise
+    from lib.rss_feeds.context import project_rss_feed_data
+
 try:  # Launchers expose repo/lib directly; package imports also support tests.
     from deepwiki_context import DEEPWIKI_TOOL_NAMES, project_deepwiki_data
 except ModuleNotFoundError as exc:
@@ -278,6 +285,10 @@ class ContextAssembler:
         for tool_name, data in accumulated_data.items():
             items = data if isinstance(data, list) else [data]
             tool_budget = 9500 // max(1, len(accumulated_data))
+            if tool_name == "rss_feed":
+                projected = project_rss_feed_data(data, max_chars=max(2, min(6000, tool_budget)), include_content=True)
+                extracted_parts.append((f"\n=== {tool_name} ===", [_followup_json(projected)]))
+                continue
             if tool_name == "send_webhook":
                 from webhook_context import project_webhook_runs
 
@@ -496,7 +507,9 @@ class ContextAssembler:
 
                     for tool_name, result_data in tool_results.items():
                         if isinstance(result_data, dict):
-                            if tool_name == "send_webhook":
+                            if tool_name == "rss_feed":
+                                fields = project_rss_feed_data(result_data)
+                            elif tool_name == "send_webhook":
                                 from webhook_context import project_webhook_runs
 
                                 fields = project_webhook_runs(result_data)
@@ -928,6 +941,15 @@ class ContextAssembler:
             rendered = json.dumps(payload, default=str, separators=(",", ":"))
             return finish(rendered, truncated=True)
 
+        if tool_name == "rss_feed":
+            projected = project_rss_feed_data(result, max_chars=max(2, available - 100), include_content=True)
+            truncated = bool(projected.get("context_truncated"))
+            rendered = json.dumps({
+                "result": {"ok": result.get("ok", True), "data": projected},
+                "result_truncated": truncated,
+            }, separators=(",", ":"))
+            return finish(rendered, truncated=truncated)
+
         try:
             parsed_summary = json.loads(result_summary)
             rendered = json.dumps(
@@ -1089,6 +1111,8 @@ class ContextAssembler:
         lowered = (tool_name or "").lower()
         if lowered == 'send_webhook':
             return 6000  # Registry contracts and retry guidance need intact JSON.
+        if lowered == "rss_feed":
+            return 6000  # A bounded shortlist with complete article URLs and digest handles.
         if lowered == "source_library":
             return 16000  # Several exact passages plus source citations.
         if lowered == "project_nomad":
@@ -3458,6 +3482,13 @@ class ContextAssembler:
                 else raw_step.get("outputs")
             )
             if component_payload not in (None, {}, []):
+                if raw_step.get("tool") == "rss_feed":
+                    rss_result = {"ok": raw_step.get("ok", True), "error": raw_step.get("error"),
+                                  "data": component_payload} if isinstance(component_payload, dict) else component_payload
+                    component_context = project_rss_feed_data(rss_result, max_chars=per_step_chars)
+                    step_preview["result_preview"] = json.dumps(component_context, separators=(",", ":"))
+                    step_previews.append(step_preview)
+                    continue
                 if str(raw_step.get("tool", "")).startswith("mcp_google_workspace_"):
                     from google_workspace import project_workspace_data
 
@@ -3561,6 +3592,11 @@ class ContextAssembler:
         full_serialized = json.dumps(result, indent=2, default=str)
         result_chars_total = len(full_serialized)
         max_chars = self.tool_context_max_chars(tool_name)
+
+        if tool_name == "rss_feed":
+            data = project_rss_feed_data(result, max_chars=min(6000, max_chars - 80), include_content=True)
+            serialized = json.dumps({"ok": result.get("ok", True), "data": data}, separators=(",", ":"))
+            return serialized, result_chars_total, len(serialized), bool(data.get("context_truncated"))
 
         if is_external_result(result):
             # Contract-driven: new providers share this path without named

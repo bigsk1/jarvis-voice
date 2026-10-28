@@ -221,6 +221,7 @@
       "query_service_logs": "_family_developer_ops",
       "recall": "_family_memory",
       "release_watch": "_family_developer_ops",
+      "rss_feed": "_family_search",
       "remember": "_family_memory",
       "openclaw": "_family_assistant",
       "schedule_task": "_family_reminders",

@@ -1,0 +1,35 @@
+# Copy to config/rss_feeds.yaml. This private file is reloaded on each call.
+# RSS/Atom feed URLs are data, not Python code; no credentials are required.
+v: 1
+profiles:
+  daily_tech:
+    canvas_title: Digests/Daily Tech
+    interests:
+      - AI coding agents, developer tools, and useful open-source applications
+      - Local models, self-hosting, Docker, Linux, and home labs
+      - Practical security changes and software prerequisites
+    exclude:
+      - Celebrity news and unrelated political commentary
+      - Speculative token prices and investment hype
+    max_stories: 8
+    max_candidates: 40
+    max_age_hours: 48
+    feeds:
+      - name: My blog
+        url: https://bigsk1.com/feed.xml
+        priority: high
+      - name: Hacker News
+        url: https://news.ycombinator.com/rss
+      - name: Lobsters
+        url: https://lobste.rs/rss
+      - name: GitHub Engineering
+        url: https://github.blog/engineering/feed/
+      - name: GitHub AI and ML
+        url: https://github.blog/ai-and-ml/feed/
+      - name: GitHub Changelog
+        url: https://github.blog/changelog/feed/
+      - name: Ars Technica
+        url: https://feeds.arstechnica.com/arstechnica/index
+# Add profiles for other interests and point /rss_digest at their names.
+# Feed fields: name, url, priority (high/normal/low), enabled (true/false).
+# Each profile accepts 1-16 feeds, 1-40 candidates, 1-8 stories, and 1-720h age.

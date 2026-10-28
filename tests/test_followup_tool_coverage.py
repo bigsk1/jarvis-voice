@@ -29,6 +29,12 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "rss_feed": _case({
+        "action": "read", "profile": "daily_tech", "batch_id": "a" * 32,
+        "checked_at": "2026-10-27T16:00:00Z", "candidate_count": 1, "has_items": True,
+        "items": [{"id": "b" * 24, "title": "A practical release", "source": "Project News",
+                   "url": "https://example.org/releases/one?edition=2026", "summary": "A bounded feed summary."}],
+    }, {"action": "read", "profile": "daily_tech"}),
     "audio_voices": _case({
         "provider": "elevenlabs", "current_provider": "elevenlabs", "source": "live_account",
         "count": 1, "has_more": True, "next_cursor": "voice-page-2",

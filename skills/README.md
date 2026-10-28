@@ -91,6 +91,15 @@ tool set and receive sender-only replies. Named attachments are saved to Stash
 before orchestration; downstream actions still require your permitted tools. See the
 [setup, permissions and recovery guide](../docs/tools/email-inbox-tool/README.md).
 
+## RSS feeds and digests
+
+`rss_feed` reads public RSS/Atom URLs without API credentials. Optional private
+profiles in `config/rss_feeds.yaml` define feeds, interests, exclusions and
+bounded story counts for `/rss_digest daily_tech`. The workflow shortlists IDs,
+optionally reads selected articles with `crawl_url`, refreshes one Canvas page,
+and records only confirmed published links. No schedule is installed automatically.
+See [RSS setup, publication state and limits](../docs/RSS_FEEDS.md).
+
 ## Docling document conversion (optional)
 
 `docling_convert` connects to an authenticated Docling Serve deployment on a
