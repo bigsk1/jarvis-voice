@@ -172,7 +172,7 @@ def test_shared_workflow_loads_and_passes_authoring_checks():
     workflow = json.loads(WORKFLOW.read_text())
     assert _check_workflow(workflow) == ([], [])
     assert WorkflowLoader().get_workflow("rss_digest")["id"] == "rss_digest"
-    assert workflow["allow_workflow_tool"] is False
+    assert workflow["allow_workflow_tool"] is True
     assert workflow["disable_server_side_tools"] is True
 
 

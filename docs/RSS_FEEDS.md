@@ -29,7 +29,7 @@ A minimal profile looks like this:
 v: 1
 profiles:
   daily_tech:
-    canvas_title: Digests/Daily Tech
+    canvas_title: RSS/Daily Tech
     interests:
       - Useful developer tools and practical self-hosting
     exclude:
@@ -51,7 +51,8 @@ profiles:
 | `interests`, `exclude` | Lists of descriptions used by the editorial model. Exclusions are explicit prompt constraints, not a deterministic semantic filter. |
 | `max_stories` | 1–8; default 8. Fewer stories are allowed when evidence is thin. |
 | `max_candidates` | 1–40; default 40 across all feeds in the profile. |
-| `max_age_hours` | 1–720; default 48. Uses publication date, falling back to an actual update date. |
+| `max_age_hours` | 1–720; default 48. Uses publication date, falling back to an actual update date; with `track_updates`, uses the latest supplied publication/update date. |
+| `track_updates` | Boolean; default `false`. Opt in to content-version deduplication and update-date freshness for incident/status feeds. |
 | `feeds` | 1–16 configured feeds per profile; each needs `name` and public HTTP(S) `url`. At least one must remain enabled. |
 | Feed `priority` | `high`, `normal` or `low`; default `normal`. Controls fetch order and serves as an editorial tiebreaker, not a guarantee of accuracy. |
 | Feed `enabled` | Set `false` to skip that source. |
@@ -113,15 +114,80 @@ In Jarvis Web or the production CLI, run:
 /rss_digest daily_tech
 ```
 
-Omitting the profile uses `daily_tech`. The workflow is explicit or scheduled:
-it is not offered through autonomous `workflow` discovery. This command changes
-the profile's Canvas page and publication history; it is not a dry run.
+Omitting the profile uses `daily_tech`. The workflow supports explicit commands,
+scheduled runs, and normal `workflow` discovery when that tool is enabled.
+Running it changes the profile's Canvas page and publication history; it is not
+a dry run.
 
 The reading page contains a short **At a glance**, story summaries, why each
 story matters, and source links. Feed diagnostics, batch IDs, raw JSON and tool
 logs stay out of its editorial content. If no eligible candidates exist, or the
 editor selects none, the current page is preserved and no publication is
 acknowledged.
+
+## AI provider incident digest
+
+The example also includes an `ai_status` profile for these official feeds:
+
+| Provider | Feed |
+| --- | --- |
+| OpenAI | [RSS](https://status.openai.com/feed.rss) |
+| xAI | [RSS/XML](https://status.x.ai/feed.xml) |
+| Anthropic / Claude | [Incident-history RSS](https://status.claude.com/history.rss) |
+
+Claude's RSS link may download a file called `history.rss` in a browser; the
+URL above is the subscribable feed. OpenAI also supplies Atom, but configure
+only one of its formats to avoid fetching the same incident list twice.
+
+Add this profile from the example to an existing private configuration; do not
+replace your other profiles. Run it with:
+
+```text
+/rss_digest ai_status
+```
+
+It uses a separate **RSS/AI Service Status** Canvas page, a 72-hour lookback,
+and up to eight selected reports. Its interests ask for affected services,
+reported impact, incident/update/resolution times when available, and clear
+distinctions between resolved, ongoing, and unknown status. Related service
+reports should be grouped rather than treated as unrelated outages. Normal
+candidate limits, editorial selection, and optional article enrichment apply;
+this is not a guarantee that every incident will appear.
+
+The profile enables `track_updates: true`. A changed incident at the same URL can
+be selected again, including a later recovery or resolution. Tracking compares
+the normalized visible feed title, summary, and inline body before text is
+shortened for model context. Timestamp-only changes, equivalent whitespace/HTML
+formatting, and hidden script/style text do not create a new version. Changes
+only on the linked page, absent from the feed text, cannot be detected this way.
+
+The latest supplied publication/update date determines freshness in this mode;
+original dates remain available in the evidence. Publishers must expose a recent
+date for an old incident's update to fall inside the configured lookback. The
+reader keeps the newest dated entry when a feed repeats an incident URL.
+
+Each changed version becomes seen only after the saved Canvas page is verified
+and acknowledged. Failed or omitted publication leaves it eligible. Concurrent
+selections claim the incident URL, so different versions cannot bypass the
+existing 15-minute claim. Each batch includes at most one version per URL.
+Publishing a version supersedes other pending batches containing a different
+version of the same URL; those runs must fetch again before selecting or
+acknowledging. This prevents stale staged updates from being selected afterward.
+It cannot revoke an already running Canvas write after its claim has expired;
+keep scheduled overlaps disabled.
+
+This remains a recent-incident digest, not a live availability monitor. With no
+new selected incidents, the existing page and its checked timestamp are
+preserved. An empty result does not mean all systems are healthy.
+
+Other profiles retain URL-only deduplication unless they opt in. Changing this
+setting invalidates pending batches for that profile and can surface recent
+entries once under the new identity policy. Existing history is retained; no
+database migration or history reset is needed.
+
+For a future Scheduled Task, use workflow ID `rss_digest` and query `ai_status`.
+This profile does not create a schedule or send outage alerts. Profile edits
+reload on the next call without a restart or Tool RAG sync.
 
 ## Freshness, coverage and model use
 
@@ -137,6 +203,9 @@ workers. It divides 40 seconds across the required worker waves, allowing up to
 up to 20 recent entries per source, round-robin across successful sources before
 applying the candidate limit. Undated entries and entries outside the lookback
 are excluded. A newly fetched old headline is not treated as a new publication.
+For profiles with `track_updates: true`, the latest publication/update date
+controls the lookback and ordering instead, while content determines whether
+an already published URL has an unseen version.
 
 Content is labeled `inline`, `summary` or `out_of_line` through `content_kind`.
 `content_chars` counts the feed-provided text before shortening, not the length
@@ -195,8 +264,10 @@ History lives under private `data/rss-feeds/`, shared by cloud and local mode
 for the same profile, just like its Canvas destination. URL normalization removes
 known tracking parameters for identity. This suppresses repeated links, not all
 different URLs reporting the same event; the editorial pass also groups duplicate
-reporting. An updated article at an already published URL remains seen while its
-receipt is retained. History is pruned after 90 days and limited to 5,000 IDs.
+reporting. An updated article at an already published URL remains seen by default.
+With `track_updates: true`, each distinct visible feed-content version has its own
+receipt; an unchanged version stays suppressed even if its timestamp changes.
+History is pruned after 90 days and limited to 5,000 IDs, including version IDs.
 
 Staged batches expire after two hours or a profile change. Pending batches are
 not evicted to make room for newer reads: each profile allows up to 20 pending

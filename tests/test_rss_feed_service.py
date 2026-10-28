@@ -99,6 +99,146 @@ def test_acknowledgment_needs_saved_canvas_then_prevents_next_day_repeats(setup)
     assert [row["url"] for row in tomorrow["items"]] == [article(2)["url"]]
 
 
+def test_update_tracking_republishes_changed_incident_only_after_canvas_acknowledgment(setup):
+    create, rows, calls, document, config_path, canvas_dir = setup
+    document["profiles"]["daily_tech"]["track_updates"] = True
+    config_path.write_text(yaml.safe_dump(document))
+    rows[:] = [article(title="API errors", summary="Investigating increased failures.")]
+    first_service = create()
+    first = first_service.execute(profile="daily_tech")
+    assert calls[0][1]["track_updates"] is True
+    first_id = first["items"][0]["id"]
+    choose(first_service, first)
+    with pytest.raises(RSSFeedError, match="could not be verified"):
+        first_service.execute("acknowledge", profile="daily_tech", batch_id=first["batch_id"],
+                              page_id="page_not_saved")
+    assert create().execute(profile="daily_tech")["items"][0]["id"] == first_id
+    page_id = publish(canvas_dir, [rows[0]["url"]])
+    first_service.execute("acknowledge", profile="daily_tech", batch_id=first["batch_id"], page_id=page_id)
+    assert not create().execute(profile="daily_tech")["has_items"]
+
+    rows[0].update(summary="Resolved; normal availability restored.",
+                   updated_at=(NOW + timedelta(hours=1)).isoformat())
+    updated_service = create(now=NOW + timedelta(hours=1))
+    updated = updated_service.execute(profile="daily_tech")
+    assert updated["items"][0]["id"] != first_id
+    assert updated["items"][0]["url"] == first["items"][0]["url"]
+    choose(updated_service, updated)
+    assert create(now=NOW + timedelta(hours=1)).execute(profile="daily_tech")["has_items"]
+    updated_page = publish(canvas_dir, [rows[0]["url"]], page_id="page_resolved")
+    updated_service.execute("acknowledge", profile="daily_tech", batch_id=updated["batch_id"],
+                            page_id=updated_page)
+    assert not create(now=NOW + timedelta(hours=2)).execute(profile="daily_tech")["has_items"]
+
+
+def test_update_tracking_does_not_repeat_timestamp_or_metadata_only_changes(setup):
+    create, rows, _, document, config_path, canvas_dir = setup
+    document["profiles"]["daily_tech"]["track_updates"] = True
+    config_path.write_text(yaml.safe_dump(document))
+    service = create()
+    batch = service.execute(profile="daily_tech")
+    choose(service, batch)
+    page_id = publish(canvas_dir, [rows[0]["url"]])
+    service.execute("acknowledge", profile="daily_tech", batch_id=batch["batch_id"], page_id=page_id)
+    rows[0].update(published_at=(NOW + timedelta(minutes=1)).isoformat(),
+                   updated_at=(NOW + timedelta(hours=1)).isoformat(),
+                   categories=["status"], id="a-new-provider-entry-id")
+    assert not create(now=NOW + timedelta(hours=1)).execute(profile="daily_tech")["has_items"]
+
+
+def test_update_tracking_uses_reader_fingerprint_before_service_caps_without_exposing_it(setup):
+    create, rows, _, document, config_path, canvas_dir = setup
+    document["profiles"]["daily_tech"]["track_updates"] = True
+    config_path.write_text(yaml.safe_dump(document))
+    rows[:] = [article(content="x" * 4000 + " Investigating", content_fingerprint="a" * 64)]
+    service = create()
+    first = service.execute(profile="daily_tech")
+    selected = choose(service, first)
+    assert "content_fingerprint" not in json.dumps(first)
+    assert "content_fingerprint" not in json.dumps(selected)
+    assert len(selected["selected_items"][0]["content"]) == 3500
+    page_id = publish(canvas_dir, [rows[0]["url"]])
+    service.execute("acknowledge", profile="daily_tech", batch_id=first["batch_id"], page_id=page_id)
+    rows[0].update(content="x" * 4000 + " Resolved", content_fingerprint="b" * 64)
+    updated = create().execute(profile="daily_tech")
+    assert updated["has_items"] and updated["items"][0]["id"] != first["items"][0]["id"]
+    assert "content_fingerprint" not in json.dumps(choose(create(), updated))
+
+
+def test_real_feed_tail_update_survives_reader_and_service_display_caps(setup, monkeypatch):
+    from rss_feeds import reader as feed_reader
+
+    create, _, _, document, config_path, canvas_dir = setup
+    document["profiles"]["daily_tech"]["track_updates"] = True
+    config_path.write_text(yaml.safe_dump(document))
+    latest_status = ["Investigating"]
+
+    class FeedResponse:
+        status_code = 200
+        headers = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def iter_content(self, chunk_size):
+            content = "x" * 6500 + " " + latest_status[0]
+            yield ('<feed xmlns="http://www.w3.org/2005/Atom"><title>Status</title>'
+                   f'<entry><id>urn:incident:1</id><title>API outage</title><updated>{NOW.isoformat()}</updated>'
+                   '<link href="https://example.org/post/1"/><summary>Incident update.</summary>'
+                   f'<content type="html"><![CDATA[<p>{content}</p>]]></content></entry></feed>').encode()
+
+    monkeypatch.setattr(feed_reader, "validate_url", lambda url: url)
+    monkeypatch.setattr(feed_reader, "http_request", lambda *_args, **_kwargs: FeedResponse())
+    service = create(reader=feed_reader.read_feed)
+    first = service.execute(profile="daily_tech")
+    first_selection = choose(service, first)
+    assert len(first_selection["selected_items"][0]["content"]) == 3500
+    page_id = publish(canvas_dir, ["https://example.org/post/1"])
+    service.execute("acknowledge", profile="daily_tech", batch_id=first["batch_id"], page_id=page_id)
+    assert not service.execute(profile="daily_tech")["has_items"]
+    latest_status[0] = "Resolved"
+    updated = service.execute(profile="daily_tech")
+    assert updated["has_items"] and updated["items"][0]["id"] != first["items"][0]["id"]
+    updated_selection = choose(service, updated)
+    assert updated_selection["selected_items"][0]["content"] == first_selection["selected_items"][0]["content"]
+    assert "content_fingerprint" not in json.dumps(updated_selection)
+
+
+def test_ordinary_profiles_keep_url_deduplication_when_content_changes(setup):
+    create, rows, calls, _, _, canvas_dir = setup
+    service = create()
+    batch = service.execute(profile="daily_tech")
+    choose(service, batch)
+    page_id = publish(canvas_dir, [rows[0]["url"]])
+    service.execute("acknowledge", profile="daily_tech", batch_id=batch["batch_id"], page_id=page_id)
+    rows[0].update(title="An updated release", summary="Now with different content.",
+                   content_fingerprint="b" * 64, updated_at=(NOW + timedelta(hours=1)).isoformat())
+    assert not create().execute(profile="daily_tech")["has_items"]
+    assert all(not kwargs.get("track_updates", False) for _, kwargs in calls)
+
+
+def test_update_history_is_independent_for_profiles_reading_the_same_feed(setup):
+    create, rows, _, document, config_path, canvas_dir = setup
+    document["profiles"]["daily_tech"]["track_updates"] = True
+    document["profiles"]["status_watch"] = {**document["profiles"]["daily_tech"],
+                                             "canvas_title": "Digests/Status Watch"}
+    config_path.write_text(yaml.safe_dump(document))
+    service = create()
+    first = service.execute(profile="daily_tech")
+    choose(service, first)
+    page_id = publish(canvas_dir, [rows[0]["url"]])
+    service.execute("acknowledge", profile="daily_tech", batch_id=first["batch_id"], page_id=page_id)
+    assert not create().execute(profile="daily_tech")["has_items"]
+    other = create().execute(profile="status_watch")
+    assert other["has_items"] and other["items"][0]["url"] == rows[0]["url"]
+    rows[0]["summary"] = "A material new update."
+    assert create().execute(profile="daily_tech")["has_items"]
+    assert create().execute(profile="status_watch")["has_items"]
+
+
 def test_profile_receipts_are_shared_across_modes_like_canvas(setup):
     create, _, _, _, _, canvas_dir = setup
     with config_scope("cloud"):
@@ -184,6 +324,80 @@ def test_parallel_batches_cannot_claim_the_same_unpublished_stories(setup):
     with pytest.raises(RSSFeedError, match="Another RSS digest"):
         choose(service, second)
     assert choose(create(now=NOW + timedelta(minutes=16)), second)["has_selection"]
+
+
+def test_parallel_digest_cannot_claim_another_revision_of_an_incident_being_prepared(setup):
+    create, rows, _, document, config_path, _ = setup
+    document["profiles"]["daily_tech"]["track_updates"] = True
+    config_path.write_text(yaml.safe_dump(document))
+    first = create().execute(profile="daily_tech")
+    choose(create(), first)
+    rows[0]["summary"] = "Resolved while the earlier digest was being prepared."
+    second = create().execute(profile="daily_tech")
+    assert second["items"][0]["id"] != first["items"][0]["id"]
+    with pytest.raises(RSSFeedError, match="Another RSS digest"):
+        choose(create(), second)
+    assert choose(create(now=NOW + timedelta(minutes=16)), second)["has_selection"]
+
+
+@pytest.mark.parametrize("stale_action", ["resolve_selection", "acknowledge"])
+def test_published_revision_supersedes_earlier_staged_incident_batches(setup, stale_action):
+    create, rows, _, document, config_path, canvas_dir = setup
+    document["profiles"]["daily_tech"]["track_updates"] = True
+    config_path.write_text(yaml.safe_dump(document))
+    rows[0]["summary"] = "Investigating errors."
+    earlier = create().execute(profile="daily_tech")
+    if stale_action == "acknowledge":
+        choose(create(), earlier)
+
+    # The earlier publication claim has expired, but its batch is still valid.
+    later_time = NOW + timedelta(minutes=16)
+    rows[0]["summary"] = "Resolved; all services recovered."
+    newer_service = create(now=later_time)
+    newer = newer_service.execute(profile="daily_tech")
+    choose(newer_service, newer)
+    page_id = publish(canvas_dir, [rows[0]["url"]], page_id="page_resolved")
+    newer_service.execute("acknowledge", profile="daily_tech", batch_id=newer["batch_id"], page_id=page_id)
+
+    stale_service = create(now=later_time + timedelta(minutes=1))
+    with pytest.raises(RSSFeedError, match="superseded"):
+        if stale_action == "resolve_selection":
+            choose(stale_service, earlier)
+        else:
+            # Even a freshly saved page with the right URL cannot revive stale evidence.
+            stale_page = publish(canvas_dir, [rows[0]["url"]], page_id="page_stale")
+            stale_service.execute("acknowledge", profile="daily_tech", batch_id=earlier["batch_id"],
+                                  page_id=stale_page)
+    assert not stale_service.execute(profile="daily_tech")["has_items"]
+
+
+def test_publishing_an_incident_revision_keeps_unrelated_pending_batch_usable(setup):
+    create, rows, _, document, config_path, canvas_dir = setup
+    document["profiles"]["daily_tech"]["track_updates"] = True
+    config_path.write_text(yaml.safe_dump(document))
+    create().execute(profile="daily_tech")
+    rows[:] = [article(2)]
+    unrelated = create().execute(profile="daily_tech")
+    rows[:] = [article(summary="Resolved; all services recovered.")]
+    service = create()
+    revised = service.execute(profile="daily_tech")
+    choose(service, revised)
+    page_id = publish(canvas_dir, [rows[0]["url"]])
+    service.execute("acknowledge", profile="daily_tech", batch_id=revised["batch_id"], page_id=page_id)
+    selected = choose(create(), unrelated)
+    assert selected["has_selection"] and selected["urls"] == [article(2)["url"]]
+
+
+def test_ordinary_profile_pending_batches_keep_url_based_selection_after_publication(setup):
+    create, rows, _, _, _, canvas_dir = setup
+    earlier = create().execute(profile="daily_tech")
+    rows[0]["summary"] = "Changed reporting at the same article URL."
+    service = create()
+    newer = service.execute(profile="daily_tech")
+    choose(service, newer)
+    page_id = publish(canvas_dir, [rows[0]["url"]])
+    service.execute("acknowledge", profile="daily_tech", batch_id=newer["batch_id"], page_id=page_id)
+    assert choose(create(), earlier)["has_selection"] is False
 
 
 @pytest.mark.parametrize("wrong", ["title", "links"])
@@ -414,6 +628,34 @@ def test_malformed_feed_policy_has_a_useful_configuration_error(setup, field, va
     config_path.write_text(yaml.safe_dump(document))
     with pytest.raises(RSSFeedError, match=field):
         load_profiles(config_path)
+
+
+@pytest.mark.parametrize("value", [None, "true", "false", 0, 1, [], {}])
+def test_update_tracking_policy_requires_a_boolean(setup, value):
+    _, _, _, document, config_path, _ = setup
+    document["profiles"]["daily_tech"]["track_updates"] = value
+    config_path.write_text(yaml.safe_dump(document))
+    with pytest.raises(RSSFeedError, match="track_updates"):
+        load_profiles(config_path)
+
+
+def test_explicitly_disabled_update_tracking_preserves_existing_batch_policy(setup):
+    create, _, _, document, config_path, _ = setup
+    original_config = load_profiles(config_path)["daily_tech"]
+    batch = create().execute(profile="daily_tech")
+    document["profiles"]["daily_tech"]["track_updates"] = False
+    config_path.write_text(yaml.safe_dump(document))
+    assert load_profiles(config_path)["daily_tech"] == original_config
+    assert choose(create(), batch)["has_selection"]
+
+
+def test_enabling_update_tracking_requires_a_new_batch(setup):
+    create, _, _, document, config_path, _ = setup
+    batch = create().execute(profile="daily_tech")
+    document["profiles"]["daily_tech"]["track_updates"] = True
+    config_path.write_text(yaml.safe_dump(document))
+    with pytest.raises(RSSFeedError, match="profile changed"):
+        choose(create(), batch)
 
 
 @pytest.mark.parametrize("field,value", [("seen", {"story": "yesterday"}),

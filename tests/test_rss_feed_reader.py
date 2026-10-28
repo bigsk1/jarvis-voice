@@ -43,6 +43,22 @@ def item(url="https://news.example.test/story", *, date=NOW, extra="", summary="
             f'<description><![CDATA[{summary}]]></description>{extra}</item>')
 
 
+def incident(*, published=NOW, updated=NOW, title="API availability",
+             summary="Investigating elevated errors.", content="", url=None):
+    dates = "".join(f"<{field}>{date.isoformat()}</{field}>"
+                    for field, date in (("published", published), ("updated", updated)) if date)
+    return (f'<entry><id>urn:incident:1</id><title><![CDATA[{title}]]></title>{dates}'
+            f'<link href="{url or "https://news.example.test/incidents/one"}"/>'
+            f'<summary type="html"><![CDATA[{summary}]]></summary>'
+            f'<content type="html"><![CDATA[{content}]]></content></entry>')
+
+
+def atom(*entries):
+    return ('<feed xmlns="http://www.w3.org/2005/Atom"><title>Service status</title>'
+            '<id>urn:status:feed</id><updated>2026-10-28T12:00:00Z</updated>'
+            + "".join(entries) + '</feed>')
+
+
 @pytest.fixture(autouse=True)
 def no_live_network(monkeypatch):
     monkeypatch.setattr(reader, "validate_url", lambda url: url)
@@ -185,6 +201,76 @@ def test_dates_filter_undated_old_and_future_without_invented_dates(monkeypatch)
     result = reader.read_feed(FEED_URL, now=NOW, max_age_hours=48, limit=1)
     assert result["total_items"] == 5 and result["undated_skipped"] == 1
     assert [entry["url"] for entry in result["items"]] == ["https://news.example.test/newest"]
+
+
+@pytest.mark.parametrize("track_updates,expected_count", [(False, 0), (True, 1)])
+def test_old_incident_with_recent_update_is_fresh_only_when_opted_in(
+        monkeypatch, track_updates, expected_count):
+    body = atom(incident(published=NOW - timedelta(days=7), updated=NOW - timedelta(hours=1)))
+    transport(monkeypatch, Response(body))
+    result = reader.read_feed(FEED_URL, now=NOW, max_age_hours=48, track_updates=track_updates)
+    assert len(result["items"]) == expected_count
+    if result["items"]:
+        assert result["items"][0]["published_at"] == "2026-10-21T12:00:00Z"
+        assert result["items"][0]["updated_at"] == "2026-10-28T11:00:00Z"
+
+
+def test_update_freshness_and_order_use_newest_of_both_real_dates(monkeypatch):
+    body = atom(
+        incident(published=NOW - timedelta(days=5), updated=NOW - timedelta(hours=1)),
+        incident(published=NOW, updated=NOW - timedelta(days=5),
+                 url="https://news.example.test/incidents/new"),
+        incident(published=NOW, updated=NOW + timedelta(hours=1),
+                 url="https://news.example.test/incidents/future"),
+    )
+    transport(monkeypatch, Response(body))
+    result = reader.read_feed(FEED_URL, now=NOW, track_updates=True)
+    assert [row["url"] for row in result["items"]] == [
+        "https://news.example.test/incidents/new", "https://news.example.test/incidents/one",
+    ]
+
+
+@pytest.mark.parametrize("newest_first", [False, True])
+def test_updated_duplicate_incident_keeps_newest_revision_in_any_feed_order(
+        monkeypatch, newest_first):
+    older = incident(published=NOW - timedelta(hours=2), updated=NOW - timedelta(hours=1),
+                     summary="Investigating errors.")
+    newer = incident(published=NOW - timedelta(hours=2), updated=NOW,
+                     summary="Resolved; all services recovered.")
+    entries = [newer, older] if newest_first else [older, newer]
+    transport(monkeypatch, Response(atom(*entries)))
+    result = reader.read_feed(FEED_URL, now=NOW, track_updates=True, limit=1)
+    assert len(result["items"]) == 1
+    assert result["items"][0]["summary"] == "Resolved; all services recovered."
+    assert result["items"][0]["updated_at"] == "2026-10-28T12:00:00Z"
+
+
+@pytest.mark.parametrize("field,length", [("title", 500), ("summary", 6500), ("content", 6500)])
+def test_update_fingerprint_includes_visible_tail_before_display_limits(monkeypatch, field, length):
+    prefix = "x" * length
+    transport(monkeypatch,
+              Response(atom(incident(**{field: prefix + " Investigating"}))),
+              Response(atom(incident(**{field: prefix + " Resolved"}))))
+    first = reader.read_feed(FEED_URL, now=NOW, track_updates=True)["items"][0]
+    second = reader.read_feed(FEED_URL, now=NOW, track_updates=True)["items"][0]
+    assert first[field] == second[field]
+    assert len(first["content_fingerprint"]) == 64
+    assert first["content_fingerprint"] != second["content_fingerprint"]
+
+
+def test_update_fingerprint_ignores_date_whitespace_markup_and_hidden_text(monkeypatch):
+    transport(monkeypatch,
+              Response(atom(incident(updated=NOW - timedelta(hours=1),
+                                     summary="<p>Errors &amp; delays.</p>",
+                                     content="<p>Requests are recovering.</p><style>old rule</style>"))),
+              Response(atom(incident(updated=NOW, summary=" Errors  &amp;\n delays. ",
+                                     content="<div>Requests\n are  recovering.</div><style>new rule</style>"))))
+    first = reader.read_feed(FEED_URL, now=NOW, track_updates=True)["items"][0]
+    second = reader.read_feed(FEED_URL, now=NOW, track_updates=True)["items"][0]
+    assert first["updated_at"] != second["updated_at"]
+    assert first["summary"] == second["summary"]
+    assert first["content"] == second["content"]
+    assert first["content_fingerprint"] == second["content_fingerprint"]
 
 
 def test_article_tracking_variants_have_one_stable_identity(monkeypatch):

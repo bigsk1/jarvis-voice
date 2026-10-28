@@ -3,7 +3,7 @@
 v: 1
 profiles:
   daily_tech:
-    canvas_title: Digests/Daily Tech
+    canvas_title: RSS/Daily Tech
     interests:
       - AI coding agents, developer tools, and useful open-source applications
       - Local models, self-hosting, Docker, Linux, and home labs
@@ -30,6 +30,30 @@ profiles:
         url: https://github.blog/changelog/feed/
       - name: Ars Technica
         url: https://feeds.arstechnica.com/arstechnica/index
+  ai_status:
+    canvas_title: RSS/AI Service Status
+    track_updates: true
+    interests:
+      - Official outage, degradation, maintenance, and recovery reports from OpenAI, xAI, and Anthropic
+      - Prioritize API access, ChatGPT, Codex, Grok, automations, and Claude; group related service reports for the same incident
+      - Explain the affected provider and services, reported impact, and latest status explicitly supported by the supplied incident evidence
+      - Include reported start, update, and resolution times when supplied; distinguish resolved incidents from ongoing reports and unknown current status
+      - Treat this as recent incident history, not a live health check; never infer all systems are healthy from an empty feed or absent incident
+    exclude:
+      - General AI news, product announcements, pricing, and unrelated commentary
+    max_stories: 8
+    max_candidates: 40
+    max_age_hours: 72
+    feeds:
+      - name: OpenAI Status
+        url: https://status.openai.com/feed.rss
+        priority: high
+      - name: xAI Status
+        url: https://status.x.ai/feed.xml
+        priority: high
+      - name: Claude Status
+        url: https://status.claude.com/history.rss
+        priority: high
 # Add profiles for other interests and point /rss_digest at their names.
 # Feed fields: name, url, priority (high/normal/low), enabled (true/false).
 # Each profile accepts 1-16 feeds, 1-40 candidates, 1-8 stories, and 1-720h age.

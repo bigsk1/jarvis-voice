@@ -5,6 +5,7 @@ from __future__ import annotations
 import calendar
 import hashlib
 import ipaddress
+import json
 import math
 import re
 import socket
@@ -249,7 +250,7 @@ def _parse(body: bytes, url: str):
     return parsed
 
 
-def _article(entry, feed_url: str) -> dict | None:
+def _article(entry, feed_url: str, *, track_updates: bool = False) -> dict | None:
     links = [link.get("href") for link in entry.get("links", [])
              if isinstance(link, dict) and link.get("rel", "alternate") == "alternate"
              and link.get("type", "text/html") in {"text/html", "application/xhtml+xml", ""}]
@@ -277,7 +278,7 @@ def _article(entry, feed_url: str) -> dict | None:
     content_truncated = content_chars > len(content)
     categories = list(dict.fromkeys(_text(tag.get("term"), 80) for tag in entry.get("tags", [])
                                     if isinstance(tag, dict) and _text(tag.get("term"), 80)))[:12]
-    return {
+    article = {
         "id": hashlib.sha256(article_url.encode()).hexdigest(),
         "url": article_url,
         "title": _text(entry.get("title", ""), 400),
@@ -293,10 +294,21 @@ def _article(entry, feed_url: str) -> dict | None:
         # inline content can stand in for fetching the article itself.
         "needs_fetch": bool(content_kind != "inline" or content_truncated or len(content) < 500),
     }
+    if track_updates:
+        # Hash the complete visible feed evidence before any reader/workflow
+        # prefix cuts. Formatting, hidden markup and timestamp-only changes
+        # do not create new incident versions. The download is capped at 2 MiB.
+        evidence = [_text(value, MAX_FEED_BYTES)
+                    for value in (entry.get("title", ""), raw_summary, inline)]
+        article["content_fingerprint"] = hashlib.sha256(
+            json.dumps(evidence, ensure_ascii=True).encode()
+        ).hexdigest()
+    return article
 
 
 def read_feed(url: str, *, now: datetime | None = None, max_age_hours: int = 48,
-              limit: int = 20, deadline: float | None = None) -> dict:
+              limit: int = 20, deadline: float | None = None,
+              track_updates: bool = False) -> dict:
     """Fetch once, then select recent dated entries; no cached/stale fallback."""
     if (isinstance(max_age_hours, bool) or not isinstance(max_age_hours, int)
             or not 1 <= max_age_hours <= 8760 or isinstance(limit, bool)
@@ -304,6 +316,8 @@ def read_feed(url: str, *, now: datetime | None = None, max_age_hours: int = 48,
         raise RSSFeedError("Feed age must be 1–8760 hours and item limit 1–100")
     if deadline is not None and (not isinstance(deadline, (int, float)) or not math.isfinite(deadline)):
         raise RSSFeedError("Feed deadline must be a finite monotonic timestamp")
+    if type(track_updates) is not bool:
+        raise RSSFeedError("RSS track_updates must be true or false")
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
@@ -314,22 +328,31 @@ def read_feed(url: str, *, now: datetime | None = None, max_age_hours: int = 48,
     _remaining(deadline)
     cutoff = now - timedelta(hours=max_age_hours)
     recent = []
+    latest = {}
     seen = set()
     undated = 0
     for entry in parsed.entries:
         _remaining(deadline)
         published = _entry_date(entry, "published")
         updated = _entry_date(entry, "updated")
-        dated = published or updated
+        dates = [date for date in (published, updated) if date is not None]
+        dated = max(dates) if track_updates and dates else published or updated
         if dated is None:
             undated += 1
             continue
         if dated < cutoff or dated > now + timedelta(minutes=15):
             continue
-        article = _article(entry, final_url)
+        article = _article(entry, final_url, track_updates=track_updates)
+        if article and track_updates:
+            previous = latest.get(article["url"])
+            if previous is None or dated > previous[0]:
+                latest[article["url"]] = (dated, article)
+            continue
         if article and article["url"] not in seen:
             recent.append((dated, article))
             seen.add(article["url"])
+    if track_updates:
+        recent = list(latest.values())
     recent.sort(key=lambda row: row[0], reverse=True)
     _remaining(deadline)
     return {"url": final_url, "title": _text(parsed.feed.get("title", ""), 400),

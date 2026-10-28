@@ -57,6 +57,8 @@ def load_profiles(path: Path | None = None) -> dict[str, dict]:
         name = profile_id(name)
         if not isinstance(raw, dict):
             raise RSSFeedError("Each RSS profile must be an object.")
+        if type(raw.get("track_updates", False)) is not bool:
+            raise RSSFeedError("RSS track_updates must be true or false.")
         title = raw.get("canvas_title", f"Digests/{name}")
         if not isinstance(title, str) or not title.strip() or len(title) > 150:
             raise RSSFeedError("Each RSS profile needs a short Canvas title.")
@@ -89,5 +91,8 @@ def load_profiles(path: Path | None = None) -> dict[str, dict]:
             "max_candidates": _integer(raw.get("max_candidates"), 40, 40, "max_candidates"),
             "max_age_hours": _integer(raw.get("max_age_hours"), 48, 720, "max_age_hours"),
             "feeds": feeds,
+            # Preserve existing config hashes and pending batches when this
+            # optional policy is absent or explicitly disabled.
+            **({"track_updates": True} if raw.get("track_updates", False) else {}),
         }
     return profiles

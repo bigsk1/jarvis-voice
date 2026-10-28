@@ -106,6 +106,8 @@ class RSSFeedService:
             batch = state["batches"].get(batch_id)
             if not batch or batch.get("config_hash") != _digest(config):
                 raise RSSFeedError("This RSS batch expired or its profile changed; read the feeds again.")
+            if batch.get("superseded"):
+                raise RSSFeedError("This RSS batch was superseded by a published incident update; read the feeds again.")
             if batch.get("acknowledged"):
                 if action == "acknowledge":
                     return {"action": action, "profile": name, "batch_id": batch_id, "already_acknowledged": True,
@@ -129,7 +131,8 @@ class RSSFeedService:
             try:
                 result = self.reader(feed["url"], now=self.now,
                                      max_age_hours=config["max_age_hours"], limit=20,
-                                     deadline=min(deadline, time.monotonic() + per_feed_seconds))
+                                     deadline=min(deadline, time.monotonic() + per_feed_seconds),
+                                     **({"track_updates": True} if config.get("track_updates") else {}))
                 return feed, result, None
             except RSSFeedError as exc:
                 return feed, None, str(exc)
@@ -155,6 +158,7 @@ class RSSFeedService:
         checked_at = self.now.isoformat()
         with store.transaction(self.now.timestamp()) as state:
             full_items = []
+            collected_urls = set()
             prompt_chars = 2
             existing = set(state["seen"])
             # Round-robin gives smaller publications a chance before the global cap.
@@ -168,7 +172,14 @@ class RSSFeedService:
                     except (RSSFeedError, KeyError):
                         continue
                     identity = _digest(item["url"])[:24]
-                    if identity in existing:
+                    fingerprint = item.pop("content_fingerprint", None)
+                    if config.get("track_updates"):
+                        # Production readers fingerprint full visible evidence.
+                        # Injected readers may supply plain title/summary/body.
+                        if not isinstance(fingerprint, str) or not re.fullmatch(r"[a-f0-9]{64}", fingerprint):
+                            fingerprint = _digest([item.get(key, "") for key in ("title", "summary", "content")])
+                        identity = _digest([item["url"], fingerprint])[:24]
+                    if identity in existing or item["url"] in collected_urls:
                         continue
                     existing.add(identity)
                     item.update(id=identity, source=feed["name"], priority=feed["priority"])
@@ -182,6 +193,7 @@ class RSSFeedService:
                         continue
                     prompt_chars += cost
                     full_items.append(item)
+                    collected_urls.add(item["url"])
                     if len(full_items) >= config["max_candidates"]:
                         break
                 if len(full_items) >= config["max_candidates"]:
@@ -219,12 +231,19 @@ class RSSFeedService:
             raise RSSFeedError("RSS selection contained a story that was not in this fetched batch.")
         selected = [candidates[identity] for identity in identifiers if identity not in state["seen"]]
         selected_ids = {row["id"] for row in selected}
+        selected_urls = {row["url"] for row in selected}
         # The state lock protects this claim across separate CLI/Web/scheduled
         # runs while the existing tools perform crawling and publication.
         for other in state["batches"].values():
             if other is batch or other.get("acknowledged"):
                 continue
-            if other.get("selected_at", 0) > self.now.timestamp() - 900 and selected_ids.intersection(other.get("selected_ids", [])):
+            other_ids = set(other.get("selected_ids", []))
+            overlap = selected_ids.intersection(other_ids)
+            if config.get("track_updates"):
+                overlap = selected_urls.intersection(
+                    row["url"] for row in other["items"] if row["id"] in other_ids
+                )
+            if other.get("selected_at", 0) > self.now.timestamp() - 900 and overlap:
                 raise RSSFeedError("Another RSS digest is preparing these stories; retry after it finishes or in 15 minutes.")
         selected = [dict(row) for row in selected]
         # Keep complete IDs/URLs and shrink prose before workflow interpolation.
@@ -279,6 +298,16 @@ class RSSFeedService:
         if not published:
             raise RSSFeedError("No selected story links were found in the saved digest; RSS history was kept.")
         published_ids = {row["id"] for row in published}
+        if config.get("track_updates"):
+            published_versions = {row["url"]: row["id"] for row in published}
+            for other in state["batches"].values():
+                if other is batch or other.get("acknowledged"):
+                    continue
+                if any(row["url"] in published_versions and row["id"] != published_versions[row["url"]]
+                       for row in other["items"]):
+                    # A fresh read is required before a different staged
+                    # revision can replace a newly published incident report.
+                    other["superseded"] = True
         for row in published:
             state["seen"][row["id"]] = self.now.timestamp()
         state["recent"].extend({key: row[key] for key in ("id", "title", "url", "source")} for row in published)

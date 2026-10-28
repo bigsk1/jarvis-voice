@@ -3,7 +3,7 @@
   "name": "RSS Daily Digest",
   "description": "Read a configured RSS/Atom profile, select relevant fresh stories, read shortlisted articles when needed, and refresh a concise Canvas digest. Example: /rss_digest daily_tech.",
   "enabled": true,
-  "allow_workflow_tool": false,
+  "allow_workflow_tool": true,
   "version": "1.0",
   "disable_server_side_tools": true,
   "triggers": {
