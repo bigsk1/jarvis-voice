@@ -795,7 +795,7 @@ function renderAlertCard(alert) {
         <div class="memory-meta">
           <span title="Severity">🚨 ${escapeHtml(formatAlertSeverity(severity))}</span>
           <span title="Status">📌 ${escapeHtml(formatAlertStatus(status))}</span>
-          ${alert.spoken ? '<span title="Spoken immediately">🔊 Spoken</span>' : ''}
+          ${alert.spoken ? '<span title="Spoken aloud">🔊 Spoken</span>' : ''}
           ${alert.related_intel_file ? '<span title="Related intel file">📁 Intel</span>' : ''}
         </div>
         <div class="memory-actions">

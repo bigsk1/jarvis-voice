@@ -203,7 +203,7 @@ def speak_follow_up(alert: Dict[str, Any], mode: str, project_root: Path) -> boo
 
 
 def update_follow_up(db_path: str, alert_id: int):
-    """Mark alert as followed up."""
+    """Record a successfully spoken follow-up and retain the first speech time."""
     def _update():
         conn = sqlite3.connect(db_path, timeout=30)
         cursor = conn.cursor()
@@ -214,9 +214,11 @@ def update_follow_up(db_path: str, alert_id: int):
             UPDATE alerts
             SET follow_up_count = follow_up_count + 1,
                 last_follow_up = ?,
-                updated_at = ?
+                updated_at = ?,
+                spoken = 1,
+                spoken_at = COALESCE(spoken_at, ?)
             WHERE id = ?
-        """, (now, now, alert_id))
+        """, (now, now, now, alert_id))
         
         conn.commit()
         conn.close()

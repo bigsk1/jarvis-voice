@@ -5,6 +5,7 @@ import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -284,3 +285,64 @@ def test_speak_follow_up_reports_script_failure(tmp_path, monkeypatch):
     )
 
     assert ok is False
+
+
+@pytest.mark.parametrize("speech_ok", [True, False])
+def test_follow_up_marks_alert_spoken_only_after_success(tmp_path, monkeypatch, speech_ok):
+    db_path = tmp_path / "alerts.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""
+            CREATE TABLE alerts (
+                id INTEGER PRIMARY KEY, title TEXT, severity TEXT, status TEXT,
+                created_at TEXT, updated_at TEXT, spoken INTEGER DEFAULT 0,
+                spoken_at TEXT, follow_up_count INTEGER DEFAULT 0, last_follow_up TEXT
+            )
+        """)
+        conn.execute("""
+            INSERT INTO alerts (id, title, severity, status, created_at)
+            VALUES (1, 'Scheduled task failed', 'medium', 'pending', '2026-10-29T10:00:00')
+        """)
+
+    class FixedDateTime(datetime):
+        current = datetime(2026, 10, 29, 11, 0)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current
+
+    def stop_after_one_check(_seconds):
+        raise KeyboardInterrupt
+
+    speak = Mock(return_value=speech_ok)
+    monkeypatch.setattr(follow_up_daemon, "datetime", FixedDateTime)
+    monkeypatch.setattr(follow_up_daemon, "load_config", lambda: None)
+    monkeypatch.setattr(follow_up_daemon, "get_active_config_mode", lambda: "cloud")
+    monkeypatch.setattr(follow_up_daemon, "MemoryDB", lambda: Mock(db_path=str(db_path)))
+    monkeypatch.setattr(follow_up_daemon, "ServiceLogger", lambda _name: Mock())
+    monkeypatch.setattr(follow_up_daemon, "speak_follow_up", speak)
+    monkeypatch.setattr(follow_up_daemon.time, "sleep", stop_after_one_check)
+
+    follow_up_daemon.main()
+
+    speak.assert_called_once()
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute("""
+            SELECT spoken, spoken_at, follow_up_count, last_follow_up, status
+            FROM alerts WHERE id = 1
+        """).fetchone()
+    timestamp = "2026-10-29T11:00:00" if speech_ok else None
+    assert row == (int(speech_ok), timestamp, int(speech_ok), timestamp, "pending")
+
+    if speech_ok:
+        # A later successful reminder updates delivery history, not the first speech time.
+        FixedDateTime.current = datetime(2026, 10, 29, 12, 0)
+        speak.reset_mock()
+        follow_up_daemon.main()
+
+        speak.assert_called_once()
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute("""
+                SELECT spoken, spoken_at, follow_up_count, last_follow_up, status
+                FROM alerts WHERE id = 1
+            """).fetchone()
+        assert row == (1, "2026-10-29T11:00:00", 2, "2026-10-29T12:00:00", "pending")
