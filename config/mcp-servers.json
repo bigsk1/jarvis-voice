@@ -229,7 +229,7 @@
         "DDG_REGION",
         "-e",
         "DDG_SAFE_SEARCH",
-        "ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0"
+        "ghcr.io/nickclyde/duckduckgo-mcp-server:0.7.0"
       ],
       "env": {
         "DDG_REGION": "us-en",
@@ -240,17 +240,6 @@
       "tool_metadata": {
         "search": {"web_search": true}
       },
-      "enabled": false
-    },
-    "sequentialthinking": {
-      "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "mcp/sequentialthinking"
-      ],
-      "description": "Sequential thinking for complex tasks, use this when you need to think step by step to solve a problem",
       "enabled": false
     },
     "playwright": {

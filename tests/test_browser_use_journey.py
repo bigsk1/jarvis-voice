@@ -5,6 +5,7 @@ upstream's real Docker agent with the configured cloud model and public pages.
 All stores, credentials and Stash output remain under pytest's temporary root.
 """
 import json
+import logging
 import os
 import socket
 import threading
@@ -20,7 +21,32 @@ from test_web_background_tasks import web_tasks as web_tasks
 from lib.background_tasks.worker import TaskWorker
 from lib.webhook_integrations.browser import provision, read_config
 from lib.webhook_integrations.browser_service import BrowserService
+from lib.webhook_integrations.contracts import ADAPTER
 from lib.webhook_integrations.service import IntegrationService
+
+
+@pytest.fixture
+def observed_prompt_guard(monkeypatch):
+    """Record real scanner receipts without retaining submitted content or keys."""
+    from lib import prompt_guard_observer
+
+    original = prompt_guard_observer.scan_text
+    observations = []
+
+    def scan(text, **labels):
+        observation = original(text, **labels)
+        observations.append((labels, observation))
+        logging.getLogger(__name__).info(
+            '[LIVE_PROMPT_GUARD] source=%s status=%s flagged=%s bytes=%s windows=%s '
+            'elapsed_ms=%.1f request_id=%s',
+            labels.get('source_name'), observation.status, observation.flagged,
+            observation.input_bytes, observation.windows_scanned, observation.elapsed_ms,
+            observation.service_request_id,
+        )
+        return observation
+
+    monkeypatch.setattr(prompt_guard_observer, 'scan_text', scan)
+    return observations
 
 
 def browser_runtime_configuration(live, monkeypatch, stash_dir):
@@ -33,6 +59,9 @@ def browser_runtime_configuration(live, monkeypatch, stash_dir):
     from llm_provider import create_configured_provider
     from suite_isolation import load_live_mode_config
 
+    from lib import prompt_guard_observer
+
+    deployment['PROMPT_GUARD_INCIDENT_DIR'] = str(stash_dir.parent / 'prompt-guard-incidents')
     settings = {**load_live_mode_config('cloud'), **deployment}
     real_scope = config_loader.config_scope
 
@@ -45,6 +74,9 @@ def browser_runtime_configuration(live, monkeypatch, stash_dir):
         return real_scope(mode, overrides={**selected, **dict(overrides or {})})
 
     monkeypatch.setattr(config_loader, 'config_scope', configured_scope)
+    # Callback review owns an imported scope alias and deliberately opens the
+    # job's mode again. Opt that alias into the same live configuration too.
+    monkeypatch.setattr(prompt_guard_observer, 'config_scope', configured_scope)
     with configured_scope('cloud'):
         provider, model, _ = create_configured_provider(
             mode='cloud', disable_server_side_tools=True,
@@ -74,6 +106,7 @@ def test_live_browser_configuration_reaches_real_child_scope_without_global_leak
     settings = {
         'LLM_PROVIDER': 'ollama', 'OLLAMA_CLOUD_MODEL': 'fixture-live:cloud',
         'OLLAMA_API_KEY': 'fixture-browser-token', 'STASH_DIR': '/unused/private/stash',
+        'PROMPT_GUARD_ENABLED': 'true', 'PROMPT_GUARD_TOOLS': 'browser_use',
     }
 
     def read_selected(mode):
@@ -92,6 +125,15 @@ def test_live_browser_configuration_reaches_real_child_scope_without_global_leak
     provider, model, deployment = browser_runtime_configuration(True, monkeypatch, tmp_path)
     assert reads == ['cloud']
     assert (provider, model) == ('ollama', 'fixture-live:cloud')
+
+    from lib import prompt_guard_observer
+
+    with prompt_guard_observer.config_scope('cloud', {}):
+        assert prompt_guard_observer.is_enabled()
+        assert config_loader.get_config_value('PROMPT_GUARD_TOOLS') == 'browser_use'
+        assert config_loader.get_config_value('PROMPT_GUARD_INCIDENT_DIR') == str(
+            tmp_path.parent / 'prompt-guard-incidents',
+        )
 
     # Exercise BrowserService's real scope and environment builder in the
     # separate-thread shape used by the journey, without starting a browser.
@@ -160,7 +202,9 @@ def test_browser_web_denial_never_starts_foreground_or_callback(web_tasks, monke
 @pytest.mark.parametrize('live,result_ok', [(False, True), (False, False),
     pytest.param(True, True, marks=pytest.mark.skipif(
         os.environ.get('JARVIS_LIVE_BROWSER_TEST') != '1', reason='explicit Docker/provider live gate'))])
-def test_browser_callback_after_intervening_web_tool(web_tasks, monkeypatch, live, result_ok):
+def test_browser_callback_after_intervening_web_tool(
+    web_tasks, monkeypatch, observed_prompt_guard, live, result_ok,
+):
     import orchestrator_v2
     import tool_process
     import tool_profiles
@@ -208,7 +252,7 @@ def test_browser_callback_after_intervening_web_tool(web_tasks, monkeypatch, liv
     h.background.adapters = {'browser_use': 'http_callback_v1'}
 
     arguments = {'task': 'Read this page and report its title and what these domains are for. Cite the URL.',
-                 'url': 'https://example.com/', 'max_steps': 3}
+                 'url': 'https://example.com/', 'max_steps': 6 if live else 3}
     force_followup = [False]
     factory = orchestrator_v2.Orchestrator
     def browser_factory(*args, **kwargs):
@@ -321,6 +365,14 @@ def test_browser_callback_after_intervening_web_tool(web_tasks, monkeypatch, liv
             assert followup['arguments']['continue_job_id'] == job['id']
         if live:
             assert list((h.tmp / 'stash').rglob('browser-research.md'))
+            if deployment.get('PROMPT_GUARD_ENABLED', '').lower() in {'true', '1', 'yes', 'on'}:
+                selected = deployment.get('PROMPT_GUARD_TOOLS', 'browser_use').split(',')
+                if 'browser_use' in {name.strip() for name in selected}:
+                    scans = [observation for labels, observation in observed_prompt_guard
+                             if labels.get('source_name') == 'browser_use']
+                    assert len(scans) == 1, 'The live browser result did not reach Prompt Guard'
+                    assert scans[0].status == 'scanned', scans[0]
+                    assert scans[0].coverage_complete and scans[0].flagged is False
     finally:
         allow_completion.set()
         stop.set()
@@ -331,3 +383,58 @@ def test_browser_callback_after_intervening_web_tool(web_tasks, monkeypatch, liv
         server.should_exit = True
         api_thread.join(6)
         api_socket.close()
+
+
+@pytest.mark.skipif(os.environ.get('JARVIS_LIVE_BROWSER_TEST') != '1',
+                    reason='explicit Prompt Guard live gate')
+@pytest.mark.parametrize('mode', ['cloud', 'local'])
+def test_live_browser_callback_withholds_injection(
+    tmp_path, monkeypatch, observed_prompt_guard, mode,
+):
+    """Screen a synthetic authenticated completion using the real configured API."""
+    import config_loader
+    from suite_isolation import load_live_mode_config
+    from test_task_callback_prompt_guard import BODY, bind, completion
+    from test_task_callbacks import configured, deliver
+
+    from lib import prompt_guard_observer
+
+    incident_dir = tmp_path / 'prompt-guard-incidents'
+    settings = {**load_live_mode_config(mode), 'PROMPT_GUARD_INCIDENT_DIR': str(incident_dir)}
+    real_scope = config_loader.config_scope
+
+    def configured_scope(selected_mode, overrides=None):
+        assert selected_mode == mode
+        return real_scope(selected_mode, overrides={**settings, **dict(overrides or {})})
+
+    monkeypatch.setattr(prompt_guard_observer, 'config_scope', configured_scope)
+    with configured_scope(mode):
+        selected = config_loader.get_config_value('PROMPT_GUARD_TOOLS', 'browser_use').split(',')
+        if not prompt_guard_observer.is_enabled() or 'browser_use' not in {name.strip() for name in selected}:
+            pytest.skip(f'Prompt Guard for browser_use is not configured in {mode} mode')
+
+    service, source, credential, _ = configured(tmp_path / 'tasks')
+    service.store.configure(background_tools=['browser_use'])
+    claim, submission = bind(service, source, mode=mode)
+    raw = completion(claim)
+    deliver(service, source, credential, submission, raw)
+    assert service.drain() == 1
+
+    assert len(observed_prompt_guard) == 1
+    labels, observation = observed_prompt_guard[0]
+    assert labels == {'source_type': 'tool_result', 'source_name': 'browser_use'}
+    assert observation.status == 'scanned' and observation.flagged is True, observation
+    saved = service.store.get(claim.job_id)
+    assert saved['state'] == 'failed' and saved['result']['completion'] == 'completed'
+    assert prompt_guard_observer.is_prompt_guard_rejection(saved['result'])
+    receipt = saved['result']['data']['prompt_guard']
+    assert receipt['content_withheld'] and receipt['evidence_saved']
+    evidence = incident_dir / mode / (receipt['incident_id'] + '.json')
+    assert evidence.is_file() and evidence.stat().st_mode & 0o777 == 0o600
+    assert BODY not in json.dumps(saved['result'])
+    assert 'browser_research' not in saved['result']['data']
+    deliveries = service.store.pending_deliveries()
+    assert len(deliveries) == 1 and BODY not in json.dumps(deliveries)
+    assert deliver(service, source, credential, submission, raw)['duplicate'] is True
+    assert service.drain() == 0 and len(observed_prompt_guard) == 1
+    assert service.store.claim('second-worker', {ADAPTER}) is None

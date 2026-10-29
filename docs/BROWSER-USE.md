@@ -41,10 +41,10 @@ reason. No discovery snapshot guarantees that a service remains up until admissi
 
 ## Deployment
 
-The Compose service pins the official `browseruse/browseruse:0.13.10` image by
+The Compose service pins the official `browseruse/browseruse:0.13.14` image by
 manifest digest. It includes the agent, Chromium and their Python dependencies.
 No Browser Use or Playwright package is added to Jarvis's Python environment.
-The evaluated AMD64 image is approximately 2.16 GB installed (680 MB compressed).
+The evaluated AMD64 image is approximately 2.19 GB installed (688 MB compressed).
 This reuses the upstream agent's reasoning, DOM extraction and action handling;
 it is not a smaller browser installation.
 
@@ -324,6 +324,13 @@ Domain page, with Stash, credentials and conversations isolated under pytest tem
 ```bash
 JARVIS_LIVE_BROWSER_TEST=1 .venv/bin/python -m pytest tests/test_browser_use_journey.py -q
 ```
+
+When Prompt Guard is enabled for `browser_use`, the live journey also requires a
+successful real scan of the completed callback result. Additional gated checks
+submit synthetic injected callbacks in each configured mode and verify withholding,
+private incident evidence and duplicate suppression. Incident files stay under
+pytest's temporary directory; modes without Browser Use screening are skipped.
+This checks the returned result boundary, not every page observation inside the agent.
 
 Live evaluation also exercises the selected local and cloud models on controlled
 multi-page content containing a random JavaScript-rendered value. A separate

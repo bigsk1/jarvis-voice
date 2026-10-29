@@ -1,7 +1,7 @@
 # Optional per-task agent. Pull once; the skill uses `compose run --rm`.
 services:
   browser:
-    image: browseruse/browseruse:0.13.10@sha256:689123c4998749972d320d6560f81f13595135ee5caea4093fbbc99b8bd039eb
+    image: browseruse/browseruse:0.13.14@sha256:8bbe43463c3fbb6aff65b0114681156535672b9233eea1b8aaa7d36f92b1725d
     init: true
     user: browseruse
     network_mode: none
