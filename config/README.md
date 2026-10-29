@@ -239,6 +239,19 @@ JARVIS_RESPONSE_STYLE="auto"  # Recommended
 
 For networks that require an HTTP(S) proxy for outbound API calls and downloads, configure `LOCAL_PROXY` and optionally `LOCAL_PROXY2` in `cloud.env` / `local.env`. See **[Network proxy (`LOCAL_PROXY` / `LOCAL_PROXY2`)](../docs/NETWORK_PROXY.md)** for behavior, tool coverage, and MCP limitations.
 
+### Optional Prompt Guard screening
+
+`PROMPT_GUARD_ENABLED=false` leaves the external scanner off. Opt in with its
+base `PROMPT_GUARD_URL`, `PROMPT_GUARD_API_KEY`, and an exact comma-separated
+`PROMPT_GUARD_TOOLS` list in the selected mode env. The default selection is
+`crawl_url,brave_llm_context,rss_feed,browser_use,browser_use_cloud`. Both cloud
+and local mode support it, including selected background completion results.
+Confirmed detections withhold returned content, stop automatic retries and
+workflows, and create private incident files under
+`logs/prompt-guard/incidents/<mode>/`. Scanner outages and oversized inputs
+continue unchanged. See [Prompt Guard](../docs/PROMPT_GUARD.md) for setup,
+incident evidence, shared-client use, and initial coverage limits.
+
 ### Named webhook routing
 
 Copy `webhook_registry.json.example` to `webhook_registry.json` to configure

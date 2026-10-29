@@ -78,6 +78,10 @@ async def _query_jarvis_scoped(body: QueryRequest):
             tools_used=result.get('tools_used', []),
             session_id=body.session_id,
             error=result.get('error'),
+            error_code=result.get('error_code'),
+            terminal_failure=result.get('terminal_failure'),
+            retry_safe=result.get('retry_safe'),
+            completion=result.get('completion'),
             # Extended fields
             data=result.get('data'),
             usage=result.get('usage'),

@@ -15,6 +15,14 @@ Every background tool uses the same admission, saved job, card, late-answer, all
 
 These adapters share the same chat system and differ in who owns completion. A compatible local or remote skill needs reviewed manifest settings and a trusted binding to the shared runner. A callback tool also needs a real submit/receipt service, a configured source and credential, and a reviewed binding; adding a manifest flag or a URL alone cannot make a tool runnable. [Task callbacks](TASK-CALLBACKS.md) documents that protocol.
 
+Optional [Prompt Guard screening](PROMPT_GUARD.md) reviews selected final results
+at worker or authenticated callback completion, using the originating job's mode.
+Both Browser Use tools are included in the default selection. Confirmed hits
+withhold returned text and deliver a neutral incident notice without rerunning
+the tool. Known completion settles normally with a failed result presentation;
+uncertain remote work stays `needs_attention`. Scanner outages continue normally.
+This screens returned reports; browser agents' internal observations are separate.
+
 Progress is separate from completion. The callback protocol accepts `task.progress`, but a service must actually send it; the expanded Web task card shows the latest short phase, not a full activity stream. Browser Use sends phase updates, while a service that only sends a final callback will appear idle until it finishes. OpenCode uses a foreground tool card with richer live status and has no background binding.
 
 **Both Browser Use tools are Web-only and background-only.** Local `browser_use` requires the saved allowlist, worker and callback service. Hosted `browser_use_cloud` requires the saved allowlist, worker and a Browser Use Cloud API key; its V4 observer polls in the worker, so Jarvis's incoming callback receiver is not needed. Unmet requirements hide either tool from model selection; stale or forced calls fail without starting browser work. Voice, Talk, Firefox Companion, query API, CLI and workflows cannot run either tool; there is no foreground fallback.

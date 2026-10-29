@@ -33,6 +33,8 @@ from llm_logger import LLMLogger
 from llm_provider import create_configured_provider, has_usage_accounting_data
 from tool_logger import ToolLogger
 
+from lib.prompt_guard_observer import is_prompt_guard_rejection, prompt_guard_notice
+
 try:
     from .workflow_availability import (
         check_workflow_registry_availability,
@@ -47,6 +49,18 @@ except ImportError:
 
 class _WorkflowLLMError(RuntimeError):
     """A workflow-internal LLM request failed before producing usable content."""
+
+
+def _prompt_guard_terminal_fields(result: dict) -> dict:
+    """Carry the server-made content rejection through workflow envelopes."""
+    if not is_prompt_guard_rejection(result):
+        return {}
+    return {
+        "error_code": "prompt_injection_detected",
+        "terminal_failure": True,
+        "retry_safe": False,
+        "completion": result.get("completion", "unknown"),
+    }
 
 
 def _heygen_recovery(step: dict, result: dict) -> dict:
@@ -865,6 +879,8 @@ class PipelineExecutor:
                         if detail:
                             step_error += f": {str(detail).strip()[:500]}"
                             break
+                    if is_prompt_guard_rejection(step_result):
+                        step_error = prompt_guard_notice(step_result)
                     results.append({
                         **step_identity,
                         "ok": False,
@@ -873,6 +889,9 @@ class PipelineExecutor:
                         "outputs": outputs,
                         "error": step_error,
                         "duration_ms": step_duration_ms,
+                        **_prompt_guard_terminal_fields(step_result),
+                        **({"data": step_result.get("data")}
+                           if is_prompt_guard_rejection(step_result) else {}),
                     })
                     return self._build_abort_response(
                         workflow, step, results, variables,
@@ -893,7 +912,10 @@ class PipelineExecutor:
                     "items_processed": step_result.get("items_processed", 0),
                     "items_succeeded": step_result.get("items_succeeded", 0),
                     "outputs": step_result.get("outputs", []),
-                    "duration_ms": step_duration_ms
+                    "duration_ms": step_duration_ms,
+                    **_prompt_guard_terminal_fields(step_result),
+                    **({"data": step_result.get("data")}
+                       if is_prompt_guard_rejection(step_result) else {}),
                 })
                 tools_used.append(tool_name)
             else:
@@ -919,6 +941,25 @@ class PipelineExecutor:
                         tools_used,
                         start_time=start_time,
                         query=query,
+                    )
+
+                if is_prompt_guard_rejection(step_result):
+                    # A deliberate content rejection is not a transient tool
+                    # failure. Do not validate, transform or retry this output.
+                    results.append({
+                        **step_identity,
+                        "ok": False,
+                        "data": step_result.get("data"),
+                        "error": step_result.get("error"),
+                        "speech": prompt_guard_notice(step_result),
+                        "duration_ms": step_duration_ms,
+                        **_prompt_guard_terminal_fields(step_result),
+                    })
+                    tools_used.append(tool_name)
+                    return self._build_abort_response(
+                        workflow, step, results, variables,
+                        start_time=start_time, query=query,
+                        step_error=prompt_guard_notice(step_result),
                     )
                 
                 if not step_result.get("ok") and step.get("required", True):
@@ -1025,6 +1066,9 @@ class PipelineExecutor:
         from lib.background_tasks.admission import reject_background_result
         result = reject_background_result(result)
         self._merge_component_usage(result, tool_name=tool_name)
+
+        if is_prompt_guard_rejection(result):
+            return result
         
         # Validate if needed
         if step.get("validation") and result.get("ok"):
@@ -1256,6 +1300,23 @@ class PipelineExecutor:
                     "retries": retries,
                     "abort": False,
                     "cancelled": True,
+                }
+
+            if is_prompt_guard_rejection(result):
+                outputs.append(result)
+                variables.pop("_loop_index", None)
+                return {
+                    "items_processed": len(outputs),
+                    "items_succeeded": len(validated_outputs),
+                    "outputs": outputs,
+                    "validated_outputs": validated_outputs,
+                    "retries": retries,
+                    "abort": True,
+                    "ok": False,
+                    "data": result.get("data"),
+                    "error": result.get("error"),
+                    "speech": prompt_guard_notice(result),
+                    **_prompt_guard_terminal_fields(result),
                 }
             
             # Validate result
@@ -1513,6 +1574,8 @@ class PipelineExecutor:
         Apply output transformations to extract useful data from step results.
         Uses step-defined 'extract' rules or falls back to built-in patterns.
         """
+        if is_prompt_guard_rejection(result):
+            return
         data = result.get("data", {})
         
         # Check for step-defined extraction rules first
@@ -2383,6 +2446,15 @@ class PipelineExecutor:
             "tools_used": tools_used,
             "usage": self._total_usage if self._total_usage.get("total_tokens", 0) > 0 else None
         }
+        rejected = results[-1] if results and is_prompt_guard_rejection(results[-1]) else None
+        if rejected is not None:
+            response.update(_prompt_guard_terminal_fields(rejected))
+            response["speech"] = prompt_guard_notice(rejected)
+            rejected_data = rejected.get("data")
+            if isinstance(rejected_data, dict):
+                for key in ("prompt_guard", "operation"):
+                    if key in rejected_data:
+                        response["data"][key] = rejected_data[key]
         
         # Log aborted workflow execution
         if start_time:

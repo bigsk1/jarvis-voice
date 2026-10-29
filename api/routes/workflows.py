@@ -354,7 +354,11 @@ async def _execute_workflow_scoped(workflow_id: str, request: WorkflowExecuteReq
             data=result.get("data"),
             usage=result.get("usage"),
             server_side_tools=result.get("server_side_tools"),
-            error=result.get("error")
+            error=result.get("error"),
+            error_code=result.get("error_code"),
+            terminal_failure=result.get("terminal_failure"),
+            retry_safe=result.get("retry_safe"),
+            completion=result.get("completion"),
         )
         
     except HTTPException:

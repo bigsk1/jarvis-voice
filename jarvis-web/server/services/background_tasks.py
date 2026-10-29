@@ -594,6 +594,22 @@ class WebBackgroundTasks:
 
     def _synthesize(self, job, authorization, conversation):
         result = job.get('result') or {}
+        from lib.prompt_guard_observer import is_prompt_guard_rejection, prompt_guard_notice
+
+        if is_prompt_guard_rejection(result):
+            text = prompt_guard_notice(result)
+            if job.get('state') == 'needs_attention':
+                text += ' The operation outcome is still unconfirmed; check the existing job before taking further action.'
+            display, speech = self.handler._prepare_web_response_text({'speech': text}, text)
+            return {
+                'text': display,
+                'data': {
+                    'speech': speech,
+                    job['admission']['tool']: result,
+                    'prompt_guard': result.get('data', {}).get('prompt_guard', {}),
+                    'background_job_id': job['id'],
+                },
+            }
         diagnostic = str(result.get('error') or '').lower()
         timed_out = any(phrase in diagnostic for phrase in
                         ('timeout', 'timed out', 'observation budget ended', 'observation deadline', 'waiting limit'))

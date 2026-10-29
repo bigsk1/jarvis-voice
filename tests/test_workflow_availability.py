@@ -149,7 +149,7 @@ def test_workflow_meta_tool_bypasses_subprocess_timeout_path():
     executor = object.__new__(ToolExecutor)
     executor.excluded_tools = set()
     executor.registry = FakeRegistry({"workflow"})
-    executor._execute_workflow = lambda _tool_name, _args: {
+    executor._execute_workflow = lambda _tool_name, _args, **_kwargs: {
         "ok": True,
         "speech": "Found workflows.",
         "data": {"action": "search"},

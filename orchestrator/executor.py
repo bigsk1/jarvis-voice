@@ -4,6 +4,7 @@ Jarvis Voice Assistant - Orchestrator Executor
 Executes tools/skills and formats responses for TTS.
 """
 import json
+import logging
 import os
 import signal
 import subprocess
@@ -34,6 +35,8 @@ from tool_child_environment import restrict_child_environment
 from tool_logger import get_logger
 from tool_progress import parse_tool_progress
 from tool_search_runtime import search_tools_runtime
+
+from lib.prompt_guard_observer import review_tool_result
 
 try:
     from .workflow_tool_runtime import execute_workflow_tool
@@ -440,9 +443,32 @@ class ToolExecutor:
                                                     self.registry.get_tool(tool_name))
                 except TaskError as exc:
                     return {'ok': False, 'error': str(exc), 'speech': str(exc)}
-        return reject_background_result(self._execute_foreground(tool_name, args, skip_permission_check))
+        # Helpers stage their existing records until returned content has been
+        # screened. Invocation-local state keeps nested/concurrent calls apart.
+        pending_logs: list[dict[str, Any]] = []
 
-    def _execute_foreground(self, tool_name: str, args: dict[str, Any], skip_permission_check=False, *, supervision=None):
+        def stage_log(**entry: Any) -> None:
+            pending_logs.append(entry)
+
+        result = reject_background_result(self._execute_foreground(
+            tool_name, args, skip_permission_check, log_callback=stage_log,
+        ))
+        result = review_tool_result(tool_name, result, args=args, mode=getattr(self, 'mode', None))
+        for entry in pending_logs:
+            try:
+                self.logger.log_tool_call(**{**entry, "result": result})
+            except Exception:
+                # A failed audit write cannot replace a completed result or a
+                # confirmed withholding receipt with a retryable tool failure.
+                try:
+                    logging.getLogger(__name__).warning(
+                        "Tool execution log write failed; preserving the tool result."
+                    )
+                except Exception:
+                    pass
+        return result
+
+    def _execute_foreground(self, tool_name: str, args: dict[str, Any], skip_permission_check=False, *, supervision=None, log_callback=None):
         """
         Execute a tool/skill with permission checking.
         
@@ -460,6 +486,9 @@ class ToolExecutor:
                 "requires_confirmation": bool (if permission check fails)
             }
         """
+        log_call = log_callback if log_callback is not None else (
+            lambda **entry: self.logger.log_tool_call(**entry)
+        )
         # Request/surface exclusions are an execution boundary, not just a
         # discovery hint. Workflows bypass normal LLM schema selection.
         if tool_name in self._effective_exclusions():
@@ -512,14 +541,14 @@ class ToolExecutor:
                 return background_only_result(tool_name)
 
         if tool_name == "tool_search":
-            return self._execute_tool_search(tool_name, args)
+            return self._execute_tool_search(tool_name, args, log_callback=log_callback)
         if tool_name == "workflow":
-            return self._execute_workflow(tool_name, args)
+            return self._execute_workflow(tool_name, args, log_callback=log_callback)
         if tool_name == "email_inbox":
             from lib.email_inbox import execute_inbox
             start_time = time.time()
             result = execute_inbox(self.mode, args, self)
-            self.logger.log_tool_call(tool_name=tool_name, arguments=args, result=result,
+            log_call(tool_name=tool_name, arguments=args, result=result,
                                       duration_ms=(time.time() - start_time) * 1000, mode=self.mode)
             return result
         
@@ -536,7 +565,7 @@ class ToolExecutor:
         
         # Check if this is an MCP tool
         if self.registry.is_mcp_tool(tool_name):
-            return self._execute_mcp_tool(tool_name, args)
+            return self._execute_mcp_tool(tool_name, args, log_callback=log_callback)
         
         # Get script path from schema
         tool_script = Path(tool_schema.script_path)
@@ -657,7 +686,7 @@ class ToolExecutor:
                     "cancelled": True,
                     "error": "Cancelled by user"
                 }
-                self.logger.log_tool_call(
+                log_call(
                     tool_name=tool_name,
                     arguments=args,
                     result=output,
@@ -684,7 +713,7 @@ class ToolExecutor:
             # Note: We don't check returncode because tools write valid JSON even on failure
             
             # Log successful execution
-            self.logger.log_tool_call(
+            log_call(
                 tool_name=tool_name,
                 arguments=args,
                 result=output,
@@ -718,7 +747,7 @@ class ToolExecutor:
                 output,
                 force=True,
             )
-            self.logger.log_tool_call(
+            log_call(
                 tool_name=tool_name,
                 arguments=args,
                 result=output,
@@ -733,7 +762,7 @@ class ToolExecutor:
                 "speech": f"Tool {tool_name} returned invalid JSON",
                 "error": str(e)
             }
-            self.logger.log_tool_call(
+            log_call(
                 tool_name=tool_name,
                 arguments=args,
                 result=output,
@@ -750,7 +779,7 @@ class ToolExecutor:
                 "speech": f"Error executing {tool_name}",
                 "error": str(e)
             }
-            self.logger.log_tool_call(
+            log_call(
                 tool_name=tool_name,
                 arguments=args,
                 result=output,
@@ -759,8 +788,11 @@ class ToolExecutor:
             )
             return output
 
-    def _execute_tool_search(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+    def _execute_tool_search(self, tool_name: str, args: dict[str, Any], *, log_callback=None) -> dict[str, Any]:
         """Run live tool discovery against the active registry."""
+        log_call = log_callback if log_callback is not None else (
+            lambda **entry: self.logger.log_tool_call(**entry)
+        )
         start_time = time.time()
         result = search_tools_runtime(
             registry=self.registry,
@@ -772,7 +804,7 @@ class ToolExecutor:
             include_schema=bool(args.get("include_schema")),
         )
         duration_ms = (time.time() - start_time) * 1000
-        self.logger.log_tool_call(
+        log_call(
             tool_name=tool_name,
             arguments=args,
             result=result,
@@ -781,8 +813,11 @@ class ToolExecutor:
         )
         return result
 
-    def _execute_workflow(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+    def _execute_workflow(self, tool_name: str, args: dict[str, Any], *, log_callback=None) -> dict[str, Any]:
         """Discover or synchronously run workflows against this executor's registry."""
+        log_call = log_callback if log_callback is not None else (
+            lambda **entry: self.logger.log_tool_call(**entry)
+        )
         start_time = time.time()
         try:
             result = execute_workflow_tool(
@@ -802,7 +837,7 @@ class ToolExecutor:
                 "error": str(exc),
             }
         duration_ms = (time.time() - start_time) * 1000
-        self.logger.log_tool_call(
+        log_call(
             tool_name=tool_name,
             arguments=args,
             result=result,
@@ -811,7 +846,7 @@ class ToolExecutor:
         )
         return result
     
-    def _execute_mcp_tool(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+    def _execute_mcp_tool(self, tool_name: str, args: dict[str, Any], *, log_callback=None) -> dict[str, Any]:
         """
         Execute an MCP tool.
         
@@ -822,6 +857,9 @@ class ToolExecutor:
         Returns:
             Tool result
         """
+        log_call = log_callback if log_callback is not None else (
+            lambda **entry: self.logger.log_tool_call(**entry)
+        )
         start_time = time.time()
         mcp_client = None
         
@@ -879,7 +917,7 @@ class ToolExecutor:
             duration_ms = (time.time() - start_time) * 1000
             
             # Log execution
-            self.logger.log_tool_call(
+            log_call(
                 tool_name=tool_name,
                 arguments=args,
                 result=result,
@@ -901,7 +939,7 @@ class ToolExecutor:
                 "speech": f"MCP tool {tool_name} failed",
                 "error": str(e)
             }
-            self.logger.log_tool_call(
+            log_call(
                 tool_name=tool_name,
                 arguments=args,
                 result=output,

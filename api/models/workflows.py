@@ -54,6 +54,12 @@ class WorkflowExecuteResponse(BaseModel):
     usage: dict[str, Any] | None = Field(None, description="LLM token usage from workflow")
     server_side_tools: dict[str, int] | None = Field(None, description="LLM provider native tools used (xAI web_search, x_search, etc.)")
     error: str | None = None
+    error_code: str | None = Field(None, description="Machine-readable failure reason")
+    terminal_failure: bool | None = Field(None, description="True when the runtime stopped without automatic retries")
+    retry_safe: bool | None = Field(None, description="Whether the runtime considers retrying the operation safe")
+    completion: Literal["unknown", "rejected", "completed"] | None = Field(
+        None, description="Operation outcome, separate from delivery of its result",
+    )
     
     model_config = ConfigDict(json_schema_extra={
             "example": {

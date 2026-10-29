@@ -595,13 +595,14 @@ class TaskStore(DeliveryStore, ManagementStore):
             )
             return delivery_id
 
-    def record_local_stop(self, claim: Claim):
+    def record_local_stop(self, claim: Claim, *, result: dict | None = None):
         """Accept only a supervisor's stop proof for this exact local attempt.
 
         Recovery cannot infer this from a PID or expired lease. A surviving
         supervisor can report verified termination even after expiry recovery
         fences normal writes. It cannot replace an operator disposition or
-        write through a conversation disposal fence.
+        write through a conversation disposal fence. A bounded terminal result
+        may accompany that proof without restoring an execution lease.
         """
         from .local_contract import LOCAL_ADAPTERS
 
@@ -617,7 +618,7 @@ class TaskStore(DeliveryStore, ManagementStore):
                 raise LostLease('Local stop proof no longer belongs to a current attempt')
             self._operator_terminal(conn, row, cancelled=bool(row['cancel_requested']),
                                     evidence='Supervisor verified local process-group termination or no launch',
-                                    verified_stop=True)
+                                    verified_stop=True, result=result)
 
     def attention(self, claim: Claim, reason: str, *, result=None):
         """Fence an interrupted/unknown adapter outcome instead of pretending it failed safely."""

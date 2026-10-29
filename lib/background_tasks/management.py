@@ -88,13 +88,19 @@ class ManagementStore:
         with self._connection(write=True) as conn:
             conn.execute("UPDATE jobs SET read_at=? WHERE id=?", (self._time(), job_id))
 
-    def _operator_terminal(self, conn, row, *, cancelled, evidence, verified_stop=False):
+    def _operator_terminal(self, conn, row, *, cancelled, evidence, verified_stop=False,
+                           result: dict | None = None):
         now = self._time()
         outcome = 'cancelled' if cancelled else ('failed' if verified_stop else 'reconciled')
-        result = {"ok": False, "cancelled": cancelled,
-                  "speech": ("Task cancelled." if cancelled else
-                             "The local task stopped before completion." if verified_stop else
-                             "Task reconciled by the operator.")}
+        if result is not None:
+            if not verified_stop or not isinstance(result, dict):
+                raise TaskError('Only a verified supervisor can attach a terminal result')
+            result = {**result, 'ok': False, 'cancelled': cancelled}
+        else:
+            result = {"ok": False, "cancelled": cancelled,
+                      "speech": ("Task cancelled." if cancelled else
+                                 "The local task stopped before completion." if verified_stop else
+                                 "Task reconciled by the operator.")}
         payload = canonical_json(result, MAX_RESULT_BYTES)
         fingerprint = digest(payload)
         conn.execute("""UPDATE jobs SET state='failed', cancelled=?, result_json=?, result_digest=?,

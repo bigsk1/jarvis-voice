@@ -299,7 +299,7 @@ def test_cloud_followup_run_id_reaches_only_the_reviewed_child_environment(
         def __init__(self, *_args, **_kwargs): pass
         def set_session_context(self, **_kwargs): pass
         def set_progress_callback(self, *_args): pass
-        def _execute_foreground(self, _name, _args, *, supervision):
+        def _execute_foreground(self, _name, _args, *, supervision, log_callback=None):
             captured.append(supervision.environment.copy())
             return {'ok': True, 'speech': 'Done'}
 

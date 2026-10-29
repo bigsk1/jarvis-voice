@@ -61,6 +61,12 @@ User's visual question:
 """
 
 
+def _prompt_guard_stopped(record: dict) -> bool:
+    """A security stop must not be converted into a completion-repair request."""
+    from lib.prompt_guard_observer import is_prompt_guard_stopped
+    return is_prompt_guard_stopped(record)
+
+
 def _web_vision_prompt(user_prompt: str) -> str:
     """Keep the pre-orchestration vision pass visual and non-agentic."""
     return f"{_WEB_VISION_GROUNDING_INSTRUCTION}{str(user_prompt or '').strip()}"
@@ -364,6 +370,8 @@ class ChatHandler:
         return policy
 
     def _background_review_blocked(self, record):
+        if _prompt_guard_stopped(record):
+            return True
         if (record.get('data') or {}).get('pending_jobs') or record.get('kind') == 'continuation':
             return True
         if not record.get('conversation_id') or not record.get('message_id'):
@@ -1588,6 +1596,8 @@ Important:
         strategy: dict
     ) -> str | None:
         """Build a final answer from returned tool data without calling more tools."""
+        if _prompt_guard_stopped(result):
+            return None
         record_mode = record.get('mode', 'cloud')
         direct_answer = self._extract_direct_answer_from_tool_data(record, result)
         if direct_answer:
@@ -1968,6 +1978,8 @@ Returned tool data:
     @_scoped_by_mode
     def _process_completion_guard_repair(self, session_id, record, note, repair_message_id):
         """Run one bounded repair attempt before falling back to ticketing."""
+        if _prompt_guard_stopped(record):
+            return
         conversation_id = record.get('conversation_id')
         parent_message_id = record.get('message_id')
         mode = record.get('mode', 'cloud')
@@ -2169,6 +2181,8 @@ Previous structured data:
                     else None
                 ),
             )
+            if _prompt_guard_stopped(result):
+                record['prompt_guard_blocked'] = True
             if repair_message_id in self.pending_cancellations:
                 del self.pending_cancellations[repair_message_id]
             raw_response = result.get('raw_llm_response', '') or result.get('speech', '')
@@ -2240,7 +2254,7 @@ Previous structured data:
             elif cleaned_raw and result.get('speech'):
                 result['speech'] = cleaned_raw
 
-            if not reminder_review and result.get('data') and (
+            if not _prompt_guard_stopped(result) and not reminder_review and result.get('data') and (
                 repair_status != 'repaired'
                 or self._is_machine_like_completion_text(result.get('speech', ''))
                 or self._is_machine_like_completion_text(result.get('raw_llm_response', ''))
@@ -2473,7 +2487,7 @@ Previous structured data:
                 result.get('tools_used', [])
             )
 
-            if (not repaired and not tighten_only) and record.get('completion_guard', {}).get('ticket_on_fail', True):
+            if (not repaired and not tighten_only) and not _prompt_guard_stopped(record) and record.get('completion_guard', {}).get('ticket_on_fail', True):
                 ticket_path = self._write_completion_guard_ticket(record, note)
                 rel_path = str(ticket_path.relative_to(JARVIS_ROOT))
                 record['status'] = 'ticket_created'
@@ -2542,7 +2556,7 @@ Previous structured data:
                 'raw_llm_response': str(e),
                 'tools_used': []
             }
-            if record.get('completion_guard', {}).get('ticket_on_fail', True):
+            if not _prompt_guard_stopped(record) and record.get('completion_guard', {}).get('ticket_on_fail', True):
                 try:
                     ticket_path = self._write_completion_guard_ticket(record, note)
                     rel_path = str(ticket_path.relative_to(JARVIS_ROOT))
@@ -3056,6 +3070,13 @@ Previous structured data:
                     'conversation_id': conversation_id,
                     'status': 'expired',
                     'reason': 'missing_session_context'
+                })
+                return
+
+            if _prompt_guard_stopped(record):
+                emit('completion_guard:error', {
+                    'message_id': message_id,
+                    'error': 'Prompt Guard withheld this content. Investigate the incident instead of retrying it.',
                 })
                 return
 
@@ -4802,7 +4823,7 @@ Previous structured data:
         if isinstance(result.get('approval_outcome'), dict):
             response_data['_approval_outcome'] = result['approval_outcome']
 
-        completion_guard_prompt = (not was_cancelled) and (not pending_jobs) and (not is_workflow) and self._should_prompt_completion_guard(completion_guard_config, tools_used)
+        completion_guard_prompt = (not was_cancelled) and (not pending_jobs) and (not is_workflow) and (not _prompt_guard_stopped(result)) and self._should_prompt_completion_guard(completion_guard_config, tools_used)
         completion_guard_expires_in_ms = (
             int(completion_guard_config.get('manual_prompt_ttl_seconds', 0) * 1000)
             if completion_guard_prompt and completion_guard_config.get('manual_prompt_ttl_seconds', 0) > 0
@@ -4819,6 +4840,7 @@ Previous structured data:
             and (completion_guard_prompt or completion_guard_auto_eval)
         )
         self._remember_completion_guard_record(session_id, message_id, {
+            'prompt_guard_blocked': _prompt_guard_stopped(result),
             'timestamp': time.time(),
             'conversation_id': conversation_id,
             'message_id': message_id,

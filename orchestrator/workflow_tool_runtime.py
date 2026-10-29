@@ -375,7 +375,8 @@ def execute_workflow_tool(
         "data": result_data,
         "tools_used": list(result.get("tools_used") or []),
     }
-    for key in ("error", "usage", "server_side_tools", "cancelled"):
+    for key in ("error", "usage", "server_side_tools", "cancelled",
+                "error_code", "terminal_failure", "retry_safe", "completion"):
         if result.get(key) is not None:
             response[key] = result[key]
     return response

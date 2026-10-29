@@ -48,6 +48,12 @@ class QueryResponse(BaseModel):
     tools_used: list[str] | None = Field(None, description="List of tools that were called")
     session_id: str | None = Field(None, description="Session ID for follow-up queries")
     error: str | None = None
+    error_code: str | None = Field(None, description="Machine-readable failure reason")
+    terminal_failure: bool | None = Field(None, description="True when the runtime stopped without automatic retries")
+    retry_safe: bool | None = Field(None, description="Whether the runtime considers retrying the operation safe")
+    completion: Literal["unknown", "rejected", "completed"] | None = Field(
+        None, description="Operation outcome, separate from delivery of its result",
+    )
     
     # Extended fields (all optional for backwards compatibility)
     data: dict[str, Any] | None = Field(None, description="Accumulated data from tool results")

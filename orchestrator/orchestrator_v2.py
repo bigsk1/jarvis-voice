@@ -48,6 +48,7 @@ from workflow_availability import (
 )
 from pipeline_executor import PipelineExecutor
 from lib.background_tasks.admission import carry_pending_jobs
+from lib.prompt_guard_observer import is_prompt_guard_rejection, prompt_guard_notice
 
 
 SINGLE_CALL_TOOLS = frozenset({
@@ -170,6 +171,8 @@ def _format_terminal_tool_failure(
     result: dict[str, Any] | None = None,
 ) -> str:
     """Build truthful user-facing speech for a non-retryable tool failure."""
+    if is_prompt_guard_rejection(result):
+        return prompt_guard_notice(result)
     if tool_name == "generate_audio":
         audio_result = result or {}
         completion = audio_result.get("completion", "unknown")
@@ -2292,7 +2295,10 @@ Mode: {self.mode}
                     "error": str(result.get("error", ""))[:500] if isinstance(result, dict) and result.get("error") else None,
                     "speech": str(result.get("speech", ""))[:500] if isinstance(result, dict) else "",
                     "result_data": failed_trace_data,
-                    **({"completion": result.get("completion", "unknown")} if tool_name == "generate_audio" else {}),
+                    **({"completion": result.get("completion", "unknown")}
+                       if tool_name == "generate_audio" or is_prompt_guard_rejection(result) else {}),
+                    **({"error_code": "prompt_injection_detected", "terminal_failure": True}
+                       if is_prompt_guard_rejection(result) else {}),
                     "workflow_run_started": bool(
                         tool_name == "workflow"
                         and isinstance(result, dict)
@@ -2450,7 +2456,12 @@ Mode: {self.mode}
                     # Failure - check if we should retry
                     error = result.get("error", "Unknown error")
                     speech = result.get("speech", f"Failed to execute {tool_name}")
-                    if tool_name == "generate_audio" and isinstance(result.get("data"), dict) and result["data"]:
+                    content_withheld = is_prompt_guard_rejection(result)
+                    if content_withheld:
+                        # The action already ran. Retain only the server-made
+                        # incident/recovery envelope, and never invite a retry.
+                        state.seen_tool_calls.add(current_call)
+                    if (tool_name == "generate_audio" or content_withheld) and isinstance(result.get("data"), dict) and result["data"]:
                         # A paid request can finish while artifact delivery fails.
                         # Keep recovery handles available to Web and follow-up
                         # context, but explicitly retain the failed outcome.
@@ -2477,7 +2488,7 @@ Mode: {self.mode}
                     
                     # Status update on error
                     is_server_error = '500' in str(error) or 'Internal Server Error' in str(error)
-                    is_single_call_failure = tool_name in SINGLE_CALL_TOOLS
+                    is_single_call_failure = content_withheld or tool_name in SINGLE_CALL_TOOLS
                     if (tool_name == 'send_webhook' and isinstance(result.get('data'), dict)
                             and result['data'].get('retry_safe') is False):
                         is_single_call_failure = True
@@ -2531,7 +2542,10 @@ Mode: {self.mode}
                             "tool_trace": state.tool_trace,
                             "retries": retry_count,
                             "terminal_failure": True,
-                            **({"completion": result.get("completion", "unknown")} if tool_name == "generate_audio" else {}),
+                            **({"completion": result.get("completion", "unknown")}
+                               if tool_name == "generate_audio" or content_withheld else {}),
+                            **({"error_code": "prompt_injection_detected", "retry_safe": False}
+                               if content_withheld else {}),
                             "usage": state.total_usage if self._has_usage_data(state.total_usage) else None,
                             "server_side_tools": state.total_usage.get("server_side_tools", {}),
                         }
@@ -3793,6 +3807,9 @@ Your synthesized response:"""
             }
             if result.get("error") is not None:
                 response["error"] = result["error"]
+            if is_prompt_guard_rejection(result):
+                for key in ("error_code", "terminal_failure", "retry_safe", "completion"):
+                    response[key] = result.get(key)
             
             # Include usage tracking if available (from LLM calls in workflow)
             if result.get("usage"):

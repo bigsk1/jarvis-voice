@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from lib.config_loader import config_scope
+from lib.prompt_guard_observer import is_prompt_guard_rejection, review_tool_result
 
 from .models import (
     RESUMABLE_REMOTE_ADAPTERS,
@@ -121,6 +122,24 @@ class ExecutionContext:
     local_process_started: bool = False
     local_process_stopped: bool = False
     remote_submission_started: bool = False
+    pending_tool_logs: list[tuple[Callable[..., None], dict]] = field(default_factory=list, repr=False)
+    unreviewed_tool_result: dict | None = field(default=None, repr=False)
+
+    def stage_tool_log(self, writer: Callable[..., None], entry: dict) -> None:
+        """Hold this invocation's diagnostics in memory until its result is reviewed."""
+        self.pending_tool_logs.append((writer, entry))
+
+    def flush_tool_logs(self, result: dict) -> None:
+        """Write reviewed diagnostics without changing the operation's outcome."""
+        entries, self.pending_tool_logs = self.pending_tool_logs, []
+        for writer, entry in entries:
+            try:
+                writer(**{**entry, 'result': result})
+            except Exception:
+                try:
+                    logger.warning('Task tool log write failed job=%s; preserving outcome', self.claim.job_id)
+                except Exception:
+                    pass
 
     def record_process_stop(self):
         # Called only after the supervisor verifies death of the whole group.
@@ -308,16 +327,55 @@ class TaskWorker:
             self.store.retain_uncertain_result(claim, result)
             logger.warning('Task ownership lost job=%s; execution will not be retried', claim.job_id)
 
-    def _recover_execution(self, claim, context):
+    def _recover_execution(self, claim, context, *, result=None):
         from .local_contract import LOCAL_ADAPTERS
 
+        # Only a neutral, already-reviewed rejection may survive this race.
+        # Raw late output cannot replace fenced recovery evidence.
+        withheld = result if is_prompt_guard_rejection(result) else None
         if context and context.local_process_stopped and claim.job['adapter'] in LOCAL_ADAPTERS:
             try:
-                self.store.record_local_stop(claim)
+                if withheld is None:
+                    self.store.record_local_stop(claim)
+                else:
+                    self.store.record_local_stop(claim, result=withheld)
                 return
             except LostLease:
                 pass  # Disposal/operator decisions still supersede this attempt.
         self.store.reconcile()
+        if withheld is not None:
+            self.store.retain_uncertain_result(claim, withheld)
+
+    def _review_result(self, claim, result, context, *, completed=False):
+        """Screen once before persistence, preserving execution certainty separately.
+
+        Supervised skills retain their pre-truncation result only in runtime
+        context. A clean/unknown scan leaves the adapter's bounded result and
+        original diagnostics unchanged. No scanner I/O holds a store transaction.
+        """
+        source = context.unreviewed_tool_result if context is not None else None
+        source = source if isinstance(source, dict) else result
+        try:
+            reviewed = review_tool_result(
+                claim.job['admission']['tool'], source,
+                args=claim.job['admission']['arguments'], mode=claim.job['mode'],
+                config_overrides=self.deployment_overrides,
+            )
+        except Exception:
+            reviewed = source
+            try:
+                logger.warning('Task result screening unavailable job=%s; preserving outcome', claim.job_id)
+            except Exception:
+                pass
+        withheld = is_prompt_guard_rejection(reviewed)
+        if withheld and completed:
+            # An adapter's successful return proves completion even when its
+            # original result did not need an explicit completion field.
+            reviewed = {**reviewed, 'completion': 'completed'}
+        if context is not None:
+            context.flush_tool_logs(reviewed if withheld else source)
+            context.unreviewed_tool_result = None
+        return reviewed if withheld else result
 
     @staticmethod
     def _before_remote_submission(adapter: Adapter, context: ExecutionContext | None) -> bool:
@@ -351,6 +409,7 @@ class TaskWorker:
         heartbeat.start()
         adapter_started = False
         context = None
+        result = None
         try:
             with config_scope(claim.job["mode"], self.deployment_overrides) as snapshot:
                 # Do not hydrate os.environ or carry another mode's inherited
@@ -373,8 +432,11 @@ class TaskWorker:
                 if isinstance(result, AwaitingCallback):
                     logger.info('Task submitted job=%s; awaiting authenticated callback', claim.job_id)
                 else:
-                    self.store.finish(claim, result)
-                    logger.info('Task succeeded job=%s; result saved for Web delivery', claim.job_id)
+                    result = self._review_result(claim, result, context, completed=True)
+                    withheld = is_prompt_guard_rejection(result)
+                    self.store.finish(claim, result, succeeded=not withheld)
+                    logger.info('Task %s job=%s; result saved for Web delivery',
+                                'content withheld' if withheld else 'succeeded', claim.job_id)
         except RemoteObservationPaused:
             logger.info('Remote observer paused job=%s; saved native run will be observed after restart', claim.job_id)
         except KnownRemoteCancelled as exc:
@@ -417,17 +479,18 @@ class TaskWorker:
                 self._attention(claim, "Cancellation needs adapter termination evidence")
         except KnownFailure as exc:
             try:
-                self.store.finish(claim, exc.result, succeeded=False)
+                result = self._review_result(claim, exc.result, context)
+                self.store.finish(claim, result, succeeded=False)
                 logger.warning('Task failed job=%s; result saved for Web delivery', claim.job_id)
             except LostLease:
-                self._recover_execution(claim, context)
+                self._recover_execution(claim, context, result=result)
             except Exception as failure:
                 self._attention(
                     claim,
                     f"Failure persistence error ({type(failure).__name__}); outcome needs review",
                 )
         except LostLease:
-            self._recover_execution(claim, context)
+            self._recover_execution(claim, context, result=result)
             logger.warning('Task ownership lost job=%s; execution will not be retried', claim.job_id)
         except Interrupted:
             if context is not None and context.remote_checkpoint is not None:
@@ -454,7 +517,8 @@ class TaskWorker:
             else:
                 self._attention(claim, "Worker stopped during execution; outcome needs review")
         except UncertainOutcome as exc:
-            self._attention(claim, str(exc), result=exc.result)
+            result = self._review_result(claim, exc.result, context)
+            self._attention(claim, str(exc), result=result)
         except Exception as exc:
             # Do not copy arbitrary exception text (which may contain credentials).
             self.store.events.emit('execution_error', component='worker', level='ERROR',

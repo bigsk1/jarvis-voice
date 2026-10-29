@@ -224,7 +224,14 @@ class LocalSkillRunner:
                         JARVIS_BACKGROUND_MAX_INPUT_BYTES=limit,
                         JARVIS_OVERRIDE_JARVIS_BACKGROUND_MAX_INPUT_BYTES=limit,
                         OPENBLAS_NUM_THREADS='1', OMP_NUM_THREADS='1')
-                    result = executor._execute_foreground(name, args, supervision=context)
+                    result = executor._execute_foreground(
+                        name, args, supervision=context,
+                        log_callback=lambda **entry: context.stage_tool_log(
+                            executor.logger.log_tool_call, entry),
+                    )
+                    # Preserve the exact returned representation for the worker's
+                    # review before bounded_failure can shorten diagnostics.
+                    context.unreviewed_tool_result = result if isinstance(result, dict) else None
                 if (not isinstance(result, dict) or result.get('ok') is not True
                         or result.get('cancelled')):
                     confirmed_failure = (isinstance(result, dict) and result.get('ok') is False

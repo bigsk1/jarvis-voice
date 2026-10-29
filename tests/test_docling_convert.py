@@ -263,7 +263,7 @@ def test_background_selection_queues_work_but_not_read_only_checks(monkeypatch, 
     context=WebTaskContext(SimpleNamespace(admit=lambda *args:calls.append('background') or {'ok':True}),
                            'fixture-auth', ('docling_convert',))
     executor=ToolExecutor('cloud', SimpleNamespace(get_tool=lambda name:None), load_runtime_config=False)
-    monkeypatch.setattr(executor,'_execute_foreground',lambda *args:calls.append('foreground') or {'ok':True})
+    monkeypatch.setattr(executor,'_execute_foreground',lambda *args, **kwargs:calls.append('foreground') or {'ok':True})
     assert executor.execute('docling_convert',{'action':action},background_context=context)['ok']
     assert calls==(['foreground'] if action in ('status','job') else ['background'])
 

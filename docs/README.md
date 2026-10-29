@@ -17,6 +17,7 @@ labeled research or historical documents.
 - **[TAILSCALE_HTTPS.md](TAILSCALE_HTTPS.md)** - Private HTTPS for the UIs and Firefox extension: Serve setup, navigation, troubleshooting, and rollback
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
+- **[PROMPT_GUARD.md](PROMPT_GUARD.md)** - Optional prompt-injection screening, private incident evidence, outage handling, selected-tool coverage, and reusable client
 - **[tools/external-network-intel-tool/README.md](tools/external-network-intel-tool/README.md)** - **Passive public IP/domain intelligence** (RDAP, routing, DNS, official cloud ranges, Shodan InternetDB, optional AbuseIPDB; no scanning)
 - **[SPEECH_TO_TEXT.md](SPEECH_TO_TEXT.md)** - **Speech-to-text guide** (OpenAI, Faster-Whisper, self-hosted compatible endpoints, browser/wake-word STT, and long-file `transcribe_audio` policy)
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - **xAI Grok provider** (`grok-4.7` recommended default; also `grok-4.6`, `grok-4.5`, `grok-4.3`, `grok-build-0.1`, native search/TTS, in-flight continuation)

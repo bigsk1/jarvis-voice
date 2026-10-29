@@ -4,7 +4,10 @@ import hmac
 import json
 import uuid
 
+from filelock import FileLock, Timeout
+
 from lib.background_tasks.models import MAX_RESULT_BYTES, canonical_json, digest
+from lib.prompt_guard_observer import is_prompt_guard_rejection, review_tool_result
 
 from .contracts import CallbackError, event_body, secret_hash
 
@@ -74,46 +77,114 @@ class CallbackInbox:
         return {'accepted': True, 'duplicate': False, 'event_id': body['event_id']}
 
     def drain(self, *, limit=100):
-        """Short serialized transactions; multiple drainers cannot apply twice."""
+        """Serialize review/application without holding database writes for HTTP.
+
+        A second drainer must not fail open on a busy scanner and publish the
+        same raw event while the first drainer is reviewing it. The existing
+        file-lock dependency gives this batch nonblocking ownership per store.
+        """
+        try:
+            with FileLock(str(self.store.path) + '.callback-drain.lock', timeout=0, mode=0o600):
+                return self._drain_locked(limit)
+        except Timeout:
+            return 0
+
+    def _drain_locked(self, limit):
         processed = 0
         for _ in range(limit):
-            with self.store._connection(write=True) as conn:
+            prepared = None
+            with self.store._connection() as conn:
                 entry = conn.execute('''SELECT i.* FROM task_callback_inbox i JOIN task_integrations s ON s.id=i.source_id
                     WHERE i.state='pending' OR (i.state='held' AND i.reason='source_disabled' AND s.enabled=1 AND s.revoked=0)
                     ORDER BY i.id LIMIT 1''').fetchone()
                 if not entry:
                     break
-                state, reason = self._apply_event(conn, entry)
+                state, _, row, binding = self._event_context(conn, entry)
+                if (state is None and entry['event_type'] in {'task.completed', 'task.failed', 'task.cancelled'}
+                        and (entry['event_type'] != 'task.cancelled' or row['cancel_requested'])):
+                    admission = json.loads(row['admission_json'])
+                    prepared = {
+                        'mode': row['mode'], 'fence': row['fence'],
+                        'admission_digest': row['admission_digest'],
+                        'capability_hash': binding['capability_hash'],
+                        'tool': admission['tool'], 'args': admission['arguments'],
+                        'result': self._terminal_result(entry),
+                    }
+                entry = dict(entry)
+
+            if prepared is not None:
+                # Callback event types prove remote work is terminal. Preserve
+                # this fact if the result is withheld, without changing a clean
+                # callback's historical result shape.
+                review_input = {**prepared['result'], 'completion': 'completed'}
+                reviewed = review_tool_result(
+                    prepared['tool'], review_input, args=prepared['args'], mode=prepared['mode'],
+                    config_overrides={},
+                )
+                if is_prompt_guard_rejection(reviewed):
+                    prepared['result'] = reviewed
+                    if entry['event_type'] == 'task.cancelled':
+                        prepared['result'] = {**reviewed, 'cancelled': True}
+
+            with self.store._connection(write=True) as conn:
+                current = conn.execute('SELECT * FROM task_callback_inbox WHERE id=?', (entry['id'],)).fetchone()
+                if (not current or current['state'] not in {'pending', 'held'}
+                        or (current['state'] == 'held' and current['reason'] != 'source_disabled')
+                        or any(current[key] != entry[key] for key in (
+                            'source_id', 'credential_id', 'job_id', 'attempt_id',
+                            'event_type', 'payload_json', 'payload_digest',
+                        ))):
+                    continue
+                state, reason = self._apply_event(conn, current, prepared=prepared)
                 conn.execute('''UPDATE task_callback_inbox SET state=?,reason=?,processed_at=?,attempts=attempts+1 WHERE id=?''',
-                             (state, reason, self.store._time() if state != 'held' else None, entry['id']))
+                             (state, reason, self.store._time() if state not in {'held', 'pending'} else None, entry['id']))
             processed += 1
             self.store.events.emit('callback_processed', component='callback', source_id=entry['source_id'],
                                    event_id=entry['event_id'], job_id=entry['job_id'], state=state, reason=reason)
         return processed
 
-    def _apply_event(self, conn, entry):
+    def _event_context(self, conn, entry):
+        """Validate the source/attempt fences before review and again at commit."""
         now = self.store._time()
         source = self._source(conn, entry['source_id'])
         credential = conn.execute('SELECT * FROM task_credentials WHERE id=?', (entry['credential_id'],)).fetchone()
-        if not credential or credential['revoked_at'] is not None:
-            return 'held', 'credential_revoked'
+        if (not credential or credential['source_id'] != entry['source_id']
+                or credential['revoked_at'] is not None):
+            return 'held', 'credential_revoked', None, None
         if credential['expires_at'] <= now:
-            return 'held', 'credential_expired'
+            return 'held', 'credential_expired', None, None
         if not source['enabled'] or source['revoked']:
-            return 'held', 'source_disabled'
+            return 'held', 'source_disabled', None, None
         if entry['event_type'] not in json.loads(source['events_json']):
-            return 'held', 'event_permission_changed'
+            return 'held', 'event_permission_changed', None, None
         binding = conn.execute('SELECT * FROM task_callback_bindings WHERE job_id=?', (entry['job_id'],)).fetchone()
         row = conn.execute('SELECT * FROM jobs WHERE id=?', (entry['job_id'],)).fetchone()
         if not row or not binding:
-            return 'late', 'job_removed'
+            return 'late', 'job_removed', None, None
         if (binding['source_id'] != entry['source_id'] or binding['attempt_id'] != entry['attempt_id']
                 or row['attempt_id'] != binding['attempt_id'] or row['fence'] != binding['fence']):
-            return 'late', 'execution_fenced'
+            return 'late', 'execution_fenced', None, None
         if (row['state'] not in {'starting', 'running'} or row['expired'] or row['cancelled']
                 or row['deadline'] <= now or not row['callback_waiting']
                 or not self.store._generation_allowed(conn, row['conversation_id'], row['generation'])):
-            return 'late', 'execution_closed'
+            return 'late', 'execution_closed', None, None
+        return None, None, row, binding
+
+    @staticmethod
+    def _terminal_result(entry):
+        body = json.loads(entry['payload_json'])
+        presentation = body['result'].get('presentation')
+        result = {'ok': entry['event_type'] == 'task.completed', 'speech': body['result']['summary'],
+                  'data': {'browser_research': presentation} if presentation else {}}
+        if entry['event_type'] == 'task.cancelled':
+            result['cancelled'] = True
+        return result
+
+    def _apply_event(self, conn, entry, *, prepared=None):
+        now = self.store._time()
+        state, reason, row, binding = self._event_context(conn, entry)
+        if state is not None:
+            return state, reason
         body = json.loads(entry['payload_json'])
         if entry['event_type'] == 'task.progress':
             if binding['last_progress_at'] is not None and now - binding['last_progress_at'] < 2:
@@ -126,11 +197,17 @@ class CallbackInbox:
         if cancelled and not row['cancel_requested']:
             return 'held', 'cancellation_not_requested'
         succeeded = entry['event_type'] == 'task.completed'
-        presentation = body['result'].get('presentation')
-        result = {'ok': succeeded, 'speech': body['result']['summary'],
-                  'data': {'browser_research': presentation} if presentation else {}}
-        if cancelled:
-            result['cancelled'] = True
+        if prepared is None:
+            # It became eligible after the read snapshot; prepare and
+            # review the unchanged event on the next drain iteration.
+            return 'pending', None
+        if (prepared['mode'] != row['mode'] or prepared['fence'] != row['fence']
+                or prepared['admission_digest'] != row['admission_digest']
+                or prepared['capability_hash'] != binding['capability_hash']):
+            return 'late', 'execution_fenced'
+        result = prepared['result']
+        if is_prompt_guard_rejection(result):
+            succeeded = False
         payload = canonical_json(result, MAX_RESULT_BYTES)
         fingerprint = digest(payload)
         state = 'succeeded' if succeeded else 'failed'
