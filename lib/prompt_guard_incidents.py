@@ -28,6 +28,7 @@ except ModuleNotFoundError as exc:
 
 from lib.paths import get_project_root
 from lib.prompt_guard import MAX_INPUT_BYTES, PromptGuardResult
+from lib.prompt_guard_diagnostics import validate_diagnostics
 
 MAX_SOURCE_URLS = 32
 MAX_URL_LENGTH = 4096
@@ -119,7 +120,7 @@ def _source_candidates(args: dict, result: dict) -> list[dict[str, str]]:
     return candidates
 
 
-def _scan_metadata(observation: PromptGuardResult) -> dict:
+def _scan_metadata(observation: PromptGuardResult, text: str) -> dict:
     score, threshold = observation.injection_score, observation.threshold
     if (observation.status != "scanned" or observation.flagged is not True
             or observation.coverage_complete is not True
@@ -141,6 +142,36 @@ def _scan_metadata(observation: PromptGuardResult) -> dict:
         value = getattr(observation, field, None)
         if isinstance(value, str) and pattern.fullmatch(value):
             metadata[field] = value
+    # Revalidate against the actual evidence, rather than relying on dataclass
+    # annotations or copying a caller/service dictionary into private records.
+    diagnostics = validate_diagnostics(
+        observation.diagnostics, text=text, windows_scanned=observation.windows_scanned,
+        injection_score=float(score),
+    )
+    if diagnostics is not None:
+        windows = []
+        for window in diagnostics.windows:
+            item = {
+                "index": window.index,
+                "content_token_start": window.content_token_start,
+                "content_token_end": window.content_token_end,
+                "injection_score": window.injection_score,
+            }
+            if window.char_start is not None and window.char_end is not None:
+                item.update(char_start=window.char_start, char_end=window.char_end)
+            windows.append(item)
+        saved_diagnostics = {
+            "version": diagnostics.version,
+            "aggregation": diagnostics.aggregation,
+            "representation": diagnostics.representation,
+            "winning_window_index": diagnostics.winning_window_index,
+            "windows": windows,
+        }
+        if diagnostics.offset_unit is not None:
+            saved_diagnostics["offset_unit"] = diagnostics.offset_unit
+        if diagnostics.char_offset_reason is not None:
+            saved_diagnostics["char_offset_reason"] = diagnostics.char_offset_reason
+        metadata["diagnostics"] = saved_diagnostics
     return metadata
 
 
@@ -252,7 +283,7 @@ def save_incident(
         encoded = text.encode("utf-8")
         if not encoded or len(encoded) > MAX_INPUT_BYTES:
             return IncidentReceipt(incident_id, False, "invalid_input")
-        metadata = _scan_metadata(observation)
+        metadata = _scan_metadata(observation, text)
         record = {
             "v": 1,
             "incident_id": incident_id,

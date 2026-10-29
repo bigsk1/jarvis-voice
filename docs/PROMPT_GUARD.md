@@ -36,6 +36,8 @@ PROMPT_GUARD_API_KEY=
 PROMPT_GUARD_THRESHOLD=0.8
 PROMPT_GUARD_TIMEOUT_SECONDS=2
 PROMPT_GUARD_MAX_INPUT_BYTES=8192
+# Optional; requires a scanner supporting the return_windows request field.
+PROMPT_GUARD_RETURN_WINDOWS=false
 PROMPT_GUARD_TOOLS=crawl_url,brave_llm_context,rss_feed,browser_use,browser_use_cloud
 # Optional base directory; Jarvis appends cloud/ or local/.
 # PROMPT_GUARD_INCIDENT_DIR=logs/prompt-guard/incidents
@@ -45,6 +47,15 @@ Set `PROMPT_GUARD_ENABLED=true` when ready to send selected result text to the
 service. Jarvis calls `/v1/scan` on the configured base URL with bearer auth.
 Use a trusted private network for HTTP, or HTTPS where transport encryption is
 needed. In Docker, the address must be reachable from the Jarvis container.
+
+With a scanner supporting window diagnostics, set
+`PROMPT_GUARD_RETURN_WINDOWS=true` in each desired mode. The same scan then returns
+per-window scores and token/character intervals for private incident evidence.
+Leave this false for older scanners: they may reject the unfamiliar request field
+with HTTP 422. Jarvis does not retry without it or issue a separate capability
+request. Omitted diagnostics remain compatible with aggregate-only responses.
+Roll back diagnostic capture by setting it false; scoring, input representation,
+thresholds, and withholding rules are unchanged.
 
 `PROMPT_GUARD_TOOLS` is a comma-separated list of exact tool names. An empty
 value selects no tools. Review what a tool returns before adding it: selected
@@ -78,6 +89,26 @@ execution summary, and exact scanned representation with SHA256. It also indexes
 available request/result URLs, removing userinfo, sensitive query values, and
 fragments. For multi-source results, these are **candidate source URLs**: a batch
 classification does not establish which URL caused the detection.
+
+When available, `scan.diagnostics` contains the validated version, representation,
+aggregation, winning window index, and each window's score and token interval.
+Character intervals use **Unicode code points** in the exact saved `evidence.text`,
+with an exclusive end. For example, Python's `text[char_start:char_end]` selects the
+region. JavaScript UTF-16 string indexes require conversion before highlighting.
+If the tokenizer cannot map characters, token intervals and a known reason are
+retained without inventing character positions. These regions locate a high
+score; they do not identify a causal phrase or prove the content is malicious.
+
+The client checks finite scores, window counts/order, max-score consistency,
+winner/tie behavior, and interval bounds. It retains at most 128 windows within
+the existing 32 KiB response limit. Incidents revalidate metadata against their
+exact saved text and copy only reviewed fields. Missing, unsupported, or malformed
+optional diagnostics are discarded while a valid aggregate verdict remains in
+effect. A malformed JSON body or an oversized response still follows the existing
+unknown/unscanned policy. Per-window scores and positions stay in private evidence;
+no window text or arbitrary service metadata is copied into ordinary logs or model context.
+The scan response supplies model identity/revision, but no tokenizer artifact hash;
+Jarvis does not infer one or make a second request to obtain it.
 
 The exact quarantined text can contain malicious instructions or sensitive
 values, including credentials embedded in the original content. Treat it as
@@ -176,6 +207,55 @@ text, credentials, response bodies, and exception messages are excluded.
 A classifier score is an estimate. An unflagged result does not make external
 content trusted or authorize tool execution, and a detection can be a false
 positive. The incident record supports checking that distinction.
+
+## Real-model evaluation
+
+The deterministic tests verify transport, validation, withholding, private evidence,
+and continuation behavior using controlled responses. Evaluate detection quality
+separately against the configured real service:
+
+```bash
+# Offline corpus listing; sends nothing.
+.venv/bin/python bin/benchmark-prompt-guard
+
+# Sequential live scans of paired planted documents and benign look-alikes.
+.venv/bin/python bin/benchmark-prompt-guard --run --mode cloud
+
+# Also compare readable JSON as an isolated experiment.
+.venv/bin/python bin/benchmark-prompt-guard --run --mode cloud \
+  --representations tool_result raw_text readable_json_experiment
+```
+
+The curated seed corpus is `tests/fixtures/prompt_guard_eval.json`. It covers
+planted status notes, role/authority spoofing, fake tool instructions, hidden HTML
+and metadata, Base64/Unicode obfuscation, task-shaped support requests, answer
+manipulation, preference poisoning, delayed triggers, and long documents.
+Long-placement inputs include documents around 95 KiB; a case
+named for a window boundary is an approximate placement, not an attested split at
+a tokenizer boundary. Reported window positions come from actual scans.
+The runner respects the configured input limit. A mode using the default 8 KiB
+limit will skip the long cases; completing those requires a larger limit already
+validated for that service, such as the measured GPU configuration described above.
+
+`tool_result` uses the real shared serializer around a synthetic tool result;
+`raw_text` scores its document body. The readable form preserves the same keys and
+values but remains experimental. The runner never calls source tools, opens payload
+URLs, executes payload commands, or exposes real credentials in fixture content.
+It requests diagnostics without changing saved settings, model, or thresholds.
+
+Each run saves private inputs, hashes, model/request identifiers, window diagnostics,
+scores, latency, misses, false alarms, and unknown/skipped outcomes under
+`logs/prompt-guard/benchmarks/<run>/`. Threshold comparisons reuse those same scores;
+they do not issue more requests or choose a production threshold. Unscanned cases
+are counted separately rather than treated as successful detections or clean
+documents. Exit 2 means at least one scan did not complete; a completed evaluation
+can still contain missed attacks and false positives in its report.
+
+These fixtures are synthetic, labeled by intended behavior. They are a repeatable
+challenge set, not held-out accuracy or proof that an agent would follow each
+planted instruction. Keep reviewed production incidents separate, including their
+exact representation; a good corpus result does not erase an observed false
+positive. Compare both detection and benign rejection before changing policy.
 
 ## Reusing the client
 

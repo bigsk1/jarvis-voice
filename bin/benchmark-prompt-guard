@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+"""Opt-in real-model evaluation of planted instructions and benign look-alikes."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import math
+import os
+import re
+import statistics
+import sys
+from dataclasses import asdict
+from datetime import UTC, datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path[:0] = [str(ROOT), str(ROOT / "lib")]
+
+from config_loader import config_scope  # noqa: E402
+
+from lib.prompt_guard import MAX_INPUT_BYTES, PromptGuardResult, scan_text  # noqa: E402
+from lib.prompt_guard_observer import _serialize_content  # noqa: E402
+
+REPRESENTATIONS = ("tool_result", "raw_text", "readable_json_experiment")
+_ID = re.compile(r"[a-z0-9_]{1,80}\Z")
+
+
+def load_cases(path: Path) -> list[dict]:
+    """Read bounded local fixtures; never follow a URL or evaluate payload code."""
+    if path.stat().st_size > MAX_INPUT_BYTES:
+        raise ValueError("corpus_too_large")
+    corpus = json.loads(path.read_text())
+    cases = corpus.get("cases") if isinstance(corpus, dict) else None
+    if not isinstance(cases, list) or not 1 <= len(cases) <= 64:
+        raise ValueError("invalid_corpus")
+    seen = set()
+    for case in cases:
+        if (not isinstance(case, dict) or not isinstance(case.get("id"), str)
+                or not _ID.fullmatch(case["id"]) or case["id"] in seen
+                or case.get("label") not in ("attack", "benign")
+                or not isinstance(case.get("content"), str) or not case["content"].strip()):
+            raise ValueError("invalid_case")
+        seen.add(case["id"])
+        for key in ("category", "pair_id", "tool_name"):
+            if not isinstance(case.get(key), str) or not _ID.fullmatch(case[key]):
+                raise ValueError("invalid_case_metadata")
+        expanded_text(case)
+    return cases
+
+
+def expanded_text(case: dict) -> str:
+    pieces = []
+    for name in ("prefix", "content", "suffix"):
+        text = case.get(name, "")
+        count = case.get(name + "_repeat", 1)
+        if not isinstance(text, str) or type(count) is not int or not 0 <= count <= 2000:
+            raise ValueError("invalid_fixture_expansion")
+        if len(text.encode()) * count > MAX_INPUT_BYTES:
+            raise ValueError("fixture_too_large")
+        pieces.append(text * count)
+    result = "".join(pieces)
+    if len(result.encode()) > MAX_INPUT_BYTES:
+        raise ValueError("fixture_too_large")
+    return result
+
+
+def render(case: dict, representation: str) -> str:
+    text = expanded_text(case)
+    url = "https://content.example.invalid/" + case["id"]
+    result = {
+        "data": {"source_url": url, "title": "External document", "content": text},
+        "speech": "Retrieved external document from " + url,
+    }
+    if representation == "raw_text":
+        return text
+    if representation == "tool_result":
+        return _serialize_content(result, MAX_INPUT_BYTES)
+    if representation == "readable_json_experiment":
+        return json.dumps(result, ensure_ascii=False, indent=2)
+    raise ValueError("unknown_representation")
+
+
+def metrics(rows: list[dict], threshold: float) -> dict:
+    counts = dict(true_positive=0, false_positive=0, true_negative=0, false_negative=0, unknown=0)
+    misses, false_alarms = [], []
+    for row in rows:
+        if row["status"] != "scanned":
+            counts["unknown"] += 1
+            continue
+        flagged = row["injection_score"] >= threshold
+        attack = row["label"] == "attack"
+        key = ("true_positive" if flagged else "false_negative") if attack else (
+            "false_positive" if flagged else "true_negative")
+        counts[key] += 1
+        if key == "false_negative":
+            misses.append(row["id"])
+        elif key == "false_positive":
+            false_alarms.append(row["id"])
+    positives = counts["true_positive"] + counts["false_negative"]
+    negatives = counts["false_positive"] + counts["true_negative"]
+    return {
+        "threshold": threshold, **counts,
+        "recall": counts["true_positive"] / positives if positives else None,
+        "false_positive_rate": counts["false_positive"] / negatives if negatives else None,
+        "missed_attacks": misses, "false_alarms": false_alarms,
+    }
+
+
+def summarize(rows: list[dict], threshold: float) -> dict:
+    groups = {}
+    for representation in dict.fromkeys(row["representation"] for row in rows):
+        selected = [row for row in rows if row["representation"] == representation]
+        latencies = sorted(row["elapsed_ms"] for row in selected if row["status"] == "scanned")
+        groups[representation] = {
+            "configured_threshold": metrics(selected, threshold),
+            # These are alternate cuts of the same recorded scores, not new
+            # requests, calibrated thresholds, or changes to production policy.
+            "threshold_comparison": [metrics(selected, value) for value in (0.5, 0.8, 0.81, 0.9, 0.95, 0.99)],
+            "median_ms": statistics.median(latencies) if latencies else None,
+            "p95_ms": latencies[max(0, math.ceil(len(latencies) * 0.95) - 1)] if latencies else None,
+        }
+    return groups
+
+
+def private_json(path: Path, value: dict) -> None:
+    with path.open("x", encoding="utf-8") as stream:
+        os.chmod(path, 0o600)
+        json.dump(value, stream, indent=2, allow_nan=False)
+
+
+def run(cases: list[dict], *, mode: str, representations: list[str], output: Path) -> dict:
+    output.mkdir(mode=0o700, parents=True, exist_ok=False)
+    rows = []
+    for case in cases:
+        for representation in representations:
+            text = render(case, representation)
+            filename = case["id"] + "." + representation + ".txt"
+            with (output / filename).open("x", encoding="utf-8") as stream:
+                os.chmod(stream.fileno(), 0o600)
+                stream.write(text)
+            observation: PromptGuardResult = scan_text(
+                text, source_type="diagnostic", source_name="planted_content_eval",
+            )
+            row = {
+                "id": case["id"], "label": case["label"], "category": case["category"],
+                "pair_id": case["pair_id"], "tool_name": case["tool_name"],
+                "representation": representation, "input_file": filename,
+                "input_sha256": hashlib.sha256(text.encode()).hexdigest(),
+                **asdict(observation),
+            }
+            rows.append(row)
+            print(json.dumps({key: row[key] for key in (
+                "id", "representation", "label", "status", "injection_score", "flagged",
+                "reason_code", "windows_scanned", "elapsed_ms",
+            )}), flush=True)
+    thresholds = {row["threshold"] for row in rows if row["status"] == "scanned"}
+    threshold = next(iter(thresholds)) if len(thresholds) == 1 else None
+    report = {
+        "v": 1, "created_at": datetime.now(UTC).isoformat(), "mode": mode,
+        "provenance": "Synthetic paired seed corpus, scored by the configured real service. Not held-out accuracy or proof of agent exploitation.",
+        "source_tools_executed": False, "requests_are_sequential": True,
+        "rows": rows, "summary": summarize(rows, threshold) if threshold is not None else {},
+        "all_scans_completed": all(row["status"] == "scanned" for row in rows),
+    }
+    private_json(output / "results.json", report)
+    return report
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--run", action="store_true", help="Explicitly contact the configured scanner; otherwise list the corpus offline.")
+    parser.add_argument("--mode", choices=("cloud", "local"), default="cloud")
+    parser.add_argument("--corpus", type=Path, default=ROOT / "tests/fixtures/prompt_guard_eval.json")
+    parser.add_argument("--representations", choices=REPRESENTATIONS, nargs="+", default=["tool_result", "raw_text"])
+    parser.add_argument("--report-dir", type=Path)
+    args = parser.parse_args()
+    try:
+        cases = load_cases(args.corpus)
+        if not args.run:
+            print(json.dumps({"live_requests": False, "cases": [
+                {"id": case["id"], "label": case["label"], "category": case["category"],
+                 "utf8_bytes": len(expanded_text(case).encode())} for case in cases
+            ]}, indent=2))
+            return 0
+        output = args.report_dir or ROOT / "logs/prompt-guard/benchmarks" / datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        with config_scope(args.mode, overrides={"PROMPT_GUARD_RETURN_WINDOWS": "true"}):
+            report = run(cases, mode=args.mode, representations=list(dict.fromkeys(args.representations)), output=output)
+        print(json.dumps({"report": str(output / "results.json"), "summary": report["summary"]}, indent=2))
+        return 0 if report["all_scans_completed"] else 2
+    except Exception as exc:
+        # Do not expose request URLs, payloads, credentials or exception text.
+        print(json.dumps({"error": type(exc).__name__}), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

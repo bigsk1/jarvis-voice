@@ -459,3 +459,113 @@ def test_missing_or_invalid_metadata_does_not_invalidate_classification(transpor
     assert result.status == "scanned" and result.flagged is True
     assert (result.service_request_id, result.model_id, result.model_revision) == expected
     assert TOKEN not in caplog.text and TEXT not in caplog.text
+
+
+def window_diagnostics(**changes):
+    return {
+        "version": 1, "aggregation": "max", "representation": "raw_text_v1",
+        "winning_window_index": 0, "offset_unit": "unicode_code_points",
+        "windows": [{"index": 0, "content_token_start": 0, "content_token_end": 4,
+                     "char_start": 0, "char_end": len(TEXT), "injection_score": 0.99}],
+        **changes,
+    }
+
+
+@pytest.mark.parametrize("setting,expected", [(None, False), ("false", False),
+                                               ("invalid", False), ("true", True)])
+def test_window_diagnostics_request_is_opt_in_without_extra_calls(transport, setting, expected):
+    config, calls, responses, _ = transport
+    if setting is not None:
+        config["PROMPT_GUARD_RETURN_WINDOWS"] = setting
+    responses.append(Response())  # Older responses omit the optional object.
+    result = scan()
+    assert result.status == "scanned" and result.diagnostics is None
+    assert len(calls) == 1
+    assert calls[0][1]["json"].get("return_windows", False) is expected
+    if not expected:
+        assert "return_windows" not in calls[0][1]["json"]
+
+
+def test_valid_diagnostics_survive_transport_without_text_or_extra_fields(transport, caplog):
+    config, calls, responses, _ = transport
+    config["PROMPT_GUARD_RETURN_WINDOWS"] = "true"
+    caplog.set_level(logging.DEBUG, logger="prompt_guard")
+    diag = window_diagnostics(raw_debug=TOKEN)
+    diag["windows"][0]["text"] = TEXT
+    responses.append(Response(payload(injection_score=0.99, flagged=True, diagnostics=diag)))
+    result = scan()
+    assert calls[0][1]["json"]["return_windows"] is True
+    assert result.status == "scanned" and result.flagged is True
+    assert result.diagnostics is not None
+    assert result.diagnostics.winning_window_index == 0
+    assert result.diagnostics.windows[0].char_end == len(TEXT)
+    assert TOKEN not in repr(result.diagnostics) and TEXT not in repr(result.diagnostics)
+    assert "diagnostics=" not in repr(result)
+    assert TEXT not in caplog.text and TOKEN not in caplog.text
+
+
+@pytest.mark.parametrize("diagnostics", [None, {}, "untrusted", window_diagnostics(version=True),
+                                          window_diagnostics(winning_window_index=20),
+                                          window_diagnostics(offset_unit="utf16")])
+def test_bad_diagnostics_do_not_turn_a_valid_detection_into_fail_open(transport, diagnostics):
+    config, calls, responses, _ = transport
+    config["PROMPT_GUARD_RETURN_WINDOWS"] = "true"
+    responses.append(Response(payload(injection_score=0.99, flagged=True, diagnostics=diagnostics)))
+    result = scan()
+    assert result.status == "scanned" and result.flagged is True
+    assert result.diagnostics is None and len(calls) == 1
+
+
+def test_diagnostics_flag_follows_mode_and_request_scope(transport, monkeypatch):
+    _, calls, responses, _ = transport
+    modes = {
+        "cloud": {**CONFIG, "PROMPT_GUARD_RETURN_WINDOWS": "true"},
+        "local": {**CONFIG, "PROMPT_GUARD_RETURN_WINDOWS": "false"},
+    }
+    monkeypatch.setattr(config_loader, "_load_mode_config", lambda mode: dict(modes[mode]))
+    monkeypatch.setattr(pg, "get_config_value", config_loader.get_config_value)
+    responses.extend([Response(), Response(), Response()])
+    with config_loader.config_scope("cloud"):
+        assert scan().status == "scanned"
+        assert scan(mode="local").status == "scanned"
+    with config_loader.config_scope("cloud", overrides={"PROMPT_GUARD_RETURN_WINDOWS": "false"}):
+        assert scan().status == "scanned"
+    assert [kwargs["json"].get("return_windows") for _, kwargs in calls] == [True, None, None]
+
+
+def test_old_service_rejection_does_not_trigger_an_automatic_rescan(transport):
+    config, calls, responses, _ = transport
+    config["PROMPT_GUARD_RETURN_WINDOWS"] = "true"
+    responses.append(Response(status=422))
+    result = scan()
+    assert result.status == "unknown" and result.reason_code == "http_422"
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("valid_diagnostics", [True, False])
+def test_full_boundary_saves_only_private_diagnostics_and_keeps_detection(
+    transport, tmp_path, valid_diagnostics,
+):
+    from lib import prompt_guard_observer as observer
+
+    config, calls, responses, _ = transport
+    config["PROMPT_GUARD_RETURN_WINDOWS"] = "true"
+    original = {"ok": True, "speech": TEXT, "data": {"content": TEXT}, "completion": "completed"}
+    text = observer._serialize_content(original, 8192)
+    diag = window_diagnostics()
+    diag["windows"][0]["char_end"] = len(text) if valid_diagnostics else len(text) + 1
+    diag["raw_debug"] = TOKEN
+    responses.append(Response(payload(injection_score=0.99, flagged=True, diagnostics=diag)))
+    with config_loader.config_scope("cloud", overrides={"PROMPT_GUARD_INCIDENT_DIR": str(tmp_path)}):
+        result = observer.review_tool_result("crawl_url", original)
+    assert result["error_code"] == "prompt_injection_detected"
+    assert result["retry_safe"] is False and result["completion"] == "completed"
+    assert original["speech"] == TEXT and len(calls) == 1
+    exposed = json.dumps(result)
+    assert TEXT not in exposed and TOKEN not in exposed and "diagnostics" not in exposed
+    report = json.loads(next((tmp_path / "cloud").glob("pg-*.json")).read_text())
+    assert report["evidence"]["text"] == text
+    assert ("diagnostics" in report["scan"]) is valid_diagnostics
+    if valid_diagnostics:
+        assert report["scan"]["diagnostics"]["windows"][0]["char_end"] == len(text)
+    assert TOKEN not in json.dumps(report)

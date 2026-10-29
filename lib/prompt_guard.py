@@ -23,6 +23,8 @@ from urllib.parse import urlsplit
 
 import requests
 
+from lib.prompt_guard_diagnostics import PromptGuardDiagnostics, validate_diagnostics
+
 try:
     from config_loader import config_scope, get_active_config_mode, get_config_value
 except ModuleNotFoundError as exc:
@@ -61,6 +63,7 @@ class PromptGuardResult:
     service_request_id: str | None = None
     model_id: str | None = None
     model_revision: str | None = None
+    diagnostics: PromptGuardDiagnostics | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +74,7 @@ class _ScanResponse:
     service_request_id: str | None
     model_id: str | None
     model_revision: str | None
+    diagnostics: PromptGuardDiagnostics | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +84,7 @@ class _Settings:
     threshold: float
     timeout: float
     max_input_bytes: int
+    return_windows: bool = False
 
 
 @dataclass(slots=True)
@@ -147,7 +152,9 @@ def _settings() -> _Settings:
             or not math.isfinite(timeout) or not 0.05 <= timeout <= 30
             or not 1 <= maximum <= MAX_INPUT_BYTES):
         raise ValueError("invalid_configuration")
-    return _Settings(url, key, threshold, timeout, maximum)
+    return_windows = str(get_config_value("PROMPT_GUARD_RETURN_WINDOWS", "false") or "").strip().lower()
+    return _Settings(url, key, threshold, timeout, maximum,
+                     return_windows in {"true", "1", "yes", "on"})
 
 
 def _state(key: tuple[str, str, str]) -> _BackendState:
@@ -180,7 +187,7 @@ def _identifier(value: object, pattern: re.Pattern[str]) -> str | None:
     return value if isinstance(value, str) and pattern.fullmatch(value) else None
 
 
-def _parse_response(raw: bytes, threshold: float) -> _ScanResponse:
+def _parse_response(raw: bytes, threshold: float, *, text: str = "") -> _ScanResponse:
     data = json.loads(raw, parse_constant=_invalid_json_constant)
     if not isinstance(data, dict) or data.get("status") != "ok":
         raise ValueError("invalid_response")
@@ -204,6 +211,8 @@ def _parse_response(raw: bytes, threshold: float) -> _ScanResponse:
         _identifier(data.get("request_id"), _REQUEST_ID),
         _identifier(model.get("id"), _MODEL_ID),
         _identifier(model.get("revision"), _MODEL_REVISION),
+        validate_diagnostics(data.get("diagnostics"), text=text,
+                             windows_scanned=scanned, injection_score=score),
     )
 
 
@@ -248,12 +257,15 @@ def _scan_text(text: str, *, source_type: str, source_name: str) -> PromptGuardR
         # Socket timeouts limit connect/read inactivity. They are not a strict
         # wall-clock deadline; the bounded input and response also limit work.
         deadline = time.monotonic() + settings.timeout
+        payload = {"text": text, "threshold": settings.threshold,
+                   "source": {"type": source_type, "name": source_name}}
+        if settings.return_windows:
+            payload["return_windows"] = True
         with requests.Session() as session:
             session.trust_env = False  # No ambient proxies or ~/.netrc auth.
             with session.post(
                 settings.url + "/v1/scan",
-                json={"text": text, "threshold": settings.threshold,
-                      "source": {"type": source_type, "name": source_name}},
+                json=payload,
                 headers={"Authorization": "Bearer " + settings.key, "Accept": "application/json"},
                 timeout=(min(0.3, settings.timeout / 4), settings.timeout * 0.75),
                 allow_redirects=False,
@@ -275,7 +287,7 @@ def _scan_text(text: str, *, source_type: str, source_name: str) -> PromptGuardR
                     if len(raw) > MAX_RESPONSE_BYTES:
                         reason = "response_too_large"
                         raise ValueError("response_too_large")
-                observation = _parse_response(bytes(raw), settings.threshold)
+                observation = _parse_response(bytes(raw), settings.threshold, text=text)
         with _state_lock:
             state = _state(key)
             recovered = state.unavailable
@@ -294,7 +306,8 @@ def _scan_text(text: str, *, source_type: str, source_name: str) -> PromptGuardR
                       threshold=settings.threshold, coverage_complete=True,
                       windows_scanned=observation.windows,
                       service_request_id=observation.service_request_id,
-                      model_id=observation.model_id, model_revision=observation.model_revision)
+                      model_id=observation.model_id, model_revision=observation.model_revision,
+                      diagnostics=observation.diagnostics)
     except requests.exceptions.Timeout:
         reason = "timeout"
     except requests.exceptions.RequestException:
