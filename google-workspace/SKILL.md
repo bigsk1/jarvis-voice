@@ -15,9 +15,10 @@ leave a fresh clone usable. Preserve the pinned container digest, explicit
 environment allowlist, private storage, localhost binding and Bearer wrapper.
 Keep complete-tier/full-access tools unless the user requests different access.
 Consumer accounts cannot use Workspace Chat or domain-wide delegation.
-Retain the hash-locked container security overlay when rebuilding: the upstream
-v2.2.1 lock still predates newer pypdf, FastMCP and OpenTelemetry fixes. Recheck the
-installed container packages rather than assuming the upstream tag is advisory-free.
+Retain the hash-locked container security baseline when rebuilding. Its v2.3.0
+pins match the new base's pypdf, FastMCP and OpenTelemetry versions; do not restore
+older overlay pins and downgrade them. Recheck the installed container packages
+rather than assuming the upstream tag is advisory-free.
 
 Check credentials by presence only. Use an existing authorized OAuth client if
 available; account/app passwords cannot replace it. If Google Cloud administration
@@ -135,3 +136,24 @@ index or `end_of_segment=true`, and the intended `tab_id`. A person chip is
 not sharing. Dropdown reads show the selected label, not a complete option
 catalog or newly writable dropdown feature.
 The upstream container uses Python 3.13; this does not upgrade Jarvis's venvs.
+
+Since v2.3.0, Drive text reads are paged at 40,000 characters upstream by default.
+Follow Jarvis's `pagination.next_offset` as `offset`, preserving `file_id` and
+comparing `file_version` between pages. A locally shortened excerpt can end before
+`upstream_next_offset`; jumping to that value would skip unseen text. Restart
+from zero on a version change. `full_content=true` bypasses the upstream page
+limit, not Jarvis's bounded model excerpts.
+
+For paged Gmail bodies, set `page_offset=0`, `format="full"`, `full=false`, and
+`body_format="text"` or `"html"`. Follow `pagination.next_offset` as `page_offset`
+and send `body_sha256` as `expected_sha256`; retain body format and include_links.
+Restart on changed content. These pages exclude attachments and attached messages.
+Use attachment tools or full exports for those. `page_complete=true` does not
+prove a complete read when `content_delivered=false` after excerpt shortening.
+
+Sheets reads return tab-separated cells, normally with real sheet row numbers.
+Follow the returned legend: if it reports numbering within the range, resolve
+the actual A1 range before writing. Do not assume the first result is sheet row 1.
+Calendar `get_events(detailed=true)`
+shows custom reminders, non-default visibility and transparent events. Drive
+downloads can export Google Drawings to PNG by default or PDF/JPEG/SVG explicitly.

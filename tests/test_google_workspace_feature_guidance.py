@@ -1,4 +1,4 @@
-"""Workspace feature discovery and v2.2.1 argument contracts without Google calls."""
+"""Workspace feature discovery and v2.3.0 argument contracts without Google calls."""
 
 import json
 import sys
@@ -32,6 +32,9 @@ FEATURE_PARAMETERS = {
         "full": {"type": "boolean", "default": False},
         "include_headers": {"type": "boolean", "default": True},
         "include_links": {"type": "boolean", "default": False},
+        "page_offset": _nullable("integer"),
+        "page_size": {"type": "integer", "default": 20000},
+        "expected_sha256": _nullable("string"),
     },
     "get_gmail_messages_content_batch": {
         "message_ids": {"type": "array", "items": {"type": "string"}},
@@ -104,7 +107,11 @@ FEATURE_PARAMETERS = {
         "page_object_id": {"type": "string"},
         "size": {"type": "string", "default": "MEDIUM"},
     },
-    "get_drive_file_content": {"file_id": {"type": "string"}},
+    "get_drive_file_content": {
+        "file_id": {"type": "string"},
+        "offset": {"type": "integer", "default": 0},
+        "full_content": {"type": "boolean", "default": False},
+    },
     "batch_modify_gmail_message_labels": {
         name: {"type": "array", "items": {"type": "string"}, "default": None}
         for name in ("message_ids", "thread_ids", "add_label_ids", "remove_label_ids")
@@ -245,6 +252,15 @@ def test_feature_metadata_preserves_provider_schemas_and_account_binding(tool_na
 
 
 @pytest.mark.parametrize(("tool_name", "argument"), [
+    ("get_drive_file_content", {"file_id": "file-123", "offset": 3200, "full_content": False}),
+    ("get_gmail_message_content", {
+        "message_id": "18abc123", "page_offset": 0, "page_size": 1800,
+        "body_format": "text", "include_links": True,
+    }),
+    ("get_gmail_message_content", {
+        "message_id": "18abc123", "page_offset": 1800, "page_size": 1800,
+        "expected_sha256": "a" * 64, "body_format": "text", "include_links": True,
+    }),
     ("get_gmail_message_content", {
         "message_id": "18abc123", "include_links": True,
         "include_headers": False, "body_format": "text", "format": "full",
@@ -419,10 +435,10 @@ def test_image_guidance_uses_stash_analysis_instead_of_claiming_automatic_vision
     assert "do not share" in metadata["render_page_to_image"]["description_prefix"]
 
 
-def test_v221_catalog_keeps_v220_slide_rename_without_growing_the_tool_set():
+def test_v230_catalog_keeps_v220_slide_rename_without_growing_the_tool_set():
     fixture = json.loads((ROOT / "tests/fixtures/google_workspace_tool_names.json").read_text())
-    assert fixture['image'].endswith(':2.2.1')
-    assert fixture['upstream_commit'] == '0801afb3e58f51754f5a40161c07675f50565448'
+    assert fixture['image'].endswith(':2.3.0')
+    assert fixture['upstream_commit'] == '395d881d246fc9ef3f8f8c299b08e7d9f1359b89'
     assert len(fixture['tools']) == len(set(fixture['tools'])) == 111
     assert 'render_page_to_image' in fixture['tools']
     assert 'get_page_thumbnail' not in fixture['tools']

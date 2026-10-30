@@ -2,7 +2,7 @@
 
 Jarvis can use a dedicated **consumer Gmail account** through
 [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp).
-The pinned v2.2.1 container exposes 111 tools in its complete tier for Gmail,
+The pinned v2.3.0 container exposes 111 tools in its complete tier for Gmail,
 Drive, Calendar, Docs, Sheets, Slides, Forms, Tasks, Contacts and Apps Script.
 This standalone Compose project is optional. A fresh clone has the MCP ENV
 gate off and never connects to or starts this service.
@@ -426,7 +426,78 @@ stored vector below the dense threshold does not gain this exception. `BLOCKED_T
 excluded. Changing enablement, credentials or profiles still needs the normal
 registry reload; temporary downtime no longer requires restarting Jarvis.
 
-## Upgrading to 2.2.1
+## Upgrading to 2.3.0
+
+The [v2.3.0 release](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.3.0)
+keeps the same 111 tool names, OAuth scopes, transport and command-line options.
+The Dockerfile pins the multi-platform image digest and reviewed source
+`395d881d246fc9ef3f8f8c299b08e7d9f1359b89`. Existing grants, the private service
+token and the `data/` bind mount are reused. Jarvis's Python environments,
+databases and optional-service enablement are unchanged.
+
+Two output changes need attention:
+
+- **Drive content is paged:** `get_drive_file_content` returns at most 40,000
+  text characters by default. Continue with `offset`, keeping the same `file_id`;
+  compare the returned file version and restart from zero if it changes. Jarvis
+  preserves pagination metadata before shortening results. Follow its
+  `pagination.next_offset`, which accounts for text actually included in the
+  model's excerpt, rather than skipping ahead to `upstream_next_offset`.
+  `full_content=true` opts out of the upstream page limit, but Jarvis still
+  bounds its excerpts. Do not disable the service limit globally just to work
+  around a continuation problem. Upstream caches text for ten minutes, bounded
+  to 32 MiB by default; this is not a permanent local copy of Drive.
+- **Sheets output is tab-separated:** `read_sheet_values` labels rows with
+  their actual sheet row numbers. A read of `A20:C22` starts at row 20. If the
+  server cannot resolve the start row, its legend explicitly reports numbering
+  within the range; resolve the actual A1 range before using those labels to write.
+  External scripts parsing the old Python-list-style `Row 1: [...]` output need
+  updating. Jarvis preserves the returned text and does not parse that old format.
+
+Useful additions through existing tools:
+
+- **Paged Gmail bodies:** call `get_gmail_message_content` with `page_offset=0`,
+  `format="full"`, `full=false`, and `body_format="text"` or `"html"`.
+  `page_size` is 1–20,000 characters. Follow `pagination.next_offset` as
+  `page_offset` and pass `body_sha256` as `expected_sha256`; keep `body_format`
+  and `include_links` unchanged. Restart when the representation changes.
+  `page_complete` describes the upstream response; it does not prove all of it
+  reached the model when `content_delivered` is false. These pages exclude
+  attachments and attached messages; use attachment tools or full exports for
+  those. The email command inbox still uses its independent complete raw EML
+  export and authentication checks.
+- **Calendar read-back:** `get_events(detailed=true)` now includes custom
+  reminders, non-default visibility and transparent events, making those
+  `manage_event` settings inspectable. Default values may remain omitted.
+- **Google Drawings downloads:** `get_drive_file_download_url` exports Drawings
+  to PNG by default, or PDF (`pdf`), JPEG (`jpg`) or SVG (`svg`) using
+  `export_format`. Use `stash=true`
+  for a local artifact through the existing download bridge.
+
+Descriptions are injected only when the corresponding tools are available.
+The new arguments arrive through upstream schema discovery; this does not add
+new tools, consent requirements or approval screens. Returned documents and
+messages remain untrusted content, including their excerpts and links.
+
+The container includes Authlib 1.9.1 and dnspython 2.9.0 on its Python 3.13
+runtime. The hash-locked security baseline now matches its FastMCP 4.1.4 and
+pypdf 6.21.3 rather than downgrading them to the earlier overlay versions;
+OpenTelemetry remains 1.45.1. The image build checks dependency compatibility.
+Do not run upstream `uv sync` inside the built container.
+
+```bash
+bin/jarvis-google start
+bin/jarvis-google check --live
+source "$HOME/jarvis-venv/bin/activate"
+./bin/sync-tools.py cloud
+# Sync local too when enabled, then reload the affected Jarvis registries.
+```
+
+Docker Jarvis installations use their existing stack and Google overlay instead
+of the standalone helper. Keep the previous image available until live health,
+authorized discovery and read checks pass; rebuilding preserves OAuth storage.
+
+### Earlier 2.2.1 migration notes
 
 The [v2.2.1 release](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.2.1)
 keeps the existing 111 tool names, transport, OAuth scopes and command-line
@@ -508,7 +579,7 @@ retains this setup's transport, OAuth scopes, CLI flags and 111-tool count.
 Existing OAuth grants and the private service token can be reused. Rebuilding
 keeps the existing `data/` bind mount. Its reviewed source was
 `b5cf07e6078ae10a596710d77569e9430e01ebd4`; the current Dockerfile pin is listed
-in the 2.2.1 section above.
+in the 2.3.0 section above.
 Upstream updates `certifi` to 2026.10.19 but still includes packages with newer
 published advisories. The container-only `security-requirements.txt` overlay
 pins artifact hashes for `pypdf` 6.21.2, FastMCP 4.1.2 and OpenTelemetry 1.45.1,

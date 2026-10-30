@@ -1,6 +1,6 @@
 """Normalize Workspace MCP receipts and preserve bounded follow-up handles.
 
-Upstream v2.2.1 returns human-readable receipts and optional inline images.
+Upstream v2.3.0 returns human-readable receipts, paged content and inline images.
 Keep its actual response and explicitly labeled IDs; never invent an API receipt.
 """
 
@@ -27,6 +27,7 @@ _REQUEST_KEYS = frozenset({
     "tab_id", "replace_existing", "copy_comments", "request_sync_token", "sync_token",
     "page_object_id", "size", "heading", "heading_level", "include_colors", "color_id", "reply_all",
     "include_headers", "include_links", "this_and_following", "comment_id", "recurrence",
+    "offset", "full_content", "page_offset", "page_size", "expected_sha256",
 })
 _REQUEST_ID_LISTS = frozenset({"message_ids", "thread_ids", "add_label_ids", "remove_label_ids", "recurrence"})
 _LINK = re.compile(r"https?://[^\s<>\"'\[\]]+")
@@ -195,6 +196,112 @@ def gmail_attachment_metadata(text: str, message_id: str) -> list[dict]:
             if match[5] == message_id and match[4] == match[6] and int(match[1]) == int(match[7]) + 1]
 
 
+_DRIVE_CONTENT_HEADER = re.compile(
+    r'\AFile: "[^\r\n]*" \(ID: ([A-Za-z0-9_-]{1,512}), Type: ([A-Za-z0-9.+/-]+), Version: (\d{1,30})\)\n'
+    r"Link: [^\r\n]*\n\n--- CONTENT ---\n"
+)
+_DRIVE_PAGE_FOOTER = re.compile(
+    r"\n\n\[Truncated: showing characters ([0-9,]{1,30}) to ([0-9,]{1,30}) of ([0-9,]{1,30}); "
+    r"([0-9,]{1,30}) more follow \(default page size ([0-9,]{1,30}), set by WORKSPACE_MCP_MAX_CONTENT_CHARS\)\. "
+    r"Call again with offset=([0-9]{1,19}) to read on, or pass full_content=True for the whole file\.\]\Z"
+)
+_GMAIL_PAGE_KEYS = frozenset({
+    "message_id", "body_format", "body", "page_offset", "next_offset", "total_chars",
+    "complete", "body_sha256", "scope",
+})
+
+
+def _page_integer(value: Any) -> bool:
+    return type(value) is int and 0 <= value <= 2**63 - 1
+
+
+def _workspace_content_page(tool_name: str, text: str, arguments: dict) -> tuple[dict, str] | None:
+    """Read only pinned, request-matched envelopes; body text is never authority.
+
+    The plain Drive footer is a continuation hint, not authenticated content.
+    Check its arithmetic against the actual returned body rather than accepting
+    arbitrary offsets embedded in a document. Local delivery determines the
+    next cursor in both formats, independently of the upstream continuation.
+    """
+    if tool_name == "get_gmail_message_content":
+        offset, size = arguments.get("page_offset"), arguments.get("page_size", 20000)
+        if (not _page_integer(offset) or not _page_integer(size) or not 1 <= size <= 20000
+                or arguments.get("full", False) is not False or arguments.get("format", "full") != "full"
+                or arguments.get("body_format", "text") not in {"text", "html"}):
+            return None
+        try:
+            page = json.loads(text)
+        except (ValueError, RecursionError):
+            return None
+        if not isinstance(page, dict) or not _GMAIL_PAGE_KEYS <= page.keys() or page.keys() - _GMAIL_PAGE_KEYS - {"headers"}:
+            return None
+        if arguments.get("include_headers", True):
+            if (not isinstance(page.get("headers"), dict)
+                    or not all(isinstance(key, str) and isinstance(value, str) for key, value in page["headers"].items())):
+                return None
+        elif "headers" in page:
+            return None
+        body, total, following = page["body"], page["total_chars"], page["next_offset"]
+        digest = page["body_sha256"]
+        if (not isinstance(body, str) or len(body) > size or not _page_integer(page["page_offset"])
+                or page["page_offset"] != offset or not _page_integer(total)
+                or page["message_id"] != arguments.get("message_id")
+                or page["body_format"] != arguments.get("body_format", "text")
+                or type(page["complete"]) is not bool
+                or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
+                or page["scope"] != "Decoded outer message body, excluding attachments and attached messages."
+                or (arguments.get("expected_sha256") is not None and arguments["expected_sha256"] != digest)):
+            return None
+        end = offset + len(body)
+        if (end > total or page["complete"] != (end == total)
+                or (following is not None and not _page_integer(following))
+                or following != (end if end < total else None)
+                or (not body and end < total)):
+            return None
+        return {"kind": "gmail", "offset": offset, "page_end": end, "total_chars": total,
+                "upstream_next_offset": following, "page_complete": page["complete"],
+                "body_sha256": digest}, body
+    if tool_name != "get_drive_file_content":
+        return None
+    offset = arguments.get("offset", 0)
+    header = _DRIVE_CONTENT_HEADER.match(text)
+    if (not _page_integer(offset) or not header or header[1] != arguments.get("file_id")
+            or header[2] in {"image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/tiff"}):
+        return None
+    body = text[header.end():]
+    if re.fullmatch(r"\[offset=[0-9,]+ is past the end of the content \([0-9,]+ characters\)\.\]", body):
+        return None
+    footer = _DRIVE_PAGE_FOOTER.search(body)
+    end, total, following = offset + len(body), offset + len(body), None
+    if footer:
+        if arguments.get("full_content", False) is not False:
+            return None
+        numbers = [int(value.replace(",", "") or "-1") for value in footer.groups()[:5]]
+        if any(not _page_integer(number) or value != f"{number:,}"
+               for value, number in zip(footer.groups()[:5], numbers, strict=True)):
+            return None
+        start, end, total, remaining, size = numbers
+        page_body = body[:footer.start()]
+        if (start != offset or end != offset + len(page_body) or not end < total
+                or remaining != total - end or size < len(page_body) or size < 1
+                or len(page_body) < size / 2 or int(footer[6]) != end):
+            return None
+        body, following = page_body, end
+    elif "[Truncated:" in body:
+        return None
+    return {"kind": "drive", "offset": offset, "page_end": end, "total_chars": total,
+            "upstream_next_offset": following, "page_complete": following is None,
+            "file_version": header[3]}, body
+
+
+def _page_delivery(page: dict, text: str) -> dict:
+    """Keep upstream completion distinct from text actually delivered locally."""
+    delivered_end = page["offset"] + len(text)
+    return {**page, "delivered_end": delivered_end,
+            "content_delivered": delivered_end == page["page_end"],
+            "next_offset": delivered_end if delivered_end < page["total_chars"] else None}
+
+
 def normalize_workspace_result(tool_name: str, result: dict, arguments: dict | None = None) -> dict:
     from google_workspace_images import image_delivery, without_image_bytes
 
@@ -204,10 +311,17 @@ def normalize_workspace_result(tool_name: str, result: dict, arguments: dict | N
         item["text"] for item in content
         if isinstance(item, dict) and isinstance(item.get("text"), str)
     )
-    text = without_image_bytes(text)
     structured = without_image_bytes(result.get("structuredContent"))
     if not text and structured is not None:
         text = json.dumps(structured, ensure_ascii=False, default=str)
+    # Character cursors refer to exact provider body text. Parse before labeled
+    # ID cleanup, which intentionally rewrites human-readable legacy receipts.
+    content_page = _workspace_content_page(tool_name, text, arguments or {}) if not result.get("isError") else None
+    if content_page and without_image_bytes(content_page[1]) != content_page[1]:
+        # Never restore image bytes through page_body. A transformed body no
+        # longer has exact provider character positions, so omit its cursors.
+        content_page = None
+    text = without_image_bytes(text)
     text = normalize_labeled_ids(text)
     if isinstance(structured, str):
         structured = normalize_labeled_ids(structured)
@@ -235,6 +349,10 @@ def normalize_workspace_result(tool_name: str, result: dict, arguments: dict | N
     if request_counts:
         data["request_list_counts"] = request_counts
         data["request_lists_truncated"] = request_truncated
+    if content_page and not failed:
+        page, body = content_page
+        data["page_body"] = body[:16000]
+        data["pagination"] = _page_delivery(page, data["page_body"])
     if image_count:
         data["image_delivery"] = image_delivery(image_count, 0, ["Inline images have not been saved locally"])
     # This cursor follows the full contact listing, often beyond both text and
@@ -326,7 +444,7 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
         "links", "artifacts", "stash_error", "google_ok", "response_truncated", "external_content_trust",
         "content_links_untrusted", "batch_outcomes", "google_export_ok", "download_ok", "download_error",
         "request_list_counts", "request_lists_truncated", "image_delivery", "next_sync_token", "next_sync_token_unavailable",
-        "new_series_id",
+        "new_series_id", "pagination",
     ) if key in payload}
     projected = deepcopy(projected)
     trimmed = any(projected[key] != payload[key] for key in projected)
@@ -359,6 +477,14 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
             artifact["download_url"] = browser_url
             download_url = download_url or browser_url
     original_text = str(payload.get("response_text") or result.get("error") or result.get("speech") or "")
+    page_body = payload.get("page_body")
+    page = projected.get("pagination")
+    if (not isinstance(page, dict) or not isinstance(page_body, str)
+            or not all(_page_integer(page.get(key)) for key in ("offset", "page_end", "total_chars"))
+            or not page["offset"] <= page["page_end"] <= page["total_chars"]
+            or len(page_body) > page["page_end"] - page["offset"]):
+        projected.pop("pagination", None)
+        page = None
     if payload.get("tool") == "batch_modify_gmail_message_labels" and "batch_outcomes" not in payload:
         saved_request = payload.get("request")
         outcomes, complete = _gmail_label_outcomes(original_text, saved_request if isinstance(saved_request, dict) else {})
@@ -366,14 +492,17 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
         # Old saved receipts predate outcome normalization. Downgrade an
         # unconfirmed receipt, but never upgrade a persisted tool failure.
         projected["ok"] = bool(payload.get("ok", result.get("ok", True))) and complete
-    text = _workspace_display_text(original_text, download_url)
+    text = page_body if page is not None else _workspace_display_text(original_text, download_url)
     projected["response_excerpt"] = text[:2200]
     trimmed = trimmed or len(text) > 2200
+    if page is not None:
+        projected["pagination"] = _page_delivery(page, projected["response_excerpt"])
+        trimmed = trimmed or not projected["pagination"]["content_delivered"]
     structured = payload.get("structured_result")
     echo = structured.get("result") if isinstance(structured, dict) and set(structured) == {"result"} else structured if isinstance(structured, str) else None
     # FastMCP echoes the same text in structuredContent. Removing that copy
     # omits no evidence and must not imply that a complete receipt was truncated.
-    if structured is not None and not (isinstance(echo, str) and echo and original_text.startswith(echo)):
+    if page is None and structured is not None and not (isinstance(echo, str) and echo and original_text.startswith(echo)):
         compact = _bounded(structured)
         trimmed = trimmed or compact != structured
         def display(value):
@@ -392,7 +521,21 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
         projected.pop("structured_result")
         trimmed = True
     if size() > max_chars and projected.get("response_excerpt"):
-        projected["response_excerpt"] = ""
+        if page is not None:
+            excerpt = projected["response_excerpt"]
+            low, high = 0, len(excerpt)
+            while low < high:
+                middle = (low + high + 1) // 2
+                projected["response_excerpt"] = excerpt[:middle]
+                projected["pagination"] = _page_delivery(page, projected["response_excerpt"])
+                if size() <= max_chars:
+                    low = middle
+                else:
+                    high = middle - 1
+            projected["response_excerpt"] = excerpt[:low]
+            projected["pagination"] = _page_delivery(page, projected["response_excerpt"])
+        else:
+            projected["response_excerpt"] = ""
         trimmed = True
     for key in ("links", "references", "artifacts"):
         while size() > max_chars and projected.get(key):
@@ -409,7 +552,7 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
                 "request", "external_content_trust", "tool", "source", "content_links_untrusted",
                 "response_truncated", "authentication_required", "google_ok", "google_export_ok", "download_ok",
                 "request_list_counts", "request_lists_truncated", "batch_outcomes", "image_delivery",
-                "next_sync_token", "next_sync_token_unavailable", "new_series_id", "ok"):
+                "next_sync_token", "next_sync_token_unavailable", "new_series_id", "pagination", "ok"):
         if size() <= max_chars:
             break
         if key in projected:

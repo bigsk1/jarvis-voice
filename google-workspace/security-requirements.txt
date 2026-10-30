@@ -1,16 +1,16 @@
-# Container-only security overlay for the immutable Workspace MCP v2.2.1 base.
+# Container-only security baseline for the immutable Workspace MCP v2.3.0 base.
 # Exact compatible versions and PyPI artifact hashes; install with --no-deps.
 # pypdf: GHSA-6c7f-9265-g8fw, GHSA-gmh7-3g9r-mjh5, GHSA-jr96-gvgh-j3r4.
 # FastMCP: GHSA-7xgj-8392-5q4r, GHSA-vqqp-x5qm-5qp4.
 # OpenTelemetry API: GHSA-xcq7-p3pf-p88h; related family packages must match.
 
-fastmcp==4.1.2 \
-    --hash=sha256:1b70a8467ac4dd6416c7c101cd54562f089b55e6636a196b4a20bdac3ccb0284 \
-    --hash=sha256:3d5eddfe624b002ebcf202d5a55ff13bdce6925ce58bfcaeb28bc2e3bbee1830
+fastmcp==4.1.4 \
+    --hash=sha256:2398be351ec343466f0510dc9e281d3a848bc3370c17b0a2807fcccc6f1ffe3b \
+    --hash=sha256:047c1c1842f42e4ffe2e153568a25851d442cb7739a41a56352b7a2852ff8738
 
-fastmcp-slim==4.1.2 \
-    --hash=sha256:4b703ddbd35165ebf03b2cc560688f458f3fe4db11e635074fcc303496734154 \
-    --hash=sha256:58a4e547a0f85cfee2d2219677ed31c0f1c4911741a5c91a1ee5fbf69dde35fa
+fastmcp-slim==4.1.4 \
+    --hash=sha256:d1034317e4e2960dd619930c01baabbc77e60825f55c09f93471afa427a68cd7 \
+    --hash=sha256:0f611b246504ff0d0ee7ab77123f529b5c9aed68670eaee9c6f960a59bb024da
 
 openapi-pydantic==0.6.0 \
     --hash=sha256:11f3ac6ad41521fc156381ec587246b0c0ecea523bd9565ed74d3e7fac9d91cd \
@@ -56,6 +56,6 @@ opentelemetry-semantic-conventions==0.66b1 \
     --hash=sha256:497ca63bf383723411e8eaf60c8779e9877633c936bb641080adab59d0eb6ec8 \
     --hash=sha256:d4cddeb4315490b35213f55e2bdc9ac54bb1e4d318927475bed62b35545e581b
 
-pypdf==6.21.2 \
-    --hash=sha256:0a3e1c5c886a1be03646c16a04827cc166c2a0575c971b26a4bf89686551c2d4 \
-    --hash=sha256:1d44d1a3a200f25062adff0085b02040e4646431ac2ccac22e42679e91466084
+pypdf==6.21.3 \
+    --hash=sha256:11e1ca6d6cc8ca322558a3a974078d5ebc0f3a2104b8e673eee25621ee97abd8 \
+    --hash=sha256:c8ca4d9a360dbd5d4b9bb7a8389e2a9ae6a106bee722b496f918040ba2daa17e
