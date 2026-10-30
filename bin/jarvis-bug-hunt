@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Run the isolated Jarvis static bug-hunt loop."""
 
-import sys
-
-sys.dont_write_bytecode = True
-
 import argparse
+import sys
 from datetime import datetime
 from pathlib import Path
 
+sys.dont_write_bytecode = True
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
@@ -16,8 +14,6 @@ sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 from bug_hunt import (  # noqa: E402
     DEFAULT_MODEL,
     DEFAULT_PROVIDER,
-    MEMORY_RELATIVE_PATH,
-    RESULTS_RELATIVE_PATH,
     BugHuntEngine,
     format_progress_line,
     parse_deadline,
@@ -44,10 +40,16 @@ def main() -> int:
                         help="Minimum investigator and verifier confidence")
     parser.add_argument("--sleep-seconds", type=float, default=1.0,
                         help="Pause between iterations")
-    parser.add_argument(
+    hunt_modes = parser.add_mutually_exclusive_group()
+    hunt_modes.add_argument(
         "--docs-only",
         action="store_true",
         help="Only report active documentation problems; source remains readable for verification",
+    )
+    hunt_modes.add_argument(
+        "--security-only",
+        action="store_true",
+        help="Only report security issues beyond the trusted single-user deployment baseline",
     )
     parser.add_argument("--show-whitelist", action="store_true",
                         help="Print readable tracked files and exit without an LLM call")
@@ -73,6 +75,7 @@ def main() -> int:
         max_tool_turns=args.max_tool_turns,
         min_confidence=args.min_confidence,
         docs_only=args.docs_only,
+        security_only=args.security_only,
     )
 
     if args.show_whitelist:
@@ -88,10 +91,15 @@ def main() -> int:
         print(f"  xai auth:    {args.xai_auth_mode or 'config'}")
     print(f"  iterations:  {args.max_iterations}")
     print(f"  deadline:    {deadline.isoformat(timespec='minutes') if deadline else 'none'}")
-    print(f"  hunt mode:   {'documentation-only' if args.docs_only else 'code correctness'}")
+    hunt_mode_label = {
+        "code": "code correctness",
+        "docs_only": "documentation-only",
+        "security": "security-only",
+    }[engine.hunt_mode]
+    print(f"  hunt mode:   {hunt_mode_label}")
     print(f"  readable:    {len(engine.policy.readable_files)} tracked/private state files")
-    print(f"  memory:      {MEMORY_RELATIVE_PATH}")
-    print(f"  findings:    {RESULTS_RELATIVE_PATH}")
+    print(f"  memory:      {engine.policy.memory_path.relative_to(PROJECT_ROOT).as_posix()}")
+    print(f"  findings:    {engine.policy.results_path.relative_to(PROJECT_ROOT).as_posix()}")
     print("  source mode: read-only; no shell, tests, network tools, or code writes")
     print()
 

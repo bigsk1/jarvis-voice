@@ -20,6 +20,8 @@ DEFAULT_MODEL = "glm-5.2:cloud"
 DEFAULT_PROVIDER = "ollama"
 MEMORY_RELATIVE_PATH = "docs/personal/bug-hunt-memory.md"
 RESULTS_RELATIVE_PATH = "docs/personal/bug-hunt-findings.jsonl"
+SECURITY_MEMORY_RELATIVE_PATH = "docs/personal/security-bug-hunt-memory.md"
+SECURITY_RESULTS_RELATIVE_PATH = "docs/personal/security-bug-hunt-findings.jsonl"
 LEDGER_RELATIVE_PATH = "docs/personal/live-usage-bug-ledger.txt"
 DISMISSALS_RELATIVE_PATH = "docs/personal/bug-hunt-dismissals.jsonl"
 
@@ -169,6 +171,17 @@ DOCS_LENSES = (
     "cross-document contradictions, broken internal references, and stale superseded guidance",
 )
 
+SECURITY_LENSES = (
+    "untrusted web/search/crawl content reaching prompts, memory, and privileged tool actions",
+    "untrusted URLs, redirects, downloads, and SSRF across internal service boundaries",
+    "API and webhook ingress, source authentication, callbacks, and replay boundaries",
+    "PDF/image/video/archive input, extraction paths, parsers, and bounded resource use",
+    "untrusted filenames, Stash references, file downloads, and private-file access",
+    "untrusted content rendered in Web, Canvas, galleries, and browser companions",
+    "untrusted arguments reaching subprocesses, command interpreters, and remote workers",
+    "credentials and private data crossing logs, artifacts, provider, and outbound request boundaries",
+)
+
 
 BUG_HUNT_TOOL = {
     "name": "bug_hunt_repo",
@@ -266,6 +279,77 @@ CODE-CORRECTNESS AUDIT MODE:
 - Jarvis is currently a trusted single-user application commonly run locally, on a LAN, or in the user's Docker environment. Reject security or isolation concerns that require hostile users, public multi-tenant exposure, or a hypothetical future deployment. Report only behavior reachable in the current operating model; clearly state any uncommon configuration prerequisite.
 """
 
+SECURITY_MODE_PROMPT = """
+SECURITY-ONLY AUDIT MODE:
+Inspect only current security boundary violations under this accepted posture.
+
+ACCEPTED POSTURE:
+- Jarvis is a self-hosted, trusted single-owner application. The operator, their
+  host, local files/configuration, configured services, and explicitly authorized
+  tools are trusted. Do not assume a hostile local user, public multi-tenant
+  deployment, or another account/tenant that does not exist.
+- FastAPI bearer-key authentication is optional. Shared Web UI password/JWT
+  authentication and documented internal/loopback API exemptions are intentional.
+  The choice of optional auth, a shared login, stateless sessions, or lack of
+  public-SaaS account/tenant features is not a finding by itself. Verify actual
+  enabled controls and their intended scope in source.
+- Owner-authorized local file access, configured LAN endpoints, remote execution,
+  phone calls, uploads, and other tool side effects are intended capabilities.
+  Distinguish owner authorization from authority induced by an external attacker.
+- Untrusted external input remains untrusted even in a single-owner deployment:
+  web/search/crawl content, API responses, webhook payloads, remote URLs, documents,
+  PDFs, images, video, archives, filenames, and rendered or model-returned content.
+  An external content author can attack the owner without logging into Jarvis.
+
+REPORTING RULES:
+- Trace attacker-controlled input through the current entry point, transformations,
+  guards, and a sensitive sink. State a concrete unauthorized read, write, action,
+  disclosure, browser execution, or credible resource-exhaustion effect on Jarvis.
+- Source code, callers, configuration handling, and tests establish behavior;
+  docs are navigation and accepted-scope context, not proof a guard works.
+- Consider SSRF and redirects, traversal/archive extraction, browser rendering,
+  subprocess arguments, source-auth bypasses, and secret disclosure. Respect
+  existing allowlists, approval gates, path scopes, retention, limits, and recovery.
+- Prompt injection requires a specific unauthorized downstream action or data
+  disclosure. A suspicious sentence, model disobedience, missing keyword filter,
+  or generic claim that LLMs are injectable is insufficient.
+- Do not guess dependency/CVE vulnerabilities or assert current package advisory
+  status. There are no network tools or web searches. Use general security
+  knowledge to inspect source; do not infer a native parser exploit from its name.
+- Reject generic best-practice gaps, accepted posture, same-owner intended use,
+  speculative attacker powers, and claims contradicted by existing guards.
+  An enabled control bypass or actual external-input path beyond this accepted
+  posture is in scope. State unusual prerequisites instead of assuming them.
+- A same-model investigator/verifier agreement is still only a candidate requiring
+  human triage. Static inspection cannot prove runtime exploitability or safety.
+- Findings, exploit descriptions, and navigation notes are private local state.
+  Never put secrets in them or write to the public fixed-bug ledger. No shell,
+  tests, probes, network tools, automatic fixes, or publication are available.
+
+INVESTIGATOR OUTPUT ADDITION:
+For action=candidate, include candidate.security with ALL these fields:
+{
+  "untrusted_input": "what the external actor controls",
+  "entry_point": "where that input enters Jarvis",
+  "trust_boundary": "the authority/resource boundary crossed",
+  "source_to_sink": ["source and first transformation", "guard/sink and effect"],
+  "impact": "specific unauthorized consequence for the owner",
+  "preconditions": ["uncommon supported configuration or trigger, if any"],
+  "why_outside_accepted_posture": "why the accepted design does not authorize this"
+}
+Provide at least two source_to_sink steps and nonempty guards_checked. Use an
+empty preconditions list when no uncommon prerequisite is needed. If the boundary
+or unauthorized effect cannot be grounded in current evidence, return no_finding.
+
+VERIFIER OUTPUT ADDITION:
+Independently falsify the input-to-sink trace AND its fit with the accepted posture.
+Include security_review in your JSON:
+{"boundary_confirmed": true, "baseline_exceeded": true, "reason": "current evidence"}
+Set either boolean false and reject/mark uncertain if the corresponding claim is
+unproven. Confirm only if both claims and the ordinary evidence/confidence checks
+are satisfied. Include the normal verifier evidence and reason fields as well.
+"""
+
 CODE_MEMORY_MARKER = "## Code Correctness Mode"
 DOCS_MEMORY_MARKER = "## Documentation-Only Mode"
 
@@ -304,21 +388,41 @@ def format_progress_line(
 class RepositoryPolicy:
     """Tracked-file read whitelist with two exact writable state files."""
 
-    def __init__(self, root: Path, tracked_files: set[str] | None = None):
+    def __init__(
+        self,
+        root: Path,
+        tracked_files: set[str] | None = None,
+        *,
+        security_only: bool = False,
+    ):
         self.root = root.resolve()
-        self.memory_path = self.root / MEMORY_RELATIVE_PATH
-        self.results_path = self.root / RESULTS_RELATIVE_PATH
+        self.security_only = bool(security_only)
+        self.memory_relative_path = (
+            SECURITY_MEMORY_RELATIVE_PATH if self.security_only else MEMORY_RELATIVE_PATH
+        )
+        self.results_relative_path = (
+            SECURITY_RESULTS_RELATIVE_PATH if self.security_only else RESULTS_RELATIVE_PATH
+        )
+        self.memory_path = self.root / self.memory_relative_path
+        self.results_path = self.root / self.results_relative_path
+        self.related_results_path = self.root / RESULTS_RELATIVE_PATH if self.security_only else None
         self.ledger_path = self.root / LEDGER_RELATIVE_PATH
         self.dismissals_path = self.root / DISMISSALS_RELATIVE_PATH
         self.tracked_files = tracked_files if tracked_files is not None else self._git_tracked_files()
+        if self.security_only and any(
+            path in self.tracked_files
+            for path in (self.memory_relative_path, self.results_relative_path)
+        ):
+            raise ValueError("Security hunt memory and findings must remain untracked")
         self.readable_files = {
             path for path in self.tracked_files if self._tracked_path_is_allowed(path)
         }
         for state_path in (
-            MEMORY_RELATIVE_PATH,
-            RESULTS_RELATIVE_PATH,
+            self.memory_relative_path,
+            self.results_relative_path,
             LEDGER_RELATIVE_PATH,
             DISMISSALS_RELATIVE_PATH,
+            *([RESULTS_RELATIVE_PATH] if self.security_only else []),
         ):
             if (self.root / state_path).exists():
                 self.readable_files.add(state_path)
@@ -403,14 +507,14 @@ class RepositoryPolicy:
     def ensure_state_files(self) -> None:
         self.memory_path.parent.mkdir(parents=True, exist_ok=True)
         if not self.memory_path.exists():
+            heading = "# Security Bug Hunt Memory\n\n" if self.security_only else "# Bug Hunt Memory\n\n"
             self._atomic_write(
                 self.memory_path,
-                "# Bug Hunt Memory\n\n"
-                "No areas reviewed yet. Track coverage, disproved hypotheses, and next paths.\n",
+                heading + "No areas reviewed yet. Track coverage, disproved hypotheses, and next paths.\n",
             )
         if not self.results_path.exists():
             self.results_path.touch(mode=0o600)
-        self.readable_files.update({MEMORY_RELATIVE_PATH, RESULTS_RELATIVE_PATH})
+        self.readable_files.update({self.memory_relative_path, self.results_relative_path})
 
     @staticmethod
     def _atomic_write(path: Path, content: str) -> None:
@@ -451,7 +555,7 @@ class RepositoryPolicy:
             if isinstance(item, dict)
         )
         fingerprint = hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()[:16]
-        for existing in self._read_findings():
+        for existing in self._read_findings() + self.read_related_findings():
             if existing.get("fingerprint") == fingerprint:
                 return None
 
@@ -469,10 +573,23 @@ class RepositoryPolicy:
         return finding_id
 
     def _read_findings(self) -> list[dict[str, Any]]:
-        if not self.results_path.exists():
+        return self._read_findings_file(self.results_path)
+
+    def read_related_findings(self) -> list[dict[str, Any]]:
+        """Read the ordinary code queue as duplicate context for a security hunt."""
+        if self.related_results_path is None:
+            return []
+        return [
+            item for item in self._read_findings_file(self.related_results_path)
+            if str(item.get("hunt_mode") or "code") == "code"
+        ]
+
+    @staticmethod
+    def _read_findings_file(path: Path) -> list[dict[str, Any]]:
+        if not path.exists():
             return []
         findings = []
-        for line in self.results_path.read_text(encoding="utf-8").splitlines():
+        for line in path.read_text(encoding="utf-8").splitlines():
             try:
                 value = json.loads(line)
             except json.JSONDecodeError:
@@ -508,7 +625,7 @@ class RepositoryPolicy:
                 raise ValueError(
                     f"Dismissal line {line_number} is missing: {', '.join(missing)}"
                 )
-            if value["hunt_mode"] not in {"code", "docs_only", "all"}:
+            if value["hunt_mode"] not in {"code", "docs_only", "security", "all"}:
                 raise ValueError(f"Dismissal line {line_number} has invalid hunt_mode")
             if value["disposition"] not in DISMISSAL_DISPOSITIONS:
                 raise ValueError(f"Dismissal line {line_number} has invalid disposition")
@@ -535,7 +652,7 @@ class BugHuntRepoTool:
             if action == "read_lines":
                 return self._read_lines(arguments)
             if action == "read_memory":
-                return self._read_lines({"path": MEMORY_RELATIVE_PATH, "start_line": 1})
+                return self._read_lines({"path": self.policy.memory_relative_path, "start_line": 1})
             if action == "update_memory":
                 if not allow_memory_write:
                     raise PermissionError("Memory writes are disabled during verification")
@@ -651,10 +768,13 @@ class BugHuntEngine:
         max_tool_turns: int = 8,
         min_confidence: float = 0.8,
         docs_only: bool = False,
+        security_only: bool = False,
         provider: Any | None = None,
         tracked_files: set[str] | None = None,
     ):
         self.root = root.resolve()
+        if docs_only and security_only:
+            raise ValueError("docs_only and security_only are mutually exclusive")
         self.provider_type = str(provider_type or DEFAULT_PROVIDER).strip().lower()
         if self.provider_type not in {"ollama", "xai"}:
             raise ValueError("BugHuntEngine provider_type must be 'ollama' or 'xai'")
@@ -663,9 +783,14 @@ class BugHuntEngine:
         self.max_tool_turns = max(1, max_tool_turns)
         self.min_confidence = min(max(float(min_confidence), 0.0), 1.0)
         self.docs_only = bool(docs_only)
-        self.policy = RepositoryPolicy(self.root, tracked_files=tracked_files)
+        self.security_only = bool(security_only)
+        self.hunt_mode = "security" if self.security_only else "docs_only" if self.docs_only else "code"
+        self.policy = RepositoryPolicy(
+            self.root, tracked_files=tracked_files, security_only=self.security_only
+        )
         self.policy.ensure_state_files()
-        self._ensure_partitioned_memory()
+        if not self.security_only:
+            self._ensure_partitioned_memory()
         self.tool = BugHuntRepoTool(self.policy)
         self.provider = provider
         self.total_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
@@ -896,6 +1021,8 @@ class BugHuntEngine:
         self._write_memory_sections(code, docs)
 
     def _memory_text(self) -> str:
+        if self.security_only:
+            return self.policy.memory_path.read_text(encoding="utf-8")[:MAX_MODE_MEMORY_CHARS]
         code, docs = self._split_memory_sections(
             self.policy.memory_path.read_text(encoding="utf-8")
         )
@@ -994,12 +1121,13 @@ class BugHuntEngine:
         return result
 
     def _recent_findings_summary(self) -> str:
-        hunt_mode = "docs_only" if self.docs_only else "code"
+        hunt_mode = self.hunt_mode
         findings = [
             item
             for item in self.policy._read_findings()
             if str(item.get("hunt_mode") or "code") == hunt_mode
         ]
+        findings.extend(self.policy.read_related_findings())
         if not findings:
             return f"(No {hunt_mode} bug-hunt findings yet.)"
         lines = []
@@ -1027,11 +1155,14 @@ class BugHuntEngine:
         return "\n".join(lines)
 
     def _dismissals_summary(self) -> str:
-        hunt_mode = "docs_only" if self.docs_only else "code"
+        hunt_mode = self.hunt_mode
+        applicable_modes = {hunt_mode, "all"}
+        if self.security_only:
+            applicable_modes.add("code")
         dismissals = [
             item
             for item in self.policy.read_dismissals()
-            if str(item.get("hunt_mode") or "code") in {hunt_mode, "all"}
+            if str(item.get("hunt_mode") or "code") in applicable_modes
         ]
         if not dismissals:
             return f"(No applicable {hunt_mode} human dismissals.)"
@@ -1099,13 +1230,78 @@ class BugHuntEngine:
             ("docs/archive/", "docs/personal/")
         )
 
+    @classmethod
+    def _validate_security_candidate(cls, candidate: dict[str, Any]) -> dict[str, Any]:
+        """Require a bounded boundary claim before spending a verifier pass."""
+        security = candidate.get("security")
+        if not isinstance(security, dict):
+            raise ValueError("Security candidate requires a security object")
+        validated: dict[str, Any] = {}
+        for key in (
+            "untrusted_input", "entry_point", "trust_boundary", "impact",
+            "why_outside_accepted_posture",
+        ):
+            value = security.get(key)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"Security candidate requires {key}")
+            validated[key] = cls._bounded_text(value, 2000)
+        steps = security.get("source_to_sink")
+        if not isinstance(steps, list) or len(steps) < 2 or any(
+            not isinstance(step, str) or not step.strip() for step in steps
+        ):
+            raise ValueError("Security candidate requires at least two source_to_sink steps")
+        validated["source_to_sink"] = cls._bounded_string_list(steps, items=8, chars=1000)
+        preconditions = security.get("preconditions")
+        if not isinstance(preconditions, list) or any(
+            not isinstance(item, str) or not item.strip() for item in preconditions
+        ):
+            raise ValueError("Security candidate requires a preconditions list")
+        validated["preconditions"] = cls._bounded_string_list(preconditions, items=8, chars=1000)
+        guards = candidate.get("guards_checked")
+        if not isinstance(guards, list) or not guards or any(
+            not isinstance(guard, str) or not guard.strip() for guard in guards
+        ):
+            raise ValueError("Security candidate requires nonempty guards_checked")
+        return validated
+
+    @staticmethod
+    def _validate_security_source_evidence(evidence: list[dict[str, Any]]) -> None:
+        private_state = {
+            MEMORY_RELATIVE_PATH, RESULTS_RELATIVE_PATH, LEDGER_RELATIVE_PATH,
+            DISMISSALS_RELATIVE_PATH, SECURITY_MEMORY_RELATIVE_PATH,
+            SECURITY_RESULTS_RELATIVE_PATH,
+        }
+        if not any(
+            item["path"] not in private_state
+            and not item["path"].startswith("docs/")
+            and Path(item["path"]).suffix.lower() not in {".md", ".txt", ".example", ".template"}
+            for item in evidence
+        ):
+            raise ValueError("Security evidence must cite current source or runtime configuration")
+
+    @classmethod
+    def _validate_security_review(cls, verifier: dict[str, Any]) -> dict[str, Any]:
+        review = verifier.get("security_review")
+        if not isinstance(review, dict):
+            raise ValueError("Security verifier requires security_review")
+        if review.get("boundary_confirmed") is not True or review.get("baseline_exceeded") is not True:
+            raise ValueError("Security verifier did not confirm the boundary and accepted posture")
+        reason = review.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("Security verifier requires a security_review reason")
+        return {
+            "boundary_confirmed": True,
+            "baseline_exceeded": True,
+            "reason": cls._bounded_text(reason, 2000),
+        }
+
     def _persist_iteration_memory(
         self,
         memory_update: str,
         outcome: IterationOutcome,
     ) -> IterationOutcome:
         base = memory_update.strip() or self._memory_text().strip()
-        base = re.sub(r"^# Bug Hunt Memory\s*", "", base).strip()
+        base = re.sub(r"^# (?:Security )?Bug Hunt Memory\s*", "", base).strip()
         base = base.replace(CODE_MEMORY_MARKER, "").replace(DOCS_MEMORY_MARKER, "").strip()
         base = re.sub(r"\n## Latest Iteration Outcome\n.*\Z", "", base, flags=re.DOTALL).rstrip()
         base = self._sanitize_memory_section(base)
@@ -1121,6 +1317,9 @@ class BugHuntEngine:
         )
         available = MAX_MODE_MEMORY_CHARS - len(disposition) - 1
         updated = self._bound_memory_section(base, max(available, 1)) + disposition
+        if self.security_only:
+            self.policy.write_memory("# Security Bug Hunt Memory\n\n" + updated, "replace")
+            return outcome
         code, docs = self._split_memory_sections(
             self.policy.memory_path.read_text(encoding="utf-8")
         )
@@ -1132,7 +1331,7 @@ class BugHuntEngine:
         return outcome
 
     def _sanitize_verifier(self, verifier: dict[str, Any]) -> dict[str, Any]:
-        return {
+        sanitized = {
             "verdict": self._bounded_text(verifier.get("verdict"), 20),
             "confidence": verifier.get("confidence"),
             "reason": self._bounded_text(verifier.get("reason"), 5000),
@@ -1142,6 +1341,9 @@ class BugHuntEngine:
                 verifier.get("duplicate_assessment"), 3000
             ),
         }
+        if self.security_only:
+            sanitized["security_review"] = self._validate_security_review(verifier)
+        return sanitized
 
     def run_iteration(self, iteration: int) -> IterationOutcome:
         started = time.monotonic()
@@ -1158,11 +1360,11 @@ class BugHuntEngine:
         def persist(memory_update: str, outcome: IterationOutcome) -> IterationOutcome:
             return self._persist_iteration_memory(memory_update, finish(outcome))
 
-        lenses = DOCS_LENSES if self.docs_only else DEFAULT_LENSES
+        lenses = SECURITY_LENSES if self.security_only else DOCS_LENSES if self.docs_only else DEFAULT_LENSES
         lens = lenses[(iteration - 1) % len(lenses)]
-        mode_prompt = DOCS_MODE_PROMPT if self.docs_only else CODE_MODE_PROMPT
+        mode_prompt = SECURITY_MODE_PROMPT if self.security_only else DOCS_MODE_PROMPT if self.docs_only else CODE_MODE_PROMPT
         task = f"""Iteration: {iteration}
-Hunt mode: {'documentation-only' if self.docs_only else 'code correctness'}
+Hunt mode: {self.hunt_mode}
 Required investigation lens: {lens}
 
 CURRENT COMPACT MEMORY:
@@ -1204,6 +1406,9 @@ Inspect a meaningful current path under this lens. Use the repository tool repea
         try:
             candidate["evidence"] = self._validate_evidence(candidate.get("evidence"))
             candidate_confidence = float(candidate.get("confidence") or 0.0)
+            if self.security_only:
+                candidate["security"] = self._validate_security_candidate(candidate)
+                self._validate_security_source_evidence(candidate["evidence"])
         except (ValueError, TypeError, PermissionError, OSError) as exc:
             return persist(
                 memory_update,
@@ -1269,6 +1474,9 @@ Use current repository evidence and return the required verifier JSON.
             )
         try:
             verifier["evidence"] = self._validate_evidence(verifier.get("evidence"))
+            if self.security_only:
+                verifier["security_review"] = self._validate_security_review(verifier)
+                self._validate_security_source_evidence(verifier["evidence"])
         except (ValueError, TypeError, PermissionError, OSError) as exc:
             return persist(
                 memory_update,
@@ -1281,7 +1489,7 @@ Use current repository evidence and return the required verifier JSON.
             "head_commit": self._head_commit(),
             "model": self.model,
             "provider": self.provider_type,
-            "hunt_mode": "docs_only" if self.docs_only else "code",
+            "hunt_mode": self.hunt_mode,
             "iteration": iteration,
             "tool_calls": {
                 "investigator": investigator_tool_calls,
@@ -1306,6 +1514,8 @@ Use current repository evidence and return the required verifier JSON.
             "duplicate_check": self._bounded_text(candidate.get("duplicate_check"), 3000),
             "verification": verifier,
         }
+        if self.security_only:
+            finding["security"] = candidate["security"]
         if finding["severity"] not in {"low", "medium", "high", "critical"}:
             return persist(
                 memory_update,
