@@ -839,7 +839,12 @@ class ContextAssembler:
         context_parts.append("- For crypto/stock, ignore stale memories older than 60 minutes when a newer live tool result exists.")
 
         if news_requested:
-            context_parts.append("\n⚠️ NEWS REQUESTED: The user asked for news. Use your NATIVE SEARCH capability to get current news headlines. DO NOT call external search tools - use your built-in web search to find 3-5 relevant news headlines and include them in your response.")
+            context_parts.append(
+                "\nNEWS REQUESTED: Get 3-5 relevant current news headlines using search "
+                "permitted by the active provider and request policy: native search when "
+                "available, otherwise an available Jarvis search tool. If no search is "
+                "available, explain that current headlines could not be retrieved; do not invent them."
+            )
 
         return "\n".join(context_parts)
 

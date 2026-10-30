@@ -46,22 +46,26 @@ KNOWN_PATTERNS = """
    (or vice versa) if first returns no results. This is LIMITED to 2 attempts by design - NOT a violation
    of "avoid redundant calls" since they use different search strategies.
 
-2. **Canvas mutation exception**: After canvas create, task is normally complete. However, if a crucial
-   new source is discovered AFTER canvas creation, ONE append/update is allowed. Append is preferred for additions.
+2. **Canvas finalization**: Gather sufficient evidence before requested research output. After a
+   successful write, do not restart research or rewrite merely to polish/verify it. Continue distinct
+   remaining requested actions. Append adds material; update replaces content only when supplied,
+   and title/tags/pinned-only changes need no content. Canvas exports allow one successful write.
 
 3. **stash vs canvas distinction**: These serve DIFFERENT purposes:
-   - stash = temporary workspace for intermediate data (7-day TTL)
+   - stash = task files and intermediate data, subject to configured retention
    - canvas = persistent output for final results
    This is NOT overlap - they're complementary.
 
 4. **deep_memory_search**: This is a SEPARATE specialized tool for cross-source search. It's NOT part
    of the memory-first cascade. Used for "find everything about X across all data sources."
 
-5. **Native search when enabled**: When XAI_SEARCH=true or ANTHROPIC_SEARCH=true, the system has
-   built-in search and should NOT use external search tools. This is provider-specific capability.
+5. **Search capability**: Native search depends on the active provider, transport, and request
+   policy, not just a configuration flag. Follow the current capability note; use eligible external
+   search when native search is unavailable or insufficient. No available search means no live claims.
 
-6. **Ghost tools**: Certain tools (GHOST_TOOLS in config) are always available regardless of semantic
-   retrieval. This ensures critical tools like get_time, remember are never missed.
+6. **Tool availability**: Named examples and learned hints do not enable tools. Ghost tools are
+   prioritized independently of semantic retrieval, subject to profile/request eligibility and the
+   final schema cap. Discovery can surface other eligible tools, not bypass exclusions.
 
 7. **Research workflow flexibility**: "2-4 diverse sources" is guidance, not a hard rule. Stop criteria
    include: repeated results, multiple 403 errors, or sufficient info to answer.

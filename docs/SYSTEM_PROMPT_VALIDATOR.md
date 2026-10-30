@@ -126,7 +126,7 @@ The validator sends the reviewing LLM:
    - Style notes (voice output rules)
    - Native search indicators (XAI/Anthropic search enabled)
 
-2. **Tool Definitions** - All 40+ tools from ToolRegistry:
+2. **Tool Definitions** - Enabled tools from ToolRegistry:
    - Skill tools (local Python scripts)
    - MCP tools (external servers)
    - Parameters and descriptions
@@ -137,9 +137,9 @@ The validator sends the reviewing LLM:
 
 5. **Known Patterns** - Intentional designs that shouldn't be flagged:
    - Memory tool fallback (MAX 2 attempts)
-   - Canvas append/update exception
+   - Canvas finalization and completing remaining requested actions
    - stash vs canvas distinction
-   - deep_memory_search purpose
+   - Profile/request tool availability and discovery boundaries
    - Native search behavior
    - Ghost tools concept
    - Research workflow flexibility
@@ -168,7 +168,7 @@ Each log contains:
 2. **Describe it** clearly (what tools were called, what order, what was missing)
 3. **Run validator** with `--issue` flag
 4. **Review analysis** for root cause
-5. **Apply fix** to `orchestrator/router_v2.py`
+5. **Apply fix** to the owning baseline in `orchestrator/router_prompts/`, tool schema, or shared runtime assembly
 6. **Validate fix** with `--simulate` on a similar task
 7. **Test in production**
 
@@ -215,7 +215,8 @@ The validator typically catches:
 
 ## Related Files
 
-- `orchestrator/router_v2.py` - System prompt definition
+- `orchestrator/router_prompts/` - Versioned baseline instructions
+- `orchestrator/router_v2.py` - Shared runtime prompt assembly
 - `lib/tool_schema.py` - Tool registry, loading, and definitions
 - `config/cloud.env` - Ghost tools configuration
 - `logs/validate-system-prompt/` - Validation history

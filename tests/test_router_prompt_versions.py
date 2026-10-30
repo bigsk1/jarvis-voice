@@ -24,18 +24,18 @@ from router_prompts import _validate_router_prompts, get_router_system_prompt  #
 from router_v2 import LLMRouter  # noqa: E402
 from tts_style_tags import XAI_INLINE_SPEECH_TAGS, XAI_WRAPPING_SPEECH_TAGS  # noqa: E402
 
-V1_SHA256 = "cd3f1129e885476b829daa92022023a75b78b0139a99ca7e4208efa06e1832bb"
-V2_SHA256 = "0c501cbdd840428b6837dfbdf76b749b947da04690afb74c10512639648a7a47"
-V3_SHA256 = "0bc20b9a3d98e17f8a75100180adf71440ea00605d9dc505388caf7a67d3b98d"
-V4_SHA256 = "c8b27f9d1c01bf32afdd90032dd469b85f39ff9c8565d4a78f1ecd9207a4a86a"
+V1_SHA256 = "223f11725bdf1b159f542b90a711052436cd0bc44f26678265e936de373bea49"
+V2_SHA256 = "5831a62121f4e20a36f4991074c399aab249cba995e09e6bf82626c82dcffd9b"
+V3_SHA256 = "1911835df1c42b4794c6f4b9ba0c3626dc2336996f817aa3c8c1127b3f642d59"
+V4_SHA256 = "23cf620c527ea9aa100cad3e2fd72d31614dd68e481d3e1b65aa4d729379cd68"
 
 
 def test_v1_is_pinned_recovery_router_prompt():
     version, prompt = get_router_system_prompt("v1")
 
     assert version == "v1"
-    assert len(prompt) == 32_130
-    assert len(prompt.splitlines()) == 419
+    assert len(prompt) == 27_189
+    assert len(prompt.splitlines()) == 283
     assert hashlib.sha256(prompt.encode()).hexdigest() == V1_SHA256
 
 
@@ -48,9 +48,9 @@ def test_v2_is_compact_standalone_prompt_with_its_own_hash():
     version, v2 = get_router_system_prompt("v2")
 
     assert version == "v2"
-    assert len(v2) == 14_166
-    assert len(v2.splitlines()) == 89
-    assert len(v2.split()) == 2_010
+    assert len(v2) == 13_664
+    assert len(v2.splitlines()) == 86
+    assert len(v2.split()) == 1_950
     assert v2.isascii()
     assert hashlib.sha256(v2.encode()).hexdigest() == V2_SHA256
 
@@ -59,9 +59,9 @@ def test_v3_is_caveman_hybrid_with_normal_output_guard_and_own_hash():
     version, v3 = get_router_system_prompt("v3")
 
     assert version == "v3"
-    assert len(v3) == 10_190
-    assert len(v3.splitlines()) == 92
-    assert len(v3.split()) == 1_339
+    assert len(v3) == 10_325
+    assert len(v3.splitlines()) == 90
+    assert len(v3.split()) == 1_364
     assert v3.isascii()
     assert "NEVER imitate caveman grammar in user-facing answer" in v3
     assert "Speak normal fluent language" in v3
@@ -72,12 +72,42 @@ def test_v4_is_caveman_light_with_normal_output_guard_and_own_hash():
     version, v4 = get_router_system_prompt("v4")
 
     assert version == "v4"
-    assert len(v4) == 10_672
+    assert len(v4) == 10_887
     assert len(v4.splitlines()) == 46
-    assert len(v4.split()) == 1_416
+    assert len(v4.split()) == 1_490
     assert "NEVER use caveman grammar in user answers" in v4
-    assert "Speak normal fluent English" in v4
+    assert "Use normal fluent language and the user's preferred language" in v4
     assert hashlib.sha256(v4.encode()).hexdigest() == V4_SHA256
+
+
+@pytest.mark.parametrize("version,contracts", [
+    ("v1", (
+        "confirmed structured receipt", "explicit automatic-save result",
+        "confirmed earlier save in context", "happened NOW",
+        "Pending/background acceptance is not completion",
+        "STOP when all requested outcomes are handled",
+    )),
+    ("v2", (
+        "actual tool evidence", "earlier confirmed work", "automatic saves reported by a tool",
+        "pending work", "If a follow-up repairs an omission",
+        "Continue any explicitly requested actions or pages still outstanding",
+    )),
+    ("v3", (
+        "actual tool evidence", "earlier confirmed work", "automatic saves reported by tool",
+        "pending work", "Follow-up repairs omission",
+        "Explicit remaining actions/pages: continue",
+    )),
+    ("v4", (
+        "actual tool evidence", "earlier confirmed work", "automatic saves reported by a tool",
+        "pending work", "If a follow-up repairs an omission",
+        "continue any explicitly requested actions or pages still outstanding",
+    )),
+])
+def test_versions_keep_save_evidence_timing_and_outstanding_actions_explicit(version, contracts):
+    # These are instruction contracts, not proof of live model adherence.
+    _, prompt = get_router_system_prompt(version)
+    for contract in contracts:
+        assert contract in prompt
 
 
 @pytest.mark.parametrize("version", ["v2", "v3", "v4"])
@@ -104,6 +134,15 @@ def test_maintained_prompts_separate_reminder_schedule_from_appointment_time(ver
 def test_maintained_prompts_resolve_discoverable_required_inputs(version):
     _, prompt = get_router_system_prompt(version)
 
+    if version == "v4":
+        for contract in (
+            "Required IDs, URLs, and lookup-derived inputs",
+            "must come from the user or tool output, never guessed from names",
+            "Look up missing inputs and continue",
+            "ask only if lookup fails or remains ambiguous",
+        ):
+            assert contract in prompt
+        return
     assert "Required IDs, URLs, and other lookup-derived inputs" in prompt
     assert "never synthesize them from names" in prompt
     assert "use a visible lookup tool or tool_search" in prompt
@@ -113,16 +152,16 @@ def test_maintained_prompts_resolve_discoverable_required_inputs(version):
 @pytest.mark.parametrize(
     "contract",
     [
-        "include_schema=false",
+        "Discovery cannot enable excluded tools",
         "mcp_server_name_tool_name",
-        "acknowledge_reminders(title_search=",
-        "manage_intel with action=append",
+        "clarify ambiguous matches before cancelling",
+        "manage_intel following its schema",
         "semantic_recall returns no results, try search_memory once",
-        "update replaces the full page",
+        "supplied content replaces the complete content field",
         "preference_slot: how_to_address_user",
         "generate_image stash refs",
         "check_opencode_sessions is fallback-only",
-        "~/jarvis-workspace/projects/",
+        "configured workspace and returned project paths",
         "Tool confirmations: brief (",
     ],
 )
@@ -157,16 +196,16 @@ def test_v2_preserves_high_risk_behavioral_contracts(contract):
     [
         "Asked configured location/ZIP/timezone: answer injected value directly",
         "Asked current time/date: call get_time",
-        "include_schema=false",
+        "Discovery cannot enable excluded tools",
         "Never third recall attempt",
-        "manage_intel(action=append, path=jarvis-learned-lessons.md, auto_ingest=true)",
-        "acknowledge_reminders(title_search=",
-        "update replaces full page",
+        "save through manage_intel per schema",
+        "Ambiguous matches: clarify first",
+        "supplied content = full content replacement",
         "preference_slot = how_to_address_user",
         "uploaded_image and generate_image stash refs",
         "check_opencode_sessions only when no usable result",
-        "~/jarvis-workspace/projects/",
-        "tool confirmation <=35 words",
+        "Configured workspace and returned project paths",
+        "Injected RESPONSE STYLE/current output limits win",
     ],
 )
 def test_v3_preserves_high_risk_behavioral_contracts(contract):
@@ -179,16 +218,16 @@ def test_v3_preserves_high_risk_behavioral_contracts(contract):
     [
         "Configured location/ZIP/timezone questions: answer directly from injection",
         "Current time/date: call get_time",
-        "include_schema=false",
-        "Never third recall attempt",
-        "manage_intel(action=append, path=jarvis-learned-lessons.md, auto_ingest=true)",
-        "acknowledge_reminders(title_search=",
-        "update = full intentional rewrite",
-        "preference_slot must be how_to_address_user",
+        "Discovery cannot enable excluded tools",
+        "never a third recall attempt",
+        "through manage_intel following its schema",
+        "clarify ambiguous matches first",
+        "supplied content replaces the complete content field",
+        "preference_slot set to how_to_address_user",
         "stash_ref from uploaded_image or uploaded_images",
-        "check_opencode_sessions only on no usable result",
-        "~/jarvis-workspace/projects/",
-        "tool confirmations ≤35 words",
+        "check_opencode_sessions only for no usable result",
+        "configured workspace and returned project paths",
+        "Follow injected RESPONSE STYLE and current output limits",
     ],
 )
 def test_v4_preserves_high_risk_behavioral_contracts(contract):
@@ -202,7 +241,7 @@ def test_v2_routes_matching_workflows_without_bypassing_availability():
     assert "When the workflow tool is available" in prompt
     assert "Search with the user's actual intent and desired outputs" in prompt
     assert "follow with at most one workflow(run)" in prompt
-    assert "do not rerun the recipe or its component tools" in prompt
+    assert "do not rerun the recipe or its component tools to repeat finished work" in prompt
 
 
 def test_v3_preserves_workflow_contract_in_caveman_style():
@@ -211,7 +250,7 @@ def test_v3_preserves_workflow_contract_in_caveman_style():
     assert "workflow available + recipe fully matches real user task" in prompt
     assert "Confirm runnable by workflow search/describe" in prompt
     assert "Suitable recipe: max one run with required query" in prompt
-    assert "Do not rerun workflow or component tools same request" in prompt
+    assert "Do not rerun workflow or component tools for finished work" in prompt
 
 
 def test_v4_preserves_workflow_contract_in_caveman_light_style():
@@ -366,6 +405,7 @@ def test_router_initialization_can_select_v4():
 @pytest.mark.parametrize("version", available_router_prompt_versions())
 def test_runtime_prompt_routes_live_flight_status_through_generic_web_search(version):
     provider = MagicMock(model="test-model")
+    registry = MagicMock(tools={"flight_search": MagicMock(permissions={})})
 
     def get_config(key, default=None):
         return {
@@ -385,7 +425,7 @@ def test_runtime_prompt_routes_live_flight_status_through_generic_web_search(ver
             side_effect=lambda prompt: prompt,
         ),
     ):
-        prompt = LLMRouter(mode="cloud", registry=MagicMock()).system_prompt
+        prompt = LLMRouter(mode="cloud", registry=registry).system_prompt
 
     assert "Use web search for a specific flight's live status" in prompt
     assert "airline, flight number, and today's date" in prompt
@@ -412,7 +452,8 @@ def test_shared_email_recipient_policy_preserves_config_and_provider_boundaries(
         patch("router_v2.load_model_prompt_override", return_value=None),
         patch("router_v2.append_profile_card_for_router_direct_answer", side_effect=lambda prompt: prompt),
     ):
-        prompt = LLMRouter(mode=mode, registry=MagicMock()).system_prompt
+        registry = MagicMock(tools={"email_contacts": MagicMock(permissions={})})
+        prompt = LLMRouter(mode=mode, registry=registry).system_prompt
 
     assert prompt.count("CONFIGURED EMAIL RECIPIENTS:") == 1
     for contract in (
@@ -499,6 +540,7 @@ def test_runtime_prompt_scopes_elevenlabs_v4_audio_tags(tts_provider, model, ena
         patch("router_v2.append_profile_card_for_router_direct_answer", side_effect=lambda p: p),
     ):
         prompt = LLMRouter(mode="cloud", registry=MagicMock()).system_prompt
+    assert ("No Markdown or emojis in spoken output" in prompt) is (style != "detailed")
     assert ("ElevenLabs v4" in prompt) is expected
     if expected:
         assert "[clears throat]" in prompt

@@ -1350,7 +1350,7 @@ def filter_insights_for_available_tools(
     available_tools: list[str] | None,
 ) -> list[dict[str, Any]]:
     """Return only insights whose preferred tool/workflow is runnable now."""
-    if not available_tools:
+    if available_tools is None:
         return list(insight_items or [])
     available_set = set(available_tools)
     return [
@@ -1394,10 +1394,11 @@ def format_insights_for_prompt(insights: dict[str, Any], available_tools: list[s
     
     lines = []
     
-    # Positive constraints (what TO do)
+    # Historical strategies are advisory, not new execution policy.
     if positive_insights:
         lines.append("=== LEARNED STRATEGIES (WHAT TO DO) ===")
-        lines.append(f"(Based on {len(positive_insights)} successful patterns)")
+        hint_label = "hint" if len(positive_insights) == 1 else "hints"
+        lines.append(f"({len(positive_insights)} historical strategy {hint_label})")
         lines.append("")
         for insight in positive_insights:
             lines.append(f"✅ {insight['description']}")
@@ -1421,9 +1422,11 @@ def format_insights_for_prompt(insights: dict[str, Any], available_tools: list[s
         lines.append("")
         for insight in negative_insights:
             lines.append(f"❌ {insight['description']}")
+            if insight.get('applies_to'):
+                lines.append(f"   → Applies to: {insight['applies_to']}")
             if insight.get('avoided_tools'):
                 tools = ', '.join(insight['avoided_tools'])
-                lines.append(f"   → DO NOT use: {tools}")
+                lines.append(f"   → Tools involved in this past failure: {tools}")
             if insight.get('reasoning'):
                 # Show full reasoning (truncated was causing confusion - e.g., ending mid-word)
                 lines.append(f"   → Why: {insight['reasoning']}")
@@ -1434,7 +1437,7 @@ def format_insights_for_prompt(insights: dict[str, Any], available_tools: list[s
         biases = dict(insights['tool_biases'])
         
         # Filter to available tools if list provided
-        if available_tools:
+        if available_tools is not None:
             available_set = set(available_tools)
             biases = {k: v for k, v in biases.items() if k in available_set}
             workflow_preference_survived = any(
@@ -1450,6 +1453,11 @@ def format_insights_for_prompt(insights: dict[str, Any], available_tools: list[s
         
         if prefer_tools or avoid_tools:
             lines.append("=== TOOL PREFERENCES ===")
+            lines.append(
+                "Scores are relative historical retrieval biases: positive favors a candidate; "
+                "strong negative scores may exclude it from the shortlist. They are not "
+                "probabilities or permissions."
+            )
             
             if prefer_tools:
                 for tool, bias in sorted(prefer_tools.items(), key=lambda x: -x[1]):
@@ -1461,12 +1469,15 @@ def format_insights_for_prompt(insights: dict[str, Any], available_tools: list[s
             
             lines.append("")
     
-    # Overall confidence
-    if insights.get('confidence', 0) > 0:
-        lines.append(f"(Overall confidence in these insights: {insights['confidence']:.0%})")
-        lines.append("")
-    
-    return "\n".join(lines)
+    if not lines:
+        return ""
+
+    advisory = (
+        "Historical routing hints are advisory; use them only when they fit the current request. "
+        "Current instructions, tool schemas, enabled tools, approval requirements, and request "
+        "policies take precedence. Ignore off-topic or stale hints; they do not authorize an action."
+    )
+    return advisory + "\n\n" + "\n".join(lines)
 
 
 # ============================================

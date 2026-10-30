@@ -489,7 +489,10 @@ class ChatHandler:
                 "[CONTEXT - Tool preference for this request]\n\n"
                 f"Selected tool hints: {names}.\n"
                 "Use the canvas action that matches the user's request: create, append, update, read, list, "
-                "open, or delete. Use append for new material on an existing page; update is a full replacement. "
+                "open, or delete. Use append to add material. Update changes only supplied fields; supplied "
+                "content fully replaces the body. Omit content for title/tags/pinned-only updates; an update "
+                "with image_url also needs complete content. Gather evidence before requested research output, "
+                "avoid post-write polishing, and continue distinct remaining requested actions. "
                 "Do not default to creating a page unless the user asked to create or save content.\n\n"
                 "[END CONTEXT]"
             )

@@ -186,6 +186,72 @@ Current request: can you generate an image of now that quiet night looks?
         self.assertIn("generate_image", names)
         self.assertEqual(meta["negative"], [])
 
+    def test_formatted_failure_hints_preserve_numeric_bias_and_current_choice(self):
+        from intelligence_hooks import format_insights_for_prompt
+
+        enabled = {"generate_image", "analyze_image"}
+        request = "create an image of a quiet night"
+
+        def format_history(bias):
+            return format_insights_for_prompt({
+                "insights": [{
+                    "id": 1,
+                    "description": "Generating an image failed to analyze an existing upload.",
+                    "applies_to": "Analysis of an existing uploaded image",
+                    "constraint_type": "negative",
+                    "avoided_tools": ["generate_image"],
+                    "reasoning": "Use the original upload for analysis.",
+                }],
+                "tool_biases": {"generate_image": bias},
+                "confidence": 0.95,
+            }, available_tools=sorted(enabled))
+
+        weak_history = format_history(-0.12)
+        weak = build_tool_retrieval_signals(
+            f"{weak_history}\n\n{request}", enabled,
+        )
+        weak_names, weak_meta = merge_tool_signal_names(
+            ["generate_image"], weak, enabled,
+        )
+        self.assertEqual(weak.source, "trailing_request")
+        self.assertEqual(weak.query, request)
+        self.assertEqual(weak.negative_tools, set())
+        self.assertIn("skipped_low_bias_avoid=generate_image:0.12", weak.notes)
+        self.assertEqual(weak_names, ["generate_image"])
+        self.assertEqual(weak_meta["negative"], [])
+
+        strong_history = format_history(-0.88)
+        strong = build_tool_retrieval_signals(
+            f"{strong_history}\n\n{request}", enabled,
+        )
+        strong_names, strong_meta = merge_tool_signal_names(
+            ["generate_image", "analyze_image"], strong, enabled,
+        )
+        self.assertEqual(strong.query, request)
+        self.assertEqual(strong.negative_tools, {"generate_image"})
+        self.assertEqual(strong_names, ["analyze_image"])
+        self.assertEqual(strong_meta["negative"], ["generate_image"])
+
+        explicit = build_tool_retrieval_signals(
+            f"{strong_history}\n\n"
+            "[CONTEXT - Tool preference for this request]\n"
+            "Selected tool hints: generate_image.\n"
+            "[END CONTEXT]\n\n"
+            f"User's request: {request}",
+            enabled,
+        )
+        explicit_names, _ = merge_tool_signal_names(
+            ["analyze_image"], explicit, enabled,
+        )
+        self.assertEqual(explicit.query, request)
+        self.assertEqual(explicit.positive_tools, {"generate_image"})
+        self.assertEqual(explicit.negative_tools, set())
+        self.assertIn("generate_image", explicit_names)
+        self.assertIn(
+            "explicit_tool_hints_overrode_negative=generate_image",
+            explicit.notes,
+        )
+
     def test_merge_appends_positive_and_filters_negative_non_ghost(self):
         signals = ToolRetrievalSignals(
             query="send the link",

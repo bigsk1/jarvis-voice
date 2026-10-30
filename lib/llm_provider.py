@@ -2320,7 +2320,7 @@ class OllamaProvider(LLMProvider):
         return ollama_tools
 
     def _build_tool_contract_prompt(self, tools: list[dict[str, Any]]) -> str:
-        """Build a strict tool-calling contract for local models."""
+        """Build exact per-call tool guidance for Ollama models."""
         if not tools:
             return ""
 
@@ -2341,11 +2341,12 @@ class OllamaProvider(LLMProvider):
 
         return (
             "TOOL CALL CONTRACT:\n"
-            "- Use ONLY the exact tool/function names listed below.\n"
+            "- For this call, use ONLY the exact tool/function names listed below.\n"
             "- Tool names are snake_case; copy them exactly as shown.\n"
             "- Use ONLY argument keys defined for the selected tool.\n"
             "- Never invent aliases, wrappers, or API-style names such as get_*, *_api, or *_tool.\n"
             "- If you are unsure which tool fits and tool_search is listed, call tool_search first.\n"
+            "- Discovery may expose additional permitted tools on a later call; use them only when their schemas are surfaced.\n"
             "- If none of these tools exactly fit and tool_search is not listed, do not call a tool.\n"
             "- Required parameters are marked with *.\n\n"
             "Exact tool names and parameters:\n"

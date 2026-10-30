@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Regression tests for Canvas image embedding support."""
 
-from pathlib import Path
+import json
 import sys
+from pathlib import Path
+
+import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -221,3 +224,136 @@ def test_update_page_normalizes_literal_newline_escapes(monkeypatch):
             {"content": "Line 1\nLine 2"},
         )
     ]
+
+
+@pytest.mark.parametrize("image_fields", [
+    {"image_url": "https://example.com/photo.jpg"},
+    {"image_alt": "Updated photo"},
+])
+@pytest.mark.parametrize("other_fields", [
+    {},
+    {"content": ""},
+    {"content": " \\n\t"},
+    {"title": "New title", "tags": [], "pinned": False},
+])
+def test_update_image_requires_content_before_any_side_effect(
+    monkeypatch, image_fields, other_fields,
+):
+    calls = []
+    monkeypatch.setattr(
+        canvas_module, "check_canvas_health", lambda: calls.append("health") or True,
+    )
+    monkeypatch.setattr(
+        canvas_module, "api_request",
+        lambda *args: calls.append("api") or {"id": "page_existing", "title": "Research"},
+    )
+    monkeypatch.setattr(canvas_module, "save_to_memory", lambda page: calls.append("memory"))
+
+    result = update_page("page_existing", **image_fields, **other_fields)
+
+    assert result["ok"] is False
+    assert "complete" in result["error"].lower()
+    assert "content" in result["error"].lower()
+    assert calls == []
+
+
+@pytest.mark.parametrize("fields", [
+    {"title": "New title"},
+    {"tags": []},
+    {"pinned": False},
+])
+def test_update_metadata_without_content_still_saves(monkeypatch, fields):
+    calls = []
+    saved = []
+    monkeypatch.setattr(canvas_module, "check_canvas_health", lambda: True)
+    monkeypatch.setattr(canvas_module, "save_to_memory", saved.append)
+
+    def fake_api(method, endpoint, data=None):
+        calls.append((method, endpoint, data))
+        return {"id": "page_existing", "title": "Research", **data}
+
+    monkeypatch.setattr(canvas_module, "api_request", fake_api)
+
+    result = update_page("page_existing", **fields)
+
+    assert result["ok"] is True
+    assert calls == [("PUT", "/pages/page_existing", fields)]
+    assert saved == [result["data"]]
+
+
+def test_main_full_content_image_update_still_embeds_and_saves(monkeypatch, capsys):
+    calls = []
+    saved = []
+    monkeypatch.setattr(canvas_module, "load_config", lambda: None)
+    monkeypatch.setattr(canvas_module, "check_canvas_health", lambda: True)
+    monkeypatch.setattr(canvas_module, "save_to_memory", saved.append)
+
+    def fake_api(method, endpoint, data=None):
+        calls.append((method, endpoint, data))
+        return {"id": "page_existing", "title": "Research", **data}
+
+    monkeypatch.setattr(canvas_module, "api_request", fake_api)
+    monkeypatch.setattr(sys, "argv", ["canvas.py", json.dumps({
+        "action": "update",
+        "page_id": "page_existing",
+        "content": "# Research\\n\\nThe complete replacement page.",
+        "image_url": "https://example.com/photo.jpg",
+        "image_alt": "Research photo",
+    })])
+
+    canvas_module.main()
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["ok"] is True
+    assert calls == [("PUT", "/pages/page_existing", {
+        "content": (
+            "![Research photo](https://example.com/photo.jpg)\n\n"
+            "# Research\n\nThe complete replacement page."
+        ),
+    })]
+    assert saved == [result["data"]]
+
+
+@pytest.mark.parametrize("fields", [
+    {"image_url": "https://example.com/photo.jpg"},
+    {"image_alt": "Research photo", "title": "Renamed page", "pinned": False},
+])
+def test_main_rejects_image_updates_without_content(monkeypatch, capsys, fields):
+    calls = []
+    monkeypatch.setattr(canvas_module, "load_config", lambda: None)
+    monkeypatch.setattr(
+        canvas_module, "check_canvas_health", lambda: calls.append("health") or True,
+    )
+    monkeypatch.setattr(
+        canvas_module, "api_request",
+        lambda *args: calls.append("api") or {"id": "page_existing", "title": "Research"},
+    )
+    monkeypatch.setattr(canvas_module, "save_to_memory", lambda page: calls.append("memory"))
+    monkeypatch.setattr(sys, "argv", ["canvas.py", json.dumps({
+        "action": "update", "page_id": "page_existing", **fields,
+    })])
+
+    with pytest.raises(SystemExit) as exc:
+        canvas_module.main()
+
+    result = json.loads(capsys.readouterr().out)
+    assert exc.value.code == 1
+    assert result["ok"] is False
+    assert "content" in result["error"].lower()
+    assert calls == []
+
+
+def test_main_empty_update_does_not_offer_image_only_update(monkeypatch, capsys):
+    monkeypatch.setattr(canvas_module, "load_config", lambda: None)
+    monkeypatch.setattr(sys, "argv", ["canvas.py", json.dumps({
+        "action": "update", "page_id": "page_existing",
+    })])
+
+    with pytest.raises(SystemExit) as exc:
+        canvas_module.main()
+
+    result = json.loads(capsys.readouterr().out)
+    assert exc.value.code == 1
+    assert result["ok"] is False
+    assert "image" not in result["error"].lower()
+    assert "image" not in result["speech"].lower()

@@ -840,6 +840,61 @@ class IntelligenceProvenanceTests(unittest.TestCase):
             self.assertIn("current solana price", insight["source_query"])
             self.assertEqual(json.loads(insight["source_tool_sequence"]), ["crypto_price", "canvas"])
 
+    def test_routing_prompt_labels_history_as_advisory_and_scopes_negative_hints(self):
+        prompt = format_insights_for_prompt({
+            "insights": [
+                {
+                    "id": 1,
+                    "description": "Reuse the original image for follow-up analysis.",
+                    "applies_to": "Questions about an already uploaded image",
+                    "constraint_type": "positive",
+                    "preferred_tools": {"analyze_image": 0.8},
+                },
+                {
+                    "id": 2,
+                    "description": "Generating another image did not answer the analysis question.",
+                    "applies_to": "Follow-up analysis of an existing image",
+                    "constraint_type": "negative",
+                    "avoided_tools": ["generate_image"],
+                    "reasoning": "The user wanted analysis of the original, not a new image.",
+                },
+            ],
+            "tool_biases": {"analyze_image": 0.8, "generate_image": -0.12},
+            "confidence": 0.95,
+        }, available_tools=["analyze_image", "generate_image"])
+
+        self.assertIn("Historical routing hints are advisory", prompt)
+        self.assertIn("use them only when they fit the current request", prompt)
+        self.assertIn("tool schemas, enabled tools, approval requirements", prompt)
+        self.assertIn("policies take precedence", prompt)
+        self.assertIn("(1 historical strategy hint)", prompt)
+        self.assertNotIn("successful patterns", prompt)
+        self.assertIn("Applies to: Follow-up analysis of an existing image", prompt)
+        self.assertIn("Tools involved in this past failure: generate_image", prompt)
+        self.assertNotIn("DO NOT use:", prompt)
+        self.assertIn("PREFER: analyze_image (+0.80)", prompt)
+        self.assertIn("AVOID: generate_image (-0.12)", prompt)
+        self.assertIn("relative historical retrieval biases", prompt)
+        self.assertIn("not probabilities or permissions", prompt)
+        self.assertNotIn("Overall confidence", prompt)
+        self.assertNotIn("95%", prompt)
+
+    def test_filtered_out_hints_do_not_leave_an_advisory_or_confidence_stub(self):
+        insights = {
+            "insights": [{
+                "id": 1,
+                "description": "Use the unavailable tool for this task.",
+                "constraint_type": "positive",
+                "preferred_tools": {"unavailable_tool": 0.8},
+            }],
+            "tool_biases": {"unavailable_tool": 0.8},
+            "confidence": 0.95,
+        }
+        for available in ([], ["get_time"]):
+            with self.subTest(available=available):
+                self.assertEqual(format_insights_for_prompt(insights, available_tools=available), "")
+        self.assertIn("PREFER: unavailable_tool", format_insights_for_prompt(insights, available_tools=None))
+
     def test_non_required_sequence_is_not_injected_into_routing_prompt(self):
         prompt = format_insights_for_prompt({
             "insights": [

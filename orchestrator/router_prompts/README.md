@@ -118,10 +118,10 @@ time.
 
 | Version | Characters | Words | Rough Token Estimate | Character Delta |
 | --- | ---: | ---: | ---: | --- |
-| `v1` | `32,130` | `4,924` | `~8,033` | Baseline |
-| `v2` | `14,166` | `2,010` | `~3,542` | `55.9%` fewer than v1 |
-| `v3` | `10,190` | `1,339` | `~2,548` | `68.3%` fewer than v1; `28.1%` fewer than v2 |
-| `v4` | `10,672` | `1,416` | `~2,668` | `66.8%` fewer than v1; `24.7%` fewer than v2; `4.7%` more than v3 |
+| `v1` | `27,189` | `4,079` | `~6,798` | Baseline |
+| `v2` | `13,664` | `1,950` | `~3,416` | `49.7%` fewer than v1 |
+| `v3` | `10,325` | `1,364` | `~2,582` | `62.0%` fewer than v1; `24.4%` fewer than v2 |
+| `v4` | `10,887` | `1,490` | `~2,722` | `60.0%` fewer than v1; `20.3%` fewer than v2; `5.4%` more than v3 |
 
 The important live metric is full routing payload size. A compact prompt can
 still be dominated by retrieved tool schemas, profile/context overlays, or
@@ -139,11 +139,11 @@ of this version.
 
 Baseline measurements:
 
-- Characters: `32,130`
-- Physical lines: `419` (`342` nonblank)
-- Space-separated words: `4,924`
-- Rough token estimate: approximately `8,033` by characters divided by four; provider tokenizers differ
-- Prompt SHA-256: `cd3f1129e885476b829daa92022023a75b78b0139a99ca7e4208efa06e1832bb`
+- Characters: `27,189`
+- Physical lines: `283` (`232` nonblank)
+- Space-separated words: `4,079`
+- Rough token estimate: approximately `6,798` by characters divided by four; provider tokenizers differ
+- Prompt SHA-256: `223f11725bdf1b159f542b90a711052436cd0bc44f26678265e936de373bea49`
 
 Reminder creation uses one call per explicitly requested notification schedule.
 Only that schedule belongs in `when`; appointment times stay in the title or
@@ -182,17 +182,17 @@ File: `v2.py`
 context freshness, tool discovery, duplicate prevention, multi-part workflows,
 reminders/alerts, research-to-output sequencing, Canvas finalization, memory,
 image stash follow-ups, autonomous deterministic workflow selection, OpenCode,
-headless operation, and response style. It removes repeated warnings and
+execution-host boundaries, and runtime response style. It removes repeated warnings and
 tutorial-style good/bad examples, consolidating each rule and its exceptions
 into one authoritative section.
 
 Measurements:
 
-- Characters: `14,166` (`55.9%` fewer than v1)
-- Physical lines: `89` (`76` nonblank)
-- Space-separated words: `2,010`
-- Rough token estimate: approximately `3,542` by characters divided by four; provider tokenizers differ
-- Prompt SHA-256: `0c501cbdd840428b6837dfbdf76b749b947da04690afb74c10512639648a7a47`
+- Characters: `13,664` (`49.7%` fewer than v1)
+- Physical lines: `86` (`73` nonblank)
+- Space-separated words: `1,950`
+- Rough token estimate: approximately `3,416` by characters divided by four; provider tokenizers differ
+- Prompt SHA-256: `5831a62121f4e20a36f4991074c399aab249cba995e09e6bf82626c82dcffd9b`
 
 Tool RAG, schemas, runtime date/time, provider capability notes, response-style
 overlays, model overrides, and profile cards remain unchanged. Treat live tests
@@ -206,7 +206,7 @@ File: `v3.py`
 
 `v3` compresses v1/v2 into short, telegraphic instructions while explicitly
 requiring normal fluent user-facing answers. It is not a Grug persona and must
-not leak Caveman grammar into responses. Exact tool names, parameters,
+not leak Caveman grammar into responses. Tool naming, availability, evidence,
 exceptions, stop conditions, workflow boundaries, and deterministic
 workflow-recipe routing remain explicit.
 
@@ -217,11 +217,11 @@ the injected time without a tool call.
 
 Measurements:
 
-- Characters: `10,190` (`68.3%` fewer than v1; `28.1%` fewer than v2)
-- Physical lines: `92` (`77` nonblank)
-- Space-separated words: `1,339`
-- Rough token estimate: approximately `2,548` by characters divided by four; provider tokenizers differ
-- Prompt SHA-256: `0bc20b9a3d98e17f8a75100180adf71440ea00605d9dc505388caf7a67d3b98d`
+- Characters: `10,325` (`62.0%` fewer than v1; `24.4%` fewer than v2)
+- Physical lines: `90` (`75` nonblank)
+- Space-separated words: `1,364`
+- Rough token estimate: approximately `2,582` by characters divided by four; provider tokenizers differ
+- Prompt SHA-256: `1911835df1c42b4794c6f4b9ba0c3626dc2336996f817aa3c8c1127b3f642d59`
 
 The main experimental risk is instruction adherence on weaker/local models:
 telegraphic grammar removes explanatory redundancy that may help some models.
@@ -239,30 +239,68 @@ improves adherence for providers/models that struggle with v3 shorthand.
 
 Measurements:
 
-- Characters: `10,672` (`66.8%` fewer than v1; `24.7%` fewer than v2; `4.7%` more than v3)
+- Characters: `10,887` (`60.0%` fewer than v1; `20.3%` fewer than v2; `5.4%` more than v3)
 - Physical lines: `46` (`31` nonblank)
-- Space-separated words: `1,416`
-- Rough token estimate: approximately `2,668` by characters divided by four; provider tokenizers differ
-- Prompt SHA-256: `c8b27f9d1c01bf32afdd90032dd469b85f39ff9c8565d4a78f1ecd9207a4a86a`
+- Space-separated words: `1,490`
+- Rough token estimate: approximately `2,722` by characters divided by four; provider tokenizers differ
+- Prompt SHA-256: `23cf620c527ea9aa100cad3e2fd72d31614dd68e481d3e1b65aa4d729379cd68`
 
 V4 intentionally preserves the supplied Unicode comparison arrows and symbols;
 provider tokenization may therefore differ slightly from the character-based
 estimate. Its key comparison is adherence versus v3, not maximum compression.
 
-## Regression risks from v1 things to keep an eye on
+## Maintenance contracts and regression risks
 
-### v1 → v2 Behavioral Contract Comparison
+V1 remains the fuller recovery reference; V2 is compact prose, V3 telegraphic,
+and V4 natural compact wording. All four share these contracts:
 
-| Area                              | v1 Strength                                      | v2 Status                      | Risk Level   | Comment |
-|-----------------------------------|--------------------------------------------------|--------------------------------|--------------|---------|
-| **Memory fallback**               | Very explicit "max 2 attempts + specific order"  | Still present but softer       | Medium       | Easy to regress into looping or giving up too early |
-| **Canvas discipline**             | Extremely strict ("after Canvas → stop", one append only on new source type) | Present but less sharp     | **High**     | This one caused a lot of pain in v1. Worth keeping stricter. |
-| **Voice/spoken constraints**      | Very detailed rules                              | Almost gone                    | Medium       | If you still care about voice output quality, this got diluted |
-| **Failure handling nuance**       | Had good examples and "distinguish error vs constraint" language | More generic now     | Medium       | Models still need strong nudging here |
-| **"Never claim success unless confirmed"** | Repeated and strong                        | Present but less reinforced    | Medium-High  | One of the most important anti-hallucination rules |
-| **Research loop prevention**      | Very explicit stop criteria + "partial answer > endless search" | Good but shorter     | Low-Medium   | Still decent |
-| **Opencode rules**                | Very clear single-call + verification via other tools | Still solid              | Low          | One of the better preserved sections |
+- Named tools are optional examples. The active profile, request policy, live
+  schemas, and eligible discovery results determine actual capabilities.
+- Claims require tool evidence, including explicit automatic-save receipts.
+  Distinguish earlier work, work performed now, pending admission, and failures.
+  Assistant prose alone is not evidence of a save.
+- Complete every requested outcome. Finalizing a research page ends unsolicited
+  search/polishing, while distinct requested actions may continue. The runtime
+  one-successful-write cap applies only to Canvas exports.
+- Canvas append adds material. Supplying content to update replaces the complete
+  content field; title/tags/pinned-only updates need not resend content.
+- Recall missing user-specific information, with at most two attempts. Applicable
+  injected knowledge and live-state exceptions avoid unnecessary recall.
+- Reuse reminder lists only while still applicable; gaps, relevant mutations, and
+  explicit rechecks require fresh data. Notification schedules stay separate from
+  appointment times, and successful creation is not repeated for verification.
+- Preserve exact IDs, original upload identity, bounded research, explicit
+  failure reporting, and OpenCode single-call/fallback-only status discipline.
+- Use configured workspaces and the tool's actual execution host; do not assume
+  an OS, display, shared paths, or that a local check reaches a remote project.
 
+Shared runtime assembly owns voice/display formatting and limits. Email-recipient
+and flight-routing policies are included when their tool families are enabled,
+respecting request exclusions. They stay before volatile clock/location context.
+News follow-ups defer to active provider/request search capability. Learned
+strategies are scoped historical advice; numeric preferences influence retrieval,
+not permissions or a calibrated probability of success.
+
+The 2026-10-30 maintenance revises the pinned contents, not historical experiment
+records. V1 loses repeated tutorials/examples while retaining representative
+failure cases. V2 is slightly shorter; V3/V4 remain near their earlier sizes
+because explicit availability, evidence, and host boundaries replace obsolete
+procedures. Size alone does not establish adherence.
+
+Deterministic checks cover pins, selected versions, assembled policies under
+profile/request exclusions, native continuation inheritance, and formatter-to-
+retrieval behavior. Fresh live samples are still needed to compare model
+adherence. Use the same provider/model and settings for scenarios such as:
+
+- Save the research to Canvas, then perform a separately authorized action.
+- Describe an earlier confirmed save without creating another page.
+- Report a tool's automatic save or a queued result with accurate timing/status.
+- Handle a profile without memory, Canvas, or discovery tools.
+- Complete ingestion plus another requested outcome.
+- Recheck reminders after a conversation gap or a relevant state change.
+
+Memory fallback, Canvas loop prevention, truthful completion, and runtime speech
+formatting remain the highest-value regression checks when shortening further.
 
 ## Hash helper
 

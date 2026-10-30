@@ -53,6 +53,40 @@ def make_orchestrator(routes=None, results=None):
     return orch
 
 
+@pytest.mark.parametrize("catalog_fails", [False, True])
+def test_unknown_tool_catalog_preserves_hints_while_known_empty_catalog_filters_them(catalog_fails):
+    orch = make_orchestrator()
+    orch.learning_enabled = False
+    orch.registry = SimpleNamespace(list_tools=Mock(return_value=[]))
+    if catalog_fails:
+        # Initial admission succeeds; only the later insights-catalog read fails.
+        orch.registry.list_tools.side_effect = [
+            [], RuntimeError("Tool catalog temporarily unavailable"),
+        ]
+    # Exercise the real filter and formatter through process(), not the helper stub.
+    orch._get_learning_insights = Orchestrator._get_learning_insights.__get__(orch)
+    insights = {
+        "insights": [{
+            "id": 1,
+            "description": "HISTORICAL_HINT_SENTINEL",
+            "constraint_type": "positive",
+            "preferred_tools": {"get_time": 0.8},
+        }],
+        "tool_biases": {"get_time": 0.8},
+        "confidence": 0.8,
+    }
+    with patch.object(intelligence_hooks, "get_routing_insights", return_value=insights):
+        result = orch.process("Explain the prior strategy")
+
+    assert result["ok"]
+    routed = orch.router.route.call_args.args[0]
+    assert ("HISTORICAL_HINT_SENTINEL" in routed) is catalog_fails
+    assert ("PREFER: get_time" in routed) is catalog_fails
+    if catalog_fails:
+        assert "Historical routing hints are advisory" in routed
+    orch.executor.execute.assert_not_called()
+
+
 @pytest.mark.parametrize("source", ["web", "voice", "cli", "api", "scheduled", "unknown", "internal"])
 def test_minimal_queue_metadata_redacts_original_and_classifies_only_explicit_source(source):
     secret = "sk-" + "a" * 30

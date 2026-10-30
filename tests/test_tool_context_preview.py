@@ -18,6 +18,24 @@ class ToolContextPreviewTests(unittest.TestCase):
     def setUp(self):
         self.orch = Orchestrator.__new__(Orchestrator)
 
+    def test_news_followup_respects_available_search_and_request_policy(self):
+        self.orch.timezone = ZoneInfo('UTC')
+        for data in ({'news_requested': True}, {'report': {'news_requested': True}}):
+            with self.subTest(data=data):
+                context = self.orch._build_turn_context('Give me a recap with news', [{
+                    'tool': 'status_recap', 'result': {'ok': True, 'data': data},
+                }])
+                self.assertIn('NEWS REQUESTED:', context)
+                self.assertIn('active provider and request policy', context)
+                self.assertIn('otherwise an available Jarvis search tool', context)
+                self.assertIn('If no search is available', context)
+                self.assertIn('do not invent them', context)
+                self.assertNotIn('DO NOT call external search tools', context)
+        ordinary = self.orch._build_turn_context('Give me a recap', [{
+            'tool': 'status_recap', 'result': {'ok': True, 'data': {}},
+        }])
+        self.assertNotIn('NEWS REQUESTED:', ordinary)
+
     def test_current_api_receipt_is_separate_from_price_reuse_policy(self):
         self.orch.timezone = ZoneInfo('UTC')
         timestamp = datetime.now(self.orch.timezone).isoformat()

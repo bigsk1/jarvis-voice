@@ -440,7 +440,19 @@ def update_page(page_id: str, title: str = None, content: str = None,
                 image_url: str | None = None, image_alt: str | None = None,
                 allow_content_shrink: bool = False) -> dict[str, Any]:
     """Update an existing canvas page."""
-    
+
+    if (image_url is not None or image_alt is not None) and (
+        not isinstance(content, str) or not content.replace('\\n', '\n').strip()
+    ):
+        return {
+            "ok": False,
+            "error": "Canvas image updates require complete, non-empty replacement content.",
+            "speech": (
+                "I couldn't update that Canvas page. Pass the complete updated content "
+                "with the image, or use append to add it without replacing the page."
+            ),
+        }
+
     if not check_canvas_health():
         return {
             "ok": False,
@@ -838,10 +850,10 @@ def main():
             if not (has_content_update or has_tags_update or has_pin_update):
                 return_result = {
                     "ok": False,
-                    "error": "Canvas update requires content, title, tags, pinned, or an image to change.",
+                    "error": "Canvas update requires content, title, tags, or pinned to change.",
                     "speech": (
-                        "I can't update Canvas without new content or metadata. "
-                        "Read the page first or pass the full updated content."
+                        "Pass the complete replacement content, or changes to the "
+                        "title, tags, or pinned state."
                     ),
                 }
                 print(json.dumps(return_result))

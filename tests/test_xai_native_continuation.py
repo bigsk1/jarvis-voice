@@ -323,6 +323,7 @@ class XAINativeContinuationTests(unittest.TestCase):
 
     def test_router_system_prompt_includes_default_postal_code(self):
         router = LLMRouter.__new__(LLMRouter)
+        router.registry = SimpleNamespace(tools={})
         router.timezone = ZoneInfo("America/Los_Angeles")
         router.prompt_override = None
         router._system_prompt_base = "system"
@@ -344,6 +345,7 @@ class XAINativeContinuationTests(unittest.TestCase):
 
     def test_router_prompt_disables_native_search_claim_for_oauth_provider(self):
         router = LLMRouter.__new__(LLMRouter)
+        router.registry = SimpleNamespace(tools={})
         router.timezone = ZoneInfo("America/Los_Angeles")
         router.prompt_override = None
         router._system_prompt_base = "system"
@@ -370,6 +372,7 @@ class XAINativeContinuationTests(unittest.TestCase):
 
     def test_router_prompt_claims_native_search_only_for_live_sdk_provider(self):
         router = LLMRouter.__new__(LLMRouter)
+        router.registry = SimpleNamespace(tools={})
         router.timezone = ZoneInfo("America/Los_Angeles")
         router.prompt_override = None
         router._system_prompt_base = "system"

@@ -1003,6 +1003,7 @@ RESPONSE STYLE: {response_style.upper()}
 - Tool confirmations: brief ({tool_confirmation_limit} words max)
 - Q&A/informational: up to {qa_word_limit} words max
 - Multi-turn summaries: up to {multi_turn_word_limit} words max
+- No Markdown or emojis in spoken output
 - No URLs for speech unless critical
 {tts_style_tags_instruction(get_config_value)}
 
@@ -1089,8 +1090,6 @@ Database times are stored in UTC. Convert to local time when presenting to the u
 Use this for any time-sensitive queries, web searches, or temporal references.
 When searching the web, if needed use the CURRENT YEAR ({now.year}) not past years.
 {native_search_note}
-LIVE FLIGHT STATUS:
-Use web search for a specific flight's live status. Include the airline, flight number, and today's date; prefer official airline or airport sources and verify with a live tracker. Do not use flight_search; it is only for future fares and itineraries. If web search is unavailable, do not guess.
 {style_note}"""
         # Default location for weather/location queries only - never override user-specified locations
         location_block = ""
@@ -1123,17 +1122,31 @@ Rules:
 - Use one sentence, at most two. Be original; avoid stock lines such as "Hope you're having a great day!"
 - Skip the opener for urgent, transactional, troubleshooting, coding, or "just do the thing" requests, and when the user jumps straight into a task."""
 
-        recipient_lookup_policy = """CONFIGURED EMAIL RECIPIENTS:
+        # Specialist instructions describe enabled capabilities, not a promise
+        # that every tool named by a baseline is available in this profile.
+        excluded = set(getattr(self, "_excluded_tools", ()) or ())
+        enabled_tool_names = {
+            name for name, tool in self.registry.tools.items()
+            if name not in excluded and tool.permissions.get("enabled", True)
+        }
+        recipient_lookup_policy = ""
+        if any("email" in name or "gmail" in name for name in enabled_tool_names):
+            recipient_lookup_policy = """CONFIGURED EMAIL RECIPIENTS:
 Honor the requested email provider; discover its sending tool when necessary and continue an authorized send despite empty memory results.
 email_contacts reads Jarvis's configured aliases. Google Contacts searches only Google's address book; neither an empty Google result nor a memory miss proves a local alias is absent.
-Supported email tools resolve supplied aliases or direct addresses before sending. Pass the supplied recipient through; known aliases and literal addresses need no preliminary memory search or full contact listing. Use read-only email_contacts for uncertain recipients, then ask only if unresolved or ambiguous.
+Supported email tools resolve supplied aliases or direct addresses before sending. Pass the supplied recipient through; known aliases and literal addresses need no preliminary memory search or full contact listing. Use read-only email_contacts for uncertain recipients when available, then ask only if unresolved or ambiguous.
 Claim missing configuration or unsupported address formats only from current tool evidence. Follow existing approval requirements; lookup-only requests never authorize sending."""
+        flight_status_policy = ""
+        if "flight_search" in enabled_tool_names:
+            flight_status_policy = """LIVE FLIGHT STATUS:
+Use web search for a specific flight's live status. Include the airline, flight number, and today's date; prefer official airline or airport sources and verify with a live tracker. Do not use flight_search; it is only for future fares and itineraries. If web search is unavailable, do not guess."""
 
         base_prompt = "\n\n".join(
             part.strip()
             for part in (
                 self._system_prompt_base,
                 recipient_lookup_policy,
+                flight_status_policy,
                 runtime_context,
                 location_block,
                 greeting_hint,
@@ -1191,7 +1204,10 @@ Claim missing configuration or unsupported address formats only from current too
         """
         from lib.background_tasks.admission import WebTaskContext, background_only_exclusions
         chat_only = tool_policy == "none"
-        required_exclusions = set() if chat_only else background_only_exclusions(self.registry, background_context)
+        required_exclusions = (
+            set(self.registry.tools) if chat_only
+            else background_only_exclusions(self.registry, background_context)
+        )
         excluded_tools = sorted(set(excluded_tools or []) | required_exclusions)
         self._excluded_tools = excluded_tools
         disable_server_side_tools = disable_server_side_tools or chat_only

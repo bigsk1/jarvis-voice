@@ -115,10 +115,11 @@ def test_router_sends_hint_without_adding_search_schemas_or_chat_only_tools():
     assert router.provider.calls[1]["tools"] == []
 
 
-def _background_policy_call(request, context, *, version="v4", tool_policy="auto", now=None):
+def _background_policy_call(request, context, *, version="v4", tool_policy="auto", now=None,
+                            registry=None, excluded_tools=()):
     router = LLMRouter.__new__(LLMRouter)
     router.mode = "cloud"
-    router.registry = _Registry()
+    router.registry = registry if registry is not None else _Registry()
     router.provider = _Provider()
     router.provider_type = "test"
     router._provider_override = "test"
@@ -134,8 +135,36 @@ def _background_policy_call(request, context, *, version="v4", tool_policy="auto
          patch("llm_logger.get_logger"), \
          patch("router_v2.datetime") as clock:
         clock.now.return_value = now or datetime(2026, 10, 15, 12, tzinfo=ZoneInfo("UTC"))
-        router.route(request, background_context=context, tool_policy=tool_policy)
+        router.route(request, background_context=context, tool_policy=tool_policy,
+                     excluded_tools=list(excluded_tools))
     return router.provider.calls[-1]
+
+
+@pytest.mark.parametrize("version", ["v1", "v2", "v3", "v4"])
+@pytest.mark.parametrize("names,disabled,excluded,email,flight", [
+    ((), (), (), False, False),
+    (("email_contacts", "flight_search"), (), (), True, True),
+    (("send_email",), (), (), True, False),
+    (("mcp_google_workspace_send_gmail_message",), (), (), True, False),
+    (("email_contacts", "flight_search"), ("email_contacts", "flight_search"), (), False, False),
+    (("email_contacts", "flight_search"), (), ("email_contacts", "flight_search"), False, False),
+])
+def test_specialist_policies_follow_profile_availability_and_request_exclusions(
+    version, names, disabled, excluded, email, flight,
+):
+    registry = _Registry()
+    registry.tools.update({name: _tool(name, enabled=name not in disabled) for name in names})
+    call = _background_policy_call("Explain what is available", None, version=version,
+                                   registry=registry, excluded_tools=excluded)
+    prompt = call["system_prompt"]
+    assert ("CONFIGURED EMAIL RECIPIENTS:" in prompt) is email
+    assert ("LIVE FLIGHT STATUS:" in prompt) is flight
+    assert call["messages"] == [{"role": "user", "content": "Explain what is available"}]
+    if email:
+        assert "when available" in prompt
+        assert prompt.index("CONFIGURED EMAIL RECIPIENTS:") < prompt.index("RUNTIME CONTEXT")
+    if flight:
+        assert prompt.index("LIVE FLIGHT STATUS:") < prompt.index("RUNTIME CONTEXT")
 
 
 @pytest.mark.parametrize("version", ["v1", "v2", "v3", "v4"])
@@ -160,6 +189,16 @@ def test_chat_only_does_not_receive_background_receipt_policy():
     context = WebTaskContext(object(), "fixture-request", ("fixture",))
     call = _background_policy_call("Explain Bitcoin.", context, tool_policy="none")
     assert "background acceptance receipt" not in call["system_prompt"]
+    assert call["tools"] == []
+
+
+def test_chat_only_omits_specialist_policies_even_when_profile_enables_them():
+    registry = _Registry()
+    registry.tools.update({name: _tool(name) for name in ("email_contacts", "flight_search")})
+    call = _background_policy_call("Explain email", None, tool_policy="none", registry=registry)
+    assert "CONFIGURED EMAIL RECIPIENTS:" not in call["system_prompt"]
+    assert "LIVE FLIGHT STATUS:" not in call["system_prompt"]
+    assert "CHAT ONLY MODE" in call["system_prompt"]
     assert call["tools"] == []
 
 

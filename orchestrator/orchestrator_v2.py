@@ -1565,13 +1565,15 @@ Mode: {self.mode}
         # Use the same effective live registry used by routing/execution so
         # insights cannot surface disabled tools and newly added ghost tools do
         # not depend on a Tool RAG sync before becoming eligible.
+        available_tool_names: list[str] | None
         try:
             excluded = set(excluded_tools or [])
             available_tool_names = [] if chat_only_mode else [
                 name for name in self.registry.list_tools() if name not in excluded
             ]
         except Exception:
-            available_tool_names = []  # Fallback: no filtering
+            # Unknown availability is not an explicitly empty tool catalog.
+            available_tool_names = None
         
         # Semantic retrieval layers should classify the user's task, not
         # Jarvis-added prompt/tool-hint wrappers whose prose can distort the
@@ -4290,13 +4292,13 @@ Your synthesized response:"""
         """Backward-compatible wrapper returning only the injected memory block."""
         return self._get_relevant_memories_bundle(transcript).get("context", "")
     
-    def _get_learning_insights(self, transcript: str, available_tools: list[str] = None) -> tuple[str, list[dict]]:
+    def _get_learning_insights(self, transcript: str, available_tools: list[str] | None = None) -> tuple[str, list[dict]]:
         """
         Get learned insights to inform routing decisions.
         
         Args:
             transcript: User's query
-            available_tools: List of currently available tool names (for filtering)
+            available_tools: Eligible names for filtering; [] means none, None means unknown.
         
         Returns:
             Tuple of (formatted_prompt_string, list_of_applied_insights)

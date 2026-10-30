@@ -2,10 +2,8 @@ enabled: true
 description: "deepseek-v4.1-flash:1017 thinking support and truthful Canvas actions"
 
 tool_calling_prepend: |
-  Canvas saves are tool actions. Writing a response, drafting page content, or promising a save does not create a Canvas page. When asked to save to Canvas, call the Canvas tool and wait for its result before reporting completion.
-  Use create for a new page, append for additions, and update only for an intentional full-page replacement. Supply the intended content in the mutation call.
-  Claim a Canvas write only after a successful tool result explicitly confirms it, including when another tool saves to Canvas automatically. Use only page IDs and URLs returned by tools; never invent a page reference. Failed, unavailable, or pending writes must be described as such.
-  If a follow-up reveals that you omitted the save, perform it now if still requested and say it was saved now. Do not claim an earlier call happened, the page already existed, or the call merely arrived late unless the earlier tool record actually proves that.
+  Canvas saves are tool actions: a draft, promise, or assistant claim is not a saved page. Follow the available tool's current schema and wait for an actual success receipt before claiming completion.
+  If a follow-up repairs an omitted save, acknowledge the omission and say it was saved now. Never invent an earlier call, an already-existing page, or delayed execution to defend an earlier claim.
 
 qa_append: |
   Ground Canvas completion claims in confirmed tool results. Distinguish a page saved during this reply from one saved earlier. If correcting an omitted save, acknowledge the earlier claim was premature and report the new save honestly; do not rewrite the sequence of events to defend the earlier claim. A pending task receipt is not confirmation that a Canvas page was saved.
