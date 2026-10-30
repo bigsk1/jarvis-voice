@@ -11,16 +11,24 @@ Actions:
 Requires: VAPI_API_KEY in config
 """
 
-import sys
+import hashlib
 import json
+import math
+import re
+import sys
 import time
-import requests
+from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
+
+import requests
 
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
-from config_loader import load_config, get_config_value, get_int
-from model_catalog import get_provider_fallback_model
+from config_loader import get_config_value, get_int, load_config
+from model_catalog import get_model_metadata
+from phone_call_artifacts import get_call_canvas, remember_call_canvas, save_call_artifacts
+from tool_progress import emit_tool_progress
 
 # Vapi API base URL
 VAPI_API_BASE = "https://api.vapi.ai"
@@ -181,7 +189,7 @@ Remember: Keep it chill, keep it real, NEVER sound like a robot.""",
 {task}
 
 ## Your Backstory
-You're Samantha, {owner}'s AI assistant. You're genuinely personable - the kind of voice people enjoy hearing from. You handle {owner}'s communications with warmth and efficiency. You take pride in making interactions pleasant, even for mundane tasks.
+You're Samantha, {owner}'s personal assistant. You're genuinely personable - the kind of voice people enjoy hearing from. You handle {owner}'s communications with warmth and efficiency. You take pride in making interactions pleasant, even for mundane tasks.
 
 ## Your Personality
 - Warm, friendly, genuinely engaging
@@ -245,29 +253,47 @@ def get_vapi_headers():
     }
 
 
+def _vapi_error_message(value: object) -> str:
+    """Normalize Vapi validation errors without discarding list-shaped messages."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return '; '.join(message for item in value if (message := _vapi_error_message(item)))
+    if isinstance(value, dict):
+        for field in ('message', 'error', 'detail'):
+            message = _vapi_error_message(value.get(field))
+            if message:
+                return message
+        return json.dumps(value, ensure_ascii=False) if value else ''
+    return str(value) if value is not None else ''
+
+
 def get_vapi_model_config(system_prompt: str) -> dict:
     """Get model configuration for Vapi assistant.
     
-    Vapi supports: openai, anthropic, groq, together, xai, anyscale, openrouter, custom-llm
+    Explicit provider/model pairs pass through to Vapi, whose catalog is separate
+    from Jarvis's chat providers. Defaults cover the providers documented here.
     """
-    # Check what provider to use for phone calls
-    # Default to xai since user has it configured
-    vapi_provider = get_config_value('VAPI_LLM_PROVIDER', 'xai')
+    # Vapi's supported models are independent of Jarvis's general model catalog.
+    vapi_provider = get_config_value('VAPI_LLM_PROVIDER', 'openai')
     vapi_model = get_config_value('VAPI_LLM_MODEL', '')
     
     # Provider-specific defaults
     provider_defaults = {
-        'xai': get_provider_fallback_model('xai'),
-        'anthropic': 'claude-sonnet-5',
-        'openai': 'gpt-4o',
-        'groq': 'llama-3.1-70b-versatile',
-        'together': 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+        'openai': 'gpt-6-luna',
+        'xai': 'grok-4.3',
+        'anthropic': 'claude-haiku-5-5',
+        'deep-seek': 'deepseek-flash',
     }
     
     if not vapi_model:
-        vapi_model = provider_defaults.get(vapi_provider, get_provider_fallback_model('xai'))
+        vapi_model = provider_defaults.get(vapi_provider)
+        if not vapi_model:
+            raise ValueError(
+                f"Set VAPI_LLM_MODEL to a Vapi-supported model for provider {vapi_provider!r}."
+            )
     
-    return {
+    model_config = {
         "provider": vapi_provider,
         "model": vapi_model,
         "messages": [
@@ -277,6 +303,33 @@ def get_vapi_model_config(system_prompt: str) -> dict:
             }
         ]
     }
+    reasoning_effort = get_config_value('VAPI_LLM_REASONING_EFFORT')
+    if reasoning_effort:
+        if vapi_provider != 'openai':
+            raise ValueError('VAPI_LLM_REASONING_EFFORT is supported only for Vapi OpenAI models.')
+        transport_efforts = ('none', 'minimal', 'low', 'medium', 'high', 'xhigh')
+        if reasoning_effort not in transport_efforts:
+            raise ValueError(
+                f"VAPI_LLM_REASONING_EFFORT={reasoning_effort!r} is not supported by Vapi. "
+                f"Choose one of: {', '.join(transport_efforts)}."
+            )
+        metadata = get_model_metadata(vapi_provider, vapi_model)
+        if metadata is not None:
+            model_efforts = metadata.get('reasoning_effort_values', [])
+            if not metadata.get('reasoning_effort') or not model_efforts:
+                raise ValueError(
+                    f"Model {vapi_model!r} does not support configurable reasoning effort "
+                    'in the Jarvis model catalog. Unset VAPI_LLM_REASONING_EFFORT.'
+                )
+            if reasoning_effort not in model_efforts:
+                supported = ', '.join(value for value in model_efforts if value in transport_efforts)
+                raise ValueError(
+                    f"VAPI_LLM_REASONING_EFFORT={reasoning_effort!r} is not supported for "
+                    f"model {vapi_model!r}. Supported by the model and Vapi: "
+                    f"{supported or 'no shared values'}."
+                )
+        model_config['reasoningEffort'] = reasoning_effort
+    return model_config
 
 
 def load_contacts():
@@ -314,13 +367,16 @@ def load_contacts():
 
 def resolve_phone_number(recipient: str) -> str:
     """Resolve a name or phone number to an actual phone number."""
-    # If it's already a phone number, return it
-    if recipient.startswith('+') or recipient.replace('-', '').replace(' ', '').isdigit():
-        # Ensure it has country code
-        clean = recipient.replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
-        if not clean.startswith('+'):
-            clean = '+1' + clean  # Default to US
-        return clean
+    # Accept common dialing punctuation without stripping letters out of names.
+    candidate = recipient.strip()
+    if re.fullmatch(r'\+?[0-9\s()-]+', candidate):
+        clean = re.sub(r'[\s()-]', '', candidate)
+        if clean and clean != '+':
+            if clean.startswith('+'):
+                return clean
+            if len(clean) == 11 and clean.startswith('1'):
+                return '+' + clean
+            return '+1' + clean  # Preserve the default US country-code assumption.
     
     # Try to find in contacts
     load_contacts()
@@ -343,69 +399,137 @@ CALL_LOCK_FILE = Path(__file__).parent.parent / 'data' / '.phone_call_lock'
 CALL_IN_PROGRESS_FILE = Path(__file__).parent.parent / 'data' / '.phone_call_in_progress'
 # Stale if older than max wait + Vapi max call length (see assistant maxDurationSeconds)
 CALL_LOCK_STALE_SECONDS = 960
+# Pending transcript saves share the existing marker file, without blocking new calls.
+CALL_COMPLETED_CONTEXT_TTL_SECONDS = 24 * 60 * 60
+CALL_COMPLETED_CONTEXT_LIMIT = 10
 
-def cleanup_old_temp_assistants():
-    """Delete any old temporary assistants to prevent duplicates."""
+def cleanup_completed_assistant(tracked_call: dict) -> None:
+    """Delete only the assistant this tool created for an observed terminal call."""
+    assistant_id = tracked_call.get('temporary_assistant_id')
+    if not assistant_id:
+        return
     try:
-        response = requests.get(
-            f"{VAPI_API_BASE}/assistant",
+        requests.delete(
+            f"{VAPI_API_BASE}/assistant/{quote(str(assistant_id), safe='')}",
             headers=get_vapi_headers(),
             timeout=VAPI_REQUEST_TIMEOUT,
         )
-        if response.status_code == 200:
-            assistants = response.json()
-            for a in assistants:
-                name = a.get('name', '')
-                if '-call' in name or '-temp' in name:
-                    requests.delete(
-                        f"{VAPI_API_BASE}/assistant/{a['id']}",
-                        headers=get_vapi_headers(),
-                        timeout=VAPI_REQUEST_TIMEOUT,
-                    )
-    except Exception:
-        pass  # Non-critical, continue anyway
+    except (requests.RequestException, ValueError):
+        pass  # Cleanup must not hide a completed call's result.
+
+
+def _load_call_tracking() -> dict:
+    """Read the active call and a bounded set of completed calls awaiting artifacts."""
+    try:
+        data = json.loads(CALL_IN_PROGRESS_FILE.read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    completed = data.get('completed_calls', {})
+    if not isinstance(completed, dict):
+        completed = {}
+    now = time.time()
+    completed = {
+        call_id: entry for call_id, entry in completed.items()
+        if isinstance(entry, dict)
+        and isinstance(entry.get('completed_at'), (int, float))
+        and now - entry['completed_at'] < CALL_COMPLETED_CONTEXT_TTL_SECONDS
+    }
+    data['completed_calls'] = dict(sorted(
+        completed.items(), key=lambda item: item[1]['completed_at'], reverse=True
+    )[:CALL_COMPLETED_CONTEXT_LIMIT])
+    return data
+
+
+def _write_call_tracking(data: dict) -> None:
+    """Keep the original marker shape when there are no pending completed calls."""
+    if not data.get('completed_calls'):
+        data.pop('completed_calls', None)
+    if data:
+        CALL_IN_PROGRESS_FILE.write_text(json.dumps(data))
+    else:
+        CALL_IN_PROGRESS_FILE.unlink(missing_ok=True)
+
+
+def get_tracked_call(call_id: str) -> dict | None:
+    """Find original call context even after it ended but before its save succeeded."""
+    data = _load_call_tracking()
+    if data.get('call_id') == call_id:
+        return {key: value for key, value in data.items() if key != 'completed_calls'}
+    return data.get('completed_calls', {}).get(call_id)
+
+
+def mark_call_completed(call_id: str, status: str) -> None:
+    """Release the active-call guard while retaining context for late artifacts/retry."""
+    data = _load_call_tracking()
+    if data.get('call_id') != call_id:
+        return
+    completed = data.pop('completed_calls', {})
+    entry = {**data, 'status': status, 'completed_at': time.time()}
+    completed[call_id] = entry
+    completed = dict(sorted(
+        completed.items(), key=lambda item: item[1]['completed_at'], reverse=True
+    )[:CALL_COMPLETED_CONTEXT_LIMIT])
+    try:
+        _write_call_tracking({'completed_calls': completed})
+    except OSError:
+        pass
 
 
 def is_call_in_progress() -> dict | None:
-    """Check if there's a call currently in progress."""
-    try:
-        if CALL_IN_PROGRESS_FILE.exists():
-            data = json.loads(CALL_IN_PROGRESS_FILE.read_text())
-            # Stale if older than max wait + longest expected call
-            if time.time() - data.get('started', 0) < CALL_LOCK_STALE_SECONDS:
-                return data
-            else:
-                # Stale lock, remove it
-                CALL_IN_PROGRESS_FILE.unlink()
-    except Exception:
-        pass
+    """Return only an active call; completed artifact/save retries do not block calls."""
+    data = _load_call_tracking()
+    if data.get('call_id'):
+        started = data.get('started', 0)
+        if isinstance(started, (int, float)) and time.time() - started < CALL_LOCK_STALE_SECONDS:
+            return {key: value for key, value in data.items() if key != 'completed_calls'}
+        try:
+            _write_call_tracking({'completed_calls': data.get('completed_calls', {})})
+        except OSError:
+            pass
     return None
 
 
-def set_call_in_progress(call_id: str, phone_number: str, recipient: str, task: str):
+def set_call_in_progress(
+    call_id: str,
+    phone_number: str,
+    recipient: str,
+    task: str,
+    temporary_assistant_id: str | None = None,
+):
     """Mark a call as in progress."""
     try:
-        CALL_IN_PROGRESS_FILE.write_text(json.dumps({
+        tracked_call = {
             'call_id': call_id,
             'phone_number': phone_number,
             'recipient': recipient,
             'task': task,
             'started': time.time()
-        }))
+        }
+        if temporary_assistant_id:
+            tracked_call['temporary_assistant_id'] = temporary_assistant_id
+        completed = _load_call_tracking().get('completed_calls', {})
+        if completed:
+            tracked_call['completed_calls'] = completed
+        _write_call_tracking(tracked_call)
     except Exception:
         pass
 
 
 def clear_call_in_progress(call_id: str | None = None):
-    """Clear the in-progress marker, optionally only for a matching call."""
+    """Forget a saved call's context without clearing another call or pending save."""
     try:
-        if CALL_IN_PROGRESS_FILE.exists():
-            if call_id is not None:
-                data = json.loads(CALL_IN_PROGRESS_FILE.read_text())
-                if data.get('call_id') != call_id:
-                    return
-            CALL_IN_PROGRESS_FILE.unlink()
-    except Exception:
+        data = _load_call_tracking()
+        completed = data.pop('completed_calls', {})
+        if call_id is None or data.get('call_id') == call_id:
+            data = {}
+        if call_id is not None:
+            completed.pop(call_id, None)
+        if completed:
+            data['completed_calls'] = completed
+        _write_call_tracking(data)
+    except OSError:
         pass
 
 
@@ -506,9 +630,6 @@ def generate_call_reason(task: str, context: str, owner: str) -> str:
 
 def create_assistant_for_call(persona: str, owner: str, task: str, context: str) -> dict:
     """Create a temporary assistant for this specific call."""
-    # Clean up any old temp assistants first
-    cleanup_old_temp_assistants()
-    
     persona_config = PERSONAS.get(persona, PERSONAS['default'])
     
     # Get voice settings from config (check multiple possible variable names)
@@ -549,6 +670,10 @@ def create_assistant_for_call(persona: str, owner: str, task: str, context: str)
             "provider": "openai",
             "voiceId": "alloy"  # Male voice: alloy, echo, onyx
         }
+
+    voice_model = get_config_value('VAPI_VOICE_MODEL')
+    if voice_config['provider'] == '11labs' and voice_model:
+        voice_config['model'] = voice_model
     
     # Generate a natural opening reason from the task
     # This avoids robotic "user needs X" language
@@ -611,23 +736,25 @@ def make_call(recipient: str, task: str, context: str = "", persona: str = "defa
     if not phone_number:
         phone_number = resolve_phone_number(recipient)
     
+    # Validate the number configuration before creating any assistant.
+    phone_number_id = get_config_value('VAPI_PHONE_NUMBER_ID')
+    if not phone_number_id:
+        raise ValueError("VAPI_PHONE_NUMBER_ID not configured. Get a phone number from Vapi dashboard.")
+
     # Get or create assistant
     assistant_id = get_config_value('VAPI_ASSISTANT_ID')
+    temporary_assistant_id = None
     
     if not assistant_id:
         # Create temporary assistant for this call
         assistant = create_assistant_for_call(persona, owner, task, context)
         assistant_id = assistant['id']
+        temporary_assistant_id = assistant_id
         use_variable_overrides = False
     else:
         # Using pre-configured assistant from Vapi dashboard
         # We'll pass dynamic variables via assistantOverrides
         use_variable_overrides = True
-    
-    # Get Vapi phone number ID (you need to set this up in Vapi dashboard)
-    phone_number_id = get_config_value('VAPI_PHONE_NUMBER_ID')
-    if not phone_number_id:
-        raise ValueError("VAPI_PHONE_NUMBER_ID not configured. Get a phone number from Vapi dashboard.")
     
     # Generate natural opening reason for the call
     reason = generate_call_reason(task, context, owner)
@@ -663,12 +790,15 @@ def make_call(recipient: str, task: str, context: str = "", persona: str = "defa
     response.raise_for_status()
     call = response.json()
     
-    return {
+    call_info = {
         "call_id": call.get('id'),
         "status": call.get('status'),
         "phone_number": phone_number,
         "assistant_id": assistant_id
     }
+    if temporary_assistant_id:
+        call_info['temporary_assistant_id'] = temporary_assistant_id
+    return call_info
 
 
 def get_call_status(call_id: str) -> dict:
@@ -682,58 +812,119 @@ def get_call_status(call_id: str) -> dict:
     return response.json()
 
 
+def _format_transcript_messages(messages: object) -> str:
+    """Format one message history without merging or duplicating other histories."""
+    if not isinstance(messages, list):
+        return ''
+    lines = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        role = message.get('role', 'unknown')
+        if not isinstance(role, str) or role == 'system':
+            continue
+        content = message.get('content') or message.get('message')
+        if isinstance(content, list):
+            content = '\n'.join(
+                part['text'] for part in content
+                if isinstance(part, dict) and isinstance(part.get('text'), str)
+            )
+        if not isinstance(content, str) or not content.strip():
+            continue
+        speaker = (
+            'AI' if role in ('assistant', 'bot') else
+            'User' if role in ('user', 'customer') else role.capitalize()
+        )
+        lines.append(f"{speaker}: {content.strip()}")
+    return '\n'.join(lines)
+
+
 def extract_transcript(call: dict) -> str:
-    """Extract the full transcript from VAPI call response.
-    
-    VAPI can return transcript in multiple formats:
-    1. call['transcript'] - plain text string (dynamically created assistants)
-    2. call['messages'] - array of message objects (pre-configured assistants)
-    3. call['artifact']['transcript'] - from artifact plan
-    
-    This function checks all sources and returns the best available transcript.
-    """
-    # First try the simple transcript field
-    transcript = call.get('transcript', '')
-    if transcript and len(transcript) > 50:  # Has meaningful content
-        return transcript
-    
-    # Check artifact for transcript (VAPI stores analysis here)
-    artifact = call.get('artifact', {})
-    if artifact:
-        artifact_transcript = artifact.get('transcript', '')
-        if artifact_transcript and len(artifact_transcript) > len(transcript):
-            transcript = artifact_transcript
-    
-    # Check messages array (pre-configured assistants often use this)
-    messages = call.get('messages', [])
-    if messages and isinstance(messages, list):
-        # Format messages into readable transcript
-        formatted_lines = []
-        for msg in messages:
-            role = msg.get('role', 'unknown')
-            content = msg.get('content', '') or msg.get('message', '')
-            
-            # Skip empty messages or system messages
-            if not content or role == 'system':
-                continue
-            
-            # Map roles to friendly names
-            if role in ['assistant', 'bot']:
-                speaker = 'AI'
-            elif role in ['user', 'customer']:
-                speaker = 'User'
-            else:
-                speaker = role.capitalize()
-            
-            formatted_lines.append(f"{speaker}: {content}")
-        
-        if formatted_lines:
-            messages_transcript = '\n'.join(formatted_lines)
-            # Use messages transcript if it's longer/more complete
-            if len(messages_transcript) > len(transcript):
-                transcript = messages_transcript
-    
-    return transcript
+    """Choose the longest coherent transcript in modern or legacy call responses."""
+    artifact = call.get('artifact')
+    sources = [call, artifact] if isinstance(artifact, dict) else [call]
+    candidates = []
+    for source in sources:
+        transcript = source.get('transcript')
+        if isinstance(transcript, str) and transcript.strip():
+            candidates.append(transcript.strip())
+        for field in ('messages', 'messagesOpenAIFormatted'):
+            formatted = _format_transcript_messages(source.get(field))
+            if formatted:
+                candidates.append(formatted)
+    return max(candidates, key=len, default='')
+
+
+def _call_duration_seconds(call: dict) -> float | None:
+    """Use a valid legacy duration or calculate it from the call timestamps."""
+    duration = call.get('duration')
+    if (
+        isinstance(duration, (int, float)) and not isinstance(duration, bool)
+        and math.isfinite(duration) and duration >= 0
+    ):
+        return duration
+    timestamps = []
+    for field in ('startedAt', 'endedAt'):
+        value = call.get(field)
+        if not isinstance(value, str):
+            return None
+        try:
+            timestamp = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except ValueError:
+            return None
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        timestamps.append(timestamp)
+    seconds = (timestamps[1] - timestamps[0]).total_seconds()
+    return seconds if seconds >= 0 else None
+
+
+def _has_recording_url(value: object) -> bool:
+    """Recognize recording evidence without retaining a provider's expiring URL."""
+    if isinstance(value, str):
+        return value.startswith(('https://', 'http://'))
+    if isinstance(value, dict):
+        return any(_has_recording_url(item) for item in value.values())
+    return False
+
+
+def extract_call_result(call: dict, call_id: str | None = None) -> dict:
+    """Normalize provider results and return stable authenticated recording access."""
+    artifact = call.get('artifact')
+    if not isinstance(artifact, dict):
+        artifact = {}
+    analysis = call.get('analysis')
+    if not isinstance(analysis, dict):
+        analysis = {}
+    summary = next(
+        (value for value in (analysis.get('summary'), call.get('summary'))
+         if isinstance(value, str) and value.strip()),
+        '',
+    )
+    end_reason = call.get('endedReason') or ''
+    status = call.get('status', 'unknown')
+    identity = call_id or call.get('id')
+    recording_available = any(
+        _has_recording_url(source.get(field))
+        for source in (call, artifact)
+        for field in ('recordingUrl', 'stereoRecordingUrl', 'monoRecordingUrl', 'recording')
+    )
+    recording_url = (
+        f"{VAPI_API_BASE}/call/{quote(str(identity), safe='')}/mono-recording"
+        if identity and recording_available else ''
+    )
+    return {
+        'status': status,
+        'duration_seconds': _call_duration_seconds(call),
+        'transcript': extract_transcript(call),
+        'summary': summary if isinstance(summary, str) else '',
+        'end_reason': end_reason if isinstance(end_reason, str) else '',
+        'recording_url': recording_url,
+        'recording_requires_auth': bool(recording_url),
+        'call_failed': status == 'failed' or is_call_failure(
+            end_reason if isinstance(end_reason, str) else ''
+        ),
+    }
 
 
 def wait_for_call_completion(call_id: str, timeout: int | None = None) -> dict:
@@ -744,26 +935,24 @@ def wait_for_call_completion(call_id: str, timeout: int | None = None) -> dict:
     """
     if timeout is None:
         timeout = get_int('VAPI_WAIT_TIMEOUT', 900)
+    deadline = _background_deadline()
+    if deadline is not None:
+        # Leave room for the recording download and the Canvas subprocess.
+        timeout = min(timeout, max(0, deadline - time.time() - 120))
     start_time = time.time()
     last_status = "unknown"
+    reported_status = None
     
     while time.time() - start_time < timeout:
         try:
             call = get_call_status(call_id)
             last_status = call.get('status', 'unknown')
+            if last_status != reported_status:
+                _report_call_progress(call_id, last_status)
+                reported_status = last_status
             
             if last_status in ['ended', 'failed']:
-                end_reason = call.get('endedReason', '')
-                
-                return {
-                    "status": last_status,
-                    "duration_seconds": call.get('duration'),
-                    "transcript": extract_transcript(call),  # Use full transcript extractor
-                    "summary": call.get('summary', ''),
-                    "end_reason": end_reason,
-                    "recording_url": call.get('recordingUrl', ''),
-                    "call_failed": is_call_failure(end_reason)
-                }
+                return extract_call_result(call, call_id)
         except Exception:
             pass
         
@@ -775,6 +964,29 @@ def wait_for_call_completion(call_id: str, timeout: int | None = None) -> dict:
         "message": "Call still in progress. Ask 'what happened on the call?' or check Canvas later.",
         "call_id": call_id
     }
+
+
+def _background_deadline() -> float | None:
+    """Read the worker's observation budget, never a model-supplied argument."""
+    raw = get_config_value('JARVIS_BACKGROUND_DEADLINE')
+    try:
+        value = float(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+    return value if value is not None and math.isfinite(value) else None
+
+
+def _report_call_progress(call_id: str, status: str) -> None:
+    """Expose short phases and a recovery handle without conversation contents."""
+    labels = {
+        'queued': 'Call queued', 'ringing': 'Phone ringing',
+        'in-progress': 'Call in progress', 'forwarding': 'Call forwarding',
+        'ended': 'Collecting call results', 'failed': 'Collecting call failure details',
+    }
+    emit_tool_progress({
+        'phase': str(status), 'message': labels.get(status, 'Checking call status'),
+        'recovery': {'task_id': call_id},
+    })
 
 
 def is_call_failure(end_reason: str) -> bool:
@@ -846,7 +1058,7 @@ def list_recent_calls(limit: int = 10) -> list:
             "id": c.get('id'),
             "status": c.get('status'),
             "customer": c.get('customer', {}).get('number', '?'),
-            "duration": c.get('duration'),
+            "duration": _call_duration_seconds(c),
             "created_at": c.get('createdAt')
         }
         for c in calls if c
@@ -860,7 +1072,6 @@ def save_call_to_memory(recipient: str, task: str, summary: str, transcript: str
     """
     try:
         from memory_db import MemoryDB
-        from datetime import datetime
         
         db = MemoryDB()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -892,10 +1103,41 @@ def save_call_to_canvas(call_id: str, recipient: str, task: str, result: dict):
     """Save call transcript and summary to Canvas in 'Phone Calls' folder."""
     try:
         import subprocess
-        from datetime import datetime
+
+        space_id = result.get('stash_space_id')
+        prior_page = get_call_canvas(space_id) if space_id else {}
+        summary = str(result.get('summary') or '').replace('\r\n', '\n').strip()
+        transcript = str(result.get('transcript') or '').replace('\r\n', '\n').strip()
+        result_sha256 = hashlib.sha256(json.dumps(
+            {'summary': summary, 'transcript': transcript},
+            sort_keys=True, ensure_ascii=False,
+        ).encode('utf-8')).hexdigest()
+        results_content = f"## Summary\n{summary or 'No summary generated'}\n\n## Full Transcript\n```\n{transcript}\n```"
+        audio_ref = result.get('audio_stash_ref') if result.get('audio_saved') else None
+        transcript_ref = result.get('transcript_stash_ref')
+        existing_page = bool(prior_page.get('page_id'))
+        results_changed = prior_page.get('result_sha256') != result_sha256
+        new_audio = bool(audio_ref and prior_page.get('audio_stash_ref') != audio_ref)
+        links = []
+        if audio_ref and (not existing_page or new_audio):
+            links.append(f"[Call recording]({audio_ref})")
+        if transcript_ref and (not existing_page or results_changed):
+            links.append(f"[Written transcript]({transcript_ref})")
+        artifacts_content = '\n\n## Call files\n\n' + '\n\n'.join(links) if links else ''
+
+        if existing_page:
+            # Append revisions rather than replacing user notes or earlier evidence.
+            # Legacy pages without a fingerprint receive the current snapshot once.
+            if not results_changed and not new_audio:
+                return True
+            revision = f"\n\n## Updated call results\n\n{results_content}" if results_changed else ''
+            canvas_payload = {
+                'action': 'append', 'page_id': prior_page['page_id'],
+                'content': revision + artifacts_content,
+            }
+        else:
+            canvas_payload = None
         
-        transcript = result.get('transcript', 'No transcript available')
-        summary = result.get('summary', '')
         duration = result.get('duration_seconds', 0)
         status = result.get('status', 'unknown')
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -909,16 +1151,12 @@ def save_call_to_canvas(call_id: str, recipient: str, task: str, result: dict):
 **To:** {recipient}
 **Task:** {task}
 **Status:** {status}
+**Ended reason:** {result.get('end_reason') or 'Not supplied'}
 **Duration:** {duration or 'N/A'} seconds
 **Call ID:** {call_id}
 
-## Summary
-{summary or 'No summary generated'}
-
-## Full Transcript
-```
-{transcript}
-```
+{results_content}
+{artifacts_content}
 
 ---
 *Auto-saved by Jarvis Phone Call Tool*
@@ -926,20 +1164,102 @@ def save_call_to_canvas(call_id: str, recipient: str, task: str, result: dict):
         
         # Use canvas tool to save - prefix with "Phone Calls/" for organization
         date_str = datetime.now().strftime("%Y-%m-%d_%H%M")
-        canvas_args = json.dumps({
-            "action": "create",
-            "title": f"Phone Calls/{date_str} - {recipient}",
-            "content": content
-        })
+        if canvas_payload is None:
+            canvas_payload = {
+                "action": "create",
+                "title": f"Phone Calls/{date_str} - {recipient}",
+                "content": content,
+            }
+        canvas_args = json.dumps(canvas_payload)
         
-        subprocess.run(
+        completed = subprocess.run(
             [sys.executable, str(Path(__file__).parent / 'canvas.py'), canvas_args],
             capture_output=True,
+            text=True,
             timeout=30
         )
+        if completed.returncode != 0:
+            return False
+        output = json.loads(completed.stdout)
+        if not isinstance(output, dict) or output.get('ok') is not True:
+            return False
+        page_data = output.get('data') or {}
+        page_id = page_data.get('page_id') or page_data.get('id') or prior_page.get('page_id')
+        if space_id and page_id:
+            remember_call_canvas(
+                space_id, page_id,
+                page_data.get('title') or canvas_payload.get('title') or prior_page.get('title', ''),
+                audio_stash_ref=audio_ref,
+                result_sha256=result_sha256,
+            )
         return True
     except Exception:
         return False  # Non-critical, don't fail the call
+
+
+def _collect_call_artifacts(call_id: str, result: dict) -> dict:
+    """Keep collection failures independent of the completed phone conversation."""
+    try:
+        artifacts = save_call_artifacts(call_id, result)
+    except Exception:
+        artifacts = {
+            'audio_saved': False, 'audio_status': 'failed',
+            'audio_error': 'Could not retrieve the call recording.',
+            'transcript_saved': False,
+            'transcript_error': 'Could not save the written transcript to Stash.',
+        }
+    return {**result, **artifacts}
+
+
+def _call_artifact_notice(result: dict) -> str:
+    if result.get('audio_status') == 'pending':
+        return ' The call recording is not available yet; check the call status again later.'
+    if result.get('audio_status') == 'unavailable':
+        return ' No recording is available right now; you can check the call status later.'
+    if result.get('audio_status') == 'failed':
+        return ' Could not retrieve the call recording. The written call result is still available.'
+    return ''
+
+
+def _completed_call_response(call_id: str, recipient: str, task: str, result: dict) -> dict:
+    """Report the call outcome separately from saving its results to Canvas."""
+    result = _collect_call_artifacts(call_id, {**result, 'recipient': recipient, 'task': task})
+    call_failed = bool(result.get('call_failed') or result.get('status') == 'failed')
+    summary = result.get('summary', '')
+    transcript = result.get('transcript', '')
+    saved = bool(transcript) and save_call_to_canvas(call_id, recipient, task, result)
+    if call_failed:
+        speech = get_failure_message(result.get('end_reason', ''), recipient)
+    else:
+        speech = f"Call completed. {summary}" if summary else 'Call completed.'
+    if saved:
+        if result.get('audio_status') not in ('pending', 'failed', 'unavailable'):
+            clear_call_in_progress(call_id)
+        speech += ' Call results saved to Canvas in Phone Calls folder.'
+    elif not transcript:
+        speech += ' No transcript is available yet. Check the call status again shortly.'
+    else:
+        speech += ' I could not save the call results to Canvas.'
+
+    follow_up_hints = []
+    transcript_lower = transcript.lower()
+    if not call_failed and any(word in transcript_lower for word in ('yes', 'agreed', 'sounds good', "i'm in", 'sure')):
+        follow_up_hints.append('They agreed!')
+    if not call_failed and any(word in transcript_lower for word in ('time', 'pm', 'am', "o'clock", 'tonight', 'tomorrow')):
+        follow_up_hints.append('Time was discussed - maybe set a reminder?')
+    return {
+        'ok': not call_failed,
+        'completion': 'completed',
+        'speech': speech + _call_artifact_notice(result),
+        'data': {
+            **result,
+            'call_id': call_id,
+            'duration': result.get('duration_seconds'),
+            'saved_to_canvas': saved,
+            'canvas_location': 'Phone Calls/ folder' if saved else None,
+            'follow_up_hints': follow_up_hints,
+        },
+    }
 
 
 def action_call(args: dict) -> dict:
@@ -947,7 +1267,7 @@ def action_call(args: dict) -> dict:
     recipient = args.get('recipient', '')
     task = args.get('task', '')
     context = args.get('context', '')
-    persona = args.get('persona', 'default')
+    persona = args.get('persona') or get_config_value('VAPI_DEFAULT_PERSONA', 'default') or 'default'
     owner = args.get('owner', get_config_value('OWNER_NAME', 'Boss'))
     
     # Check config for default wait behavior
@@ -955,48 +1275,71 @@ def action_call(args: dict) -> dict:
     # VAPI_WAIT_FOR_CALL=false means fire and forget (check later)
     # CONFIG ALWAYS WINS - LLM cannot override this (prevents LLM from randomly deciding not to wait)
     config_wait_raw = get_config_value('VAPI_WAIT_FOR_CALL', 'false')
-    wait = config_wait_raw.lower() == 'true'
+    background = _background_deadline() is not None
+    wait = background or config_wait_raw.lower() == 'true'
     
     # Debug log for troubleshooting
     import logging
     logging.info(f"[phone_call] wait={wait} (VAPI_WAIT_FOR_CALL={config_wait_raw}, ignoring LLM args['wait']={args.get('wait', 'not set')})")
     
     if not recipient:
-        return {"ok": False, "speech": "Who should I call?", "error": "No recipient"}
+        return {"ok": False, "completion": "rejected", "speech": "Who should I call?", "error": "No recipient"}
     
     if not task:
-        return {"ok": False, "speech": "What should I tell them?", "error": "No task"}
+        return {"ok": False, "completion": "rejected", "speech": "What should I tell them?", "error": "No task"}
+
+    if not get_config_value('VAPI_ASSISTANT_ID') and persona not in PERSONAS:
+        return {
+            "ok": False,
+            "completion": "rejected",
+            "speech": "The phone call persona is not configured correctly.",
+            "error": f"Unknown phone persona: {persona}. Choose {', '.join(PERSONAS)}.",
+        }
+
+    if background:
+        deadline = _background_deadline()
+        if deadline is not None and deadline - time.time() < 150:
+            return {
+                'ok': False, 'completion': 'rejected',
+                'speech': 'There is not enough time left in this task to start and observe a phone call. No call was started.',
+                'error': 'Insufficient phone task budget',
+            }
+        try:
+            if not get_config_value('VAPI_API_KEY') or not get_config_value('VAPI_PHONE_NUMBER_ID'):
+                raise ValueError('VAPI_API_KEY and VAPI_PHONE_NUMBER_ID are required to place a call.')
+            if not get_config_value('VAPI_ASSISTANT_ID'):
+                get_vapi_model_config('')
+        except ValueError as exc:
+            return {'ok': False, 'completion': 'rejected', 'speech': str(exc), 'error': str(exc)}
     
     try:
         # Resolve phone number first
-        phone_number = resolve_phone_number(recipient)
+        try:
+            phone_number = resolve_phone_number(recipient)
+        except ValueError as exc:
+            return {'ok': False, 'completion': 'rejected', 'speech': str(exc), 'error': str(exc)}
         
         # Check if a call is already in progress (global lock)
         in_progress = is_call_in_progress()
         if in_progress:
+            if background:
+                return {
+                    'ok': False, 'completion': 'rejected',
+                    'speech': 'Another phone call is already being tracked. Check its status; no additional call was started.',
+                    'data': {'call_id': in_progress['call_id'], 'in_progress': True},
+                }
             # Check if that call is done now
             try:
                 call = get_call_status(in_progress['call_id'])
-                if call.get('status') == 'ended':
-                    # Call finished! Clear lock and return result
-                    clear_call_in_progress()
-                    transcript = extract_transcript(call)  # Use full transcript extractor
-                    summary = call.get('summary', '')
+                if call.get('status') in ('ended', 'failed'):
+                    # Observe the terminal call before deleting only its owned assistant.
+                    mark_call_completed(in_progress['call_id'], call['status'])
+                    cleanup_completed_assistant(in_progress)
                     prior_task = in_progress.get('task') or "Phone call"
-                    saved = save_call_to_canvas(in_progress['call_id'], in_progress['recipient'], prior_task, {
-                        'status': 'ended',
-                        'transcript': transcript,
-                        'summary': summary,
-                        'duration_seconds': call.get('duration')
-                    })
-                    speech = f"Call completed. {summary}" if summary else "Call completed."
-                    if saved:
-                        speech += " Full transcript saved to Canvas in Phone Calls folder."
-                    return {
-                        "ok": True,
-                        "speech": speech,
-                        "data": {"call_id": in_progress['call_id'], "transcript": transcript, "summary": summary, "saved_to_canvas": saved}
-                    }
+                    result = extract_call_result(call, in_progress['call_id'])
+                    return _completed_call_response(
+                        in_progress['call_id'], in_progress['recipient'], prior_task, result
+                    )
                 else:
                     return {
                         "ok": True, 
@@ -1004,12 +1347,18 @@ def action_call(args: dict) -> dict:
                         "data": {"in_progress": True, "call_id": in_progress['call_id']}
                     }
             except Exception:
-                clear_call_in_progress()  # Clear stale lock
+                return {
+                    'ok': False,
+                    'speech': 'I could not verify the previous call. Check its status before calling again.',
+                    'error': 'Previous call status unavailable',
+                    'data': {'call_id': in_progress['call_id'], 'in_progress': True},
+                }
         
         # Check for recent duplicate call to same number
         if check_duplicate_call(phone_number, cooldown_seconds=120):
             return {
-                "ok": True,
+                "ok": not background,
+                "completion": "rejected" if background else "unknown",
                 "speech": f"I just called {recipient}. Check Canvas for the transcript.",
                 "data": {"recent_call": True}
             }
@@ -1019,8 +1368,12 @@ def action_call(args: dict) -> dict:
         call_id = call_info['call_id']
         
         # Mark call as in progress and record it
-        set_call_in_progress(call_id, phone_number, recipient, task)
+        set_call_in_progress(
+            call_id, phone_number, recipient, task,
+            temporary_assistant_id=call_info.get('temporary_assistant_id'),
+        )
         record_call_made(phone_number)
+        _report_call_progress(call_id, call_info.get('status') or 'queued')
         
         if not wait:
             return {
@@ -1036,71 +1389,19 @@ def action_call(args: dict) -> dict:
         # Wait for completion (blocking - VAPI_WAIT_FOR_CALL=true)
         result = wait_for_call_completion(call_id)
         
-        # Clear the in-progress lock
-        clear_call_in_progress()
-        
-        if result['status'] == 'ended':
-            summary = result.get('summary', '')
-            transcript = result.get('transcript', '')
-            end_reason = result.get('end_reason', '')
-            call_failed = result.get('call_failed', False)
-            
-            # Check if call actually failed to connect
-            if call_failed:
-                failure_msg = get_failure_message(end_reason, recipient)
-                return {
-                    "ok": False,
-                    "speech": failure_msg,
-                    "data": {
-                        "call_id": call_id,
-                        "end_reason": end_reason,
-                        "transcript": transcript,  # May contain voicemail prompt
-                        "call_failed": True
-                    }
-                }
-            
-            # Call succeeded - save to Canvas
-            saved = save_call_to_canvas(call_id, recipient, task, result)
-            
-            # Build smart response with context for follow-up suggestions
-            speech = "Call completed."
-            if summary:
-                speech += f" {summary}"
-            
-            # Tell LLM transcript is already saved - don't create another canvas page!
-            if saved:
-                speech += " Full transcript saved to Canvas in Phone Calls folder."
-            
-            # Add hint about what user might want to do next
-            # (The LLM can pick up on this and suggest actions)
-            follow_up_hints = []
-            transcript_lower = transcript.lower()
-            if any(word in transcript_lower for word in ['yes', 'agreed', 'sounds good', 'i\'m in', 'sure']):
-                follow_up_hints.append("They agreed!")
-            if any(word in transcript_lower for word in ['time', 'pm', 'am', 'o\'clock', 'tonight', 'tomorrow']):
-                follow_up_hints.append("Time was discussed - maybe set a reminder?")
-            
-            return {
-                "ok": True,
-                "speech": speech,
-                "data": {
-                    "call_id": call_id,
-                    "duration": result.get('duration_seconds'),
-                    "transcript": transcript,
-                    "summary": summary,
-                    "recording_url": result.get('recording_url'),
-                    "saved_to_canvas": saved,
-                    "canvas_location": "Phone Calls/ folder" if saved else None,
-                    "follow_up_hints": follow_up_hints
-                }
-            }
+        if result['status'] in ('ended', 'failed'):
+            mark_call_completed(call_id, result['status'])
+            cleanup_completed_assistant(call_info)
+            return _completed_call_response(call_id, recipient, task, result)
         elif result['status'] == 'in-progress':
             # Call still in progress (we hit our wait timeout)
             return {
-                "ok": True,
-                "speech": f"Call to {recipient} is in progress. Ask 'what happened on the call?' for results, or check Canvas later.",
+                "ok": not background,
+                "completion": "unknown",
+                "speech": f"Call to {recipient} has not been confirmed finished. Check the existing call's status for results; no automatic redial was started.",
                 "data": {
                     "call_id": call_id,
+                    "task_id": call_id,
                     "status": "in-progress",
                     "note": "Call still active - ask for status later"
                 }
@@ -1117,20 +1418,24 @@ def action_call(args: dict) -> dict:
     except requests.exceptions.HTTPError as e:
         error_msg = str(e)
         try:
-            error_detail = e.response.json()
-            error_msg = error_detail.get('message', str(e))
-        except Exception:
+            error_msg = _vapi_error_message(e.response.json()) or error_msg
+        except (AttributeError, ValueError):
             pass
+        # This handler is reached only by the assistant/call submission POSTs;
+        # polling and artifact collection have their own observation boundaries.
+        status_code = getattr(e.response, 'status_code', None)
+        completion = 'rejected' if status_code in {400, 401, 403, 404, 413, 422, 429} else 'unknown'
         
         # Provide friendly messages for known errors
         if 'daily-limit' in error_msg.lower() or 'outbound-daily-limit' in error_msg.lower():
             return {
                 "ok": False, 
+                "completion": completion,
                 "speech": "Daily call limit reached. Free Vapi phone numbers have limited outbound calls per day. Try again tomorrow or upgrade your Vapi plan.",
                 "error": error_msg
             }
         
-        return {"ok": False, "speech": f"Call failed: {error_msg}", "error": error_msg}
+        return {"ok": False, "completion": completion, "speech": f"Call failed: {error_msg}", "error": error_msg}
 
 
 def action_status(args: dict) -> dict:
@@ -1151,38 +1456,56 @@ def action_status(args: dict) -> dict:
     
     try:
         call = get_call_status(call_id)
-        status = call.get('status', 'unknown')
-        transcript = extract_transcript(call)  # Use full transcript extractor
-        summary = call.get('summary', '')
+        result = extract_call_result(call, call_id)
+        status = result['status']
+        transcript = result['transcript']
+        summary = result['summary']
+        saved = False
+        in_progress = is_call_in_progress()
+        tracked_call = get_tracked_call(call_id)
+
+        if status in ('ended', 'failed') and tracked_call:
+            if in_progress and in_progress.get('call_id') == call_id:
+                cleanup_completed_assistant(tracked_call)
+                mark_call_completed(call_id, status)
+
+        if status in ('ended', 'failed'):
+            customer = call.get('customer', {}).get('number', 'Unknown')
+            recipient = (tracked_call or {}).get('recipient') or customer
+            task = (tracked_call or {}).get('task') or 'Phone call'
+            result = _collect_call_artifacts(call_id, {**result, 'recipient': recipient, 'task': task})
         
         # If call is done and has transcript, save to Canvas
-        if status == 'ended' and transcript and save_to_canvas:
-            in_progress = is_call_in_progress()
-            tracked_call = (
-                in_progress
-                if in_progress and in_progress.get('call_id') == call_id
-                else None
-            )
+        if status in ('ended', 'failed') and transcript and save_to_canvas:
             customer = call.get('customer', {}).get('number', 'Unknown')
             recipient = (tracked_call or {}).get('recipient') or customer
             task = (tracked_call or {}).get('task') or "Phone call"
-            save_call_to_canvas(call_id, recipient, task, {
-                'status': status,
-                'transcript': transcript,
-                'summary': summary,
-                'duration_seconds': call.get('duration')
-            })
-            if tracked_call:
+            saved = save_call_to_canvas(call_id, recipient, task, result)
+            if saved and result.get('audio_status') not in ('pending', 'failed', 'unavailable'):
                 clear_call_in_progress(call_id)
         
         # Build speech response
-        if status == 'ended' and transcript:
+        if result['call_failed']:
+            customer = call.get('customer', {}).get('number', 'the recipient')
+            speech = get_failure_message(result['end_reason'], customer)
+            if transcript and save_to_canvas:
+                if saved:
+                    speech += " Full transcript saved to Canvas in Phone Calls folder."
+                else:
+                    speech += " I could not save the call results to Canvas."
+        elif status == 'ended' and transcript:
             # Tell LLM the transcript was saved - DON'T create another canvas page!
             if save_to_canvas:
                 speech = f"Call completed. {summary}" if summary else "Call completed."
-                speech += " Full transcript already saved to Canvas in Phone Calls folder - no need to create another canvas page."
+                if saved:
+                    speech += " Full transcript saved to Canvas in Phone Calls folder."
+                else:
+                    speech += " I could not save the call results to Canvas."
             else:
                 speech = f"Call completed. {summary}" if summary else f"Call completed. Here's what was said: {transcript[:150]}..."
+        elif status == 'ended':
+            speech = f"Call completed. {summary}" if summary else 'Call completed.'
+            speech += ' No transcript is available yet.'
         elif status == 'in-progress':
             speech = "Call is still in progress"
         else:
@@ -1190,14 +1513,16 @@ def action_status(args: dict) -> dict:
         
         return {
             "ok": True,
-            "speech": speech,
+            "speech": speech + _call_artifact_notice(result),
             "data": {
+                **result,
+                "call_id": call_id,
                 "status": status,
-                "duration": call.get('duration'),
+                "duration": result['duration_seconds'],
                 "transcript": transcript,
                 "summary": summary,
-                "saved_to_canvas": save_to_canvas and status == 'ended',
-                "canvas_location": "Phone Calls/ folder" if save_to_canvas and status == 'ended' else None
+                "saved_to_canvas": saved,
+                "canvas_location": "Phone Calls/ folder" if saved else None
             }
         }
     except Exception as e:

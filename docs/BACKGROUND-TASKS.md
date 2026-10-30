@@ -349,6 +349,13 @@ Arguments are validated against the manifest's JSON Schema using Draft 2020-12 w
 
 The local policy requires `dangerous: false`, `auto_approve: true`, and `network: false`, plus the reviewed `completion_scope: "process_group"` declaration. Review child processes, daemonization, side effects, timeout/resource needs, and cancellation evidence before adding a binding. A local process ending cannot prove that a submitted remote operation stopped; the remote policy below handles this uncertainty. The separate `http_callback_v1` adapter serves the opt-in [Browser Use](BROWSER-USE.md) binding and does not change this process policy. Resource limits and permission metadata are not an OS network or filesystem sandbox.
 
+Phone calls use an exact named production permission policy for
+`remote_skill_v1`, retaining `dangerous: true` and `auto_approve: false`. The
+reviewed permission policy is fingerprinted alongside the script and manifest;
+a manifest cannot grant this exception to itself or another tool. Only call
+actions are admitted; phone status/list/contact checks remain foreground. See
+[phone calls](tools/phone/PHONE_CALLS.md#optional-web-background-calls).
+
 Workers advertise supervision capability even if a particular conversion backend is missing; the requested skill then reports its backend failure. Restart both Web and any running worker after updating, so new admissions and worker capability use the same adapter identity. Ensure the selected runtime environment has the updated requirements. Native tmux runs use `JARVIS_VENV` (default `~/jarvis-venv`); the repository `.venv` is a development/test environment and is not required by the launcher.
 
 ### Upgrading with existing jobs
@@ -367,6 +374,7 @@ These are still local skill subprocesses, sharing the same executor, supervision
 | `generate_video` | 1200 seconds | xAI SDK polling and Gemini operations/interactions can keep generating after the observing process exits; the script waits for output and saves it. |
 | `generate_music` | 2100 seconds | ElevenLabs HTTP generation (up to 1800 seconds for a ten-minute track) and Gemini interactions return audio, then the script saves it. |
 | `create_social_clip` | 2100 seconds | MoneyPrinterTurbo owns a submitted job; the script polls its task ID, downloads the first completed video, and saves it to stash. A local stop cannot cancel the server job. |
+| `phone_call` | 1200 seconds | One outbound call, Vapi status polling and best-effort Stash/Canvas collection. Only terminal provider results finish the job; stopping observation does not hang up the call. |
 | `craft_image`, `craft_pdf`, `craft_photos`, `craft_video`, `craft_motion` | 1500 seconds | Craft Gateway owns durable jobs. The client observes for up to 1200 seconds and saves verified outputs. Inspect/collect or cancel through `craft_inspect`; stopping the observer does not cancel remote work. |
 
 Queue time counts toward these budgets. The three generators and social clips use a 4 GiB process address-space ceiling, 512 MiB per output file and 2 MiB captured-output limit. `save: false` is rejected for background media so successful replies can retain artifacts. Input resource metadata does not itself validate every reference/download; the skill loaders and process ceilings still apply. Background selection does not extend an individual provider request timeout.

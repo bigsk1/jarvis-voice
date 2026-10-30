@@ -19,8 +19,22 @@ from referencing import Registry
 from referencing.exceptions import Unresolvable
 
 from .local_contract import REMOTE_ADAPTER, SKILL_ADAPTERS, execution_settings
-from .models import MAX_ARGUMENT_BYTES, MAX_RESULT_BYTES, AdmissionDenied, LostLease, TaskError, canonical_json
-from .worker import CancellationRequested, Interrupted, KnownCancelled, KnownFailure, KnownStopped, UncertainOutcome
+from .models import (
+    MAX_ARGUMENT_BYTES,
+    MAX_RESULT_BYTES,
+    AdmissionDenied,
+    LostLease,
+    TaskError,
+    canonical_json,
+)
+from .worker import (
+    CancellationRequested,
+    Interrupted,
+    KnownCancelled,
+    KnownFailure,
+    KnownStopped,
+    UncertainOutcome,
+)
 
 
 def bounded_failure(result):
@@ -87,12 +101,25 @@ def restrict_child_environment(environment, policy, args, scratch):
 
 
 class LocalSkillRunner:
-    def __init__(self, root, bindings, *, child_environment_policies=None):
+    def __init__(self, root, bindings, *, child_environment_policies=None, permission_policies=None):
         self.root = Path(root).resolve()
         self.bindings = dict(bindings)
         # Trusted production bindings may restrict what a skill subprocess
         # inherits. Manifest JSON cannot widen this environment.
         self.child_environment_policies = dict(child_environment_policies or {})
+        self.permission_policies = dict(permission_policies or {})
+
+    def _permissions_allowed(self, name, adapter, permissions):
+        reviewed = self.permission_policies.get(name)
+        if reviewed is None:
+            return (permissions.get('dangerous') is False
+                    and permissions.get('auto_approve') is True
+                    and permissions.get('network') is (adapter == REMOTE_ADAPTER))
+        expected = reviewed.get('permissions', {})
+        return (set(reviewed) == {'tool', 'adapter', 'permissions'}
+                and reviewed.get('tool') == name and reviewed.get('adapter') == adapter
+                and set(permissions) == set(expected)
+                and all(permissions.get(key) is value for key, value in expected.items()))
 
     def policy(self, name):
         from tool_availability import check_tool_availability
@@ -121,9 +148,7 @@ class LocalSkillRunner:
             if (manifest.get('name') != name
                     or not effective_enabled(name, manifest.get('enabled', True), load_active_profile_overrides())
                     or not check_tool_availability(manifest).available
-                    or permissions.get('dangerous') is not False
-                    or permissions.get('auto_approve') is not True
-                    or permissions.get('network') is not (adapter == REMOTE_ADAPTER)):
+                    or not self._permissions_allowed(name, adapter, permissions)):
                 raise AdmissionDenied('Local skill is no longer permitted by current tool/profile policy')
             settings = execution_settings(manifest.get('execution', {}).get('background'))
             if settings['adapter'] != adapter:
@@ -142,6 +167,9 @@ class LocalSkillRunner:
                         'script_sha256': hashlib.sha256(script.read_bytes()).hexdigest(),
                         'adapter': adapter, 'proxy_policy': schema.proxy_policy,
                         'timeout_seconds': settings['timeout_seconds']}
+            if name in self.permission_policies:
+                reviewed = canonical_json(self.permission_policies[name], MAX_ARGUMENT_BYTES)
+                evidence['permission_policy_sha256'] = hashlib.sha256(reviewed.encode()).hexdigest()
             return schema, evidence
         except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
             if isinstance(exc, AdmissionDenied):
@@ -160,6 +188,7 @@ class LocalSkillRunner:
         from config_loader import config_scope
         from executor import ToolExecutor
         from tool_process import OutputLimitExceeded
+
         from .admission import media_job_overrides
 
         job = context.claim.job
@@ -232,6 +261,13 @@ class LocalSkillRunner:
                     # Preserve the exact returned representation for the worker's
                     # review before bounded_failure can shorten diagnostics.
                     context.unreviewed_tool_result = result if isinstance(result, dict) else None
+                if (name == 'phone_call' and isinstance(result, dict) and result.get('ok') is True
+                        and (result.get('completion') != 'completed'
+                             or not isinstance(result.get('data'), dict)
+                             or result['data'].get('status') not in ('ended', 'failed'))):
+                    raise UncertainOutcome(
+                        'The phone call has no confirmed terminal result. Check the existing call; '
+                        'no replacement call was started.', result=bounded_failure(result))
                 if (not isinstance(result, dict) or result.get('ok') is not True
                         or result.get('cancelled')):
                     confirmed_failure = (isinstance(result, dict) and result.get('ok') is False

@@ -358,7 +358,9 @@ class ToolExecutor:
         if tool_name == "youtube_video":
             return 900  # 15 minutes - YouTube video download can be slow if downloading 2hr video
         if tool_name == "phone_call":
-            return 900  # 15 min — aligns with VAPI_WAIT_TIMEOUT / wait_for_call_completion + Vapi maxDurationSeconds
+            # Provider submission, final polling, recording retrieval and Canvas
+            # saving happen outside the configured call-observation interval.
+            return max(1, get_int('VAPI_WAIT_TIMEOUT', 900)) + 450
         return 75 if self.mode == "local" else 60
 
     @staticmethod
@@ -435,7 +437,8 @@ class ToolExecutor:
             # Docling's selected background work is conversion/collection.
             # Read-only status calls must not recursively queue observer jobs.
             docling_check = tool_name == 'docling_convert' and args.get('action') in ('status', 'job')
-            if tool_name in background_context.selected and not docling_check:
+            phone_check = tool_name == 'phone_call' and args.get('action', 'call') != 'call'
+            if tool_name in background_context.selected and not (docling_check or phone_check):
                 if tool_name in self.excluded_tools:
                     return {'ok': False, 'error': 'Tool blocked for this request'}
                 try:

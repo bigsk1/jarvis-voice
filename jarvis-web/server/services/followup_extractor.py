@@ -622,8 +622,10 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'stash': ['space_id', 'file_id', 'name', 'mime_type', 'size_bytes'],
     'screenshot_url': ['url', 'screenshot_path'],
     'phone_call': [
-        'call_id', 'duration', 'recording_url', 'saved_to_canvas',
-        'canvas_location',
+        'call_id', 'duration', 'recording_url', 'recording_requires_auth', 'saved_to_canvas',
+        'canvas_location', 'stash_space_id', 'transcript_stash_ref', 'transcript_status',
+        'transcript_error', 'audio_stash_ref', 'audio_saved', 'audio_status', 'audio_error',
+        'filename', 'mime_type', 'status', 'call_failed', 'end_reason',
     ],
     # --- Knowledge/session refs ---
     'canvas': ['page_id', 'title'],
@@ -3123,7 +3125,7 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             continue
 
         extracted = {}
-        if key == 'generate_audio' or (
+        if key in {'generate_audio', 'phone_call'} or (
             key in {'generate_video', 'generate_avatar_video', 'heygen'}
             and payload.get('provider') == 'heygen'
         ):
@@ -3135,6 +3137,8 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 extracted['ok'] = False
             if isinstance(value.get('error'), str):
                 extracted['error'] = _truncate_followup_text(value['error'], 500)
+            if key == 'phone_call' and isinstance(value.get('ok'), bool):
+                extracted['ok'] = value['ok']
         if bound_arguments is not None:
             source_ref = _source_ref_for_run(key, payload, request_context)
             if source_ref:

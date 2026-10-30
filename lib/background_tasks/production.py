@@ -28,8 +28,23 @@ TRUSTED_BINDINGS = {
     'craft_motion': REMOTE_ADAPTER,
     'docling_convert': REMOTE_ADAPTER,
     'browser_use_cloud': REMOTE_ADAPTER,
+    'phone_call': REMOTE_ADAPTER,
     'browser_use': 'http_callback_v1',
     'apify_run_actor': 'apify_actor_v1',
+}
+
+# Outbound calls retain their dangerous/non-auto-approved manifest policy.
+# Only this reviewed tool/adapter pair may use that policy in the shared runner;
+# neither a manifest nor another binding may select the exception by itself.
+TRUSTED_PERMISSION_POLICIES = {
+    'phone_call': {
+        'tool': 'phone_call',
+        'adapter': REMOTE_ADAPTER,
+        'permissions': {
+            'dangerous': True, 'auto_approve': False, 'network': True,
+            'bash': False, 'filesystem': True,
+        },
+    },
 }
 
 # This provider observer is an external Python process. Give it only its own
@@ -93,6 +108,25 @@ _HEYGEN_CHILD_KEYS = frozenset({
 })
 CHILD_ENVIRONMENT_POLICIES['generate_avatar_video'] = {'always': _HEYGEN_CHILD_KEYS, 'if_true': {}}
 
+_PHONE_CHILD_KEYS = frozenset({
+    'PATH', 'PYTHONPATH', 'VIRTUAL_ENV', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'JARVIS_MODE',
+    'VAPI_API_KEY', 'VAPI_PHONE_NUMBER_ID', 'VAPI_ASSISTANT_ID', 'VAPI_DEFAULT_PERSONA',
+    'VAPI_LLM_PROVIDER', 'VAPI_LLM_MODEL', 'VAPI_LLM_REASONING_EFFORT',
+    'VAPI_VOICE_ID', 'VAPI_VOICE_MODEL', 'VAPI_FEMALE_VOICE_ID', 'VAPI_ELEVENLABS_KEY',
+    'VAPI_VOICEMAIL_ACTION', 'VAPI_WAIT_FOR_CALL', 'VAPI_WAIT_TIMEOUT', 'OWNER_NAME', 'PHONE_CONTACTS',
+    'ELEVENLABS_VOICE_ID', 'ELEVENLABS_TTS_VOICE', 'CANVAS_INTERNAL_URL', 'CANVAS_PUBLIC_URL',
+    'STASH_DIR', 'JARVIS_OVERRIDE_STASH_DIR', 'STASH_DEFAULT_TTL_DAYS',
+    'STASH_SOURCE_ARTIFACT_TTL_DAYS', 'STASH_GENERATED_MEDIA_TTL_DAYS',
+    'STASH_MAX_SPACE_SIZE_MB', 'STASH_MAX_TOTAL_SIZE_GB',
+    'STASH_CLEANUP_MAX_SPACES', 'STASH_CLEANUP_MAX_BYTES_MB',
+    'OLLAMA_BASE_URL', 'OLLAMA_EMBEDDING_FALLBACK_URL', 'OLLAMA_EMBEDDING_MODEL',
+    'OLLAMA_EMBEDDING_MODEL_DIGEST', 'OLLAMA_EMBEDDING_CONTEXT_WINDOW', 'OLLAMA_API_KEY',
+    'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
+    'LOCAL_PROXY', 'LOCAL_PROXY2', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+    'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+})
+CHILD_ENVIRONMENT_POLICIES['phone_call'] = {'always': _PHONE_CHILD_KEYS, 'if_true': {}}
+
 
 # Craft clients receive their own connection settings and Stash paths only.
 # This policy is separate from foreground manifest child_environment.
@@ -119,6 +153,7 @@ def runner():
         ROOT,
         {name: adapter for name, adapter in bindings().items() if adapter in SKILL_ADAPTERS},
         child_environment_policies=CHILD_ENVIRONMENT_POLICIES,
+        permission_policies=TRUSTED_PERMISSION_POLICIES,
     )
 
 

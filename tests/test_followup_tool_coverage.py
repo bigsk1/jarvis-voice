@@ -669,6 +669,13 @@ LOCAL_TOOL_SAMPLES = {
         {
             "call_id": "call_7",
             "duration": 92,
+            "recording_url": "https://api.vapi.ai/call/call_7/mono-recording",
+            "recording_requires_auth": True,
+            "stash_ref": "stash://space_phone/recording",
+            "audio_stash_ref": "stash://space_phone/recording",
+            "transcript_stash_ref": "stash://space_phone/transcript",
+            "audio_status": "saved",
+            "audio_saved": True,
             "saved_to_canvas": True,
             "canvas_location": "page_calls",
             "summary": "The recipient confirmed the appointment.",
@@ -2825,6 +2832,12 @@ def test_content_adapters_keep_handles_and_bound_large_bodies():
             "phone_call": {
                 "call_id": "call_7",
                 "canvas_location": "page_calls",
+                "recording_url": "https://api.vapi.ai/call/call_7/mono-recording",
+                "recording_requires_auth": True,
+                "transcript_stash_ref": "stash://space_phone/transcript",
+                "audio_status": "failed",
+                "audio_saved": False,
+                "audio_error": "The call recording could not be downloaded or stored.",
                 "summary": huge,
                 "transcript": huge,
             },
@@ -2849,11 +2862,45 @@ def test_content_adapters_keep_handles_and_bound_large_bodies():
         in result["pdf_read"]["text_excerpt"]
     )
     assert result["phone_call"]["canvas_location"] == "page_calls"
+    assert result["phone_call"]["recording_requires_auth"] is True
+    assert result["phone_call"]["transcript_stash_ref"] == "stash://space_phone/transcript"
+    assert result["phone_call"]["audio_saved"] is False
+    assert result["phone_call"]["audio_status"] == "failed"
+    assert result["phone_call"]["audio_error"] == "The call recording could not be downloaded or stored."
+    assert result["phone_call"]["recording_url"] == "https://api.vapi.ai/call/call_7/mono-recording"
     assert len(result["phone_call"]["transcript_excerpt"]) <= 2000
     assert (
         "content truncated for follow-up context"
         in result["phone_call"]["transcript_excerpt"]
     )
+
+
+@pytest.mark.parametrize("status_lookup", [False, True])
+def test_phone_followup_preserves_call_outcome_separately_from_lookup_success(status_lookup):
+    envelope = {
+        "ok": status_lookup,
+        "data": {
+            "call_id": "call_voicemail", "status": "ended", "call_failed": True,
+            "end_reason": "voicemail-reached", "summary": "Reached voicemail",
+            "transcript": "Please leave a message.",
+            "stash_ref": "stash://space_phone/recording",
+            "audio_saved": True, "audio_status": "saved",
+            "filename": "recording.wav", "mime_type": "audio/wav",
+        },
+    }
+    if not status_lookup:
+        envelope["completion"] = "completed"
+
+    result = followup.extract_followup_data({"phone_call": envelope})["phone_call"]
+
+    assert result["ok"] is status_lookup
+    assert result["status"] == "ended"
+    assert result["call_failed"] is True
+    assert result["end_reason"] == "voicemail-reached"
+    assert result["stash_ref"] == "stash://space_phone/recording"
+    assert result["audio_saved"] is True
+    if not status_lookup:
+        assert result["completion"] == "completed"
 
 
 def test_repeated_summaries_and_manage_intel_share_a_total_context_budget():

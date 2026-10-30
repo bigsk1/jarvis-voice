@@ -1,19 +1,24 @@
 {
   "enabled": true,
   "name": "phone_call",
-  "description": "📞 Make phone calls, call someone, ring, dial a number. Use when user says 'call my mom', 'call boss', 'phone Andrew', 'dial +1555...', 'ring my friend'. Jarvis calls on your behalf via Vapi.ai, has a conversation, and saves transcript. Actions: 'call' (make a phone call), 'status' (check result - 'what happened on that call?'), 'contacts' (save/list phone numbers). Call runs in background; ask 'what happened on the call' for results. Transcripts are auto saved to Canvas",
+  "description": "📞 Make phone calls, call someone, ring, dial a number. Use when user says 'call my mom', 'call boss', 'phone Andrew', 'dial +1555...', 'ring my friend', or gives a business phone number to call. Pass an unsaved number directly as recipient; no name or saved contact is required. Jarvis calls on your behalf via Vapi.ai and reports the result. Actions: 'call' (make a phone call), 'status' (check result - 'what happened on that call?'), 'list' (recent calls), 'contacts' (save/list phone numbers). Opted-in Web calls can use the remote background worker; status/list/contacts remain foreground. Otherwise server configuration controls waiting. Background progress reports call phases, not conversation text. Completed transcripts and available recordings save to Stash; audio Stash references use the existing player. Transcript saving to Canvas is automatic on observed completion; check saved_to_canvas. Missing audio is nonfatal; report audio_status/audio_error honestly. A pending call or delayed transcript should be inspected with 'status', not redialed. Recording URLs require authenticated backend retrieval.",
   "script": "phone_call.py",
   "parameters": {
     "type": "object",
     "properties": {
       "action": {
         "type": "string",
-        "enum": ["call", "status", "list", "contacts"],
+        "enum": [
+          "call",
+          "status",
+          "list",
+          "contacts"
+        ],
         "description": "Action: 'call' to make a phone call, 'status' to check a call's result, 'list' to see recent calls, 'contacts' to manage contacts"
       },
       "recipient": {
         "type": "string",
-        "description": "Who to call - can be a name from contacts (e.g., 'Boss', 'Andrew') or a phone number with country code (e.g., '+15551234567')"
+        "description": "Who to call: a saved contact name (e.g., 'Boss', 'Andrew') or a phone number supplied for this call. Pass unsaved business or personal numbers directly here; a name and contact creation are unnecessary. US area-code numbers default to +1; use +countrycode for other countries."
       },
       "task": {
         "type": "string",
@@ -25,8 +30,13 @@
       },
       "persona": {
         "type": "string",
-        "enum": ["default", "professional", "casual", "female"],
-        "description": "Persona/style for the call. 'default' is Jarvis (male), 'professional' is formal James (butler-style), 'casual' is relaxed Jay, 'female' is friendly Samantha"
+        "enum": [
+          "default",
+          "professional",
+          "casual",
+          "female"
+        ],
+        "description": "Persona/style for generated assistants. Omit to use the server's configured default. 'default' is Jarvis (male), 'professional' is formal James (butler-style), 'casual' is relaxed Jay, 'female' is friendly Samantha. A saved assistant uses its own persona."
       },
       "wait": {
         "type": "boolean",
@@ -51,8 +61,81 @@
     "dangerous": true,
     "bash": false,
     "network": true,
-    "filesystem": false,
+    "filesystem": true,
     "auto_approve": false
+  },
+  "child_environment": {
+    "mode": "restricted",
+    "allow": [
+      "VAPI_API_KEY",
+      "VAPI_PHONE_NUMBER_ID",
+      "VAPI_ASSISTANT_ID",
+      "VAPI_DEFAULT_PERSONA",
+      "VAPI_LLM_PROVIDER",
+      "VAPI_LLM_MODEL",
+      "VAPI_LLM_REASONING_EFFORT",
+      "VAPI_VOICE_ID",
+      "VAPI_VOICE_MODEL",
+      "VAPI_FEMALE_VOICE_ID",
+      "VAPI_ELEVENLABS_KEY",
+      "VAPI_VOICEMAIL_ACTION",
+      "VAPI_WAIT_FOR_CALL",
+      "VAPI_WAIT_TIMEOUT",
+      "STASH_DIR",
+      "STASH_DEFAULT_TTL_DAYS",
+      "STASH_SOURCE_ARTIFACT_TTL_DAYS",
+      "OWNER_NAME",
+      "PHONE_CONTACTS",
+      "ELEVENLABS_VOICE_ID",
+      "ELEVENLABS_TTS_VOICE",
+      "CANVAS_INTERNAL_URL",
+      "CANVAS_PUBLIC_URL",
+      "OLLAMA_BASE_URL",
+      "OLLAMA_EMBEDDING_FALLBACK_URL",
+      "OLLAMA_EMBEDDING_MODEL",
+      "OLLAMA_EMBEDDING_MODEL_DIGEST",
+      "OLLAMA_EMBEDDING_CONTEXT_WINDOW",
+      "OLLAMA_API_KEY"
+    ]
+  },
+  "execution": {
+    "background": {
+      "supported": true,
+      "adapter": "remote_skill_v1",
+      "completion_scope": "remote_work",
+      "timeout_seconds": 1200,
+      "progress_label": "Making phone call",
+      "limits": {
+        "memory_bytes": 4294967296,
+        "file_bytes": 67108864,
+        "input_bytes": 1048576,
+        "output_bytes": 2097152
+      },
+      "argument_constraints": {
+        "properties": {
+          "action": {
+            "const": "call"
+          },
+          "recipient": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "task": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "context": {
+            "type": "string",
+            "maxLength": 20000
+          }
+        },
+        "required": [
+          "recipient",
+          "task"
+        ]
+      }
+    }
   }
 }
-
