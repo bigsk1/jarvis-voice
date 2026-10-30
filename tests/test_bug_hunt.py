@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 import pytest
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
@@ -75,17 +74,82 @@ def test_tracked_allowlist_is_fail_closed(tmp_path):
         policy.resolve_read("../outside.txt")
 
 
-def test_symlink_reads_are_rejected_even_when_tracked(tmp_path):
+@pytest.mark.parametrize("relative", [
+    "filebrowser/compose.yaml",
+    "google-workspace/entrypoint.py",
+    "jarvis-cli/README.md",
+    "jarvis-craft-tools/craft_gateway/api.py",
+    "jarvis-firefox-extension/background.js",
+    "jarvis-firefox-extension/scripts/package.mjs",
+    "jarvis-firefox-extension/tests/talk-harness.cjs",
+    "jarvis-head/app.py",
+    "sqlitebrowser/start",
+    "jarvis",
+    "jarvis-local",
+    "docker-compose.browser.yml",
+    "docker-compose.google.yml",
+    "docker-compose.ollama.yml",
+    "constraints-security.txt",
+    "pyrefly.toml",
+    "setup_opencode_workspace.sh",
+])
+def test_current_public_components_are_readable_by_repo_tool(tmp_path, relative):
+    _write(tmp_path, relative, "current public implementation\n")
+    tool = BugHuntRepoTool(RepositoryPolicy(tmp_path, tracked_files={relative}))
+
+    result = tool.execute(
+        {"action": "read_lines", "path": relative},
+        allow_memory_write=False,
+    )
+
+    assert result["ok"] is True
+    assert result["content"] == "1: current public implementation"
+
+
+@pytest.mark.parametrize("component", [
+    "filebrowser",
+    "google-workspace",
+    "jarvis-cli",
+    "jarvis-craft-tools",
+    "jarvis-firefox-extension",
+    "jarvis-head",
+    "sqlitebrowser",
+])
+def test_new_components_still_reject_private_untracked_and_binary_files(tmp_path, component):
+    tracked = {
+        f"{component}/.env",
+        f"{component}/private.env",
+        f"{component}/contacts.json",
+        f"{component}/asset.png",
+    }
+    for relative in tracked | {f"{component}/untracked.py"}:
+        _write(tmp_path, relative, "must stay hidden\n")
+    policy = RepositoryPolicy(tmp_path, tracked_files=tracked)
+
+    for relative in tracked | {f"{component}/untracked.py"}:
+        with pytest.raises(PermissionError):
+            policy.resolve_read(relative)
+
+
+@pytest.mark.parametrize("relative", [
+    "lib/link.py",
+    "jarvis-craft-tools/craft_gateway/link.py",
+    "jarvis-firefox-extension/link.js",
+    "jarvis-head/link.py",
+    "jarvis",
+    "jarvis-local",
+])
+def test_symlink_reads_are_rejected_even_when_tracked(tmp_path, relative):
     outside = tmp_path.parent / "outside-bug-hunt.txt"
     outside.write_text("secret\n", encoding="utf-8")
-    link = tmp_path / "lib" / "link.py"
-    link.parent.mkdir(parents=True)
+    link = tmp_path / relative
+    link.parent.mkdir(parents=True, exist_ok=True)
     link.symlink_to(outside)
 
-    policy = RepositoryPolicy(tmp_path, tracked_files={"lib/link.py"})
+    policy = RepositoryPolicy(tmp_path, tracked_files={relative})
 
     with pytest.raises(PermissionError, match="Symlink"):
-        policy.resolve_read("lib/link.py")
+        policy.resolve_read(relative)
 
 
 def test_single_tool_lists_searches_and_reads_only_whitelisted_files(tmp_path):
@@ -402,7 +466,31 @@ def test_engine_can_create_xai_oauth_provider(tmp_path):
         api_key="api-key-present-but-oauth-wins",
         model="grok-4.5",
         auth_mode="oauth",
+        enable_search=False,
     )
+
+
+def test_xai_hunt_disables_inherited_server_side_search(tmp_path):
+    from config_loader import config_scope
+
+    engine = BugHuntEngine(
+        tmp_path,
+        provider_type="xai",
+        xai_auth_mode="api_key",
+        model="grok-4.5",
+        tracked_files=set(),
+    )
+
+    with (
+        config_scope("cloud", overrides={"XAI_SEARCH": "true", "XAI_API_KEY": "test-key"}),
+        patch("openai.OpenAI"),
+        patch("xai_sdk.Client") as server_side_client,
+    ):
+        provider = engine._create_provider()
+
+    assert provider.enable_search is False
+    assert provider.xai_client is None
+    server_side_client.assert_not_called()
 
 
 def test_default_ollama_model_is_pinned_independently_of_cloud_env(

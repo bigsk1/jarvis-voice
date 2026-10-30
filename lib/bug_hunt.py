@@ -16,7 +16,6 @@ from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-
 DEFAULT_MODEL = "glm-5.2:cloud"
 DEFAULT_PROVIDER = "ollama"
 MEMORY_RELATIVE_PATH = "docs/personal/bug-hunt-memory.md"
@@ -50,8 +49,14 @@ READABLE_ROOTS = {
     "api",
     "bin",
     "docker",
+    "filebrowser",
+    "google-workspace",
     "jarvis-canvas",
+    "jarvis-cli",
+    "jarvis-craft-tools",
     "jarvis-docs",
+    "jarvis-firefox-extension",
+    "jarvis-head",
     "jarvis-intelligence",
     "jarvis-memory",
     "jarvis-monitor",
@@ -61,6 +66,7 @@ READABLE_ROOTS = {
     "orchestrator",
     "services",
     "skills",
+    "sqlitebrowser",
     "systemd",
     "tests",
 }
@@ -74,15 +80,23 @@ ROOT_FILES = {
     "LICENSE",
     "README.md",
     "VERSION",
+    "constraints-security.txt",
+    "docker-compose.browser.yml",
+    "docker-compose.google.yml",
     "docker-compose.mcp.yml",
+    "docker-compose.ollama.yml",
     "docker-compose.yml",
     "docker.env.example",
     "install-system-deps.sh",
     "install.sh",
+    "jarvis",
+    "jarvis-local",
     "pyproject.toml",
+    "pyrefly.toml",
     "pyrightconfig.json",
     "requirements.txt",
     "setup.sh",
+    "setup_opencode_workspace.sh",
     "setup_tools.sh",
     "system-packages.txt",
     "update-aliases.sh",
@@ -92,6 +106,7 @@ ROOT_FILES = {
 TEXT_SUFFIXES = {
     "",
     ".cfg",
+    ".cjs",
     ".css",
     ".html",
     ".ini",
@@ -100,6 +115,7 @@ TEXT_SUFFIXES = {
     ".js",
     ".json",
     ".md",
+    ".mjs",
     ".py",
     ".service",
     ".sh",
@@ -668,6 +684,8 @@ class BugHuntEngine:
                 api_key=get_config_value("XAI_API_KEY"),
                 model=model,
                 auth_mode=self.xai_auth_mode,
+                # Keep the hunt limited to its bounded repository readers.
+                enable_search=False,
             )
             self.model = getattr(provider, "model", model)
             return provider
