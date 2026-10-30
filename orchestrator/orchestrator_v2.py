@@ -3898,7 +3898,7 @@ Your synthesized response:"""
     
     def _get_relevant_memories_bundle(self, transcript: str) -> dict[str, Any]:
         """
-        Fetch memories semantically relevant to the current query.
+        Fetch precise keyword matches and semantically relevant memories.
         Injected into context so LLM doesn't need to call search_memory/semantic_recall.
         
         Applies recency weighting: more recent memories rank slightly higher.
@@ -3950,24 +3950,6 @@ Your synthesized response:"""
                     return True
                 return is_eligible_for_auto_memory_inject(row)
 
-            def _is_intel_source(source: str) -> bool:
-                return bool(source and str(source).startswith('intel/'))
-
-            def _is_curated_intel(source: str) -> bool:
-                return source in {
-                    'intel/jarvis-tool-knowledge.md',
-                    'intel/jarvis-learned-lessons.md',
-                }
-
-            def _is_tooling_query(text: str) -> bool:
-                tooling_terms = [
-                    'tool', 'tools', 'provider', 'model', 'workflow', 'scheduler',
-                    'memory', 'intel', 'prompt', 'cache', 'retry', 'error', 'errors',
-                    'failed', 'failure', 'bug', 'issue', 'issues', 'quirk', 'limitation',
-                    'limitations', 'parameter', 'params', 'api', 'orchestrator', 'routing',
-                ]
-                return any(term in text for term in tooling_terms)
-            
             # Resolve up to all four canonical response-preference slots first.
             # These do not consume the query-retrieval budget below. Topic-specific
             # preferences (dog, Spotify) still go through semantic search only.
@@ -4018,28 +4000,6 @@ Your synthesized response:"""
                             (scope_scores.get(scope, 1.20), m.get('importance', 5), m, 'always')
                         )
 
-            # Curated intel should have a better chance to surface for technical/tooling queries,
-            # especially when exact tool names or provider quirks are involved.
-            if _is_tooling_query(transcript_lower):
-                intel_keyword_matches = [
-                    m for m in db.fts_search(
-                        transcript,
-                        limit=max(limit * (4 if type_filter_enabled else 1), 12),
-                    )
-                    if _is_intel_source(m.get('source', ''))
-                ]
-                for m in intel_keyword_matches:
-                    key = m.get('key', '')
-                    if key and key in seen_keys:
-                        continue
-                    if not _include_memory(m):
-                        continue
-                    if key:
-                        seen_keys.add(key)
-                    source_name = m.get('source', '')
-                    score = 1.08 if _is_curated_intel(source_name) else 0.96
-                    merged.append((score, m.get('importance', 5), m, 'intel'))
-
             # Exact lexical agreement is a parallel retrieval lane, not a
             # semantic fallback. Requiring every meaningful term keeps this
             # conservative enough for automatic prompt injection while still
@@ -4067,11 +4027,13 @@ Your synthesized response:"""
                     "source": m.get("source", ""),
                     "bucket": "keyword",
                     "score": round(score, 3),
-                    "similarity": 0.0,
+                    "similarity": None,
                 })
             
-            # Semantic search: cast a slightly wider net, then keep rows with adjusted >= threshold
-            # (AUTO_MEMORY_SIMILARITY_THRESHOLD applies to the recency-weighted score, not raw embed alone).
+            # MemoryDB already fuses dense and keyword retrieval. Automatic
+            # injection requires precise lexical agreement or cosine * recency
+            # at the configured threshold. Broad OR/LIKE fallback hits and
+            # source labels do not establish relevance.
             candidate_limit = min(limit * (5 if type_filter_enabled else 2), 50)
             candidate_threshold = min(threshold - 0.05, 0.30)
             memories = db.semantic_search(
@@ -4091,7 +4053,8 @@ Your synthesized response:"""
                     continue
                 if not _include_memory(m):
                     continue
-                sim = m.get('similarity', 0)
+                similarity = m.get('similarity')
+                sim = similarity if similarity is not None else 0
                 importance = m.get('importance', 5)
                 recency_factor = 1.0
                 source_name = m.get('source', '')
@@ -4118,25 +4081,21 @@ Your synthesized response:"""
                         except (ValueError, TypeError, AttributeError):
                             pass
                 adjusted = sim * recency_factor
-                if _is_intel_source(source_name):
-                    adjusted += 0.05
-                    if _is_curated_intel(source_name):
-                        adjusted += 0.07
                 semantic_candidates.append({
                     "key": key,
                     "category": m.get("category", ""),
                     "source": source_name,
-                    "bucket": 'intel' if _is_intel_source(source_name) else 'semantic',
+                    "bucket": 'semantic',
                     "score": round(float(adjusted or 0), 3),
-                    "similarity": round(float(sim or 0), 3),
+                    "similarity": round(float(similarity), 3) if similarity is not None else None,
                 })
-                if adjusted >= threshold:
+                if similarity is not None and adjusted >= threshold:
                     if key:
                         seen_keys.add(key)
-                    merged.append((adjusted, importance, m, 'intel' if _is_intel_source(source_name) else 'semantic'))
+                    merged.append((adjusted, importance, m, 'semantic'))
             
             # Canonical preferences are a separate always-applied lane. The
-            # retrieval limit caps only Intel/keyword/semantic matches.
+            # retrieval limit caps only keyword/semantic matches.
             active_preferences.sort(key=lambda x: (x[0], x[1]), reverse=True)
             merged.sort(key=lambda x: (x[0], x[1]), reverse=True)
             top = active_preferences + merged[:limit]
@@ -4148,13 +4107,14 @@ Your synthesized response:"""
                 if len(top_candidates) >= min(max(limit, 3), 5):
                     break
             for rank_score, _, m, source in merged[: min(max(limit, 3), 5)]:
+                similarity = m.get("similarity")
                 candidate = {
                     "key": m.get("key", ""),
                     "category": m.get("category", ""),
                     "source": m.get("source", ""),
                     "bucket": source,
                     "score": round(float(rank_score or 0), 3),
-                    "similarity": round(float(m.get("similarity") or 0), 3),
+                    "similarity": round(float(similarity), 3) if similarity is not None else None,
                 }
                 if not any(existing.get("key") == candidate["key"] for existing in top_candidates):
                     top_candidates.append(candidate)
@@ -4211,14 +4171,6 @@ Your synthesized response:"""
                     slot = m.get('preference_slot') or m.get('key', '')
                     scope = m.get('preference_scope', 'persistent')
                     match_hint = f"active_pref slot={slot} scope={scope} rank={rank_score:.2f}"
-                elif source == "intel":
-                    # Intel via semantic search carries similarity; FTS intel hits do not
-                    if raw_embed > 0:
-                        match_hint = f"intel_semantic embed={raw_embed:.2f} rank={rank_score:.2f}"
-                    elif _is_curated_intel(source_name):
-                        match_hint = f"intel_curated rank={rank_score:.2f}"
-                    else:
-                        match_hint = f"intel_kw rank={rank_score:.2f}"
                 elif source == "keyword":
                     match_hint = f"keyword_exact rank={rank_score:.2f}"
                 else:
@@ -4256,7 +4208,7 @@ Your synthesized response:"""
                 "Other lines are semantic or exact-keyword matches for this query (not necessarily instructions); use when relevant and ignore if off-topic or stale.",
                 "If this block already answers the question, use it directly. Call search_memory or semantic_recall only if you need broader recall than what is shown here.",
                 "Freshness note: For live market/weather questions, newer live tool calls outrank older stored memory.",
-                f"Higher rank = stronger fit. embed = cosine; semantic rank includes recency (semantic rows need adjusted rank ≥ {threshold:.2f}); keyword_exact means every meaningful query term matched.",
+                f"Rank is an ordering weight, not confidence. embed = cosine; semantic rank includes recency (semantic rows need adjusted rank ≥ {threshold:.2f}); keyword_exact means every meaningful query term matched.",
                 ""
             ] + memory_lines + ["==="]
             return {

@@ -238,7 +238,7 @@ sqlite3 data/jarvis_memory.db "DELETE FROM knowledge_base WHERE key='favorite_co
 - **Always-include**: At most one active value for each canonical response slot (`how_to_address_user`, `response_style`, `preferred_language`, `response_tone`). All four are allowed by default and do not consume `AUTO_MEMORY_LIMIT`, which applies only to query-retrieval hits.
 - **Preference lifecycle**: Persistent values are the baseline. A matching session preference overrides it for that chat; an unexpired temporary preference overrides it across chats until `expires_at`/`ttl_minutes`. New writes use canonical keys, and newest wins within the same slot/scope regardless of importance.
 - **Conflict precedence**: Current-turn instruction → session → temporary → persistent → Profile Card/semantic memory/Intelligence. Profile Card search rows are not auto-injected because the exact card is already in the router and synthesis prompts.
-- **Semantic search**: Topic-specific memories (dog name, Spotify playlist, etc.) only when relevant to the current query.
+- **Query relevance**: Topic-specific memories qualify through precise FTS5 keyword agreement or semantic similarity after recency weighting. Intel follows the same checks; its source does not grant a score bonus or bypass the threshold. Broad keyword-only matches are excluded from automatic injection even when embeddings are unavailable.
 - **Type filter** (`AUTO_MEMORY_TYPE_FILTER_ENABLED`): Excludes `artifact` and `transient` rows (stash/canvas uploads, session scratch). Legacy rows without labels are classified on the fly; run `./bin/backfill-memory-types` once to stamp metadata.
 - **Recency weighting**: Recent memories rank slightly higher; older ones fade.
 

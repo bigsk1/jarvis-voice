@@ -88,7 +88,11 @@ class LLMLoggerProvenanceTests(unittest.TestCase):
                     "limit": 2,
                     "candidate_count": 3,
                     "injected_count": 0,
-                    "top_candidates": [{"key": "gift_memory", "score": 0.41}],
+                    "top_candidates": [
+                        {"key": "gift_memory", "score": 0.41, "similarity": 0.41},
+                        {"key": "exact_keyword_memory", "score": 1.0, "similarity": None},
+                        {"key": "zero_cosine_memory", "score": 0.0, "similarity": 0.0},
+                    ],
                 },
                 "learning_insights": {
                     "injected": True,

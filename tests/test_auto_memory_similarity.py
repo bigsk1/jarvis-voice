@@ -115,49 +115,6 @@ def parse_sweep_values(raw: str) -> list[float]:
     return sorted(set(values))
 
 
-def is_intel_source(source: str) -> bool:
-    return bool(source and str(source).startswith("intel/"))
-
-
-def is_curated_intel(source: str) -> bool:
-    return source in {
-        "intel/jarvis-tool-knowledge.md",
-        "intel/jarvis-learned-lessons.md",
-    }
-
-
-def is_tooling_query(text: str) -> bool:
-    tooling_terms = [
-        "tool",
-        "tools",
-        "provider",
-        "model",
-        "workflow",
-        "scheduler",
-        "memory",
-        "intel",
-        "prompt",
-        "cache",
-        "retry",
-        "error",
-        "errors",
-        "failed",
-        "failure",
-        "bug",
-        "issue",
-        "issues",
-        "quirk",
-        "limitation",
-        "limitations",
-        "parameter",
-        "params",
-        "api",
-        "orchestrator",
-        "routing",
-    ]
-    return any(term in text for term in tooling_terms)
-
-
 def is_no_preference(value: str) -> bool:
     normalized = (value or "").strip().lower()
     if not normalized:
@@ -273,13 +230,11 @@ def collect_auto_memory_diagnostics(
     profile_card_enabled: bool = True,
 ) -> dict:
     now = datetime.now()
-    transcript_lower = query.lower()
     seen_keys = set()
     merged = []
     active_preferences = []
     semantic_candidates = []
     always_candidates = []
-    intel_candidates = []
     keyword_candidates = []
 
     def include_memory(memory: dict, *, allow_active_preference: bool = False) -> bool:
@@ -328,39 +283,6 @@ def collect_auto_memory_diagnostics(
             )
             always_candidates.append(entry)
             active_preferences.append(entry)
-
-    if is_tooling_query(transcript_lower):
-        intel_matches = [
-            memory
-            for memory in db.fts_search(query, limit=max(limit, 6))
-            if is_intel_source(memory.get("source", ""))
-        ]
-        for memory in intel_matches:
-            key = memory.get("key", "")
-            duplicate = bool(key and key in seen_keys)
-            if not include_memory(memory):
-                continue
-            if key and not duplicate:
-                seen_keys.add(key)
-            source_name = memory.get("source", "")
-            adjusted_score = 1.08 if is_curated_intel(source_name) else 0.96
-            entry = build_entry(
-                memory,
-                bucket="intel",
-                base_similarity=memory.get("similarity"),
-                adjusted_score=adjusted_score,
-                threshold=threshold,
-                importance=memory.get("importance", 5),
-                recency_factor=1.0,
-                recency_band="fts",
-                include=not duplicate,
-                reason="keyword intel boost" if not duplicate else "duplicate of prior key",
-                query_source="fts_intel",
-                duplicate=duplicate,
-            )
-            intel_candidates.append(entry)
-            if not duplicate:
-                merged.append(entry)
 
     for rank, memory in enumerate(
         db.fts_search_precise(query, limit=max(limit * 2, 8)),
@@ -416,19 +338,15 @@ def collect_auto_memory_diagnostics(
         importance = memory.get("importance", 5)
         factor, band = recency_factor_for(memory, now, recency_enabled)
         adjusted = (base_similarity or 0.0) * factor
-        source_name = memory.get("source", "")
-        if is_intel_source(source_name):
-            adjusted += 0.05
-            if is_curated_intel(source_name):
-                adjusted += 0.07
-
         duplicate = bool(key and key in seen_keys)
-        if key and not duplicate:
+        include = base_similarity is not None and adjusted >= threshold and not duplicate
+        if key and include:
             seen_keys.add(key)
-        include = adjusted >= threshold and not duplicate
 
         if duplicate:
             reason = "duplicate of already-selected key"
+        elif base_similarity is None:
+            reason = "no cosine evidence"
         elif adjusted >= threshold:
             reason = "passes final threshold"
         else:
@@ -481,7 +399,6 @@ def collect_auto_memory_diagnostics(
         "session_id": session_id,
         "profile_card_enabled": profile_card_enabled,
         "always_candidates": always_candidates,
-        "intel_candidates": intel_candidates,
         "keyword_candidates": keyword_candidates,
         "semantic_candidates": semantic_candidates,
         "injected": injected,
