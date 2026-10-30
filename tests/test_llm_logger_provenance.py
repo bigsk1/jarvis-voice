@@ -260,6 +260,67 @@ class LLMLoggerProvenanceTests(unittest.TestCase):
             self.assertEqual(entry["cache_write_cost_usd"], 0.305913)
             self.assertEqual(entry["cost_usd"], 0.316313)
 
+    def test_anthropic_response_diagnostics_exclude_raw_content(self):
+        for stop_reason in ("max_tokens", "pause_turn", None):
+            with self.subTest(stop_reason=stop_reason), tempfile.TemporaryDirectory() as tmpdir:
+                logger = LLMLogger(log_dir=tmpdir)
+                blocks = {"thinking": 1, "server_tool_use": 1}
+                logger.log_llm_call(
+                    provider="anthropic",
+                    model="claude-opus-5-5",
+                    prompt_type="routing",
+                    messages=[],
+                    response_text="Safe response",
+                    tool_call=None,
+                    usage_info={
+                        "anthropic_stop_reason": stop_reason,
+                        "anthropic_max_tokens": 8192,
+                        "anthropic_content_blocks_by_type": blocks,
+                        "anthropic_raw_content": [{
+                            "type": "thinking",
+                            "thinking": "private-thinking-marker",
+                            "signature": "private-signature-marker",
+                        }],
+                    },
+                    thinking="private-thinking-marker",
+                    duration_ms=12,
+                )
+
+                raw_log = logger.log_file.read_text().strip()
+                entry = json.loads(raw_log)
+                self.assertEqual(entry["anthropic_stop_reason"], stop_reason)
+                self.assertEqual(entry["anthropic_max_tokens"], 8192)
+                self.assertEqual(entry["anthropic_content_blocks_by_type"], blocks)
+                self.assertTrue(entry["response"]["has_thinking"])
+                for field in ("input_tokens", "output_tokens", "total_tokens", "reasoning_tokens"):
+                    self.assertIsNone(entry[field])
+                self.assertNotIn("private-thinking-marker", raw_log)
+                self.assertNotIn("private-signature-marker", raw_log)
+                self.assertNotIn("anthropic_raw_content", entry)
+
+    def test_anthropic_response_diagnostics_are_provider_specific(self):
+        for provider in ("openai", "xai", "ollama"):
+            with self.subTest(provider=provider), tempfile.TemporaryDirectory() as tmpdir:
+                logger = LLMLogger(log_dir=tmpdir)
+                logger.log_llm_call(
+                    provider=provider,
+                    model="test-model",
+                    prompt_type="routing",
+                    messages=[],
+                    response_text="ok",
+                    tool_call=None,
+                    usage_info={
+                        "anthropic_stop_reason": "max_tokens",
+                        "anthropic_max_tokens": 8192,
+                        "anthropic_content_blocks_by_type": {"text": 1},
+                    },
+                    thinking=None,
+                    duration_ms=12,
+                )
+
+                entry = json.loads(logger.log_file.read_text().strip())
+                self.assertFalse(any(key.startswith("anthropic_") for key in entry))
+
 
 if __name__ == "__main__":
     unittest.main()

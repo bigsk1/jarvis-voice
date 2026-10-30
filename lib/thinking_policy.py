@@ -104,11 +104,18 @@ def get_catalog_thinking_profile(
             if isinstance(effort, dict)
             and effort.get(level, {}).get("supported")
         )
+        types = thinking.get("types", {})
+        disabled = types.get("disabled", {}) if isinstance(types, dict) else {}
+        between_tools = types.get("between_tools", {}) if isinstance(types, dict) else {}
+        disable_supported = bool(
+            disabled.get("supported", True) or between_tools.get("supported")
+        )
         return ModelThinkingOverride(
             supported=True,
-            disable_supported=True,
+            disable_supported=disable_supported,
             levels=levels,
             default_level=(levels[-1] if levels else None),
+            disabled_fallback_level=(levels[0] if levels and not disable_supported else None),
         )
 
     return None

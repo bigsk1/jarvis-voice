@@ -8,7 +8,7 @@ import sys
 import json
 import time
 import hashlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from abc import ABC, abstractmethod
 
 # Prefer the system resolver over c-ares for xAI/gRPC DNS stability.
@@ -29,10 +29,16 @@ from ollama_utils import (
 )
 from provider_tool_policy import server_side_tools_disabled
 
+if TYPE_CHECKING:
+    from thinking_policy import ThinkingRequest
+
 
 _USAGE_REQUEST_DIAGNOSTIC_KEYS = frozenset({
     "reasoning_effort_sent",
     "xai_reasoning_effort",
+    "anthropic_stop_reason",
+    "anthropic_max_tokens",
+    "anthropic_content_blocks_by_type",
 })
 
 
@@ -585,7 +591,7 @@ class AnthropicProvider(LLMProvider):
     Features:
     - Prompt caching (90% cost reduction on cache hits)
     - Extended thinking mode (Claude Sonnet 4+)
-    - Web search tool when ANTHROPIC_SEARCH=true (requires beta header)
+    - Native web search when ANTHROPIC_SEARCH=true
     """
     
     def __init__(
@@ -619,6 +625,20 @@ class AnthropicProvider(LLMProvider):
         Uses prompt caching for system prompt (90% cost reduction on cache hits).
         """
         try:
+            request_config, _ = self._anthropic_request_config(enable_thinking=False)
+            if max_tokens is not None:
+                manual = request_config.get("thinking", {})
+                if manual.get("type") == "enabled" and manual["budget_tokens"] >= max_tokens:
+                    if max_tokens > 1024:
+                        # Anthropic requires budget_tokens >= 1024 and strictly
+                        # below max_tokens. Preserve a valid caller-supplied cap.
+                        request_config["thinking"] = {**manual, "budget_tokens": max_tokens - 1}
+                    else:
+                        # A small hard cap cannot fit manual thinking. These
+                        # audited legacy models support ordinary text replies.
+                        from thinking import get_anthropic_request_config
+                        request_config = get_anthropic_request_config(self.model, False)
+                request_config["max_tokens"] = max_tokens
             # Enable prompt caching for system prompt
             system_blocks = [
                 {
@@ -630,19 +650,67 @@ class AnthropicProvider(LLMProvider):
             
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=max_tokens or 1024,
+                **request_config,
                 system=system_blocks,
                 messages=[{"role": "user", "content": message}]
             )
+
+            response_error = self._anthropic_response_error(
+                response, max_tokens=request_config["max_tokens"],
+            )
+            if response_error:
+                return response_error
             
             text_content = self._collect_anthropic_text_blocks(response.content)
-            if text_content:
+            if text_content.strip():
                 return text_content
             
-            return "No response from Claude"
+            return self._anthropic_empty_response_error(response)
         except Exception as e:
             print(f"Anthropic API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
+
+    def _anthropic_request_config(
+        self, *, enable_thinking: bool,
+    ) -> "tuple[dict[str, Any], ThinkingRequest]":
+        """Separate visible traces from the model's supported generation settings."""
+        from config_loader import get_config_value
+        from thinking import get_anthropic_request_config
+
+        profile = self._model_thinking_profile("anthropic")
+        legacy_effort = (
+            str(get_config_value("ANTHROPIC_EFFORT", "") or "").strip().lower()
+            if profile and enable_thinking else None
+        )
+        request = self._resolve_model_thinking(
+            "anthropic", show_trace=enable_thinking,
+            unprofiled_value=bool(enable_thinking), legacy_level=legacy_effort,
+        )
+        return get_anthropic_request_config(
+            self.model, request.value, show_trace=request.show_trace,
+        ), request
+
+    @staticmethod
+    def _anthropic_response_error(response: Any, *, max_tokens: int) -> str | None:
+        """Never execute a truncated tool call or report an unfinished turn as complete."""
+        stop_reason = getattr(response, "stop_reason", None)
+        if stop_reason == "max_tokens":
+            return (
+                f"Error: Anthropic response stopped at max_tokens={max_tokens} "
+                "(stop_reason=max_tokens)."
+            )
+        if stop_reason == "pause_turn":
+            return "Error: Anthropic server-side work is incomplete (stop_reason=pause_turn)."
+        if stop_reason == "model_context_window_exceeded":
+            return "Error: Anthropic response stopped because context length exceeded (stop_reason=model_context_window_exceeded)."
+        if stop_reason == "refusal":
+            return "Error: Anthropic refused the request (stop_reason=refusal)."
+        return None
+
+    @staticmethod
+    def _anthropic_empty_response_error(response: Any) -> str:
+        stop_reason = getattr(response, "stop_reason", None) or "unknown"
+        return f"Error: Anthropic returned no usable text or tool call (stop_reason={stop_reason})."
 
     @staticmethod
     def _collect_anthropic_text_blocks(blocks: list[Any]) -> str:
@@ -680,19 +748,8 @@ class AnthropicProvider(LLMProvider):
         """
         reasoning_effort_sent = None
         try:
-            from config_loader import get_config_value
-
-            profile = self._model_thinking_profile("anthropic")
-            legacy_effort = (
-                str(get_config_value("ANTHROPIC_EFFORT", "") or "").strip().lower()
-                if profile and enable_thinking
-                else None
-            )
-            thinking_request = self._resolve_model_thinking(
-                "anthropic",
-                show_trace=enable_thinking,
-                unprofiled_value=bool(enable_thinking),
-                legacy_level=legacy_effort,
+            request_config, thinking_request = self._anthropic_request_config(
+                enable_thinking=enable_thinking,
             )
 
             # Enable prompt caching for system prompt
@@ -740,14 +797,9 @@ class AnthropicProvider(LLMProvider):
                 if os.environ.get('JARVIS_DEBUG'):
                     print("DEBUG: Added Anthropic web search tool", file=sys.stderr)
             
-            # Add thinking parameter if enabled and supported
-            # Note: max_tokens must be > thinking.budget_tokens (Anthropic requirement)
-            # Base: 1024 for normal responses, 8192 for thinking mode (generous for complex tasks)
-            base_max_tokens = 1024
-            
             api_params = {
                 "model": self.model,
-                "max_tokens": base_max_tokens,
+                **request_config,
                 "system": system_blocks,
                 "messages": messages,
             }
@@ -764,38 +816,19 @@ class AnthropicProvider(LLMProvider):
             if extra_headers:
                 api_params["extra_headers"] = extra_headers
             
-            # Enable extended thinking for supported models
-            if thinking_request.value:
-                from thinking import get_thinking_config
-                thinking_config = get_thinking_config(
-                    "anthropic",
-                    self.model,
-                    effort_override=(
-                        thinking_request.value
-                        if isinstance(thinking_request.value, str)
-                        else None
-                    ),
-                )
-                if thinking_config:
-                    api_params["thinking"] = thinking_config["thinking"]
-                    if thinking_config.get("output_config"):
-                        api_params["output_config"] = thinking_config["output_config"]
-                        reasoning_effort_sent = thinking_config["output_config"].get("effort")
-                    api_params["max_tokens"] = thinking_config.get("max_tokens", base_max_tokens)
-
-                    if os.environ.get('JARVIS_DEBUG'):
-                        print(f"DEBUG: Thinking enabled! Config: {thinking_config}", file=sys.stderr)
-                        print(f"DEBUG: max_tokens set to: {api_params['max_tokens']}", file=sys.stderr)
-            
+            reasoning_effort_sent = request_config.get("output_config", {}).get("effort")
             response = self.client.messages.create(**api_params)
-            
-            # Debug: Show what we got back
+            block_counts: dict[str, int] = {}
+            for block in response.content:
+                block_type = getattr(block, "type", "unknown")
+                block_counts[block_type] = block_counts.get(block_type, 0) + 1
+            stop_reason = getattr(response, "stop_reason", None)
             if os.environ.get('JARVIS_DEBUG'):
-                print(f"DEBUG: Response has thinking attr: {hasattr(response, 'thinking')}", file=sys.stderr)
-                if hasattr(response, 'thinking'):
-                    print(f"DEBUG: Thinking content: {response.thinking}", file=sys.stderr)
-                print(f"DEBUG: Response type: {type(response)}", file=sys.stderr)
-                print(f"DEBUG: Response dir: {[x for x in dir(response) if not x.startswith('_')]}", file=sys.stderr)
+                print(
+                    f"DEBUG: Anthropic stop_reason={stop_reason}, "
+                    f"max_tokens={api_params['max_tokens']}, blocks={block_counts}",
+                    file=sys.stderr,
+                )
             
             # Extract thinking if present
             thinking_text = None
@@ -870,10 +903,27 @@ class AnthropicProvider(LLMProvider):
                     usage_info["server_side_tools"] = {
                         "SERVER_SIDE_TOOL_WEB_SEARCH": web_search_requests
                     }
+                details = getattr(response.usage, "output_tokens_details", None)
+                thinking_tokens = (
+                    details.get("thinking_tokens") if isinstance(details, dict)
+                    else getattr(details, "thinking_tokens", None)
+                )
+                if isinstance(thinking_tokens, int) and not isinstance(thinking_tokens, bool):
+                    usage_info["reasoning_tokens"] = thinking_tokens
             usage_info = _with_reasoning_effort_sent(
                 usage_info,
                 reasoning_effort_sent,
+            ) or {}
+            usage_info.update({
+                "anthropic_stop_reason": stop_reason,
+                "anthropic_max_tokens": api_params["max_tokens"],
+                "anthropic_content_blocks_by_type": block_counts,
+            })
+            response_error = self._anthropic_response_error(
+                response, max_tokens=api_params["max_tokens"],
             )
+            if response_error:
+                return response_error, None, usage_info, thinking_text
             
             # Anthropic may return BOTH text AND tool_use blocks. Parallel tool
             # use is disabled above, but retain a visible deterministic fallback
@@ -904,10 +954,10 @@ class AnthropicProvider(LLMProvider):
             
             # Otherwise return text response
             text_content = self._collect_anthropic_text_blocks(response.content)
-            if text_content:
+            if text_content.strip():
                 return text_content, None, usage_info, thinking_text
             
-            return "No response from Claude", None, usage_info, thinking_text
+            return self._anthropic_empty_response_error(response), None, usage_info, thinking_text
             
         except Exception as e:
             print(f"Anthropic API error: {e}", file=sys.stderr)

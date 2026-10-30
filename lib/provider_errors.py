@@ -181,6 +181,32 @@ def classify_provider_error(text: str | None) -> ProviderErrorInfo:
     sanitized = sanitize_provider_error(text)
     lowered = sanitized.lower()
 
+    if lowered.startswith("error: anthropic "):
+        if "(stop_reason=max_tokens)" in lowered:
+            return ProviderErrorInfo(
+                kind="output_limit",
+                friendly_message="Anthropic reached its output-token limit before completing the response.",
+                raw_preview=sanitized,
+            )
+        if "(stop_reason=pause_turn)" in lowered:
+            return ProviderErrorInfo(
+                kind="incomplete",
+                friendly_message="Anthropic paused server-side work before completing the response.",
+                raw_preview=sanitized,
+            )
+        if "(stop_reason=refusal)" in lowered:
+            return ProviderErrorInfo(
+                kind="refusal",
+                friendly_message="Anthropic declined the request.",
+                raw_preview=sanitized,
+            )
+        if lowered.startswith("error: anthropic returned no usable text or tool call "):
+            return ProviderErrorInfo(
+                kind="empty_response",
+                friendly_message="Anthropic returned no usable response.",
+                raw_preview=sanitized,
+            )
+
     if "content violates usage guidelines" in lowered or "safety_check_type_" in lowered:
         return ProviderErrorInfo(
             kind="safety",

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Opt-in provider thinking configuration, extraction, display, and logging."""
-import os
 import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -114,6 +114,57 @@ def _anthropic_effort(model: str, requested_override: str | None = None) -> str 
     return next(level for level in ("xhigh", "max", "high", "medium", "low") if level in supported)
 
 
+def get_anthropic_request_config(
+    model: str,
+    value: bool | str | None,
+    *,
+    show_trace: bool = False,
+) -> dict[str, Any]:
+    """Build audited thinking parameters and an appropriate output budget.
+
+    Logical off disables upfront thinking where supported. Always-on models
+    instead use their lowest audited effort; hiding a trace never disables it.
+    """
+    capabilities = _anthropic_thinking_capabilities(model)
+    if not is_thinking_supported("anthropic", model):
+        return {"max_tokens": 1024}
+
+    disabled = value is None or value is False or (
+        isinstance(value, str) and value.lower() in {"off", "none", "false", "disabled"}
+    )
+    if disabled:
+        if _anthropic_thinking_type_supported(model, "between_tools"):
+            return {
+                "thinking": {"type": "between_tools"},
+                "output_config": {"effort": "low"},
+                "max_tokens": 4096,
+            }
+        types = capabilities.get("types", {})
+        disabled_type = types.get("disabled", {}) if isinstance(types, dict) else {}
+        if disabled_type.get("supported", True):
+            return {"thinking": {"type": "disabled"}, "max_tokens": 1024}
+
+    if uses_adaptive_thinking("anthropic", model):
+        effort = _anthropic_effort(
+            model,
+            requested_override="low" if disabled else value if isinstance(value, str) else None,
+        )
+        config: dict[str, Any] = {
+            "thinking": {
+                "type": "adaptive",
+                "display": "summarized" if show_trace else "omitted",
+            },
+            "max_tokens": ANTHROPIC_ADAPTIVE_MAX_TOKENS,
+        }
+        if effort:
+            config["output_config"] = {"effort": effort}
+        return config
+    return {
+        "thinking": {"type": "enabled", "budget_tokens": 2000},
+        "max_tokens": 8000,
+    }
+
+
 def get_thinking_config(
     provider: str,
     model: str,
@@ -132,23 +183,9 @@ def get_thinking_config(
     if not is_thinking_supported(provider, model):
         return None
     
-    if provider.lower() == "anthropic":
-        if uses_adaptive_thinking(provider, model):
-            config = {
-                "thinking": {"type": "adaptive", "display": "summarized"},
-                "max_tokens": ANTHROPIC_ADAPTIVE_MAX_TOKENS,
-            }
-            effort = _anthropic_effort(model, requested_override=effort_override)
-            if effort:
-                config["output_config"] = {"effort": effort}
-            return config
-        if _anthropic_thinking_type_supported(model, "enabled"):
-            return {
-                "thinking": {"type": "enabled", "budget_tokens": 2000},
-                "max_tokens": 8000,
-            }
-
-    return None
+    return get_anthropic_request_config(
+        model, effort_override if effort_override is not None else True, show_trace=True,
+    )
 
 
 def extract_thinking(response: Any, provider: str) -> str | None:

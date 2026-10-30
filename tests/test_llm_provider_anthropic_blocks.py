@@ -12,7 +12,7 @@ from unittest.mock import patch
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
-from llm_provider import AnthropicProvider
+from llm_provider import AnthropicProvider, has_usage_accounting_data
 from model_prompt_overrides import ModelThinkingOverride
 
 
@@ -54,7 +54,8 @@ class AnthropicBlockHandlingTests(unittest.TestCase):
         )
         self.assertEqual(text, "Hello!")
         self.assertIsNone(tool_call)
-        self.assertIsNone(usage)
+        self.assertFalse(has_usage_accounting_data(usage))
+        self.assertEqual(usage["anthropic_content_blocks_by_type"], {"text": 1})
         self.assertIsNone(thinking)
 
     def test_tool_requests_disable_parallel_tool_use(self):

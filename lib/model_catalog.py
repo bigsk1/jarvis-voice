@@ -64,7 +64,32 @@ _ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH = {
     "structured_outputs": {"supported": True},
     "thinking": {
         "supported": True,
-        "types": {"adaptive": {"supported": True}, "enabled": {"supported": False}},
+        "types": {
+            "adaptive": {"supported": True}, "enabled": {"supported": False},
+            "disabled": {"supported": True}, "between_tools": {"supported": False},
+        },
+    },
+}
+
+_ANTHROPIC_CAPABILITIES_ALWAYS_ON = {
+    **_ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH,
+    "thinking": {
+        "supported": True,
+        "types": {
+            **_ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH["thinking"]["types"],
+            "disabled": {"supported": False},
+        },
+    },
+}
+
+_ANTHROPIC_CAPABILITIES_SONNET_5_5 = {
+    **_ANTHROPIC_CAPABILITIES_ALWAYS_ON,
+    "thinking": {
+        "supported": True,
+        "types": {
+            **_ANTHROPIC_CAPABILITIES_ALWAYS_ON["thinking"]["types"],
+            "between_tools": {"supported": True},
+        },
     },
 }
 
@@ -76,7 +101,10 @@ _ANTHROPIC_CAPABILITIES_ADAPTIVE_AND_ENABLED = {
     },
     "thinking": {
         "supported": True,
-        "types": {"adaptive": {"supported": True}, "enabled": {"supported": True}},
+        "types": {
+            "adaptive": {"supported": True}, "enabled": {"supported": True},
+            "disabled": {"supported": True}, "between_tools": {"supported": False},
+        },
     },
 }
 
@@ -96,7 +124,10 @@ _ANTHROPIC_CAPABILITIES_ENABLED = {
     },
     "thinking": {
         "supported": True,
-        "types": {"adaptive": {"supported": False}, "enabled": {"supported": True}},
+        "types": {
+            "adaptive": {"supported": False}, "enabled": {"supported": True},
+            "disabled": {"supported": True}, "between_tools": {"supported": False},
+        },
     },
 }
 
@@ -352,7 +383,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "Claude Sonnet 5.5 (Catalog default)",
             "context_tokens": 1_000_000,
             "max_output_tokens": 128_000,
-            "capabilities": _ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH,
+            "capabilities": _ANTHROPIC_CAPABILITIES_SONNET_5_5,
             "default": True,
             "pricing": {"input": 2.00, "output": 10.00, "cached": 0.20},
             "pricing_verified": "2026-09-28",
@@ -375,7 +406,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "Claude Fable 5",
             "context_tokens": 1_000_000,
             "max_output_tokens": 128_000,
-            "capabilities": _ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH,
+            "capabilities": _ANTHROPIC_CAPABILITIES_ALWAYS_ON,
             "pricing": {"input": 10.00, "output": 50.00, "cached": 1.00},
             "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
             "pricing_source": ANTHROPIC_PRICING_SOURCE,
@@ -419,7 +450,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "Claude Opus 5.5",
             "context_tokens": 1_000_000,
             "max_output_tokens": 128_000,
-            "capabilities": _ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH,
+            "capabilities": _ANTHROPIC_CAPABILITIES_ALWAYS_ON,
             "pricing": {"input": 4.00, "output": 20.00, "cached": 0.20},
             "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
             "pricing_source": ANTHROPIC_PRICING_SOURCE,

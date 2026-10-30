@@ -148,6 +148,13 @@ class LLMLogger:
                 "xai_search_tools": list(server_side_tools.keys()) if server_side_tools else None,
             })
 
+        if provider == "anthropic":
+            log_entry.update({
+                "anthropic_stop_reason": usage_value("anthropic_stop_reason"),
+                "anthropic_max_tokens": usage_value("anthropic_max_tokens"),
+                "anthropic_content_blocks_by_type": usage_value("anthropic_content_blocks_by_type"),
+            })
+
         if is_openai:
             log_entry.update({
                 "openai_cached_input_tokens": cached_input_tokens,

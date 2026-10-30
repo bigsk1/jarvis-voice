@@ -6,6 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
@@ -18,7 +19,7 @@ from server_package_utils import load_server_package
 load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
 
 from provider_errors import classify_provider_error, is_provider_error_text, sanitize_provider_error
-from router_v2 import LLMRouter
+from router_v2 import LLMRouter, ProviderRouteInput
 from jarvis_web_test_server.services.log_streamer import LogStreamer
 from tool_schema import ToolSchema
 
@@ -107,6 +108,123 @@ class ProviderErrorFallbackTests(unittest.TestCase):
 
     def test_short_error_prefix_still_detected(self):
         self.assertTrue(is_provider_error_text("Error: gateway timeout"))
+
+    def test_anthropic_termination_errors_have_specific_error_kinds(self):
+        cases = (
+            (
+                "Error: Anthropic response stopped at max_tokens=4032 (stop_reason=max_tokens).",
+                "output_limit",
+                "Anthropic reached its output-token limit before completing the response.",
+            ),
+            (
+                "Error: Anthropic server-side work is incomplete (stop_reason=pause_turn).",
+                "incomplete",
+                "Anthropic paused server-side work before completing the response.",
+            ),
+            (
+                "Error: Anthropic refused the request (stop_reason=refusal).",
+                "refusal",
+                "Anthropic declined the request.",
+            ),
+            (
+                "Error: Anthropic returned no usable text or tool call (stop_reason=end_turn).",
+                "empty_response",
+                "Anthropic returned no usable response.",
+            ),
+            (
+                "Error: Anthropic returned no usable text or tool call (stop_reason=None).",
+                "empty_response",
+                "Anthropic returned no usable response.",
+            ),
+        )
+        for raw, kind, friendly in cases:
+            with self.subTest(kind=kind, raw=raw):
+                self.assertTrue(is_provider_error_text(raw))
+                info = classify_provider_error(raw)
+                self.assertEqual(info.kind, kind)
+                self.assertEqual(info.friendly_message, friendly)
+                self.assertEqual(info.raw_preview, raw)
+
+    def test_anthropic_stop_reason_prose_is_not_a_provider_error(self):
+        for prose in (
+            "Anthropic uses stop_reason=max_tokens when the output budget is exhausted.",
+            "The stop_reason=pause_turn value means server-side work paused.",
+            "Anthropic returned no usable text or tool call in that example.",
+            "Anthropic declined that request (stop_reason=refusal).",
+        ):
+            with self.subTest(prose=prose):
+                self.assertFalse(is_provider_error_text(prose))
+                self.assertEqual(classify_provider_error(prose).kind, "unknown")
+
+    def test_router_returns_anthropic_incomplete_error_and_preserves_diagnostics(self):
+        raw = "Error: Anthropic server-side work is incomplete (stop_reason=pause_turn)."
+        usage = {
+            "anthropic_stop_reason": "pause_turn",
+            "anthropic_max_tokens": 8192,
+            "anthropic_content_blocks_by_type": {"server_tool_use": 1},
+        }
+        router = LLMRouter.__new__(LLMRouter)
+        router.mode = "cloud"
+        router.provider_type = "anthropic"
+        router.model_name = "claude-opus-5-5"
+        router.registry = _Registry()
+        router.provider = SimpleNamespace(chat_with_tools=lambda **_: (raw, None, usage, None))
+        request = ProviderRouteInput(
+            tool_retrieval_query="Summarize https://youtu.be/test-video",
+            messages=[{"role": "user", "content": "Summarize the video"}],
+            system_prompt="Test routing policy",
+        )
+
+        with patch("thinking.should_enable_thinking", return_value=False), \
+                patch("router_v2._log_tool_rag_trace"), \
+                patch("llm_logger.get_logger"):
+            route = router.route(request, tool_policy="none")
+
+        self.assertEqual(route["intent"], "error")
+        self.assertEqual(
+            route["text_response"],
+            "Anthropic paused server-side work before completing the response.",
+        )
+        self.assertEqual(route["usage_info"], usage)
+        self.assertNotIn("tool_name", route)
+        self.assertNotIn("provider_error_recovered", route)
+
+    def test_router_reports_anthropic_refusal_without_tool_fallback(self):
+        raw = "Error: Anthropic refused the request (stop_reason=refusal)."
+        usage = {
+            "anthropic_stop_reason": "refusal",
+            "anthropic_max_tokens": 16_384,
+            "anthropic_content_blocks_by_type": {"text": 1},
+        }
+        router = LLMRouter.__new__(LLMRouter)
+        router.mode = "cloud"
+        router.provider_type = "anthropic"
+        router.model_name = "claude-opus-5-5"
+        router.registry = _Registry()
+        router.provider = SimpleNamespace(chat_with_tools=lambda **_: (raw, None, usage, None))
+        query = "Summarize https://youtu.be/test-video"
+        request = ProviderRouteInput(
+            tool_retrieval_query=query,
+            messages=[{"role": "user", "content": query}],
+            system_prompt="Test routing policy",
+        )
+
+        with patch("thinking.should_enable_thinking", return_value=False), \
+                patch("router_v2._log_tool_rag_trace"), \
+                patch("llm_logger.get_logger"):
+            route = router.route(request, tool_policy="none")
+
+        self.assertEqual(route["intent"], "error")
+        self.assertEqual(route["text_response"], "Anthropic declined the request.")
+        self.assertEqual(route["usage_info"], usage)
+        self.assertNotIn("tool_name", route)
+        self.assertNotIn("provider_error_recovered", route)
+        self.assertIsNone(router._provider_error_fallback_route(
+            transcript=query,
+            error_text=raw,
+            tool_names=["youtube_transcript"],
+            usage_info=usage,
+        ))
 
     def test_xai_403_permission_and_safety_payload_is_detected(self):
         """Shape from xAI when routing fails with bio safety + permission wording."""
