@@ -42,7 +42,7 @@ coloredlogs==15.0.1
 ctranslate2==4.6.0
 faster-whisper==1.2.0
 fast-flights==3.0.2
-filelock==3.20.3
+filelock==4.2.1
 flatbuffers==25.2.10
 fsspec==2026.6.0
 hf-xet==1.1.10
