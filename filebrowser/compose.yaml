@@ -2,7 +2,7 @@ name: jarvis-stash-browser
 
 services:
   filebrowser:
-    image: gtstef/filebrowser:2.0-beta
+    image: gtstef/filebrowser:2.0.2-stable
     restart: unless-stopped
     ports:
       - "${FILEBROWSER_BIND_IP:-127.0.0.1}:${FILEBROWSER_PORT:-8111}:80"
