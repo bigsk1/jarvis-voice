@@ -33,6 +33,57 @@ curl -O http://localhost:8880/api/stash/space/{space_id}/file/{file_id}/download
 
 ## Endpoints
 
+### Retrieve by Stash Reference
+
+```http
+GET /api/stash/resolve?ref=stash%3A%2F%2Fspace_example%2Ff_example&mode=cloud
+GET /api/stash/read?ref=stash%3A%2F%2Fspace_example%2Ff_example&mode=cloud
+GET /api/stash/download?ref=stash%3A%2F%2Fspace_example%2Ff_example&mode=cloud
+```
+
+Use these routes when a tool returns a `stash://` URI. The final component may
+be a file ID or a filename. Supply the complete URI as a URL-encoded query value.
+All three require the `ref` query parameter; omitting it returns 422. Tool
+results and uploads may call the same URI `ref` or `stash_ref`; pass that URI
+as `ref` when calling these routes. Response bodies retain `stash_ref`.
+Internal tool `path` values are not portable references and are not returned
+by these routes.
+
+`mode` is optional (`cloud` or `local`); omitted means the active API mode.
+Returned URLs pin the selected mode. Authentication follows the existing API
+policy: when configured, send `Authorization: Bearer <JARVIS_API_KEY>`. Remote
+clients use their own configured API origin/key, not credentials from a webhook.
+
+**Resolve** returns `ok`, `mode`, canonical `stash_ref` (using the file ID),
+`space_id`, `file_id`, `filename`, `mime_type`, actual `size_bytes`, recorded
+`hash_sha256`, `text_readable`, `read_url`, and `download_url`. `read_url` is null
+for non-text MIME types. Files must exist inside the selected Stash space and
+pass the shared restricted-path policy.
+
+**Read** returns this metadata plus `content`, `offset`, `max_chars`,
+`returned_chars`, `total_chars`, `has_more`, `next_offset`, `next_url`, and
+`content_sha256`. It reads UTF-8 text without format conversion.
+
+| Read parameter | Default | Limits / meaning |
+| --- | --- | --- |
+| `offset` | 0 | Nonnegative Unicode character offset, not bytes |
+| `max_chars` | 20,000 | 1–40,000 characters per page |
+| `expected_sha256` | omitted | Optional lowercase SHA-256 of the bytes; mismatch returns 409 |
+
+Follow the exact relative `next_url` while `has_more` is true. Continuation links
+carry the actual content hash to detect mid-read changes. `hash_sha256` is the
+stored metadata value; `content_sha256` is calculated from the bytes read.
+An offset past the end returns 416. Text sources over 10 MiB return 413;
+non-text MIME types, non-UTF-8 text, and binary NUL content return 415. In those
+cases use **download**, which returns the original bytes with the file's MIME
+type and filename. It does not extract PDF text, transcribe audio, or analyze
+media. Missing files return 404; inaccessible paths return 403.
+
+Existing space/file routes and tool result field names remain unchanged.
+See [agent handoffs](../GROKBOT_HANDOFF.md) for a receiver example.
+
+---
+
 ### Get Statistics
 
 ```http

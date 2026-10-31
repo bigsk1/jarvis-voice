@@ -412,6 +412,18 @@ The tool supports up to 6 images in cloud mode and 2 images in local mode. `/api
 | `tools_used` | array | List of tools that were called |
 | `session_id` | string | Session ID (if provided) |
 | `error` | string | Error message (if `ok` is false) |
+| `data` | object or null | Structured tool results, including artifact references and other tool-specific metadata |
+| `completion` | string or null | Operation outcome (`unknown`, `rejected`, or `completed`), separate from result delivery |
+| `error_code` | string or null | Machine-readable failure reason |
+| `terminal_failure` | bool or null | Runtime stopped without automatic retries |
+| `retry_safe` | bool or null | Whether the runtime considers repeating the operation safe |
+
+Preserve the complete response JSON in integration helpers instead of selecting
+only speech and tool names. Other optional fields include usage and diagnostic
+metadata; new fields may be added. Dropping `data` loses structured Stash/Canvas
+results, and dropping outcome fields can hide whether retrying is safe. A compact
+human display can be generated separately. See the
+[GrokBot handoff guide](../GROKBOT_HANDOFF.md#ask-for-a-follow-up-in-jarvis).
 
 ---
 

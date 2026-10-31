@@ -1,10 +1,12 @@
 """Stash API endpoints - Access to stash artifacts with upload support"""
 
+import hashlib
 import json
 import re
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Literal, Optional
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
@@ -13,10 +15,189 @@ from api.models.stash import StashFile, StashResponse, StashSpace, StashStats
 
 # Add lib to path for stash_helper
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "lib"))
+from config_loader import config_scope, get_active_config_mode
 from stash_helper import StashFile as StashFileHelper
-from stash_helper import get_stash_dir, open_space
+from stash_helper import StashSpace as StashSpaceHelper
+from stash_helper import get_stash_dir, open_space, parse_stash_ref, resolve_file_path
 
 router = APIRouter(prefix="/api/stash", tags=["stash"])
+
+TEXT_READ_MAX_BYTES = 10 * 1024 * 1024
+TEXT_READ_MAX_CHARS = 40_000
+
+
+def _resolve_stash_reference(ref: str) -> tuple[Path, dict]:
+    """Resolve a registered Stash file while confining reads to its own space."""
+    try:
+        space_id, selector = parse_stash_ref(ref)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Expected stash://space_id/file_id or filename")
+    if (
+        ref != ref.strip()
+        or not re.fullmatch(r"space_[A-Za-z0-9_-]+", space_id)
+        or not selector
+        or selector in {".", ".."}
+        or any(char in selector for char in "/\\")
+        or any(ord(char) < 32 or ord(char) == 127 for char in selector)
+    ):
+        raise HTTPException(status_code=400, detail="Invalid Stash reference")
+
+    try:
+        root = get_stash_dir().resolve()
+        space_path = (root / space_id).resolve()
+        meta_path = space_path / "meta.json"
+        if not space_path.is_relative_to(root) or space_path == root:
+            raise HTTPException(status_code=403, detail="Stash reference escapes its storage root")
+        if not meta_path.resolve().is_relative_to(space_path):
+            raise HTTPException(status_code=403, detail="Stash metadata escapes its space")
+        if not meta_path.is_file():
+            raise HTTPException(status_code=404, detail="Stash space not found")
+
+        space = StashSpaceHelper(space_id, stash_dir=root)
+        stash_file = StashFileHelper(space, file_id=selector)
+        if not stash_file.exists:
+            stash_file = StashFileHelper(space, name=selector)
+        metadata = stash_file.meta
+        if not metadata:
+            raise HTTPException(status_code=404, detail="Stash file not found")
+        stored_name = metadata.get("stored_name")
+        if (
+            not isinstance(stored_name, str)
+            or not stored_name
+            or stored_name in {".", ".."}
+            or any(char in stored_name for char in "/\\")
+        ):
+            raise HTTPException(status_code=403, detail="Invalid Stash file location")
+        # Canonical resolution retains the shared restricted-read-path policy.
+        path = Path(resolve_file_path(stash_ref=ref))
+        if not path.is_relative_to(space_path) or path == space_path:
+            raise HTTPException(status_code=403, detail="Stash file escapes its space")
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Stash file data not found")
+        return path, {
+            "stash_ref": f"stash://{space_id}/{metadata['file_id']}",
+            "space_id": space_id,
+            "file_id": metadata["file_id"],
+            "filename": metadata["name"],
+            "mime_type": metadata.get("mime_type") or "application/octet-stream",
+            "size_bytes": path.stat().st_size,
+            "hash_sha256": metadata.get("hash_sha256"),
+        }
+    except HTTPException:
+        raise
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Stash file data not found")
+    except (PermissionError, ValueError, RuntimeError):
+        raise HTTPException(status_code=403, detail="Stash reference is not accessible")
+    except (OSError, KeyError, TypeError):
+        raise HTTPException(status_code=500, detail="Unable to read Stash metadata")
+
+
+def _is_text_mime(mime_type: str) -> bool:
+    mime = mime_type.partition(";")[0].strip().lower()
+    return (
+        mime.startswith("text/")
+        or mime in {"application/json", "application/xml"}
+        or mime.endswith(("+json", "+xml"))
+    )
+
+
+def _reference_details(metadata: dict, mode: str) -> dict:
+    query = urlencode({"ref": metadata["stash_ref"], "mode": mode})
+    text_readable = _is_text_mime(metadata["mime_type"])
+    return {
+        "ok": True,
+        "mode": mode,
+        **metadata,
+        "text_readable": text_readable,
+        "read_url": f"/api/stash/read?{query}" if text_readable else None,
+        "download_url": f"/api/stash/download?{query}",
+    }
+
+
+@router.get("/resolve")
+def resolve_reference(
+    ref: Annotated[str, Query(min_length=1, max_length=2048)],
+    mode: Literal["cloud", "local"] | None = None,
+):
+    """Resolve a file ID or filename reference to metadata and relative retrieval URLs."""
+    with config_scope(get_active_config_mode(mode)):
+        _path, metadata = _resolve_stash_reference(ref)
+        return _reference_details(metadata, get_active_config_mode())
+
+
+@router.get("/read")
+def read_reference(
+    ref: Annotated[str, Query(min_length=1, max_length=2048)],
+    mode: Literal["cloud", "local"] | None = None,
+    offset: int = Query(0, ge=0, description="Unicode character offset, not a byte offset"),
+    max_chars: int = Query(20_000, ge=1, le=TEXT_READ_MAX_CHARS),
+    expected_sha256: str | None = Query(
+        None, pattern=r"^[0-9a-f]{64}$", description="Prior page's hash; reject changed files"
+    ),
+):
+    """Read bounded UTF-8 text, with exact character continuation and no format conversion."""
+    with config_scope(get_active_config_mode(mode)):
+        path, metadata = _resolve_stash_reference(ref)
+        if not _is_text_mime(metadata["mime_type"]):
+            raise HTTPException(status_code=415, detail="Not a supported text file; use download")
+        if metadata["size_bytes"] > TEXT_READ_MAX_BYTES:
+            raise HTTPException(status_code=413, detail="Text exceeds 10 MiB read limit; use download")
+        try:
+            with path.open("rb") as handle:
+                raw = handle.read(TEXT_READ_MAX_BYTES + 1)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Stash file data not found")
+        except OSError:
+            raise HTTPException(status_code=500, detail="Unable to read Stash file")
+        if len(raw) > TEXT_READ_MAX_BYTES:
+            raise HTTPException(status_code=413, detail="Text exceeds 10 MiB read limit; use download")
+        actual_hash = hashlib.sha256(raw).hexdigest()
+        if expected_sha256 is not None and actual_hash != expected_sha256:
+            raise HTTPException(status_code=409, detail="File changed; restart reading at offset 0")
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=415, detail="File is not UTF-8 text; use download")
+        if "\x00" in text:
+            raise HTTPException(status_code=415, detail="File contains binary data; use download")
+        if offset > len(text):
+            raise HTTPException(status_code=416, detail="Offset exceeds the file's character length")
+        content = text[offset:offset + max_chars]
+        end = offset + len(content)
+        has_more = end < len(text)
+        next_offset = end if has_more else None
+        next_url = None
+        if has_more:
+            query = urlencode({
+                "ref": metadata["stash_ref"], "mode": get_active_config_mode(),
+                "offset": next_offset, "max_chars": max_chars, "expected_sha256": actual_hash,
+            })
+            next_url = f"/api/stash/read?{query}"
+        return {
+            **_reference_details(metadata, get_active_config_mode()),
+            "content": content,
+            "offset": offset,
+            "max_chars": max_chars,
+            "returned_chars": len(content),
+            "total_chars": len(text),
+            "has_more": has_more,
+            "next_offset": next_offset,
+            "next_url": next_url,
+            "content_sha256": actual_hash,
+        }
+
+
+@router.get("/download")
+def download_reference(
+    ref: Annotated[str, Query(min_length=1, max_length=2048)],
+    mode: Literal["cloud", "local"] | None = None,
+):
+    """Download original bytes using a canonical, confined Stash reference."""
+    with config_scope(get_active_config_mode(mode)):
+        path, metadata = _resolve_stash_reference(ref)
+        return FileResponse(path=path, filename=metadata["filename"], media_type=metadata["mime_type"])
+
 
 def normalize_space_id(space_id: str) -> str:
     """

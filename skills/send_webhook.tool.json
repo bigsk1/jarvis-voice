@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "send_webhook",
-  "description": "Send a named webhook or a direct webhook URL to trigger an external automation. Use for 'trigger the slack webhook', 'send the home assistant webhook', or 'list my webhooks'. Each named webhook is a separate destination. A test or sample request must use the destination the user requested; do not send to an unrelated logger or a webhook merely because its name contains 'test'. Before sending to an unfamiliar named webhook, use webhook='list' with data={} to read its required fields, optional payload schema, and example. Build data to match that destination's contract; do not invent a test action. For a single complete contract, use the destination name with describe=true and data={}; listing and inspection send no webhook. Outbound attempts are rate limited to prevent duplicates. Not for sending email; use send_email.",
+  "description": "Send a named webhook or a direct webhook URL to trigger an external automation, ask a configured agent such as GrokBot, or hand off findings for a second opinion. Use for 'trigger the slack webhook', 'send the home assistant webhook', or 'list my webhooks'. Each named webhook is a separate destination. A test or sample request must use the destination the user requested; do not send to an unrelated logger or a webhook merely because its name contains 'test'. Before sending to an unfamiliar named webhook, use webhook='list' with data={} to read its required fields, optional payload schema, and example. Build data to match that destination's contract; do not invent a test action. For a single complete contract, use the destination name with describe=true and data={}; listing and inspection send no webhook. Outbound attempts are rate limited to prevent duplicates. HTTP acceptance confirms delivery, not remote task completion. Not for sending email; use send_email.",
   "script": "send_webhook.py",
   "proxy_policy": "inherit",
   "parameters": {
@@ -21,7 +21,7 @@
       },
       "data": {
         "type": "object",
-        "description": "JSON object sent unchanged as the webhook body. Named destinations can require specific fields, nested structure, or actions: read their contract with webhook='list' first. Use {} when listing. Use {} with describe=true for read-only contract inspection."
+        "description": "JSON webhook body matching the destination's contract. For destinations declaring artifact_handoff=jarvis_v1, context.stash_refs and context.canvas_page_ids explicitly select up to 12 existing artifacts; Jarvis adds credential-free API retrieval paths. A Stash selection can be a stash:// string or a result object containing ref or stash_ref; internal path fields are omitted. Do not invent references or include entire tool results elsewhere. Ordinary destinations send data unchanged. Use {} when listing or with describe=true for read-only inspection."
       },
       "headers": {
         "type": "object",

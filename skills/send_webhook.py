@@ -25,7 +25,8 @@ from jsonschema.validators import validator_for
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import get_config_value, load_config
+from config_loader import get_active_config_mode, get_config_value, load_config
+from webhook_handoff import prepare_artifact_handoff
 from webhook_transport import (
     policy_for_webhook,
     post_webhook,
@@ -185,7 +186,7 @@ def check_rate_limit(identifier: str, limit_seconds: int) -> tuple[bool, int]:
 def payload_contract(webhook_config: dict) -> dict:
     """Expose operator-supplied payload guidance, without URLs or credentials."""
     contract = {"required_fields": webhook_config.get("required_fields", [])}
-    for key in ("payload_schema", "example", "optional_fields", "notes"):
+    for key in ("payload_schema", "example", "optional_fields", "notes", "artifact_handoff"):
         if key in webhook_config:
             contract[key] = webhook_config[key]
     return contract
@@ -275,7 +276,18 @@ def main():
             return_error(f"URL blocked for security: {e}. Use a named webhook from registry instead.")
             return 1
     
-    # Validate required fields if specified
+    # Only a trusted named destination can enrich explicitly selected handles.
+    # This creates retrieval paths; no file is read or claimed to be available.
+    try:
+        data, handoff_receipt = prepare_artifact_handoff(
+            webhook_config, data, mode=get_active_config_mode(),
+        )
+    except ValueError as exc:
+        return_error(str(exc), data={"webhook": webhook_name, "request_sent": False,
+                                    **payload_contract(webhook_config)})
+        return 1
+
+    # Validate the final outgoing body, including any configured enrichment.
     required_fields = webhook_config.get('required_fields', [])
     missing = [f for f in required_fields if f not in data]
     if missing:
@@ -357,6 +369,7 @@ def main():
                 data={
                     "webhook": webhook_name,
                     "url": resolved_url,
+                    **handoff_receipt,
                     **receipt,
                 },
             )
@@ -372,6 +385,7 @@ def main():
                     "webhook": webhook_name,
                     "url": resolved_url,
                     "response": response.text[:200] if response.text else "",
+                    **handoff_receipt,
                     **receipt,
                 }
             )
@@ -389,6 +403,7 @@ def main():
                     "url": resolved_url,
                     "error": response.text[:200] if response.text else "",
                     "webhook": webhook_name,
+                    **handoff_receipt,
                     **receipt,
                 }
             )
@@ -397,21 +412,21 @@ def main():
     except requests.Timeout:
         return_error(
             "Webhook request timed out; it may have reached the destination. Check its state before retrying.",
-            data={'webhook': webhook_name, 'request_sent': None, 'response_received': False,
+            data={'webhook': webhook_name, **handoff_receipt, 'request_sent': None, 'response_received': False,
                   'delivery_status': 'unknown', 'retry_safe': False, 'proxy': proxy_metadata},
         )
         return 1
     except requests.RequestException as e:
         return_error(
             f"Webhook request failed ({type(e).__name__}). Delivery is unknown; check the destination before retrying.",
-            data={'webhook': webhook_name, 'request_sent': None, 'response_received': False,
+            data={'webhook': webhook_name, **handoff_receipt, 'request_sent': None, 'response_received': False,
                   'delivery_status': 'unknown', 'retry_safe': False, 'proxy': proxy_metadata},
         )
         return 1
     except Exception as e:
         return_error(
             f"Unexpected webhook error ({type(e).__name__}). Delivery is unknown; check the destination before retrying.",
-            data={'webhook': webhook_name, 'request_sent': None, 'response_received': False,
+            data={'webhook': webhook_name, **handoff_receipt, 'request_sent': None, 'response_received': False,
                   'delivery_status': 'unknown', 'retry_safe': False, 'proxy': proxy_metadata},
         )
         return 1

@@ -235,6 +235,7 @@ but the destination state or receiving workflow execution verifies that result.
 | `headers` | ⚠️ | Trusted headers; explicitly named `${ENV_VAR}` placeholders are resolved from the active Jarvis environment |
 | `required_fields` | ⚠️ | Array of required data fields (validated before sending) |
 | `payload_schema` | ⚠️ | Optional JSON Schema for the body; validates nested required fields, types, enums, and other configured constraints before sending |
+| `artifact_handoff` | ⚠️ | `jarvis_v1` adds relative Stash/Canvas retrieval paths for explicitly selected artifacts in `context`. Absent or `false` leaves the body unchanged. |
 | `proxy_policy` | ⚠️ | `off` (default), `prefer`, or `require`; selects the route before one POST. Applies to both `send_webhook` and the `send_email` entry used by `send_email`. |
 | `rate_limit_seconds` | ⚠️ | Min seconds between calls (default: 5) |
 | `enabled` | ⚠️ | Set to `false` to disable (default: true) |
@@ -245,6 +246,18 @@ Keep URLs and credential headers in their existing registry fields. Do not place
 secrets in descriptions, schemas, or example bodies, which are returned during
 discovery. JSON Schema `format` annotations are not enforced; use explicit
 constraints such as `pattern` when the receiver needs a particular string shape.
+
+### Agent handoffs with artifacts
+
+The existing `send_webhook` tool can hand a task to a named agent such as
+`grokbot`. An opted-in destination accepts `context.stash_refs` and
+`context.canvas_page_ids`; Jarvis adds credential-free retrieval paths without
+reading the files. `ref` and `stash_ref` are aliases for the same Stash URI;
+host-only `path` fields from selected result objects are discarded. The receiving
+agent uses its own configured Jarvis API credentials, from whatever machine can
+reach the API, and reports in its own chat. GrokBot is the included example.
+See the [handoff guide](GROKBOT_HANDOFF.md) and
+[receiver setup prompt](GROKBOT_RECEIVER_PROMPT.md) for the contract and setup.
 
 ### Per-destination proxy routing
 

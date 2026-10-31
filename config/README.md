@@ -261,6 +261,13 @@ named `send_webhook` destinations. Each entry can set `proxy_policy` to `off`,
 the `send_email` registry entry. Direct-URL `send_webhook` calls also use direct
 networking. Unsupported policies fail before sending.
 
+The optional `grokbot` starter reads `GROKBOT_POST_URL` and
+`GROKBOT_WEBHOOK_KEY` from the selected mode ENV. Both mode examples also list
+`GROKBOT_WEBHOOK_HEADER_KEY` for custom header mappings; the standard entry does
+not use it. Keep the raw receiver token in `GROKBOT_WEBHOOK_KEY`, since the
+registry adds the Bearer prefix. See the
+[agent handoff guide](../docs/GROKBOT_HANDOFF.md) for setup and artifact access.
+
 The disabled `example_proxy_notification` entry shows `https://example.com/webhook`
 with `proxy_policy: "prefer"` and a small JSON payload schema. Replace its URL
 with your receiver and enable it when ready. Proxy URLs belong in the selected
