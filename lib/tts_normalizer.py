@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from datetime import datetime
 
@@ -11,14 +12,18 @@ try:
     from tts_style_tags import ELEVENLABS_AUDIO_TAG_MODELS as ELEVENLABS_AUDIO_TAG_MODELS
     from tts_style_tags import ELEVENLABS_INLINE_SPEECH_TAGS as ELEVENLABS_INLINE_SPEECH_TAGS
     from tts_style_tags import ELEVENLABS_V4_MODELS as ELEVENLABS_V4_MODELS
-    from tts_style_tags import XAI_INLINE_SPEECH_TAGS as XAI_INLINE_SPEECH_TAGS
-    from tts_style_tags import XAI_WRAPPING_SPEECH_TAGS as XAI_WRAPPING_SPEECH_TAGS
     from tts_style_tags import (
+        KOKORO_CONTROL_PATTERN,
+        KOKORO_PAUSE_PATTERN,
+        KOKORO_PRONUNCIATION_PATTERN,
         SpeechTagPolicy,
         all_inline_speech_tags,
         all_wrapping_speech_tags,
         get_speech_tag_policy,
+        markdown_code_spans,
     )
+    from tts_style_tags import XAI_INLINE_SPEECH_TAGS as XAI_INLINE_SPEECH_TAGS
+    from tts_style_tags import XAI_WRAPPING_SPEECH_TAGS as XAI_WRAPPING_SPEECH_TAGS
     from tts_style_tags import speech_tag_options as speech_tag_options
 except ModuleNotFoundError as exc:
     if exc.name != "tts_style_tags":
@@ -26,14 +31,18 @@ except ModuleNotFoundError as exc:
     from lib.tts_style_tags import ELEVENLABS_AUDIO_TAG_MODELS as ELEVENLABS_AUDIO_TAG_MODELS
     from lib.tts_style_tags import ELEVENLABS_INLINE_SPEECH_TAGS as ELEVENLABS_INLINE_SPEECH_TAGS
     from lib.tts_style_tags import ELEVENLABS_V4_MODELS as ELEVENLABS_V4_MODELS
-    from lib.tts_style_tags import XAI_INLINE_SPEECH_TAGS as XAI_INLINE_SPEECH_TAGS
-    from lib.tts_style_tags import XAI_WRAPPING_SPEECH_TAGS as XAI_WRAPPING_SPEECH_TAGS
     from lib.tts_style_tags import (
+        KOKORO_CONTROL_PATTERN,
+        KOKORO_PAUSE_PATTERN,
+        KOKORO_PRONUNCIATION_PATTERN,
         SpeechTagPolicy,
         all_inline_speech_tags,
         all_wrapping_speech_tags,
         get_speech_tag_policy,
+        markdown_code_spans,
     )
+    from lib.tts_style_tags import XAI_INLINE_SPEECH_TAGS as XAI_INLINE_SPEECH_TAGS
+    from lib.tts_style_tags import XAI_WRAPPING_SPEECH_TAGS as XAI_WRAPPING_SPEECH_TAGS
     from lib.tts_style_tags import speech_tag_options as speech_tag_options
 
 ALLOWED_TTS_PROFILES = {
@@ -102,19 +111,40 @@ def _protect_speech_tags(text: str, policy: SpeechTagPolicy) -> tuple[str, dict[
         tag = match.group(2).lower()
         return store(f"<{slash}{tag}>") if tag in policy.wrapping_tags else match.group(0)
 
+    if "pronunciation" in policy.parameterized_tags:
+        text = KOKORO_PRONUNCIATION_PATTERN.sub(lambda match: store(match.group(0)), text)
+    if "pause" in policy.parameterized_tags:
+        total_pause = 0.0
+
+        def replace_pause(match: re.Match[str]) -> str:
+            nonlocal total_pause
+            seconds = float(match.group(1))
+            if (
+                len(match.group(0)) > 200 or not math.isfinite(seconds)
+                or not 0 <= seconds <= 60 or total_pause + seconds > 300
+            ):
+                return ""
+            total_pause += seconds
+            return store(match.group(0))
+
+        text = KOKORO_PAUSE_PATTERN.sub(replace_pause, text)
+
     text = re.sub(r'\[([A-Za-z][A-Za-z -]*)\](?!\s*\()', replace_inline, text)
     text = re.sub(r'<\s*(/?)\s*([A-Za-z][A-Za-z-]*)\s*>', replace_wrapping, text)
     return text, protected
 
 
-def _strip_speech_tag_markup(text: str) -> str:
+def _strip_speech_tag_markup(text: str, *, strip_unknown_markup: bool = True) -> str:
     """Remove TTS/speech tag markers that are unsupported by the active provider."""
+    text = KOKORO_PRONUNCIATION_PATTERN.sub(r'\1', text)
+    text = KOKORO_CONTROL_PATTERN.sub('', text)
     known_inline = "|".join(re.escape(tag) for tag in sorted(all_inline_speech_tags(), key=len, reverse=True))
     known_wrapping = "|".join(re.escape(tag) for tag in sorted(all_wrapping_speech_tags(), key=len, reverse=True))
     text = re.sub(rf'\[(?:{known_inline})\](?!\s*\()', '', text, flags=re.IGNORECASE)
     text = re.sub(rf'<\s*/?\s*(?:{known_wrapping})\s*>', '', text, flags=re.IGNORECASE)
-    # Strip unknown XML/HTML-like tags while preserving their inner text.
-    text = re.sub(r'</?[A-Za-z][A-Za-z0-9_-]*(?:\s+[^<>]*)?>', '', text)
+    if strip_unknown_markup:
+        # Strip unknown XML/HTML-like tags while preserving their inner text.
+        text = re.sub(r'</?[A-Za-z][A-Za-z0-9_-]*(?:\s+[^<>]*)?>', '', text)
     return text
 
 
@@ -149,21 +179,26 @@ def _restore_speech_tags(text: str, protected: dict[str, str]) -> str:
     return text
 
 
-def strip_speech_tags_for_display(text: str) -> str:
-    """Remove TTS-only speech tags while preserving visible words and layout."""
+def strip_speech_tags_for_display(text: str, *, strip_unknown_markup: bool = True) -> str:
+    """Remove cues; plain-text clients can retain literal unknown HTML/XML tags."""
     if not text:
         return ""
 
+    examples = {}
+    for start, end in reversed(markdown_code_spans(text)):
+        token = f"@@JTTSCODE{len(examples)}TOKEN@@"
+        examples[token] = text[start:end]
+        text = text[:start] + token + text[end:]
     text = strip_llm_citation_artifacts(text)
     text = _repair_malformed_wrapping_speech_tags(text)
     text = _repair_duplicate_speech_tag_brackets(text)
-    text = _strip_speech_tag_markup(text)
+    text = _strip_speech_tag_markup(text, strip_unknown_markup=strip_unknown_markup)
     text = re.sub(r'[ \t]+([,.;:!?])', r'\1', text)
     text = re.sub(r'[ \t]{2,}', ' ', text)
     text = re.sub(r'[ \t]+\n', '\n', text)
     text = re.sub(r'(?m)^[ \t]+$', '', text)
     text = re.sub(r'\n{3,}', '\n\n', text)
-    return text.strip()
+    return _restore_speech_tags(text.strip(), examples)
 
 DAY_ABBREVIATIONS = {
     "mon": "Monday",
@@ -351,7 +386,7 @@ def _strip_visual_noise(text: str) -> str:
     text = re.sub(r'[*_`]+', '', text)
     text = re.sub(r'(?m)^\s*#+\s*', '', text)
     text = re.sub(r'(?m)^\s*>\s*', '', text)
-    text = re.sub(r'\[([^\]]+)\]\((?:https?://|www\.)[^)]+\)', r'\1', text, flags=re.IGNORECASE)
+    text = re.sub(r'\[([^\]]+)\]\((?:https?://|www\.|/)[^)]+\)', r'\1', text, flags=re.IGNORECASE)
     text = re.sub(r'(?:https?://|www\.)[^\s]+', '', text, flags=re.IGNORECASE)
     text = re.sub(r'stash://[^\s]+', 'saved to stash', text, flags=re.IGNORECASE)
     text = re.sub(r'\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s]*)?\b', '', text, flags=re.IGNORECASE)
@@ -509,12 +544,17 @@ def _apply_profile_rules(text: str, profile: str | None) -> str:
     return text
 
 
-def _normalize_whitespace(text: str) -> str:
+def _normalize_whitespace(text: str, *, preserve_paragraphs: bool = False) -> str:
     """Clean punctuation and spacing after substitutions."""
     text = re.sub(r'\s+([,.;:!?])', r'\1', text)
     text = re.sub(r'([,.;:!?]){2,}', r'\1', text)
-    text = re.sub(r'\n{2,}', '\n', text)
-    text = re.sub(r'\s{2,}', ' ', text)
+    if preserve_paragraphs:
+        text = re.sub(r'[ \t]*\n[ \t]*', '\n', text)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r'[^\S\n]{2,}', ' ', text)
+    else:
+        text = re.sub(r'\n{2,}', '\n', text)
+        text = re.sub(r'\s{2,}', ' ', text)
     return text.strip()
 
 
@@ -530,6 +570,19 @@ def normalize_tts_text(
     if not text:
         return ""
 
+    # Examples are spoken as text, never executed as delivery instructions.
+    # Remove only recognized cue syntax; indexing and other code brackets are content.
+    known_inline = "|".join(re.escape(tag) for tag in sorted(
+        all_inline_speech_tags(), key=len, reverse=True,
+    ))
+    for start, end in reversed(markdown_code_spans(text)):
+        example = KOKORO_PRONUNCIATION_PATTERN.sub(r'\1', text[start:end])
+        example = KOKORO_CONTROL_PATTERN.sub(lambda match: match.group(0)[1:-1], example)
+        example = re.sub(
+            rf'\[({known_inline})\](?!\s*\()', r'\1', example, flags=re.IGNORECASE,
+        )
+        example = re.sub(r'<\s*/?\s*([A-Za-z][A-Za-z-]*)\s*>', r' \1 ', example)
+        text = text[:start] + example + text[end:]
     text = _repair_malformed_wrapping_speech_tags(text)
     text = _repair_duplicate_speech_tag_brackets(text)
     text = strip_llm_citation_artifacts(text)
@@ -559,6 +612,7 @@ def normalize_tts_text(
     text = _normalize_common_speech_patterns(text)
     text = _normalize_general_currency(text)
     text = _apply_profile_rules(text, profile)
-    if protected_tags:
-        text = _restore_speech_tags(text, protected_tags)
-    return _normalize_whitespace(text)
+    text = _normalize_whitespace(
+        text, preserve_paragraphs=bool(speech_tag_policy and speech_tag_policy.preserve_paragraphs),
+    )
+    return _restore_speech_tags(text, protected_tags)

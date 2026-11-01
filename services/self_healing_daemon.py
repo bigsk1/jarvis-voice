@@ -28,6 +28,7 @@ from internal_api import get_internal_api_base_url, get_internal_api_headers
 from memory_db import MemoryDB
 from service_logger import ServiceLogger
 from tts_normalizer import normalize_tts_text
+from tts_style_tags import configured_speech_tag_options
 
 
 # Maximum tool calls per check (safety limit)
@@ -45,7 +46,12 @@ MONITORED_SYSTEMD_SERVICES = {
 
 def _speak_message(message: str, project_root: Path, mode: str, timeout: int = 15):
     """Speak a normalized status message through the configured TTS script."""
-    spoken_message = normalize_tts_text(message)
+    spoken_message = normalize_tts_text(
+        message,
+        **configured_speech_tag_options(
+            get_config_value, default_provider='kokoro' if mode == 'local' else 'openai',
+        ),
+    )
     if not spoken_message:
         return
 

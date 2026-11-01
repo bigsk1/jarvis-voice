@@ -68,6 +68,10 @@ const sandbox = {
   window:{location:{href:'https://jarvis.test/',origin:'https://jarvis.test'},AudioContext:Context,MediaRecorder:Recorder,addEventListener:(event,fn)=>windowEvents[event]=fn}
 };
 vm.createContext(sandbox);
+// Keep the real shared pronunciation grammar; isolate only toast/network I/O.
+const mockedUtils = sandbox.Utils;
+vm.runInContext(fs.readFileSync(`${root}/jarvis-web/client/js/utils.js`,'utf8'),sandbox);
+Object.assign(sandbox.window.Utils, mockedUtils);
 vm.runInContext(fs.readFileSync(`${root}/jarvis-web/client/js/talk.js`,'utf8'),sandbox);
 const talk = new sandbox.window.TalkController({app,chat,socket});
 async function start(){const pending=talk.start();await flush();permissions.at(-1).resolve(stream());await pending;assert.equal(talk.session.phase,'listening');}
@@ -156,10 +160,16 @@ async function audio(){requests.at(-1).resolve({ok:true,arrayBuffer:async()=>new
     await start();assert.deepEqual(warmups,['local']);talk.pause();
     const pending=talk.resume();await flush();assert.deepEqual(warmups,['local','local']);
     permissions.at(-1).resolve(stream());await pending;assert.equal(talk.session.phase,'listening');
-  } else if(scenario==='tag_chunks' || scenario==='tag_chunks_no_space') {
+  } else if(['tag_chunks', 'tag_chunks_no_space', 'kokoro_ipa_label_chunks',
+      'kokoro_ipa_body_chunks', 'kokoro_ipa_no_space_chunks', 'kokoro_pause_no_space_chunks'].includes(scenario)) {
     await start();await utterance();await transcribe();
-    const prefix = scenario==='tag_chunks' ? 'A'.repeat(936) + ' ' : 'A'.repeat(947);
-    const speech = prefix + '[clears throat] ' + 'tail '.repeat(40);
+    const cue = scenario==='kokoro_pause_no_space_chunks' ? '[pause:0.4s]'
+      : scenario.startsWith('kokoro_') ? '[New York](/njuː jɔːk/)' : '[clears throat]';
+    const prefix = scenario==='tag_chunks' ? 'A'.repeat(936) + ' '
+      : scenario==='kokoro_ipa_label_chunks' ? 'A'.repeat(938) + ' '
+      : scenario==='kokoro_ipa_body_chunks' ? 'A'.repeat(928) + ' '
+      : 'A'.repeat(947);
+    const speech = prefix + cue + ' ' + 'tail '.repeat(40);
     await answer({speech});
     const chunks = [];
     for (let index=0; index<2; index++) {
@@ -172,8 +182,8 @@ async function audio(){requests.at(-1).resolve({ok:true,arrayBuffer:async()=>new
       chunks.push(payload.text);
       await audio();contexts[0].sources.at(-1).onended();await flush();
     }
-    assert(!chunks[0].includes('[clears'));
-    assert(chunks[1].startsWith('[clears throat]'));
+    assert(!chunks[0].includes('['));
+    assert(chunks[1].startsWith(cue));
     assert.equal(chunks.join('').trim(),speech.trim());
     assert.equal(requests.filter(r=>r.url==='/api/tts').length,2);
     settle();finishTimers();assert.equal(talk.session.phase,'listening');

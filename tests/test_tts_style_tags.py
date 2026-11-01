@@ -24,6 +24,8 @@ from tts_style_tags import (  # noqa: E402
     ("xai", "", "on", True),
     ("xai", "", "false", False),
     ("xai", "", "0", False),
+    ("kokoro", "", "true", True),
+    ("kokoro", "", "false", False),
     ("elevenlabs", "eleven_v4", "true", True),
     ("elevenlabs", "eleven_v4_turbo", "true", True),
     ("elevenlabs", "eleven_v4", "false", False),
@@ -35,6 +37,7 @@ from tts_style_tags import (  # noqa: E402
 def test_prompt_gate_uses_effective_tts_provider_model_and_toggle(provider, model, enabled, expected):
     values = {"TTS_PROVIDER": provider, "ELEVENLABS_TTS_MODEL": model,
               "XAI_TTS_STYLE_TAGS_ENABLED": enabled, "ELEVENLABS_TTS_STYLE_TAGS_ENABLED": enabled,
+              "KOKORO_TTS_STYLE_TAGS_ENABLED": enabled,
               "LLM_PROVIDER": "xai"}
     instruction = tts_style_tags_instruction(lambda key, default: values.get(key, default))
     assert bool(instruction) is expected
@@ -52,10 +55,13 @@ def test_prompt_gate_uses_effective_tts_provider_model_and_toggle(provider, mode
     ("elevenlabs", "eleven_v4", "[whispers] Hello", "[whispers] Hello"),
     ("elevenlabs", "eleven_v4_turbo", "[whispers] Hello", "[whispers] Hello"),
     ("elevenlabs", "eleven_multilingual_v2", "[whispers] Hello", "Hello"),
+    ("kokoro", "", "[pause:0.4s] [Worcester](/wˈʊstər/)",
+     "[pause:0.4s] [Worcester](/wˈʊstər/)"),
 ])
 def test_disabled_generation_does_not_disable_explicit_playback(provider, model, sample, expected):
     values = {"TTS_PROVIDER": provider, "ELEVENLABS_TTS_MODEL": model,
-              "XAI_TTS_STYLE_TAGS_ENABLED": "false", "ELEVENLABS_TTS_STYLE_TAGS_ENABLED": "false"}
+              "XAI_TTS_STYLE_TAGS_ENABLED": "false", "ELEVENLABS_TTS_STYLE_TAGS_ENABLED": "false",
+              "KOKORO_TTS_STYLE_TAGS_ENABLED": "false"}
     assert tts_style_tags_instruction(lambda key, default: values.get(key, default)) == ""
     assert sanitize_for_speech(sample, **speech_tag_options(provider, model)) == expected
 

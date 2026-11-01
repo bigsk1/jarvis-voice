@@ -16,6 +16,12 @@ Named profiles currently include `weather_watch`, `camera_alert`, `price_quote`,
 
 The Voice API, Web UI TTS, orchestrator `--speak`, alerts, reminders, and daemon speech all use this shared normalization layer.
 
+With `tts_provider: "kokoro"`, supported `[pause:0.4s]` and English
+`[Worcester](/wˈʊstər/)` pronunciation cues survive normalization. Inline
+`[voice:...]` / `[rate:...]` controls and unsupported emotion tags are removed;
+choose the request's `voice` or configured speed instead. These controls require
+Kokoro-FastAPI support (verified on v0.9.2). See [speech tags](../TTS_SPEECH_TAGS.md).
+
 ## Endpoints
 
 ### POST /api/voice/speak

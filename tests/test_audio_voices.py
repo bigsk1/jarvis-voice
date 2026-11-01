@@ -250,6 +250,18 @@ def test_delivery_capabilities_follow_effective_provider_model(config, transport
     assert legacy["delivery_capabilities"]["instructions_supported"] is False
 
 
+def test_kokoro_catalog_exposes_enabled_pause_and_pronunciation_controls(config, transport):
+    _body(transport[2], {"voices": ["af_bella"]})
+    result = catalog.list_audio_voices({"provider": "kokoro"})
+    assert result["items"][0]["voice_id"] == "af_bella"
+    capabilities = result["delivery_capabilities"]
+    assert capabilities["inline_tags_supported"] is True
+    assert capabilities["inline_tag_examples"] == ["[pause:0.4s]", "[Worcester](/wˈʊstər/)"]
+    assert capabilities["instructions_supported"] is False
+    assert capabilities["wrapping_tags_supported"] is False
+    transport[1].post.assert_not_called()
+
+
 def test_xai_search_is_applied_to_builtins_and_customs(config, transport):
     def request(url, **kwargs):
         data = {"voices": [{"voice_id": "eve", "name": "Eve"}]} if url.endswith("/tts/voices") else {

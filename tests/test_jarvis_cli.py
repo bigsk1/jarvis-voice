@@ -73,6 +73,23 @@ def test_default_outputs_only_human_answer_and_cleans_mcp(runner, capfd):
     assert observed['cleaned'] is True
 
 
+@pytest.mark.parametrize('as_json', [False, True])
+def test_kokoro_controls_are_hidden_in_text_but_preserved_in_structured_output(runner, capfd, as_json):
+    run, _, result = runner
+    raw = ('[pause:0.4s] Visit [Worcester](/wˈʊstər/). '
+           '[rate:0.9] [voice:af_bella(2)+af_sky(1)] '
+           'Read [details](https://example.test/guide) [1, 2].')
+    result.update(raw_llm_response=raw, speech='[pause:0.2s] Done.')
+    assert run(['hello'] + (['--json'] if as_json else [])) == 0
+    output = capfd.readouterr()
+    if as_json:
+        assert json.loads(output.out) == result
+    else:
+        assert output.out == 'Visit Worcester. Read [details](https://example.test/guide) [1, 2].\n'
+    assert result['raw_llm_response'] == raw
+    assert result['speech'] == '[pause:0.2s] Done.'
+
+
 @pytest.mark.parametrize('verbose', [False, True])
 def test_json_is_one_complete_object_despite_python_native_and_cleanup_noise(runner, capfd, verbose):
     run, observed, result = runner
@@ -88,6 +105,14 @@ def test_json_is_one_complete_object_despite_python_native_and_cleanup_noise(run
     else:
         assert output.err == ''
     assert observed['cleaned']
+
+
+def test_plain_answer_keeps_literal_xml_while_removing_speech_controls(runner, capfd):
+    run, _, result = runner
+    code = 'Example:\n```xml\n<widget>value</widget> and <br/>\n```'
+    result['raw_llm_response'] = '[pause:0.4s] ' + code
+    assert run(['show XML']) == 0
+    assert capfd.readouterr().out == code + '\n'
 
 
 def test_failed_tool_preserves_structured_error_and_returns_failure(runner, capfd):

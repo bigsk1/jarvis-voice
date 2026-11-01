@@ -17,6 +17,11 @@ from config_loader import load_config, get_config_value, get_active_config_mode
 from memory_db import get_memory_db
 from price_alert_config import load_price_alert_config
 from tts_normalizer import normalize_tts_text
+from tts_style_tags import (
+    KOKORO_PAUSE_PATTERN,
+    KOKORO_PRONUNCIATION_PATTERN,
+    configured_speech_tag_options,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -60,7 +65,18 @@ class AlertManager:
 
     def _sanitize_weather_watch_speech(self, text: str) -> str:
         """Backward-compatible wrapper for the shared weather TTS profile."""
-        return normalize_tts_text(text, profile="weather_watch")
+        return normalize_tts_text(text, profile="weather_watch", **self._speech_tag_options())
+
+    def _speech_tag_options(self):
+        """Keep cues for the same provider and model as the chosen native script."""
+        status_script = self.project_root / 'bin' / (
+            'say-status-local.sh' if self.mode == 'local' else 'say-status.sh'
+        )
+        return configured_speech_tag_options(
+            get_config_value,
+            purpose='status' if status_script.exists() else 'final',
+            default_provider='kokoro' if self.mode == 'local' else 'openai',
+        )
 
     def _speech_profile_for_source(self, source: str | None) -> str | None:
         """Map alert sources to the best-fit shared TTS profile."""
@@ -648,7 +664,13 @@ class AlertManager:
         if source == "weather_watch" and description:
             detail = self._sanitize_weather_watch_speech(description.strip())
             if len(detail) > 220:
-                detail = detail[:217].rstrip() + "..."
+                cutoff = 217
+                for pattern in (KOKORO_PAUSE_PATTERN, KOKORO_PRONUNCIATION_PATTERN):
+                    for match in pattern.finditer(detail):
+                        if match.start() < cutoff < match.end():
+                            cutoff = match.start()
+                            break
+                detail = detail[:cutoff].rstrip() + "..."
             message = f"{message}. {detail}"
 
         speech_profile = self._speech_profile_for_source(source)
@@ -678,7 +700,9 @@ class AlertManager:
     ) -> bool:
         """Trigger TTS using say-status.sh and return whether delivery was started or completed."""
         try:
-            spoken_message = normalize_tts_text(message, profile=profile)
+            spoken_message = normalize_tts_text(
+                message, profile=profile, **self._speech_tag_options(),
+            )
             if not spoken_message:
                 return False
 

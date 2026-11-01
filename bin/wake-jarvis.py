@@ -15,6 +15,7 @@ from config_loader import load_config, get_config_value, get_int, get_float
 from head_events import emit as emit_head_event
 from model_catalog import get_provider_fallback_model
 from tts_normalizer import normalize_tts_text
+from tts_style_tags import configured_speech_tag_options  # noqa: E402
 
 import warnings
 warnings.filterwarnings(
@@ -245,7 +246,10 @@ def handle_trigger():
         # Get random greeting from WAKE_GREETINGS (pipe-separated)
         greetings = get_config_value("WAKE_GREETINGS", "Hello").split('|')
         import random
-        greeting = normalize_tts_text(random.choice(greetings).strip())
+        greeting = normalize_tts_text(
+            random.choice(greetings).strip(),
+            **configured_speech_tag_options(get_config_value, default_provider='openai'),
+        )
         if greeting:
             subprocess.run([SAY, greeting], check=False)
     except Exception as e:

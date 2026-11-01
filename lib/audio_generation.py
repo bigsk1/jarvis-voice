@@ -23,6 +23,9 @@ from http_client import get_session
 from remote_completion import RemoteCompletionError, submission_error
 from requests.adapters import HTTPAdapter
 from tts_style_tags import (
+    KOKORO_CONTROL_PATTERN,
+    KOKORO_PAUSE_PATTERN,
+    KOKORO_PRONUNCIATION_PATTERN,
     all_inline_speech_tags,
     all_wrapping_speech_tags,
     get_speech_tag_policy,
@@ -37,7 +40,7 @@ _OPENAI_VOICES = frozenset({"alloy", "ash", "ballad", "coral", "echo", "fable", 
 _OPENAI_LEGACY_VOICES = frozenset({"alloy", "ash", "coral", "echo", "fable", "onyx",
                                   "nova", "sage", "shimmer"})
 _OPENAI_INSTRUCTION_MODELS = frozenset({"gpt-4o-mini-tts", "gpt-4o-mini-tts-2025-12-15"})
-_INLINE_CUE = re.compile(r"\[([^\[\]\r\n]{1,80})\]")
+_INLINE_CUE = re.compile(r"\[([^\[\]\r\n]{1,80})\](?!\s*\()")
 _WRAPPING_CUE = re.compile(r"</?([A-Za-z][A-Za-z-]*)\s*>")
 
 
@@ -53,7 +56,7 @@ def get_audio_delivery_capabilities(provider: str, model: str) -> dict:
         instructions_field = "instructions"
     result = {
         "instructions_supported": bool(instructions_field),
-        "inline_tags_supported": bool(policy and policy.inline_tags),
+        "inline_tags_supported": bool(policy and (policy.inline_tags or policy.parameterized_tags)),
         "wrapping_tags_supported": bool(policy and policy.wrapping_tags),
         "inline_tag_examples": [],
         "wrapping_tag_examples": [],
@@ -67,6 +70,13 @@ def get_audio_delivery_capabilities(provider: str, model: str) -> dict:
         result["inline_tag_examples"] = ["[pause]", "[laugh]", "[sigh]"]
         result["wrapping_tag_examples"] = ["<whisper>text</whisper>", "<slow>text</slow>"]
         result["note"] = "Use xAI-native bracket sounds and matching XML-style wrapping cues."
+    elif provider == "kokoro" and policy:
+        result["inline_tag_examples"] = ["[pause:0.4s]", "[Worcester](/wˈʊstər/)"]
+        result["note"] = (
+            "Use pause tokens with a colon and trailing s, and English IPA pronunciation overrides. "
+            "No emotion cues, inline speaker/rate changes, SSML, or separate instructions. "
+            "The selected voice and configured speed apply to the complete script."
+        )
     elif instructions_field == "instructions":
         result["note"] = "Put delivery direction in instructions, separate from the exact spoken text."
     elif provider == "qwen3-tts":
@@ -90,9 +100,28 @@ def _delivery_controls(settings: dict) -> tuple[str, dict]:
     if instructions and not capabilities["instructions_supported"]:
         raise ValueError(f"{provider} model {model} does not support separate instructions; choose an instruction-capable provider/model")
     policy = get_speech_tag_policy(provider, model)
+    parameterized = policy.parameterized_tags if policy else frozenset()
+    pauses = []
+    for match in KOKORO_CONTROL_PATTERN.finditer(text):
+        if not match.group(0).lower().startswith("[pause") or "pause" not in parameterized:
+            raise ValueError(f"{provider} model {model} does not support the Kokoro speech control {match.group(0)}")
+        pause = KOKORO_PAUSE_PATTERN.match(text, match.start())
+        if pause is None or pause.end() != match.end():
+            raise ValueError("Kokoro pause speech controls require exact syntax such as [pause:0.4s]")
+        seconds = float(pause.group(1))
+        if not 0 <= seconds <= 60:
+            raise ValueError("Kokoro pause speech controls must be between 0 and 60 seconds")
+        pauses.append(seconds)
+    if math.fsum(pauses) > 300:
+        raise ValueError("Kokoro pause speech controls must total at most 300 seconds per request")
+    pronunciations = list(KOKORO_PRONUNCIATION_PATTERN.finditer(text))
+    if pronunciations and "pronunciation" not in parameterized:
+        raise ValueError(f"{provider} model {model} does not support Kokoro pronunciation speech controls")
     reviewed_inline = all_inline_speech_tags()
     reviewed_wrapping = all_wrapping_speech_tags()
     for match in _INLINE_CUE.finditer(text):
+        if any(pronunciation.start() == match.start() for pronunciation in pronunciations):
+            continue
         cue = match.group(1).strip().lower()
         if cue in reviewed_inline and (
             policy is None or cue not in policy.inline_tags

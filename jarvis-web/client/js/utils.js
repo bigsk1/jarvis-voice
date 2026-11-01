@@ -37,29 +37,79 @@ const Utils = {
   // Keep this browser mirror in sync with lib/tts_style_tags.py (covered by vocabulary parity tests).
   _speechInlineTags: Object.freeze(["breath", "chuckle", "clears throat", "cry", "crying", "curious", "excited", "exhale", "exhales", "giggle", "hum-tune", "inhale", "laugh", "laughing", "laughs", "lip-smack", "long-pause", "mischievously", "pause", "sarcastic", "shouting", "shouts", "sigh", "sighs", "tongue-click", "tsk", "whispering", "whispers"]),
   _speechWrappingTags: Object.freeze(["build-intensity", "decrease-intensity", "emphasis", "fast", "higher-pitch", "laugh-speak", "loud", "lower-pitch", "sing-song", "singing", "slow", "soft", "whisper"]),
+  // Parameterized Kokoro syntax mirrors the bounded patterns in lib/tts_style_tags.py.
+  _kokoroControlPattern: /\[(?:(?:pause|rate)(?::|=|\s+)\s*[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+|nan|inf(?:inity)?)(?:s)?|voice:(?=[^\]\r\n]{1,200}\])\s*[a-z]{2}_[a-z0-9_]+(?:\([0-9]+(?:\.[0-9]+)?\))?(?:\+[a-z]{2}_[a-z0-9_]+(?:\([0-9]+(?:\.[0-9]+)?\))?)*)\](?!\s*\()/gi,
+  _kokoroPronunciationPattern: /\[([^\[\]<>\r\n]{1,200})\]\(\/([A-Za-z .\u00e6\u00f0\u00f8\u014b\u0153\u0250-\u02af\u02c8\u02cc\u02d0\u02d1\u0300-\u036f]{1,200})\/\)/g,
+  _kokoroIpaMarkerPattern: /[\u00e6\u00f0\u00f8\u014b\u0153\u0250-\u02af\u02c8\u02cc\u02d0\u02d1\u0300-\u036f]/,
+
+  /** Keep quoted speech syntax literal, including unfinished Markdown fences. */
+  _protectMarkdownCode(text) {
+    const source = String(text ?? '');
+    const fences = [];
+    const opening = /^[ \t]{0,3}(`{3,}|~{3,})[^\r\n]*(?:\r?\n|$)/gm;
+    let match;
+    while ((match = opening.exec(source))) {
+      const fence = match[1];
+      const closing = new RegExp(`^[ \\t]{0,3}${fence[0]}{${fence.length},}[ \\t]*\\r?$`, 'gm');
+      closing.lastIndex = opening.lastIndex;
+      const end = closing.exec(source);
+      const spanEnd = end ? end.index + end[0].length : source.length;
+      fences.push([match.index, spanEnd]);
+      opening.lastIndex = spanEnd;
+    }
+    // Fences take precedence: an unmatched inline opener must not swallow a
+    // later fenced example and unrelated prose on its other side.
+    const spans = [];
+    let position = 0;
+    for (const [start, end] of [...fences, [source.length, source.length]]) {
+      const inline = /(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g;
+      for (const code of source.slice(position, start).matchAll(inline)) {
+        spans.push([position + code.index, position + code.index + code[0].length]);
+      }
+      if (end > start) spans.push([start, end]);
+      position = end;
+    }
+    const saved = [];
+    let protectedText = '', start = 0;
+    for (const [spanStart, spanEnd] of spans) {
+      // Control-character placeholders survive citation and markup cleanup.
+      let token = `\x01CODE${saved.length}\x02`;
+      while (source.includes(token)) token = '\x01' + token;
+      saved.push([token, source.slice(spanStart, spanEnd)]);
+      protectedText += source.slice(start, spanStart) + token;
+      start = spanEnd;
+    }
+    return {text: protectedText + source.slice(start), saved};
+  },
 
   /** Remove cues; an original tagged source can repair older stripped history. */
   stripSpeechTagsForDisplay(text, taggedSource = '') {
     const inline = this._speechInlineTags.join('|');
     const wrapping = this._speechWrappingTags.join('|');
-    const repairBrackets = value => String(value ?? '').replace(
+    const repairBrackets = value => value.replace(
       new RegExp(`(?<!\\[)\\[(${inline})\\]{2,}(?!\\]|\\s*\\()`, 'gi'), '[$1]');
-    const strip = input => {
-      let value = this.stripLlmCitationArtifacts(input);
+    const strip = (input, repair = false) => {
+      const code = this._protectMarkdownCode(input);
+      let value = this.stripLlmCitationArtifacts(repair ? repairBrackets(code.text) : code.text);
+      value = value.replace(this._kokoroPronunciationPattern, (whole, label, ipa) =>
+        this._kokoroIpaMarkerPattern.test(ipa) ? label : whole);
+      value = value.replace(this._kokoroControlPattern, '');
       value = value.replace(new RegExp(`\\[\\s*(/?)\\s*(${wrapping})\\s*>`, 'gi'),
         (_, slash, tag) => `<${slash}${tag.toLowerCase()}>`);
       value = value.replace(new RegExp(`\\[(?:${inline})\\](?!\\s*\\()`, 'gi'), '');
       value = value.replace(new RegExp(`<\\s*/?\\s*(?:${wrapping})\\s*>`, 'gi'), '');
-      return value.replace(/[ \t]+([,.;:!?])/g, '$1')
+      value = value.replace(/[ \t]+([,.;:!?])/g, '$1')
         .replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n')
         .replace(/^[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+      for (const [token, original] of code.saved) value = value.replace(token, () => original);
+      return value;
     };
     // Reconstruct old display text only when it exactly matches source cleanup.
     // This leaves unrelated brackets and deliberately abbreviated answers alone.
     if (taggedSource && strip(text) === strip(taggedSource)) {
-      return strip(repairBrackets(taggedSource));
+      return strip(taggedSource, true);
     }
-    return strip(repairBrackets(text));
+    return strip(text, true);
   },
 
   /** Show a returned Markdown file as a document when Cloud fenced the whole file. */

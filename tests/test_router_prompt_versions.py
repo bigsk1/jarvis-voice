@@ -550,12 +550,14 @@ def test_runtime_prompt_scopes_elevenlabs_v4_audio_tags(tts_provider, model, ena
 
 @pytest.mark.parametrize("provider,model", [
     ("xai", ""), ("elevenlabs", "eleven_v4"), ("elevenlabs", "eleven_v4_turbo"),
+    ("kokoro", ""),
 ])
-def test_router_and_formatter_share_the_active_provider_instruction(provider, model):
+@pytest.mark.parametrize("prompt_version", ["v1", "v2", "v3", "v4"])
+def test_router_and_formatter_share_the_active_provider_instruction(provider, model, prompt_version):
     from response_formatter import ResponseFormatter
     from tts_style_tags import tts_style_tags_instruction
 
-    values = {"JARVIS_ROUTER_PROMPT_VERSION": "v4", "JARVIS_TIMEZONE": "UTC",
+    values = {"JARVIS_ROUTER_PROMPT_VERSION": prompt_version, "JARVIS_TIMEZONE": "UTC",
               "JARVIS_RESPONSE_STYLE": "casual", "LLM_PROVIDER": "openai",
               "TTS_PROVIDER": provider, "ELEVENLABS_TTS_MODEL": model}
     def get_setting(key, default=""):

@@ -23,6 +23,7 @@ from config_loader import load_config, get_config_value, get_active_config_mode
 from memory_db import MemoryDB
 from service_logger import ServiceLogger
 from tts_normalizer import normalize_tts_text
+from tts_style_tags import configured_speech_tag_options
 
 
 def retry_on_db_lock(func, max_retries=5, base_delay=1.0):
@@ -178,7 +179,14 @@ def speak_follow_up(alert: Dict[str, Any], mode: str, project_root: Path) -> boo
         return False
 
     try:
-        spoken_message = normalize_tts_text(message, profile=profile)
+        spoken_message = normalize_tts_text(
+            message, profile=profile,
+            **configured_speech_tag_options(
+                get_config_value,
+                purpose='status' if say_script.name.startswith('say-status') else 'final',
+                default_provider='kokoro' if mode == 'local' else 'openai',
+            ),
+        )
         if not spoken_message:
             print(f"Warning: TTS message empty after normalization for alert {alert['id']}", file=sys.stderr)
             return False

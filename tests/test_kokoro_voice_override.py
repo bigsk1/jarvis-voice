@@ -12,7 +12,6 @@ import pytest
 
 from api.routes import voice
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -90,7 +89,7 @@ def test_voice_api_kokoro_request_uses_requested_voice_after_config_load(
     response = asyncio.run(
         voice.speak(
             voice.SpeakRequest(
-                message="Hello",
+                message="**Hello** [pause:0.4s] [Worcester](/wˈʊstər/). [voice:af_bella] Done.",
                 mode=mode,
                 tts_provider="kokoro",
                 voice=requested_voice,
@@ -100,4 +99,7 @@ def test_voice_api_kokoro_request_uses_requested_voice_after_config_load(
 
     assert response["ok"] is True
     assert response["voice"] == requested_voice
-    assert json.loads(payload_file.read_text(encoding="utf-8"))["voice"] == expected_voice
+    payload = json.loads(payload_file.read_text(encoding="utf-8"))
+    assert payload["voice"] == expected_voice
+    assert payload["input"] == "Hello [pause:0.4s] [Worcester](/wˈʊstər/). Done."
+    assert "allow_voice_tags" not in payload

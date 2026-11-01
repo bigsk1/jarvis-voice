@@ -107,7 +107,8 @@ Use those capabilities before adding expressive delivery to a recording:
 | ElevenLabs v3/v4 models | Supported bracket cues inside the script, such as `[whispers]` or `[laughs]`; no separate instruction field |
 | xAI | Supported bracket cues and wrapping speech tags, such as `[laugh]` or `<whisper>text</whisper>` |
 | Qwen3-TTS | No separate instructions exposed: the fixed `tts-1` alias does not establish that the backend supports delivery instructions |
-| Kokoro and other listed models | No additional delivery field or speech-tag interpretation promised |
+| Kokoro | Exact pause tokens such as `[pause:0.4s]` and English IPA overrides such as `[Worcester](/wˈʊstər/)`; no emotion cues, inline speaker/rate changes, or separate instructions |
+| Other listed models | No additional delivery field or speech-tag interpretation promised |
 
 `instructions` controls how supported models deliver the script; it is not text
 to speak. Unsupported instructions and recognized speech cues from incompatible
@@ -115,6 +116,22 @@ providers are rejected before generation.
 Supported cues remain part of the supplied script. Avoid copying one provider's
 markup into another provider's recording. No speech cues are added automatically,
 and saving a recording does not alter Jarvis's runtime delivery settings.
+
+Kokoro scripts retain supported pause and IPA syntax verbatim; Jarvis's reply
+normalizer does not rewrite generated-audio scripts. Use the pause syntax with
+a colon and trailing `s`; pause tokens are case-insensitive. Jarvis rejects a
+pause over 60 seconds or total pauses over 300 seconds per request. IPA overrides apply to
+English. This integration keeps the chosen request voice and configured speed;
+it does not enable `allow_voice_tags`. Inline `[voice:...]` and `[rate:...]`
+controls with recognized numeric/voice-ID syntax are rejected rather than spoken as text. Kokoro controls sent to
+another provider are also rejected before generation. Ordinary brackets such
+as `[Chapter 1]` and factual notes such as `[rate: 5 requests per minute]`
+remain part of the exact script. Pronunciation validation requires a distinctive
+IPA symbol or stress mark so ordinary root-relative Markdown links are not
+classified as delivery controls. This tool sends the exact provider-native
+script, including any Markdown you supply; it does not render links or escape
+code examples for speech. Write the words to speak when requesting narration
+of a link or a literal control example.
 
 ```json
 {

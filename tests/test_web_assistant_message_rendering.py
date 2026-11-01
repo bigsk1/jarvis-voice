@@ -661,6 +661,93 @@ assert.equal(Utils.stripSpeechTagsForDisplay('[slow>Hi</slow> [laugh]'), 'Hi');
 """)
 
 
+@pytest.mark.parametrize("live", [True, False])
+@pytest.mark.parametrize("structured", [True, False])
+def test_kokoro_controls_stay_hidden_in_raw_fallback_and_details(live, structured):
+    run_message_browser(f"const live = {json.dumps(live)}, structured = {json.dumps(structured)};\n" + r"""
+const raw = structured
+  ? '[PAUSE:0.4s] Full answer for [Worcester](/wˈʊstər/).\n\n- [rate:0.9] Item one\n- [voice:af_bella(2)+af_sky(1)] Item two'
+  : '[pause:0.4s] A longer raw explanation about [Worcester](/wˈʊstər/) that belongs in the details pane. [rate:0.9] [voice:af_bella] It has several useful sentences.';
+const speech = '[pause:0.2s] Brief [Worcester](/wˈʊstər/) answer.';
+const payload = {speech, raw_llm_response:raw};
+const html = render(chat(), 'Brief Worcester answer.', [], payload, live);
+assert.ok(!/\[(?:pause|rate|voice):/i.test(html));
+assert.ok(!html.includes('wˈʊstər'));
+assert.ok(html.includes('Worcester'));
+if (structured) {
+  assert.ok(html.includes('Item one'));
+  assert.ok(html.includes('Item two'));
+} else {
+  assert.ok(html.includes('details-toggle'));
+  assert.ok(html.includes('several useful sentences'));
+}
+assert.equal(payload.speech, speech); // Audio receives the original speech input.
+assert.equal(payload.raw_llm_response, raw);
+assert.equal(Utils.stripSpeechTagsForDisplay('[pause:0.4s] [rate:0.9] [voice:af_bella(2)+af_sky(1)] [Worcester](/wˈʊstər/)'),
+  'Worcester');
+assert.equal(Utils.stripSpeechTagsForDisplay('[pause=0.4] [PAUSE 0.4] Ready.'), 'Ready.');
+const ordinary = '[1, 2] [voice actor] [rate of change] [pause for thought] [details](https://example.test/guide) [section](#section) [local](/guide) [pause:0.4s](https://example.test/pause) [voice:af_bella](https://example.test/voice)';
+assert.equal(Utils.stripSpeechTagsForDisplay(ordinary), ordinary);
+""")
+
+
+def test_kokoro_display_cleanup_matches_python_for_bounded_controls_and_pronunciation():
+    import sys
+    sys.path.insert(0, str(ROOT / "lib"))
+    from tts_normalizer import strip_speech_tags_for_display
+
+    ordinary = '[ordinary] [1, 2] [voice actor] [rate of change] [pause for thought] [link](https://example.test) [local](/guide) [pause:0.4s](https://example.test/pause)'
+    too_long_voice = '[voice:' + 'a' * 201 + ']'
+    too_long_label = '[' + 'a' * 201 + '](/wˈʊstər/)'
+    too_long_ipa = '[Word](/' + 'a' * 201 + '/)'
+    cases = [
+        ('[pause:0.4s] [PAUSE=0.4] [rate:0.9] [voice:af_bella(2)+af_sky(1)] Ready.', 'Ready.'),
+        ('[pause +.4] [rate -0.9] Ready.', 'Ready.'),
+        ('[Worcester](/wˈʊstər/) [test](/tɛst/)', 'Worcester test'),
+        ('[Docs](/docs/) [Guide](/guide/) [ASCII](/ti/)', '[Docs](/docs/) [Guide](/guide/) [ASCII](/ti/)'),
+        ('The limit is [rate: 5 requests per minute].', 'The limit is [rate: 5 requests per minute].'),
+        ('Check [voice: front door] after [pause: a beat].', 'Check [voice: front door] after [pause: a beat].'),
+        ('[Word](/abc123ˈ/) [Word](/abc_ˈ/)', '[Word](/abc123ˈ/) [Word](/abc_ˈ/)'),
+        ('Use `[pause:0.4s]` and `[Worcester](/wˈʊstər/)`.', 'Use `[pause:0.4s]` and `[Worcester](/wˈʊstər/)`.'),
+        ('[pause:0.4s] Ready.\n\n```text\n[pause:0.4s] [Worcester](/wˈʊstər/)\n```\nDone.', 'Ready.\n\n```text\n[pause:0.4s] [Worcester](/wˈʊstər/)\n```\nDone.'),
+        ('~~~text\n[rate:0.9] [voice:af_heart]\n~~~\n[pause:0.4s]Done.', '~~~text\n[rate:0.9] [voice:af_heart]\n~~~\nDone.'),
+        ('Example:\n```text\n[pause:0.4s] [Worcester](/wˈʊstər/)', 'Example:\n```text\n[pause:0.4s] [Worcester](/wˈʊstər/)'),
+        ('Use ``[pause:0.4s] `example` [Worcester](/wˈʊstər/)``.', 'Use ``[pause:0.4s] `example` [Worcester](/wˈʊstər/)``.'),
+        ('```json\r\n{ "example": "[pause:0.4s]  [Worcester](/wˈʊstər/)" }\r\n```', '```json\r\n{ "example": "[pause:0.4s]  [Worcester](/wˈʊstər/)" }\r\n```'),
+        ('Unmatched `example\n```text\n[pause:0.4s]\n```\n[pause:0.4s]Done`', 'Unmatched `example\n```text\n[pause:0.4s]\n```\nDone`'),
+        (ordinary, ordinary),
+        (too_long_voice, too_long_voice),
+        (too_long_label, too_long_label),
+        (too_long_ipa, too_long_ipa),
+        ('[Word](/two\nlines/)', '[Word](/two\nlines/)'),
+    ]
+    for source, expected in cases:
+        assert strip_speech_tags_for_display(source) == expected
+    run_message_browser(f"const cases = {json.dumps(cases)};\n" + r"""
+for (const [source, expected] of cases) {
+  assert.equal(Utils.stripSpeechTagsForDisplay(source), expected);
+}
+""")
+
+
+@pytest.mark.parametrize("live", [True, False])
+def test_kokoro_cleanup_preserves_notes_links_and_quoted_examples_in_chat(live):
+    run_message_browser(f"const live = {json.dumps(live)};\n" + r"""
+const text = 'The limit is [rate: 5 requests per minute]. Check [voice: front door] after [pause: a beat].\n\n[Docs](/docs/)\n\n```text\n[pause:0.4s] [Worcester](/wˈʊstər/)\n```';
+const payload = {speech:text, raw_llm_response:text};
+const html = render(chat(), text, [], payload, live);
+assert.ok(html.includes('[rate: 5 requests per minute]'));
+assert.ok(html.includes('[voice: front door]'));
+assert.ok(html.includes('[pause: a beat]'));
+// Without marked, this harness exercises the shipped plain Markdown fallback.
+assert.ok(html.includes('[Docs](/docs/)'));
+assert.ok(html.includes('[pause:0.4s]'));
+assert.ok(html.includes('[Worcester](/wˈʊstər/)'));
+assert.equal(payload.speech, text);
+assert.equal(payload.raw_llm_response, text);
+""")
+
+
 def test_client_speech_tag_cleanup_matches_reviewed_python_vocabulary():
     import sys
     sys.path.insert(0, str(ROOT / "lib"))

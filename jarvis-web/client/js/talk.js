@@ -457,13 +457,17 @@ class TalkController {
             const boundary = remaining.lastIndexOf(' ', end);
             if (boundary > 400) end = boundary;
           }
-          // A word boundary may be inside a multi-word delivery cue. Move it
-          // before the cue so the next request receives the complete tag.
-          const tagStart = remaining.lastIndexOf('[', end - 1);
-          if (tagStart >= 0 && tagStart < end) {
-            const tagEnd = remaining.indexOf(']', tagStart);
-            if (tagEnd >= end && /^[A-Za-z][A-Za-z -]{0,40}$/.test(remaining.slice(tagStart + 1, tagEnd))) {
-              end = tagStart > 0 ? tagStart : tagEnd + 1;
+          // A word boundary can be inside either a multi-word delivery cue
+          // or the IPA body following its label. Keep each bounded cue whole.
+          const pronunciations = [...remaining.matchAll(Utils._kokoroPronunciationPattern)]
+            .filter(cue => Utils._kokoroIpaMarkerPattern.test(cue[2]));
+          const cues = [...pronunciations, ...remaining.matchAll(/\[[^\[\]\r\n]{1,200}\]/g)]
+            .sort((a, b) => a.index - b.index || b[0].length - a[0].length);
+          for (const cue of cues) {
+            if (cue.index >= end) break;
+            if (cue.index + cue[0].length > end) {
+              end = cue.index > 0 ? cue.index : cue[0].length;
+              break;
             }
           }
           const chunk = remaining.slice(0, end);

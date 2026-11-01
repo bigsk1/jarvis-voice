@@ -121,6 +121,66 @@ def test_web_status_tts_cache_supports_docker_persistent_root():
     ) in DOCKER_COMPOSE
 
 
+def test_kokoro_cache_uses_spoken_controls_and_settings_but_not_the_generation_hint(tmp_path):
+    import requests
+
+    app = _web_module("app").app
+    api = _web_module("routes.api")
+    server_config = _web_module("config")
+    settings = {
+        "TTS_PROVIDER": "kokoro", "STATUS_CACHE_ENABLED": "true",
+        "KOKORO_TTS_URL": "http://kokoro.test/v1/audio/speech",
+        "KOKORO_TTS_VOICE": "af_sky", "KOKORO_TTS_SPEED": "1.0",
+        "KOKORO_TTS_STYLE_TAGS_ENABLED": "true",
+        "WEB_STATUS_TTS_CACHE_DIR": str(tmp_path / "cache"),
+    }
+    sample = "[Worcester](/wˈʊstər/) [pause:0.4s] is ready."
+
+    def get_setting(key, default=""):
+        return settings.get(key, default)
+
+    with (
+        patch.object(api, "_apply_tts_provider_override", return_value=None),
+        patch.object(server_config, "load_jarvis_config"),
+        patch.object(server_config, "get_jarvis_setting", side_effect=get_setting),
+        patch.object(api, "log_status_event"),
+        patch(f"{SERVER_PACKAGE}.app.is_auth_enabled", return_value=False),
+        patch.object(requests, "post") as generate,
+        app.test_client() as client,
+    ):
+        generate.return_value.status_code = 200
+        generate.return_value.content = b"kokoro-cached-audio"
+        generate.return_value.headers = {"Content-Type": "audio/mpeg"}
+
+        def speak(text, expected_cache, purpose="status"):
+            response = client.post("/api/tts", json={
+                "text": text, "mode": "cloud", "purpose": purpose,
+            })
+            assert response.status_code == 200
+            assert response.headers["X-Jarvis-TTS-Cache"] == expected_cache
+
+        speak(sample, "miss")
+        assert generate.call_args.kwargs["json"]["input"] == sample
+        speak(sample, "hit")
+        settings["KOKORO_TTS_STYLE_TAGS_ENABLED"] = "false"
+        speak(sample, "hit")
+        assert generate.call_count == 1
+
+        speak(sample.replace("0.4s", "0.6s"), "miss")
+        speak(sample.replace("wˈʊstər", "wʊstə"), "miss")
+        speak("Worcester is ready.", "miss")
+        for key, value in (
+            ("KOKORO_TTS_VOICE", "af_bella"), ("KOKORO_TTS_SPEED", "0.95"),
+            ("KOKORO_TTS_URL", "http://other-kokoro.test/v1/audio/speech"),
+        ):
+            settings[key] = value
+            speak(sample, "miss")
+            speak(sample, "hit")
+        speak(sample, "disabled", purpose="final")
+        assert generate.call_count == 8
+        assert "allow_voice_tags" not in generate.call_args.kwargs["json"]
+
+
 def test_elevenlabs_status_uses_flash_without_changing_final_model_or_voice():
     app = _web_module("app").app
     api = _web_module("routes.api")

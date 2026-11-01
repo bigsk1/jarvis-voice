@@ -321,6 +321,82 @@ def test_xai_native_inline_and_wrapping_cues_are_preserved_without_runtime_toggl
     assert transport[1].post.call_args.kwargs["json"]["text"] == text
 
 
+def test_kokoro_pause_and_ipa_preserve_exact_script_voice_and_speed(config, transport):
+    config.update(TTS_PROVIDER="elevenlabs", KOKORO_TTS_VOICE="af_bella",
+                  KOKORO_TTS_SPEED="0.95")
+    text = "  [Chapter 1] The city of [Worcester](/wˈʊstər/).\n[pause:0.4s] Next.  "
+    settings = audio.resolve_audio_settings({"provider": "kokoro", "text": text})
+    assert settings["text"] == text
+    audio.synthesize_audio(settings)
+    payload = transport[1].post.call_args.kwargs["json"]
+    assert payload == {"model": "kokoro", "input": text, "voice": "af_bella",
+                       "speed": 0.95, "response_format": "mp3"}
+    transport[1].post.assert_called_once()
+
+
+def test_kokoro_ipa_labels_can_be_reviewed_speech_cue_words(config, transport):
+    text = "Say [pause](/pɔːz/) and [excited](/ɪksˈaɪtɪd/). [PAUSE:0.4S] Done."
+    audio.synthesize_audio(audio.resolve_audio_settings({"provider": "kokoro", "text": text}))
+    assert transport[1].post.call_args.kwargs["json"]["input"] == text
+
+
+@pytest.mark.parametrize("provider", ["kokoro", "openai", "elevenlabs", "xai", "qwen3-tts"])
+def test_ordinary_bracket_labels_do_not_become_reserved_controls(config, provider):
+    text = (
+        "[Voice actor] Read [Chapter 1] and explain the [rate of change]. "
+        "The limit is [rate: 5 requests per minute]. "
+        "Check [voice: front door] after [pause: a beat]. "
+        "Read [Docs](/docs/), [pause](/guide/), and [excited](https://example.test)."
+    )
+    assert audio.resolve_audio_settings({"provider": provider, "text": text})["text"] == text
+
+
+@pytest.mark.parametrize("provider", ["kokoro", "openai"])
+def test_bracketed_facts_are_submitted_without_text_loss(config, transport, provider):
+    text = "The limit is [rate: 5 requests per minute]. Check [voice: front door]."
+    audio.synthesize_audio(audio.resolve_audio_settings({"provider": provider, "text": text}))
+    payload = transport[1].post.call_args.kwargs["json"]
+    assert payload["input"] == text
+    transport[1].post.assert_called_once()
+
+
+@pytest.mark.parametrize(("provider", "model"), [
+    ("openai", "gpt-4o-mini-tts"), ("elevenlabs", "eleven_v4"),
+    ("xai", "grok-tts"), ("qwen3-tts", "tts-1"),
+])
+@pytest.mark.parametrize("text", ["Before. [pause:0.4s] After.", "[Worcester](/wˈʊstər/)"])
+def test_kokoro_controls_do_not_cross_provider_boundaries(config, transport, provider, model, text):
+    with pytest.raises(ValueError, match="does not support"):
+        audio.resolve_audio_settings({"provider": provider, "model": model, "text": text})
+    transport[0].assert_not_called()
+
+
+@pytest.mark.parametrize("text", [
+    "[voice:af_bella] Hello.", "[rate:0.9] Hello.",
+    "[pause=0.4] Hello.", "[PAUSE 0.4] Hello.",
+    "[pause:0.4] Hello.", "[pause:nans] Hello.",
+    "[pause:-1s] Hello.", "[pause:60.1s] Hello.",
+    "[pause:60s] " * 6 + "Hello.",
+])
+def test_kokoro_unenabled_or_malformed_controls_fail_before_http(config, transport, text):
+    with pytest.raises(ValueError, match="speech|Kokoro"):
+        audio.resolve_audio_settings({"provider": "kokoro", "text": text})
+    transport[0].assert_not_called()
+
+
+def test_kokoro_maximum_total_pause_is_preserved_without_silent_capping(config):
+    text = "[pause:60s] " * 5 + "Hello."
+    assert audio.resolve_audio_settings({"provider": "kokoro", "text": text})["text"] == text
+
+
+def test_direct_kokoro_submission_cannot_bypass_control_validation(config, transport):
+    settings = audio.resolve_audio_settings({"provider": "kokoro", "text": "Exact narration."})
+    settings["text"] = "[voice:af_bella] Unenabled speaker switching."
+    with pytest.raises(ValueError, match="speech|Kokoro"):
+        audio.synthesize_audio(settings)
+    transport[0].assert_not_called()
+
+
 @pytest.mark.parametrize(("provider", "model", "text"), [
     ("elevenlabs", "eleven_multilingual_v2", "[whispering] Hello."),
     ("elevenlabs", "eleven_flash_v2_5", "[laughs] Hello."),
@@ -359,6 +435,16 @@ def test_public_delivery_capabilities_are_model_specific_and_independent(config)
     assert xai["wrapping_tags_supported"] is True
     assert "<whisper>text</whisper>" in xai["wrapping_tag_examples"]
     assert "key" not in json.dumps(eleven)
+
+
+def test_kokoro_capabilities_advertise_only_enabled_pause_and_ipa_controls(config):
+    capabilities = audio.get_audio_delivery_capabilities("kokoro", "kokoro")
+    assert capabilities["inline_tags_supported"] is True
+    assert capabilities["instructions_supported"] is False
+    assert capabilities["wrapping_tags_supported"] is False
+    assert capabilities["inline_tag_examples"] == ["[pause:0.4s]", "[Worcester](/wˈʊstər/)"]
+    assert "English" in capabilities["note"]
+    assert "speaker" in capabilities["note"] and "rate" in capabilities["note"]
 
 
 @pytest.mark.parametrize("model", ["tts-1", "tts-1-hd"])

@@ -4,6 +4,7 @@ This module uses only the standard library. Callers supply the effective provide
 model, or scoped config getter; importing it never loads configuration.
 """
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -20,6 +21,9 @@ class SpeechTagPolicy:
     playback_models: frozenset[str] | None = None
     generation_models: frozenset[str] | None = None
     model_labels: dict[str, str] = field(default_factory=dict)
+    parameterized_tags: frozenset[str] = frozenset()
+    parameterized_instruction: str = ""
+    preserve_paragraphs: bool = False
 
 
 XAI_INLINE_SPEECH_TAGS = frozenset({
@@ -39,6 +43,48 @@ ELEVENLABS_INLINE_SPEECH_TAGS = frozenset({
 ELEVENLABS_V4_MODELS = frozenset({"eleven_v4", "eleven_v4_turbo"})
 ELEVENLABS_AUDIO_TAG_MODELS = ELEVENLABS_V4_MODELS | {"eleven_v3"}
 
+# Require a distinct IPA symbol: ASCII-only /docs/ and /ti/ are ambiguous
+# Markdown destinations, not enough evidence for a pronunciation instruction.
+_IPA_SYMBOLS = "\u00e6\u00f0\u00f8\u014b\u0153\u0250-\u02af\u02c8\u02cc\u02d0\u02d1\u0300-\u036f"
+KOKORO_PAUSE_PATTERN = re.compile(
+    r'\[pause:([0-9]+(?:\.[0-9]+)?)s\](?!\s*\()', re.IGNORECASE,
+)
+KOKORO_PRONUNCIATION_PATTERN = re.compile(
+    rf'\[([^\[\]<>\r\n]{{1,200}})\]\(/'
+    rf'((?=[A-Za-z .{_IPA_SYMBOLS}]*[{_IPA_SYMBOLS}])[A-Za-z .{_IPA_SYMBOLS}]{{1,200}})/\)',
+)
+_CONTROL_NUMBER = r'[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+|nan|inf(?:inity)?)'
+_KOKORO_VOICE = r'[a-z]{2}_[a-z0-9_]+(?:\([0-9]+(?:\.[0-9]+)?\))?'
+KOKORO_CONTROL_PATTERN = re.compile(
+    rf'\[(?:(?:pause|rate)(?::|=|\s+)\s*{_CONTROL_NUMBER}s?'
+    rf'|voice:(?=[^\]\r\n]{{1,200}}\])\s*{_KOKORO_VOICE}(?:\+{_KOKORO_VOICE})*)\](?!\s*\()',
+    re.IGNORECASE,
+)
+
+
+def markdown_code_spans(text: str) -> list[tuple[int, int]]:
+    """Find fenced/inline examples so cue cleanup cannot rewrite literal code."""
+    fences = []
+    opening = re.compile(r'(?m)^[ \t]{0,3}(`{3,}|~{3,})[^\r\n]*(?:\r?\n|$)')
+    position = 0
+    while match := opening.search(text, position):
+        delimiter = match.group(1)
+        closing = re.compile(
+            rf'(?m)^[ \t]{{0,3}}{re.escape(delimiter[0])}{{{len(delimiter)},}}[ \t]*\r?$',
+        ).search(text, match.end())
+        end = closing.end() if closing else len(text)
+        fences.append((match.start(), end))
+        position = end
+    inline = re.compile(r'(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)')
+    spans = []
+    position = 0
+    for start, end in [*fences, (len(text), len(text))]:
+        spans.extend((m.start(), m.end()) for m in inline.finditer(text, position, start))
+        if end > start:
+            spans.append((start, end))
+        position = end
+    return spans
+
 # Register reviewed cues here. None means all models; an empty set means none.
 # Generation toggles never disable explicitly supplied, supported playback cues.
 TTS_TAG_POLICIES = {
@@ -51,6 +97,18 @@ TTS_TAG_POLICIES = {
         inline_tags=ELEVENLABS_INLINE_SPEECH_TAGS, model_setting="ELEVENLABS_TTS_MODEL",
         playback_models=ELEVENLABS_AUDIO_TAG_MODELS, generation_models=ELEVENLABS_V4_MODELS,
         model_labels={"eleven_v4": "ElevenLabs v4", "eleven_v4_turbo": "ElevenLabs v4 Turbo"},
+    ),
+    "kokoro": SpeechTagPolicy(
+        label="Kokoro", enabled_setting="KOKORO_TTS_STYLE_TAGS_ENABLED",
+        inline_tags=frozenset(), parameterized_tags=frozenset({"pause", "pronunciation"}),
+        preserve_paragraphs=True,
+        parameterized_instruction=(
+            "Use [pause:0.4s] for an occasional short pause (about 0.2 to 0.6 seconds). "
+            "For English pronunciation corrections, use [word](/IPA/) only when the IPA is "
+            "known, for example [Worcester](/wˈʊstər/); do not guess phonemes. "
+            "Keep the configured speaker and speed. Do not use emotion tags, [voice:], "
+            "[rate:], XML, or SSML. "
+        ),
     ),
 }
 
@@ -71,6 +129,17 @@ def speech_tag_options(provider: str, elevenlabs_model: str = "") -> dict[str, S
     The model argument keeps its historical keyword name for existing callers.
     """
     return {"speech_tag_policy": get_speech_tag_policy(provider, elevenlabs_model)}
+
+
+def configured_speech_tag_options(
+    get_setting: Callable[[str, str], str], *, purpose: str = "final", default_provider: str = "",
+) -> dict[str, SpeechTagPolicy | None]:
+    """Resolve actual native playback settings before any caller strips cues."""
+    provider = get_setting("TTS_PROVIDER", default_provider)
+    model = get_setting("ELEVENLABS_TTS_MODEL", "eleven_multilingual_v2")
+    if purpose == "status":
+        model = get_setting("ELEVENLABS_STATUS_TTS_MODEL", "") or model
+    return speech_tag_options(provider, model)
 
 
 def all_inline_speech_tags() -> frozenset[str]:
@@ -126,7 +195,9 @@ def tts_style_tags_instruction(
     )
     if inline:
         instruction += f"Inline sounds: {inline}. "
-    if policy.wrapping_tags:
+    if policy.parameterized_instruction:
+        instruction += policy.parameterized_instruction
+    elif policy.wrapping_tags:
         wrapping = ", ".join(f"<{tag}>...</{tag}>" for tag in sorted(policy.wrapping_tags))
         example = sorted(policy.wrapping_tags)[0]
         instruction += f"Wrapping styles: {wrapping}. Use exact tag syntax: "

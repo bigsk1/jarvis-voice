@@ -158,16 +158,10 @@ def _speak(result, mode):
 
 
 def _answer(result):
-    import re
-
-    from tts_style_tags import all_inline_speech_tags, all_wrapping_speech_tags
+    from tts_normalizer import strip_speech_tags_for_display
 
     text = str(result.get('raw_llm_response') or result.get('speech') or result.get('error') or '')
-    for tag in all_inline_speech_tags():
-        text = re.sub(r'\[' + re.escape(tag) + r'\]', '', text, flags=re.IGNORECASE)
-    for tag in all_wrapping_speech_tags():
-        text = re.sub(r'</?' + re.escape(tag) + r'>', '', text, flags=re.IGNORECASE)
-    return text.strip()
+    return strip_speech_tags_for_display(text, strip_unknown_markup=False)
 
 
 def _show_feedback(feedback):

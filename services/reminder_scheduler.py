@@ -20,6 +20,7 @@ from config_loader import load_config, get_config_value, get_active_config_mode
 from memory_db import MemoryDB
 from service_logger import ServiceLogger
 from tts_normalizer import normalize_tts_text
+from tts_style_tags import configured_speech_tag_options
 from time_utils import (
     add_days_local,
     add_months_local,
@@ -149,7 +150,12 @@ def speak_reminder(reminder: Dict[str, Any], mode: str, project_root: Path) -> b
         return False
 
     try:
-        spoken_message = normalize_tts_text(message)
+        spoken_message = normalize_tts_text(
+            message,
+            **configured_speech_tag_options(
+                get_config_value, default_provider='kokoro' if mode == 'local' else 'openai',
+            ),
+        )
         if not spoken_message:
             print(f"Warning: TTS message empty after normalization for reminder {reminder['id']}", file=sys.stderr)
             return False

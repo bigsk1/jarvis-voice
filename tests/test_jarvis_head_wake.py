@@ -59,7 +59,7 @@ def _load_wake_module(monkeypatch, script_name: str):
     model_catalog = types.ModuleType("model_catalog")
     model_catalog.get_provider_fallback_model = lambda provider: f"{provider}-test"
     tts_normalizer = types.ModuleType("tts_normalizer")
-    tts_normalizer.normalize_tts_text = lambda text: text
+    tts_normalizer.normalize_tts_text = lambda text, **_kwargs: text
 
     stubs = {
         "config_loader": config_loader,
