@@ -1,23 +1,26 @@
 # Optional Prompt Guard screening
 
-Jarvis can screen selected external tool results with a separately hosted
+Jarvis can screen selected tool results and model-bound text attachments with a separately hosted
 [Prompt Guard service](https://github.com/bigsk1/prompt-guard). The shared client
 is independent of the chat model. Cloud and local mode can both use the same
 service, including a GPU service elsewhere on the LAN. Jarvis needs no local
 inference packages, model weights, additional service, or database.
 
 The check runs after a selected tool returns, before its result enters the next
-model turn or workflow step:
+model turn or workflow step. Text attachments are checked immediately before
+their content is inserted into model context:
 
 - **Clean scan:** return the original tool result unchanged.
 - **Confirmed detection:** withhold the returned content, end the tool turn or
-  workflow, and return a neutral explanation with an incident ID. No automatic
-  retry, loop alternative, or Completion Guard repair follows that detection.
+  workflow or current attachment request, and return a neutral explanation with
+  an incident ID. No automatic retry, loop alternative, or Completion Guard
+  repair follows that detection. A historical attachment excerpt is omitted
+  with a neutral notice instead of stopping every later message in that chat.
 - **Disabled, unavailable, timed-out, invalid, busy, or oversized scan:** continue
   with the original result. This is an unknown/unscanned result, never a clean
   verdict.
 
-The tool has already run when screening happens. A rejection does not undo its
+For tool results, the tool has already run when screening happens. A rejection does not undo its
 side effects or claim the operation never ran. Existing completion facts are
 preserved. When incident saving succeeds, the private report retains the exact
 screened representation and recovery handles contained in it. Existing
@@ -34,11 +37,16 @@ PROMPT_GUARD_ENABLED=false
 PROMPT_GUARD_URL=http://your-prompt-guard-host:8188
 PROMPT_GUARD_API_KEY=
 PROMPT_GUARD_THRESHOLD=0.8
+# Optional exact source/workflow/profile exceptions:
+# PROMPT_GUARD_POLICY_FILE=config/prompt_guard_policy.json.example
 PROMPT_GUARD_TIMEOUT_SECONDS=2
 PROMPT_GUARD_MAX_INPUT_BYTES=8192
 # Optional; requires a scanner supporting the return_windows request field.
 PROMPT_GUARD_RETURN_WINDOWS=false
-PROMPT_GUARD_TOOLS=crawl_url,brave_llm_context,rss_feed,browser_use,browser_use_cloud
+PROMPT_GUARD_TOOLS=crawl_url,brave_llm_context,rss_feed,browser_use,browser_use_cloud,stash,source_library
+PROMPT_GUARD_ALERTS_ENABLED=false
+PROMPT_GUARD_ALERT_THRESHOLD=0.95
+PROMPT_GUARD_ALERT_COOLDOWN_SECONDS=3600
 # Optional base directory; Jarvis appends cloud/ or local/.
 # PROMPT_GUARD_INCIDENT_DIR=logs/prompt-guard/incidents
 ```
@@ -61,6 +69,76 @@ thresholds, and withholding rules are unchanged.
 value selects no tools. Review what a tool returns before adding it: selected
 results are sent to another service. Email, calendar, memory, and arbitrary MCP
 tools are not selected by default. No new tool schemas or Web settings are added.
+
+### Scoped thresholds
+
+The ENV threshold is the fallback for that mode. Higher thresholds block fewer
+results; lower thresholds are more sensitive. Set `PROMPT_GUARD_POLICY_FILE` to
+a small JSON policy to override exact source types/names. Relative paths resolve
+against the project root; absolute paths work too. The shipped example is usable
+directly and covers both the AI Status feed and its article crawls:
+
+```json
+{
+  "v": 1,
+  "rules": [{
+    "id": "ai_status_rss",
+    "source_type": "tool_result",
+    "source_name": "rss_feed",
+    "workflow_id": "rss_digest",
+    "profile": "ai_status",
+    "threshold": 0.9
+  }, {
+    "id": "ai_status_crawl",
+    "source_type": "tool_result",
+    "source_name": "crawl_url",
+    "workflow_id": "rss_digest",
+    "profile": "ai_status",
+    "threshold": 0.9
+  }]
+}
+```
+
+`ai_status` is an RSS profile, not a workflow ID. Other RSS profiles and ordinary
+crawls keep the ENV threshold. The selection model consumes the screened feed
+result; there is no separate classifier call for its prompt. Starter ENV files
+leave the policy path commented out: explicitly set it to enable these exceptions.
+Removing `workflow_id` and `profile` makes a rule
+apply to that tool everywhere. Source type/name are mandatory exact selectors;
+there are no wildcard matches. More workflow/profile selectors win, then the
+first declared rule wins a specificity tie. Duplicate selectors/IDs and invalid
+fields invalidate the file. Missing or malformed policies log a safe code and
+retain normal screening at the ENV threshold instead of disabling the guard.
+
+Workflow identity and a configured RSS profile are captured before execution
+in a mode-bound scope. Tool results and model-filled arguments cannot choose
+their own policy. The scope resets on completion, errors, and nested workflows.
+The file is reread for each scan; changing ENV settings requires restarting the
+affected processes. Policy IDs and effective thresholds appear in scan metadata,
+receipts, and private incidents. The scanner service needs no change.
+
+### High-score block alerts
+
+Set `PROMPT_GUARD_ALERTS_ENABLED=true` to create an ordinary high-severity Jarvis
+alert for an actual block scoring at least `PROMPT_GUARD_ALERT_THRESHOLD` (default
+`0.95`). This floor is independent of the block threshold: a result must first
+have been scanned and withheld. Clean, unavailable, or skipped scans never alert.
+
+Alerts contain only the source identifier, mode, score, thresholds, policy ID,
+and incident ID when available. Flagged text, URLs, filenames, and source errors
+are excluded. Identical mode/source/content hashes use the existing pending-alert
+dedupe and a configurable cooldown (default one hour) for recently handled alerts.
+Private incident records remain separate for each block.
+The alert lock uses that same mode/source/content identity. Simultaneous repeats
+contend with each other; distinct blocks can create their alerts during an
+existing alert's speech.
+
+The alert uses the normal high-severity `create_alert` path: persist it, wait for
+speech through the existing status-audio cache, then mark it spoken on success.
+The original mode/configuration stays active throughout delivery. Failed speech
+leaves the durable alert available for normal follow-up. Alert, locking, and
+speech failures cannot restore withheld content or retry the tool. No separate
+speech thread, alert service, or database is added.
 
 The client makes one direct request, with ambient proxies, netrc credentials,
 redirects, and retries disabled. It runs in the parent process and does not add
@@ -89,6 +167,8 @@ execution summary, and exact scanned representation with SHA256. It also indexes
 available request/result URLs, removing userinfo, sensitive query values, and
 fragments. For multi-source results, these are **candidate source URLs**: a batch
 classification does not establish which URL caused the detection.
+New incidents also identify their source type (`tool_result` or `attachment`)
+and the selected threshold policy. Older incident files remain readable.
 
 When available, `scan.diagnostics` contains the validated version, representation,
 aggregation, winning window index, and each window's score and token interval.
@@ -139,6 +219,37 @@ and workflow component calls. The default list excludes the workflow wrapper so
 its component results are not scanned twice. Required and optional workflow
 steps both stop on a confirmed detection, including looped steps.
 
+Selected `stash` calls screen `read` results; selected `source_library` calls
+screen `read` and `search` results. These names are included in starter settings.
+Existing explicit `PROMPT_GUARD_TOOLS` lists need them added to opt in. Saving,
+listing, indexing, downloading, renaming, and deleting artifacts are unaffected.
+Stash's URL, MIME, and filesystem checks remain separate from prompt screening.
+Storing an artifact is not a clean verdict, and screening never automatically
+resolves references in other tool results.
+
+Web chat screens the text evidence it inserts from current attachments,
+historical attachment excerpts, and legacy text context before orchestration or
+upload vision starts. It does not screen the user's task instructions as source
+evidence. This separate insertion boundary follows `PROMPT_GUARD_ENABLED`;
+`PROMPT_GUARD_TOOLS` filters tool results only. When enabled, Web bounds inserted
+text to `PROMPT_GUARD_MAX_INPUT_BYTES` without splitting UTF-8 characters, then
+screens exactly that excerpt. Omitted text is labeled as an excerpt and the
+complete file stays in Stash. History also retains its existing 4,000-character
+budget shared among text sources. Neither excerpt is a scan of the whole file.
+Unavailable scans keep the excerpt under the existing fail-open policy.
+The source selector for these text insertions is type `attachment`, name
+`web_text`. A current-attachment block saves and delivers the neutral receipt,
+ends the turn, and disables Completion Guard repair. A historical block omits
+only that source's text, preserving the human message and other sources. Its
+neutral notice prohibits inferring or automatically retrieving the withheld
+contents; the current request can continue. The original attachment remains in
+storage; withheld text is not copied into model context or the response/repair
+record. A confirmed block records only its Stash reference and file hash in the
+existing conversation JSON. That same saved source stays omitted from automatic
+history, including during a later scanner outage. Attach a new upload to request
+a fresh review. Other historical excerpts are screened again when reused, including
+after a policy or classifier change, without locking the conversation.
+
 Selected background results use the same review function at worker completion
 and authenticated callback completion. This covers both `browser_use_cloud`
 (worker-observed) and local `browser_use` (callback-observed), in either Jarvis
@@ -169,6 +280,12 @@ deduplication; quarantine is not their only storage location. Progress updates,
 browser agents' internal observations, provider-hosted search, and APIs bypassing
 these shared boundaries remain outside this integration. Tools that fetch and
 summarize internally need a separate hook before their own model call.
+In particular, `stash.remember` and internal summarizers are not covered merely
+by selecting `stash.read`. Direct artifact HTTP downloads remain downloads, not
+model consumption. PDFs, OCR/transcription/vision output, provider-hosted search,
+and external agents' internal observations need their own reviewed text-ingestion
+hooks or selected result tools. This integration does not classify raw binaries
+or claim that local storage makes source text trusted.
 
 Restart Web, the task worker, and any callback/API processes after updating so
 completion, delivery, and callback handling load the same code. No browser image
@@ -183,9 +300,11 @@ application outcome; `completion` describes the operation that already ran.
 
 ## Input size, latency, and failures
 
-Oversized inputs are skipped whole, never silently truncated. The Jarvis byte
-limit is separate from the service's token/window limits; service rejections are
-unknown outcomes. Invalid or incomplete coverage never produces a clean verdict.
+The shared scanner skips oversized inputs whole, never silently truncating a
+tool result or caller's text. Web attachment composition separately bounds and
+labels the exact excerpt it will insert before calling that scanner. The Jarvis
+byte limit is separate from the service's token/window limits; service rejections
+are unknown outcomes. Invalid or incomplete coverage never produces a clean verdict.
 For a GPU service benchmarked with larger inputs, `262144` allows a 256 KiB
 returned representation. Keep the smaller default for an unmeasured or
 CPU-constrained service.

@@ -17,13 +17,14 @@ import threading
 import time
 from collections import OrderedDict
 from contextlib import nullcontext
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal
 from urllib.parse import urlsplit
 
 import requests
 
 from lib.prompt_guard_diagnostics import PromptGuardDiagnostics, validate_diagnostics
+from lib.prompt_guard_policy import resolve_prompt_guard_policy
 
 try:
     from config_loader import config_scope, get_active_config_mode, get_config_value
@@ -64,6 +65,7 @@ class PromptGuardResult:
     model_id: str | None = None
     model_revision: str | None = None
     diagnostics: PromptGuardDiagnostics | None = field(default=None, repr=False)
+    policy_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,7 +168,10 @@ def _state(key: tuple[str, str, str]) -> _BackendState:
     return state
 
 
-def _log_once(key: tuple[str, str, str], reason: str, *, level: int, mode: str) -> None:
+def _log_once(
+    key: tuple[str, str, str], reason: str, *, level: int, mode: str,
+    policy_id: str | None = None, threshold: float | None = None,
+) -> None:
     now = time.monotonic()
     with _state_lock:
         state = _state(key)
@@ -174,7 +179,10 @@ def _log_once(key: tuple[str, str, str], reason: str, *, level: int, mode: str) 
         if previous is not None and now - previous < COOLDOWN_SECONDS:
             return
         state.logged_at[reason] = now
-    _log(level, "[PROMPT_GUARD] mode=%s reason=%s action=continue", mode, reason)
+    _log(
+        level, "[PROMPT_GUARD] mode=%s reason=%s policy_id=%s threshold=%s action=continue",
+        mode, reason, policy_id, threshold,
+    )
 
 
 def _invalid_json_constant(_value: str) -> None:
@@ -220,10 +228,12 @@ def _scan_text(text: str, *, source_type: str, source_name: str) -> PromptGuardR
     started = time.monotonic()
     mode = get_active_config_mode()
     input_bytes = 0
+    policy_id = None
 
     def result(status, reason=None, **fields) -> PromptGuardResult:
         return PromptGuardResult(status, reason, input_bytes=input_bytes,
-                                 elapsed_ms=(time.monotonic() - started) * 1000, **fields)
+                                 elapsed_ms=(time.monotonic() - started) * 1000,
+                                 policy_id=policy_id, **fields)
 
     if not is_enabled():
         _log_once((mode, "", ""), "disabled", level=logging.INFO, mode=mode)
@@ -234,9 +244,21 @@ def _scan_text(text: str, *, source_type: str, source_name: str) -> PromptGuardR
         _log_once((mode, "", ""), "invalid_configuration", level=logging.WARNING, mode=mode)
         return result("unknown", "invalid_configuration")
     key = (mode, settings.url, hashlib.sha256(settings.key.encode()).hexdigest())
+    policy_id = "configured_default"
     if (not isinstance(source_type, str) or not _SOURCE_NAME.fullmatch(source_type)
             or not isinstance(source_name, str) or not _SOURCE_NAME.fullmatch(source_name)):
         return result("skipped", "invalid_source", threshold=settings.threshold)
+    decision = resolve_prompt_guard_policy(
+        settings.threshold, source_type=source_type, source_name=source_name,
+        policy_file=get_config_value("PROMPT_GUARD_POLICY_FILE", ""),
+    )
+    settings = replace(settings, threshold=decision.threshold)
+    policy_id = decision.policy_id
+    if decision.error_code is not None:
+        _log_once(
+            key, decision.error_code, level=logging.WARNING, mode=mode,
+            policy_id=policy_id, threshold=settings.threshold,
+        )
     if not isinstance(text, str) or not text.strip():
         return result("skipped", "empty_input", threshold=settings.threshold)
     try:
@@ -298,9 +320,9 @@ def _scan_text(text: str, *, source_type: str, source_name: str) -> PromptGuardR
         _log(
             logging.WARNING if observation.flagged else logging.DEBUG,
             "[PROMPT_GUARD] mode=%s source_type=%s source=%s status=scanned flagged=%s "
-            "score=%.6f threshold=%.6f bytes=%s windows=%s elapsed_ms=%.1f action=reported",
+            "score=%.6f threshold=%.6f policy_id=%s bytes=%s windows=%s elapsed_ms=%.1f action=reported",
             mode, source_type, source_name, observation.flagged, observation.score, settings.threshold,
-            input_bytes, observation.windows, (time.monotonic() - started) * 1000,
+            policy_id, input_bytes, observation.windows, (time.monotonic() - started) * 1000,
         )
         return result("scanned", flagged=observation.flagged, injection_score=observation.score,
                       threshold=settings.threshold, coverage_complete=True,
@@ -322,7 +344,10 @@ def _scan_text(text: str, *, source_type: str, source_name: str) -> PromptGuardR
         state = _state(key)
         state.unavailable = True
         state.retry_after = time.monotonic() + COOLDOWN_SECONDS
-    _log_once(key, reason, level=logging.WARNING, mode=mode)
+    _log_once(
+        key, reason, level=logging.WARNING, mode=mode,
+        policy_id=policy_id, threshold=settings.threshold,
+    )
     return result("unknown", reason, threshold=settings.threshold)
 
 

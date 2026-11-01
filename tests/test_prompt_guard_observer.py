@@ -15,6 +15,7 @@ from lib.prompt_guard import PromptGuardResult
 
 @pytest.fixture
 def configured(tmp_path, monkeypatch):
+    monkeypatch.setattr(observer, "notify_prompt_guard_block", lambda *_args, **_kwargs: None)
     directory = tmp_path / "config"
     directory.mkdir()
     for mode in ("cloud", "local"):
@@ -86,7 +87,9 @@ def test_default_selection_applies_when_setting_absent(configured):
                               if not line.startswith("PROMPT_GUARD_TOOLS=")))
     with config_scope("cloud"):
         for tool in observer.DEFAULT_TOOLS.split(","):
-            observer.review_tool_result(tool, {"data": "article"})
+            observer.review_tool_result(
+                tool, {"data": "article"}, args={"action": "read"} if tool == "stash" else {},
+            )
     assert [call["source_name"] for call in configured] == observer.DEFAULT_TOOLS.split(",")
 
 

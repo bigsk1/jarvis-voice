@@ -29,6 +29,7 @@ except ModuleNotFoundError as exc:
 from lib.paths import get_project_root
 from lib.prompt_guard import MAX_INPUT_BYTES, PromptGuardResult
 from lib.prompt_guard_diagnostics import validate_diagnostics
+from lib.prompt_guard_policy import POLICY_ID
 
 MAX_SOURCE_URLS = 32
 MAX_URL_LENGTH = 4096
@@ -137,6 +138,8 @@ def _scan_metadata(observation: PromptGuardResult, text: str) -> dict:
         "coverage_complete": True,
         "windows_scanned": observation.windows_scanned,
     }
+    if isinstance(observation.policy_id, str) and POLICY_ID.fullmatch(observation.policy_id):
+        metadata["policy_id"] = observation.policy_id
     for field, pattern in (("service_request_id", _REQUEST_ID), ("model_id", _MODEL_ID),
                            ("model_revision", _REVISION)):
         value = getattr(observation, field, None)
@@ -264,7 +267,7 @@ def _write_record(base: Path, directory: Path, incident_id: str, record: dict) -
 
 def save_incident(
     *, tool_name: str, mode: str, observation: PromptGuardResult, text: str,
-    args: dict, result: dict,
+    args: dict, result: dict, source_type: str = "tool_result",
 ) -> IncidentReceipt:
     """Save bounded original evidence; failures never revoke a confirmed verdict.
 
@@ -276,7 +279,8 @@ def save_incident(
         incident_id = "pg-" + uuid.uuid4().hex
         if (mode not in {"cloud", "local"} or not isinstance(tool_name, str)
                 or not _NAME.fullmatch(tool_name) or not isinstance(text, str)
-                or not isinstance(args, dict) or not isinstance(result, dict)):
+                or not isinstance(args, dict) or not isinstance(result, dict)
+                or not isinstance(source_type, str) or not _NAME.fullmatch(source_type)):
             return IncidentReceipt(incident_id, False, "invalid_input")
         if len(text) > MAX_INPUT_BYTES:
             return IncidentReceipt(incident_id, False, "invalid_input")
@@ -290,11 +294,13 @@ def save_incident(
             "created_at": datetime.now(UTC).isoformat(),
             "mode": mode,
             "tool_name": tool_name,
+            "source_type": source_type,
             "decision": "flagged_content_withheld",
             "scan": metadata,
             "execution_summary": _execution_summary(result),
             "evidence": {
-                "representation": "scanned_tool_result", "text": text,
+                "representation": "scanned_tool_result" if source_type == "tool_result"
+                else "scanned_untrusted_text", "text": text,
                 "sha256": hashlib.sha256(encoded).hexdigest(), "utf8_bytes": len(encoded),
             },
             "source_candidates": _source_candidates(args, result),

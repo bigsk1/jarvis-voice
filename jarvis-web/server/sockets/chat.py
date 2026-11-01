@@ -76,6 +76,14 @@ class _AttachmentPreparationCancelled(Exception):
     """The owner stopped a request before its attachment preparation finished."""
 
 
+class _AttachmentContentWithheld(Exception):
+    """Carry only a neutral Prompt Guard receipt out of source preparation."""
+
+    def __init__(self, result: dict):
+        super().__init__('Attachment text withheld by Prompt Guard')
+        self.result = result
+
+
 def _validate_web_vision_analysis(value: str) -> str:
     """Reject empty or plan-only responses before marking Web vision complete."""
     from vision_provider import VisionProviderError
@@ -591,7 +599,8 @@ class ChatHandler:
         )
 
     def _format_attachment_bundle_context(
-        self, attachments: list[dict], *, history: bool = False
+        self, attachments: list[dict], *, history: bool = False,
+        conversation_id: str | None = None, withheld_text: dict | None = None,
     ) -> str:
         """Keep every source handle ahead of bounded content and access rules."""
         if not attachments:
@@ -623,6 +632,15 @@ class ChatHandler:
                     "Clearly identify unavailable visual or spoken evidence."
                 )
             if kind == 'text':
+                withheld_notice = (
+                    f'Source {index} text was withheld by Prompt Guard. '
+                    'Do not infer its contents or automatically retrieve it again.'
+                )
+                digest = attachment.get('sha256')
+                if (history and isinstance(digest, str) and digest and withheld_text
+                        and withheld_text.get(attachment['stash_ref']) == digest):
+                    content_blocks.append(withheld_notice)
+                    continue
                 try:
                     content = read_text_attachment(attachment)
                 except TextUploadError:
@@ -640,6 +658,27 @@ class ChatHandler:
                     )
                     continue
                 excerpt = content[:history_text_limit] if history else content
+                try:
+                    excerpt = self._review_attachment_text(excerpt)
+                except _AttachmentContentWithheld:
+                    if history and withheld_text is not None and isinstance(digest, str):
+                        # Reused references later in this same history build
+                        # must stay omitted even if persistence is unavailable.
+                        withheld_text[attachment['stash_ref']] = digest
+                    if conversation_id:
+                        from ..services.conversation_store import get_conversation_store
+                        try:
+                            get_conversation_store().withhold_text_attachment(
+                                conversation_id, attachment['stash_ref'], digest,
+                            )
+                        except Exception:
+                            # Persistence cannot replace the content rejection
+                            # with an unrelated preparation or repair error.
+                            print('[CHAT] Could not persist the attachment withholding marker')
+                    if not history:
+                        raise
+                    content_blocks.append(withheld_notice)
+                    continue
                 omitted = (
                     '\n[Excerpt only; read the exact Stash reference for remaining text.]'
                     if len(excerpt) < len(content) else ''
@@ -663,6 +702,21 @@ class ChatHandler:
             'when only part was accessed.\n[END ATTACHED SOURCES]'
         )
         return '\n\n'.join(inventory + content_blocks)
+
+    @staticmethod
+    def _review_attachment_text(text: str) -> str:
+        """Budget and screen the exact source excerpt being inserted into context."""
+        from lib.prompt_guard import get_max_input_bytes, is_enabled
+        from lib.prompt_guard_observer import is_prompt_guard_rejection, review_untrusted_text
+
+        if is_enabled():
+            # Keep full files in Stash. Never insert a larger excerpt than the
+            # scanner's byte budget, including multibyte history characters.
+            text = text.encode('utf-8')[:get_max_input_bytes()].decode('utf-8', errors='ignore')
+        result = review_untrusted_text('web_text', text)
+        if is_prompt_guard_rejection(result):
+            raise _AttachmentContentWithheld(result)
+        return text
 
     def _get_completion_guard_config(self, mode: str) -> dict:
         """Get effective Completion Guard settings for the current mode."""
@@ -3621,6 +3675,9 @@ Previous structured data:
             
             # Get configurable history limit (default 20)
             history_limit = get_web_setting('conversation.history_limit', 20)
+            withheld_text = conversation.get('prompt_guard_withheld_text')
+            if not isinstance(withheld_text, dict):
+                withheld_text = {}
             
             # Format for orchestrator: [{role, content, timestamp?, tools_used?, tool_results?}, ...]
             history = []
@@ -3632,7 +3689,8 @@ Previous structured data:
                     attachments = stored_attachments(msg.get('data'))
                     if attachments:
                         attachment_context = self._format_attachment_bundle_context(
-                            attachments, history=True
+                            attachments, history=True, conversation_id=conversation_id,
+                            withheld_text=withheld_text,
                         )
                 if content or attachment_context:
                     entry = {'role': role, 'content': content}
@@ -3655,6 +3713,8 @@ Previous structured data:
                     history.append(entry)
             
             return history
+        except _AttachmentContentWithheld:
+            raise
         except Exception as e:
             print(f"[CHAT] Error getting conversation context: {e}")
             return []
@@ -4611,11 +4671,12 @@ Previous structured data:
                 data=save_data,
                 tools_used=tools_used
             )
-            store.update_llm_metadata(
-                conversation_id,
-                provider=effective_provider,
-                model=effective_model,
-            )
+            if effective_provider or effective_model:
+                store.update_llm_metadata(
+                    conversation_id,
+                    provider=effective_provider,
+                    model=effective_model,
+                )
         except Exception as save_err:
             raise RuntimeError(f"The task ran, but its response could not be saved: {save_err}") from save_err
         return save_data, response_text, prepared_speech
@@ -4933,6 +4994,7 @@ Previous structured data:
         start_time = time.time()
         delivery_room = self._delivery_room(session_id, conversation_id)
         original_user_message = message
+        completion_guard_config = {}
         pdf_attachments = pdf_attachments or []
         audio_attachments = audio_attachments or []
         attachments = attachments if attachments is not None else pdf_attachments + audio_attachments
@@ -5024,18 +5086,29 @@ Previous structured data:
             # Handle text file context if provided - prepend to message
             if file_context and file_context.get('content'):
                 fname = file_context.get('name', 'file.txt')
-                content = file_context['content'][:100000]  # 100KB safety cap
+                content = self._review_attachment_text(file_context['content'][:100000])
+                omitted = (
+                    '\n[Excerpt only; the remaining attached text was not inserted.]'
+                    if len(content) < len(file_context['content']) else ''
+                )
                 char_count = len(content)
                 message = (
                     f"[Attached file: {fname} ({char_count} chars)]\n\n"
-                    f"{content}\n\n"
+                    f"{content}{omitted}\n\n"
                     f"[End of attached file]\n\n"
                     f"User's message: {message}"
                 )
                 print(f"[CHAT] Text file attached: {fname} ({char_count} chars)")
 
             if attachments:
-                message = f"{message}\n\n{self._format_attachment_bundle_context(attachments)}"
+                attachment_context = self._format_attachment_bundle_context(
+                    attachments, conversation_id=conversation_id,
+                )
+                message = f"{message}\n\n{attachment_context}"
+            check_preparation_cancelled()
+
+            # Historical text is evidence too; screen it before vision or orchestration.
+            conversation_history = self._get_conversation_context(conversation_id)
             check_preparation_cancelled()
 
             # Handle image if provided - route based on action
@@ -5072,9 +5145,6 @@ Previous structured data:
                 effective_model=effective_model, original_user_message=original_user_message,
             )
 
-            # Get conversation history for context
-            conversation_history = self._get_conversation_context(conversation_id)
-            
             # Build enhanced message with @prompt instructions and #tool hints if present
             enhanced_message = self._build_enhanced_message(
                 message,
@@ -5135,28 +5205,22 @@ Previous structured data:
                 vision_result=vision_result, stash_info=stash_info,
             )
 
-        except _AttachmentPreparationCancelled:
-            from ..services.conversation_store import get_conversation_store
-
-            stopped_text = 'Stopped while preparing the attached sources.'
-            try:
-                get_conversation_store().add_message(
-                    conversation_id, 'assistant', stopped_text,
-                    data={'_web_message_id': message_id, 'cancelled': True, '_run_status': 'cancelled'},
+        except _AttachmentContentWithheld as withheld:
+            if self.pending_cancellations.get(message_id, False):
+                self._finish_attachment_cancellation(conversation_id, message_id, delivery_room)
+            else:
+                self._complete_message(
+                    withheld.result, orchestrator=None, session_id=session_id,
+                    message_id=message_id, conversation_id=conversation_id, mode=mode,
+                    delivery_room=delivery_room, start_time=start_time,
+                    original_user_message=original_user_message, message=original_user_message,
+                    prompt_meta=prompt_meta, request_feedback=False,
+                    completion_guard_config=completion_guard_config,
+                    effective_provider='', effective_model='', progress_enabled=False,
+                    attachment_errors=[], vision_result=None, stash_info=None,
                 )
-            except (OSError, ValueError) as exc:
-                print(f'[CHAT] Could not save attachment cancellation: {exc}')
-                stopped_text += ' This stopped state could not be saved to conversation history.'
-            self._emit_run_event('chat:response', {
-                'message_id': message_id,
-                'conversation_id': conversation_id,
-                'text': stopped_text,
-                'speech': stopped_text,
-                'ok': True,
-                'cancelled': True,
-                'tools_used': [],
-                'data': {},
-            }, room=delivery_room)
+        except _AttachmentPreparationCancelled:
+            self._finish_attachment_cancellation(conversation_id, message_id, delivery_room)
         except Exception as e:
             error_msg = str(e)
             print(f"[CHAT] ERROR: {error_msg}")
@@ -5170,6 +5234,30 @@ Previous structured data:
             }, room=delivery_room)
         finally:
             self.pending_cancellations.pop(message_id, None)
+
+    def _finish_attachment_cancellation(self, conversation_id, message_id, delivery_room):
+        """Persist cancellation even when a completed scan also withheld a source."""
+        from ..services.conversation_store import get_conversation_store
+
+        stopped_text = 'Stopped while preparing the attached sources.'
+        try:
+            get_conversation_store().add_message(
+                conversation_id, 'assistant', stopped_text,
+                data={'_web_message_id': message_id, 'cancelled': True, '_run_status': 'cancelled'},
+            )
+        except (OSError, ValueError) as exc:
+            print(f'[CHAT] Could not save attachment cancellation: {exc}')
+            stopped_text += ' This stopped state could not be saved to conversation history.'
+        self._emit_run_event('chat:response', {
+            'message_id': message_id,
+            'conversation_id': conversation_id,
+            'text': stopped_text,
+            'speech': stopped_text,
+            'ok': True,
+            'cancelled': True,
+            'tools_used': [],
+            'data': {},
+        }, room=delivery_room)
     
     @_scoped_by_mode
     def _collect_feedback_async(self, session_id: str, source_message_id: str, query: str, mode: str,

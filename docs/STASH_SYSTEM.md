@@ -785,6 +785,12 @@ and named webhooks retain their existing configuration trust boundary.
 Filesystem path checks, filename sanitization, and UI/API authentication are
 separate controls.
 
+Prompt Guard is also separate: when enabled and `stash` is selected, the shared
+executor screens `stash.read` results before returning them to a model. It does
+not classify every saved/downloaded file or certify an artifact as trusted.
+Web text-attachment insertion is screened independently, including history
+excerpts. See [Prompt Guard](PROMPT_GUARD.md) for scope and threshold rules.
+
 Canvas PDF export also removes private numeric IP links from its public
 projection, including shortened/octal/hex IPv4 spellings. Its remote-media
 downloader checks resolved addresses before connecting. The external network

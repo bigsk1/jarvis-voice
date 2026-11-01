@@ -544,10 +544,11 @@ def test_old_service_rejection_does_not_trigger_an_automatic_rescan(transport):
 
 @pytest.mark.parametrize("valid_diagnostics", [True, False])
 def test_full_boundary_saves_only_private_diagnostics_and_keeps_detection(
-    transport, tmp_path, valid_diagnostics,
+    transport, tmp_path, valid_diagnostics, monkeypatch,
 ):
     from lib import prompt_guard_observer as observer
 
+    monkeypatch.setattr(observer, "notify_prompt_guard_block", lambda *_args, **_kwargs: None)
     config, calls, responses, _ = transport
     config["PROMPT_GUARD_RETURN_WINDOWS"] = "true"
     original = {"ok": True, "speech": TEXT, "data": {"content": TEXT}, "completion": "completed"}

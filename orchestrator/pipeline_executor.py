@@ -34,6 +34,7 @@ from llm_provider import create_configured_provider, has_usage_accounting_data
 from tool_logger import ToolLogger
 
 from lib.prompt_guard_observer import is_prompt_guard_rejection, prompt_guard_notice
+from lib.prompt_guard_policy import workflow_prompt_guard_scope
 
 try:
     from .workflow_availability import (
@@ -684,6 +685,45 @@ class PipelineExecutor:
     
     def execute(self, workflow: dict, query: str, 
                 status_callback: Callable[[str], None] = None) -> dict[str, Any]:
+        """Run a workflow with an immutable, mode-bound screening context."""
+        with workflow_prompt_guard_scope(
+            mode=self.mode, workflow_id=workflow.get("id"),
+            profile=self._prompt_guard_rss_profile(workflow, query),
+        ):
+            return self._execute(workflow, query, status_callback)
+
+    def _prompt_guard_rss_profile(self, workflow: dict, query: str) -> str | None:
+        """Capture only the configured RSS profile chosen at workflow admission.
+
+        Mirror the reviewed first-word query selector before a model or result
+        can change workflow variables. Alternate variable extractors do not get
+        a profile override. A missing/malformed RSS configuration merely leaves
+        the normal scanner threshold in force.
+        """
+        if workflow.get("id") != "rss_digest":
+            return None
+        variables = workflow.get("variables")
+        declaration = variables.get("profile") if isinstance(variables, dict) else None
+        if (not isinstance(declaration, dict)
+                or declaration.get("from") != "query"
+                or declaration.get("extract") != "first_words"
+                or type(declaration.get("max_words")) is not int
+                or declaration["max_words"] != 1
+                or "transform" in declaration):
+            return None
+        from lib.rss_feeds import RSSFeedError
+        from lib.rss_feeds.config import load_profiles, profile_id
+
+        topic = self._extract_topic(query, workflow).strip().lstrip("/")
+        candidate = topic.split()[0] if topic else declaration.get("default")
+        try:
+            profile = profile_id(candidate)
+            return profile if profile in load_profiles() else None
+        except (RSSFeedError, OSError, TypeError, ValueError):
+            return None
+
+    def _execute(self, workflow: dict, query: str,
+                 status_callback: Callable[[str], None] = None) -> dict[str, Any]:
         """
         Execute a workflow pipeline.
         

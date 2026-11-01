@@ -7,6 +7,11 @@ the Source Library searches saved originals in its own SQLite FTS5 store.
 The optional [Project NOMAD tool](tools/project-nomad/README.md) connects to a
 separate server and archive; its files and ZIMs are not added to this library.
 
+When Prompt Guard is enabled and `source_library` is selected, model-facing
+tool `search` and `read` results are screened before the next model turn. This
+does not block library imports, human browsing, downloads, or indexing, and it
+does not mark saved originals as trusted. See [Prompt Guard](PROMPT_GUARD.md).
+
 ## Use the Web library
 
 Open **Source library** in the Web sidebar. Choose Cloud or Local, click

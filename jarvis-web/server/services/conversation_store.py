@@ -307,6 +307,48 @@ class ConversationStore:
         if conversation and reconcile:
             conversation = self._reconcile_run(conversation)
         return conversation
+
+    @_transaction
+    def withhold_text_attachment(self, conv_id: str, stash_ref: str, sha256: str) -> bool:
+        """Remember a confirmed block for one saved text source without moving the chat.
+
+        The marker stores only the immutable source identity, never content or a
+        client-supplied safety flag. Match the saved user attachment before any
+        write. Historical screening does not update timestamps, run state, or
+        the sidebar index; another store instance sees the marker on reload.
+        """
+        if (not isinstance(conv_id, str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,64}', conv_id)
+                or not isinstance(stash_ref, str)
+                or not re.fullmatch(r'stash://space_web_text_[0-9a-f]{32}/f_[0-9a-f]{12}', stash_ref)
+                or not isinstance(sha256, str) or not re.fullmatch(r'[0-9a-f]{64}', sha256)):
+            return False
+        conversation = self._read_conversation(conv_id, recover_fences=False)
+        if not conversation:
+            return False
+        matched = False
+        messages = conversation.get('messages')
+        for message in messages if isinstance(messages, list) else []:
+            if not isinstance(message, dict) or message.get('role') != 'user':
+                continue
+            data = message.get('data')
+            attachments = data.get('attachments') if isinstance(data, dict) else None
+            if not isinstance(attachments, list):
+                continue
+            if any(isinstance(item, dict) and item.get('kind') == 'text'
+                   and item.get('stash_ref') == stash_ref and item.get('sha256') == sha256
+                   for item in attachments):
+                matched = True
+                break
+        if not matched:
+            return False
+        markers = conversation.get('prompt_guard_withheld_text')
+        markers = dict(markers) if isinstance(markers, dict) else {}
+        if markers.get(stash_ref) == sha256:
+            return True
+        markers[stash_ref] = sha256
+        conversation['prompt_guard_withheld_text'] = markers
+        self._write_conversation(conversation)
+        return True
     
     @_transaction
     def add_message(self, conv_id: str, role: str, content: str, 
