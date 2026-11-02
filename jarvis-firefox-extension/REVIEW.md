@@ -70,6 +70,18 @@ git archive --format=zip --output=/tmp/jarvis-companion-source.zip HEAD
 
 Retain the source commit, source archive, installer, version, and SHA-256 checksums together outside the source tree. Do not overwrite a published version. A GitHub link is useful for review, but does not replace any source attachment requested by AMO. Follow Mozilla's [source submission guide](https://extensionworkshop.com/documentation/publish/source-code-submission/) for the chosen package.
 
+### Dependency review boundaries
+
+Keep `web-ext` pinned with its lockfile for reproducible linting and packaging; review compatible updates to its transitive dependencies as well. The separate Socket.IO 4.7.2 pin reproduces the official runtime bundle, source map, and license submitted for review. Updating build tools alone does not change that bundle or require a new signed extension release.
+
+Three advisory matches need their actual call paths checked when the toolchain changes:
+
+- [GHSA-g3hv-75wg-m249](https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249) describes modern minimatch preprocessing absent from the locked 3.1.5 implementation. Do not force a major-version override into consumers expecting the 3.x API.
+- [GHSA-gcqx-w48m-w2h4](https://github.com/TehShrike/deepmerge/issues/273) concerns attacker-controlled merge data. In this integration, `addons-linter` uses deepmerge to patch bundled Firefox schemas with fixed data; the extension files being linted are not merge inputs.
+- [GHSA-96hv-2xvq-fx4p](https://github.com/websockets/ws/security/advisories/GHSA-96hv-2xvq-fx4p) concerns the Node `ws` receiver. Socket.IO's browser bundle uses Firefox's native WebSocket instead. Node dependencies are excluded from the installer, and the build scripts do not run a Node Socket.IO client.
+
+These are scoped reachability assessments, not a general exemption for development dependencies. Revisit them if schema inputs, Node execution, vendoring, or packaging change.
+
 ## Functional testing with an existing Jarvis server
 
 These steps are for an operator who already has a Jarvis Web server with Companion API 1. Features `extension.features.text`, `profile`, and `talk`, plus configured STT/chat/TTS, enable their corresponding checks. The Web origin is commonly port 5001; FastAPI on 8880 is not the extension endpoint. No additional review deployment is provisioned by this workflow.
