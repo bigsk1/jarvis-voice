@@ -206,17 +206,21 @@ def append_user_profile_card_to_prompt(base_prompt: str) -> str:
     return section
 
 
-def append_profile_card_for_router_direct_answer(base_prompt: str) -> str:
+def append_profile_card_for_router_direct_answer(
+    base_prompt: str, *, card_text: str | None = None,
+) -> str:
     """
     Append profile card to the router system prompt for direct-text answers.
 
     Covers detailed mode and no-tool paths that skip ResponseFormatter synthesis.
-    Tool-selection turns are instructed to ignore the card.
+    An explicit card uses the same policy boundary without reading the profile
+    store or its configuration (for isolated callers such as benchmarks).
     """
     base_prompt = base_prompt or ""
-    if not _profile_card_enabled():
-        return base_prompt
-    card_text = get_cached_profile_card()
+    if card_text is None:
+        if not _profile_card_enabled():
+            return base_prompt
+        card_text = get_cached_profile_card()
     section = format_router_direct_answer_profile_section(card_text)
     if not section:
         return base_prompt

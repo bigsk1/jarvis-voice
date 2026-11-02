@@ -3,36 +3,40 @@
 Jarvis Voice Assistant - LLM-Based Router (v2)
 Uses native tool calling from OpenAI/Anthropic/Ollama to intelligently route requests.
 """
-import os
-import sys
-import re
 import json
 import logging
+import os
+import re
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import (
-    load_config,
+    DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT,
+    DEFAULT_JARVIS_QA_WORD_LIMIT,
+    get_bool,
     get_config_value,
     get_float,
     get_int,
-    get_bool,
-    DEFAULT_JARVIS_QA_WORD_LIMIT,
-    DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT,
+    load_config,
 )
-from model_prompt_overrides import load_model_prompt_override, apply_prompt_override_sections
-from router_prompts import DEFAULT_ROUTER_PROMPT_VERSION, get_router_system_prompt
-from tool_schema import ToolRegistry, _merged_ghost_tool_names
+from model_prompt_overrides import apply_prompt_override_sections, load_model_prompt_override
+
+if __package__:
+    from .router_prompts import DEFAULT_ROUTER_PROMPT_VERSION, get_router_system_prompt
+else:
+    from router_prompts import DEFAULT_ROUTER_PROMPT_VERSION, get_router_system_prompt
 from llm_provider import create_configured_provider
 from provider_errors import classify_provider_error, friendly_provider_error, is_provider_error_text
-from user_profile import append_profile_card_for_router_direct_answer
+from tool_schema import ToolRegistry, _merged_ghost_tool_names
 from tts_style_tags import tts_style_tags_instruction
+from user_profile import append_profile_card_for_router_direct_answer
 
 
 @dataclass
@@ -131,6 +135,32 @@ def _web_search_availability_hint(
         "For a name outside the current tool schemas, inspect it with tool_search; "
         "follow its description."
     )
+
+
+def _apply_request_system_policies(
+    prompt: str | None, *, chat_only: bool, background_selected: bool,
+) -> str | None:
+    """Compose request policies without replacing an inherited continuation prompt."""
+    if (prompt is not None and not chat_only and background_selected
+            and _BACKGROUND_RECEIPT_SYSTEM_POLICY not in prompt):
+        prompt = "\n\n".join((_BACKGROUND_RECEIPT_SYSTEM_POLICY, prompt))
+    if chat_only:
+        prompt = "\n\n".join(part for part in (prompt, _CHAT_ONLY_SYSTEM_POLICY) if part)
+    return prompt
+
+
+def _apply_search_availability_policy(
+    prompt: str | None, registry: ToolRegistry, excluded_tools: set[str],
+    tool_names: list[str],
+) -> tuple[str | None, list[str]]:
+    """Attach discovery guidance only when this request exposes tool_search."""
+    names = []
+    if prompt is not None and "tool_search" in tool_names:
+        names = _web_search_tool_names(registry, excluded_tools)
+        hint = _web_search_availability_hint(registry, excluded_tools, names=names)
+        if hint:
+            prompt = "\n\n".join((prompt, hint))
+    return prompt, names
 
 
 @contextmanager
@@ -962,16 +992,28 @@ class LLMRouter:
     
     @property
     def system_prompt(self) -> str:
+        return self.build_system_prompt()
+
+    def build_system_prompt(
+        self, *, now: datetime | None = None, include_personal_touch: bool = True,
+        profile_card_appender=None,
+    ) -> str:
         """
         Dynamic system prompt with stable instructions first and per-turn
-        runtime context appended.
+        runtime context appended. A supplied clock must be timezone-aware and
+        is rendered in the router's configured timezone.
         
         This ensures the LLM knows the CURRENT date/time for:
         - Web searches (use correct year, not training cutoff)
         - Temporal context ("recent", "latest", "this week")
         - Time-sensitive queries ("tomorrow", "next Friday")
         """
-        now = datetime.now(self.timezone)
+        if now is not None:
+            if now.tzinfo is None or now.utcoffset() is None:
+                raise ValueError("now must be a timezone-aware datetime")
+            now = now.astimezone(self.timezone)
+        supplied_now = now
+        now = now or datetime.now(self.timezone)
         
         # Get response style - this affects output formatting rules
         response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'casual').lower()
@@ -1080,7 +1122,7 @@ For current info, news, prices, events - use external search tools from your ava
 - crawl_url (if available) for extracting content from URLs
 """
         
-        now_utc = datetime.now(ZoneInfo("UTC"))
+        now_utc = supplied_now.astimezone(ZoneInfo("UTC")) if supplied_now else datetime.now(ZoneInfo("UTC"))
         runtime_context = f"""RUNTIME CONTEXT FOR THIS TURN:
 
 CURRENT DATE AND TIME:
@@ -1149,7 +1191,7 @@ Use web search for a specific flight's live status. Include the airline, flight 
                 flight_status_policy,
                 runtime_context,
                 location_block,
-                greeting_hint,
+                greeting_hint if include_personal_touch else "",
             )
             if part and part.strip()
         )
@@ -1159,7 +1201,8 @@ Use web search for a specific flight's live status. Include the airline, flight 
             prepend_sections=("routing_prepend", "tool_calling_prepend"),
             append_sections=("routing_append",),
         )
-        return append_profile_card_for_router_direct_answer(prompt)
+        append_profile = profile_card_appender or append_profile_card_for_router_direct_answer
+        return append_profile(prompt)
     
     def _create_provider(self):
         """Create appropriate LLM provider based on config or overrides."""
@@ -1246,14 +1289,11 @@ Use web search for a specific flight's live status. Include the airline, flight 
             )
         # Keep this stable rule ahead of the composed prompt's changing clock/context.
         # Native continuations inherit the initial system message and deliberately pass None here.
-        if (provider_system_prompt is not None and not chat_only
-                and isinstance(background_context, WebTaskContext) and background_context.selected
-                and _BACKGROUND_RECEIPT_SYSTEM_POLICY not in provider_system_prompt):
-            provider_system_prompt = "\n\n".join((_BACKGROUND_RECEIPT_SYSTEM_POLICY, provider_system_prompt))
-        if chat_only:
-            provider_system_prompt = "\n\n".join(
-                part for part in (provider_system_prompt, _CHAT_ONLY_SYSTEM_POLICY) if part
-            )
+        provider_system_prompt = _apply_request_system_policies(
+            provider_system_prompt, chat_only=chat_only,
+            background_selected=isinstance(background_context, WebTaskContext)
+            and background_context.selected,
+        )
         
         # Only print if in interactive mode
         if sys.stdout.isatty():
@@ -1411,14 +1451,9 @@ Use web search for a specific flight's live status. Include the airline, flight 
             ]
         
         tool_names = [t.name for t in relevant_tools]
-        web_search_hint_tools = []
-        if provider_system_prompt is not None and "tool_search" in tool_names:
-            web_search_hint_tools = _web_search_tool_names(self.registry, set(excluded_tools))
-            search_hint = _web_search_availability_hint(
-                self.registry, set(excluded_tools), names=web_search_hint_tools
-            )
-            if search_hint:
-                provider_system_prompt = "\n\n".join((provider_system_prompt, search_hint))
+        provider_system_prompt, web_search_hint_tools = _apply_search_availability_policy(
+            provider_system_prompt, self.registry, set(excluded_tools), tool_names,
+        )
         continuation_meta["web_search_hint_tools"] = web_search_hint_tools
         retrieved = [name for name in tool_names if name not in ghost_list]
         ghosts = [name for name in tool_names if name in ghost_list]

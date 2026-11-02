@@ -235,6 +235,10 @@ and the assembled prompt are also hashed in the report. A schema or base-prompt
 change fails closed until the fixture is deliberately refreshed and reviewed.
 Retrieval is not rerun and no returned tool call is executed.
 
+For hosted models, use the separate [cloud model benchmark](../CLOUD_MODEL_BENCHMARK.md).
+It tests longer tool chains, completion, discovery, grounding and recovery with
+synthetic results; it does not use the local benchmark's GPU-residency score.
+
 Current Tool RAG traces stop at retrieval metadata and do not contain the
 model's final tool decision. The fixture's expected decisions are therefore a
 reviewed oracle derived from the current tool contracts, not copied model

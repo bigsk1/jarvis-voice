@@ -390,8 +390,12 @@ class ContextAssembler:
                             f"omitted_tool_results: {omitted}")
         return "\n".join(included)
 
-    def format_conversation_context(self, current_query: str, history: list) -> str:
-        """Format provided conversation history as context for the LLM."""
+    def format_conversation_context(self, current_query: str, history: list, *, now: datetime | None = None) -> str:
+        """Format history; an optional aware clock uses the configured timezone."""
+        if now is not None:
+            if now.tzinfo is None or now.utcoffset() is None:
+                raise ValueError("now must be a timezone-aware datetime")
+            now = now.astimezone(self.timezone)
         if not history:
             return current_query
 
@@ -462,7 +466,7 @@ class ContextAssembler:
         if last_role != "user":
             last_msg_dt = self._safe_iso_to_local_datetime(last_msg.get("timestamp"))
 
-        now_local = datetime.now(self.timezone)
+        now_local = now or datetime.now(self.timezone)
         if last_msg_dt:
             gap_seconds = int(max(0, (now_local - last_msg_dt).total_seconds()))
             abs_local = last_msg_dt.strftime("%b %d, %Y %H:%M")
@@ -672,8 +676,12 @@ class ContextAssembler:
                 print(f"DEBUG: Context loading failed: {exc}", file=sys.stderr)
             return current_query
 
-    def build_turn_context(self, original_query: str, conversation_context: list) -> str:
-        """Build context string for subsequent turns in a multi-turn conversation."""
+    def build_turn_context(self, original_query: str, conversation_context: list, *, now: datetime | None = None) -> str:
+        """Build later-turn context; an optional aware clock uses the configured timezone."""
+        if now is not None:
+            if now.tzinfo is None or now.utcoffset() is None:
+                raise ValueError("now must be a timezone-aware datetime")
+            now = now.astimezone(self.timezone)
         context_parts = [f"Original user request: {original_query}\n"]
         context_parts.append("Tools executed so far:")
         context_parts.append("Tool results use compact previews. Use explicit truncation flags, not smaller serialized character counts, to determine whether evidence was omitted.")
@@ -686,7 +694,7 @@ class ContextAssembler:
             context_parts.append(scope + "Do not repeat the same tool just to recover omitted tail content; answer from the available result or choose a different tool if genuinely needed.")
         if any(external):
             context_parts.append(self._EXTERNAL_RESULT_HINT)
-        now = datetime.now(self.timezone)
+        now = now or datetime.now(self.timezone)
 
         for i, ctx in enumerate(conversation_context, 1):
             tool_name = ctx["tool"]

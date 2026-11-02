@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""Compare cloud models on a frozen synthetic Jarvis workload."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def _ensure_repo_python() -> None:
+    # Resolving this symlink loses the virtualenv: several environments point
+    # at the same system binary but have different sys.prefix/site-packages.
+    expected = ROOT / ".venv/bin/python"
+    if Path(sys.prefix).resolve() == (ROOT / ".venv").resolve():
+        return
+    if not expected.is_file():
+        raise SystemExit("Repository .venv missing; run uv sync --dev --frozen first.")
+    os.execv(str(expected), [str(expected), str(Path(__file__).resolve()), *sys.argv[1:]])
+
+
+if __name__ == "__main__":
+    _ensure_repo_python()
+
+sys.path.insert(0, str(ROOT / "lib"))
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "orchestrator"))
+
+from cloud_model_benchmark import (  # noqa: E402
+    CATEGORY_WEIGHTS,
+    CloudBenchmarkRunner,
+    grade_explanation,
+    load_suite,
+    success_rates_summary,
+    trial_progress_summary,
+    write_reports,
+)
+
+
+def positive_int(text: str) -> int:
+    value = int(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return value
+
+
+def nonnegative_seconds(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value) or value < 0:
+        raise argparse.ArgumentTypeError("must be finite and zero or greater")
+    return value
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(description=__doc__, epilog=(
+        "Default: offline dry-run. --run sends synthetic prompts to the selected provider, "
+        "uses API quota/billing, and writes ignored reports. No real tool is executed."
+    ))
+    result.add_argument("--provider", choices=("ollama", "openai", "anthropic", "xai"))
+    result.add_argument("--model", help="Exact provider model ID; no automatic model fallback.")
+    result.add_argument("--suite", choices=("v1", "v2", "v3", "v4"), default="v4", help="Frozen suite version (default: v4).")
+    result.add_argument("--rounds", type=positive_int, default=3)
+    result.add_argument("--thinking", choices=("auto", "off", "minimal", "low", "medium", "high", "max", "xhigh"), default="auto")
+    result.add_argument("--timeout", type=nonnegative_seconds, default=300, help="Per-request timeout in seconds.")
+    result.add_argument("--pause", type=nonnegative_seconds, default=0, help="Seconds between provider calls.")
+    result.add_argument("--max-requests", type=positive_int, default=500, help="Run-wide provider-call ceiling.")
+    result.add_argument("--prompt-profile", choices=("baseline", "configured"), default=None,
+                        help="baseline: shared prompt only; configured: apply model routing/tool prompt overrides.")
+    result.add_argument("--skip-style-probes", action="store_true", help="Skip the six ungraded tone/hint response samples.")
+    result.add_argument("--case", action="append", default=[], help="Select case ID; repeatable, subset has no letter grade.")
+    result.add_argument("--category", action="append", choices=tuple(CATEGORY_WEIGHTS), default=[])
+    result.add_argument("--smoke", action="store_true", help="One case per category; diagnostic only.")
+    mode = result.add_mutually_exclusive_group()
+    mode.add_argument("--run", action="store_true", help="Send inference requests using cloud configuration.")
+    mode.add_argument("--dry-run", action="store_true", help="Offline fixture validation and request-budget plan (default).")
+    result.add_argument("--output-dir", type=Path, default=ROOT / "logs/cloud-benchmarks")
+    result.add_argument("--compare", type=Path, nargs="+", help="Offline comparison of saved JSON reports.")
+    result.add_argument("--json", action="store_true", help="Also print the complete report JSON.")
+    return result
+
+
+def compare_reports(paths: list[Path]) -> int:
+    reports = [json.loads(p.read_text(encoding="utf-8")) for p in paths]
+    groups: dict[str, list[dict]] = {}
+    for report in reports:
+        if report.get("benchmark") != "jarvis-cloud-model" or report.get("schema_version") not in (1, 2):
+            raise ValueError("not a supported Jarvis cloud benchmark report")
+        groups.setdefault(report["comparison_key"], []).append(report)
+    if len(groups) > 1:
+        print("Different fixtures, settings, repetitions, or runtime versions: shown in separate comparison groups.")
+    for key, rows in groups.items():
+        print(f"\nComparison {key[:16]}")
+        print("Provider / model | Thinking | Grade | Quality | Strict pass | Request p50 ms | Cost USD")
+        for r in sorted(rows, key=lambda item: (item["quality_score"] is None, -(item["quality_score"] or 0))):
+            cfg = r["configuration"]
+            strict = "not scored" if r["strict_pass_rate"] is None else f"{r['strict_pass_rate']}%"
+            print(f"{cfg['provider']} / {cfg['model']} | {cfg['thinking']} | {r['grade'] or 'diagnostic'} | "
+                  f"{r['quality_score']} | {strict} | {r['speed']['request_p50_ms']} | {r['usage']['cost_usd']}")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    argument_parser = parser()
+    args = argument_parser.parse_args(argv)
+    stage = "offline validation"
+    try:
+        if args.compare:
+            if args.run:
+                argument_parser.error("--compare is offline and cannot be combined with --run")
+            return compare_reports(args.compare)
+        if not args.provider or not args.model or not args.model.strip():
+            argument_parser.error("--provider and --model are required unless using --compare")
+        if args.timeout <= 0:
+            argument_parser.error("--timeout must be greater than zero")
+        suite = load_suite(ROOT / f"config/benchmarks/cloud-model-{args.suite}.json")
+        args.prompt_profile = args.prompt_profile or ("baseline" if args.suite == "v1" else "configured")
+        case_ids = {c["case_id"] for c in suite["cases"]}
+        if set(args.case) - case_ids:
+            argument_parser.error("unknown case IDs: " + ", ".join(sorted(set(args.case) - case_ids)))
+        cases = [c for c in suite["cases"] if (not args.case or c["case_id"] in args.case)
+                 and (not args.category or c["category"] in args.category)]
+        if args.smoke:
+            seen = set()
+            cases = [c for c in cases if c["category"] not in seen and not seen.add(c["category"])]
+        if not cases:
+            argument_parser.error("no cases match the selection")
+        plan = {
+            "dry_run": not args.run, "provider": args.provider, "model": args.model,
+            "repo_environment": Path(sys.prefix).resolve() == (ROOT / ".venv").resolve(),
+            "fixture": suite["fixture_id"], "fixture_sha256": suite["fixture_sha256"],
+            "prompt_version": suite["prompt_version"], "rounds": args.rounds, "thinking": args.thinking,
+            "cases": [{"case_id": c["case_id"], "category": c["category"],
+                       "turns": len(c["turns"]), "tool_call_budget": c["call_budget"]} for c in cases],
+            "provider_request_ceiling": min(args.max_requests, (0 if args.skip_style_probes else 2 * len(suite.get("style_probes", []))) + args.rounds * sum(
+                c["max_calls"] + len(c["turns"]) for c in cases
+            )),
+            "live_tools": False, "live_memory_or_insights": False, "server_side_tools": False,
+            "model_prompt_text_overrides": args.prompt_profile == "configured",
+            "prompt_profile": args.prompt_profile, "style_probes": not args.skip_style_probes,
+            "continuation": "legacy_text_replay" if args.suite == "v1" else "production_context_text_replay",
+        }
+        if args.run and not args.json:
+            print(f"Running {suite['fixture_id']}: {len(cases)} tasks × {args.rounds} round(s), "
+                  f"prompt profile {args.prompt_profile}, up to {plan['provider_request_ceiling']} provider requests. "
+                  "Tool execution is simulated; tone pairs are ungraded.")
+        else:
+            print(json.dumps(plan, indent=2))
+        if not args.run:
+            print("Offline validation passed. Add --run to use the selected provider's API/quota.")
+            return 0
+        from datetime import datetime, timezone
+
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        checkpoint = args.output_dir / (datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f") + "-checkpoint.jsonl")
+        print(f"Response checkpoints: {checkpoint}", flush=True)
+        with checkpoint.open("x", encoding="utf-8") as handle:
+            def save_event(event):
+                handle.write(json.dumps(event, ensure_ascii=False, allow_nan=False) + "\n")
+                handle.flush()
+
+            save_event({"event": "plan", **plan})
+            runner = CloudBenchmarkRunner(
+                suite, provider_name=args.provider, model=args.model, rounds=args.rounds,
+                thinking=args.thinking, timeout=args.timeout, pause=args.pause,
+                max_requests=args.max_requests, progress=lambda line: print(line, file=sys.stderr, flush=True),
+                prompt_profile=args.prompt_profile, style_probes=not args.skip_style_probes,
+                checkpoint=save_event,
+            )
+            stage = "provider evaluation"
+            report = runner.run(cases)
+            save_event({"event": "report", "report": report})
+        stage = "final report writing"
+        json_path, markdown_path = write_reports(report, args.output_dir)
+        print(f"Grade: {report['grade'] or 'not graded (partial/subset)'}; quality: {report['quality_score']}")
+        print(success_rates_summary(report))
+        print(trial_progress_summary(report))
+        print(grade_explanation(report))
+        if report.get("style_samples_status") == "not_run":
+            print("Tone samples were not run because the task run stopped early.")
+        elif report.get("style_samples_complete") is False:
+            print("Tone samples were incomplete; their failure does not change the graded task results.")
+        if report.get("fixture_gap_trials"):
+            print("No overall grade: a valid call needs simulator coverage. Review fixture_gap trials before spending on a repeat.")
+        print(f"Reports: {json_path}\n         {markdown_path}")
+        if args.json:
+            print(json.dumps(report, indent=2, ensure_ascii=False))
+        return 0 if report["complete"] else 2
+    except (ValueError, OSError, ImportError) as exc:
+        # Provider construction errors can include endpoint/credential details.
+        # Fixture-only failures are safe to explain before any provider is built.
+        if not args.run or args.compare:
+            print(f"Cloud benchmark: {exc}", file=sys.stderr)
+        else:
+            print(f"Cloud benchmark stopped during {stage} ({type(exc).__name__}). "
+                  "Any completed responses remain in the printed checkpoint file. No requests are retried automatically.", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

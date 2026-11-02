@@ -2,6 +2,10 @@
 
 Jarvis testing is deterministic by default. The normal suite must not rotate a user's databases, rewrite environment files, call paid LLM APIs, or execute state-changing tools.
 
+For opt-in cloud model comparisons, see the [cloud model benchmark](CLOUD_MODEL_BENCHMARK.md).
+It uses fixed synthetic tool results through the production provider adapters;
+its own deterministic tests never call those APIs.
+
 ## Quick start
 
 ```bash
