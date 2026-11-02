@@ -241,13 +241,15 @@ reviewed oracle derived from the current tool contracts, not copied model
 answers from private traffic.
 
 The active oracle is
-`config/benchmarks/ollama-tool-rag-replay-v2.json`; it is tracked benchmark
-source, not a generated log. Version 1 remains tracked byte-for-byte so older
-reports bearing its fixture SHA remain reproducible. Change the oracle by
-adding a new version and reviewing representative live results—do not rewrite
-an existing fixture in place.
+`config/benchmarks/ollama-tool-rag-replay-v3.json`; it is tracked benchmark
+source, not a generated log. Versions 1 and 2 remain tracked byte-for-byte so
+older reports bearing their fixture SHAs remain reproducible. Change the
+oracle by adding a new version and reviewing the expected decisions—do not
+rewrite an existing fixture in place.
 
-Version 2 avoids treating one literal phrasing as the only correct answer:
+Version 3 keeps the version 2 grading format and the same eight decisions.
+It refreshes the router v4 pin to the updated system prompt. That grading
+format avoids treating one literal phrasing as the only correct answer:
 
 - `arguments` are required expected values; `optional_arguments` may be
   omitted but must match when supplied.
@@ -256,7 +258,7 @@ Version 2 avoids treating one literal phrasing as the only correct answer:
   either/or group, while a second memory-related group must also match.
 - The selected tool name remains exact and all returned arguments must satisfy
   its tracked schema. These replays grade the first production routing
-  decision. The current v2 format does not accept an alternate multi-tool
+  decision. This format does not accept an alternate multi-tool
   process: the benchmark does not execute tools and cannot prove that another
   process would reach the same result. A case with genuinely equivalent routes
   needs a future reviewed fixture contract that represents and grades each

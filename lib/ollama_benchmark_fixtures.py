@@ -99,7 +99,7 @@ def tool_shortlist_sha256(tools: list[dict[str, Any]]) -> str:
 
 
 def replay_fixture_path() -> Path:
-    return get_project_root() / "config" / "benchmarks" / "ollama-tool-rag-replay-v2.json"
+    return get_project_root() / "config" / "benchmarks" / "ollama-tool-rag-replay-v3.json"
 
 
 def load_tool_rag_replay_fixture() -> dict[str, Any]:
@@ -114,7 +114,7 @@ def load_tool_rag_replay_fixture() -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if int(payload.get("schema_version") or 0) != 2:
         raise ValueError(f"unsupported Ollama replay fixture schema in {path}")
-    if payload.get("fixture_id") != "jarvis-ollama-tool-rag-replay-v2":
+    if payload.get("fixture_id") != "jarvis-ollama-tool-rag-replay-v3":
         raise ValueError(f"unexpected Ollama replay fixture id in {path}")
     safety = payload.get("safety") or {}
     if not safety.get("synthetic_queries_only") or safety.get("live_user_text_copied"):

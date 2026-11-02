@@ -326,11 +326,14 @@ def test_tool_rag_replay_fixture_is_redacted_and_content_addressed():
     fixture = load_tool_rag_replay_fixture()
 
     assert fixture["schema_version"] == 2
-    assert fixture["fixture_id"] == "jarvis-ollama-tool-rag-replay-v2"
+    assert fixture["fixture_id"] == "jarvis-ollama-tool-rag-replay-v3"
     assert fixture["supersedes"] == {
-        "fixture_id": "jarvis-ollama-tool-rag-replay-v1",
-        "fixture_sha256": "46263e12ed1656bf35e3f9739824b0ecac32d75528e0bc284b754cde0246cb73",
+        "fixture_id": "jarvis-ollama-tool-rag-replay-v2",
+        "fixture_sha256": "48e4f77af49c2de35df11e5cad102f59fb3cc0f5c326318f114573a0f3b5b4c3",
     }
+    version, prompt = load_router_prompt(fixture["router_prompt_version"])
+    assert version == "v4"
+    assert fixture["router_base_sha256"] == hashlib.sha256(prompt.encode("utf-8")).hexdigest()
     assert fixture["safety"]["synthetic_queries_only"] is True
     assert fixture["safety"]["live_user_text_copied"] is False
     assert [packet["family"] for packet in fixture["packets"]] == [
@@ -341,17 +344,23 @@ def test_tool_rag_replay_fixture_is_redacted_and_content_addressed():
     assert all(len(packet["schema_snapshot_sha256"]) == 64 for packet in fixture["packets"])
 
 
-def test_tool_rag_replay_v1_stays_immutable_for_historical_reports():
-    fixture_path = (
-        benchmark_fixtures.get_project_root()
-        / "config"
-        / "benchmarks"
-        / "ollama-tool-rag-replay-v1.json"
-    )
+@pytest.mark.parametrize(
+    "filename,digest",
+    [
+        (
+            "ollama-tool-rag-replay-v1.json",
+            "46263e12ed1656bf35e3f9739824b0ecac32d75528e0bc284b754cde0246cb73",
+        ),
+        (
+            "ollama-tool-rag-replay-v2.json",
+            "48e4f77af49c2de35df11e5cad102f59fb3cc0f5c326318f114573a0f3b5b4c3",
+        ),
+    ],
+)
+def test_tool_rag_replay_history_stays_immutable_for_historical_reports(filename, digest):
+    fixture_path = benchmark_fixtures.get_project_root() / "config" / "benchmarks" / filename
 
-    assert hashlib.sha256(fixture_path.read_bytes()).hexdigest() == (
-        "46263e12ed1656bf35e3f9739824b0ecac32d75528e0bc284b754cde0246cb73"
-    )
+    assert hashlib.sha256(fixture_path.read_bytes()).hexdigest() == digest
 
 
 def test_tool_rag_replay_fixture_rejects_ambiguous_expectation_keys(tmp_path, monkeypatch):
