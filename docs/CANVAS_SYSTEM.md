@@ -87,6 +87,15 @@ Canvas works with defaults, but headless/LAN installs should set the public URL 
 
 Canvas page links use `CANVAS_PUBLIC_URL/{page_id}`, for example `http://192.168.70.228:8890/page_20260331_121401`. The Canvas UI serves direct `/page_...` links and selects that page after login.
 
+Login redirects stay on the current UI origin, preserving page paths, queries,
+and fragments. All five Jarvis login pages share this validation; an unavailable
+navigation helper or an unsafe destination falls back to `/`.
+
+Canvas Stash downloads and metadata reads stay inside the selected space under
+the configured `STASH_DIR`, including when metadata or files contain symlinks.
+File IDs, legacy filenames, date aliases, and configured-root symlinks remain
+supported. Invalid or escaping paths return `404`.
+
 ---
 
 ## Sidebar: Hierarchical Tree View

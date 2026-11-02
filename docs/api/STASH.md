@@ -344,7 +344,15 @@ Get information about a specific file.
 GET /api/stash/space/{space_id}/file/{file_id}/download
 ```
 
-Download the actual file content.
+Download the actual file content by exact file ID, retaining the original filename,
+MIME type, and HTTP range support. Date aliases such as `space_2026-01-18_...`
+still resolve to the canonical space.
+
+Space metadata must remain within the selected space under the configured Stash
+root, and downloaded files must remain within that space after symlink resolution.
+Unavailable or unsafe metadata returns 404 and is skipped in listings; an unsafe
+file location returns 403. Filename aliases are available through the `?ref=`
+retrieval routes above.
 
 **Example:**
 ```bash

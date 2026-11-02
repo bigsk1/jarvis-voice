@@ -120,11 +120,15 @@
     <button id="loginBtn" type="submit">Open Docs</button>
   </form>
 
+  <script src="/ui-navigation.js"></script>
   <script>
     const form = document.getElementById('loginForm');
     const passwordInput = document.getElementById('password');
     const loginBtn = document.getElementById('loginBtn');
     const errorMessage = document.getElementById('errorMessage');
+    const loginDestination = window.JarvisUINavigation?.loginDestination(
+      new URLSearchParams(window.location.search).get('redirect')
+    ) || '/';
 
     const showError = (message) => {
       errorMessage.textContent = message;
@@ -141,7 +145,7 @@
               ? Math.max(1, data.expires_at - Math.floor(Date.now() / 1000))
               : 30 * 86400;
             document.cookie = `jarvis_auth=${existingToken}; path=/; max-age=${remainingSeconds}; SameSite=Lax`;
-            window.location.href = new URLSearchParams(window.location.search).get('redirect') || '/';
+            window.location.href = loginDestination;
           } else {
             localStorage.removeItem('jarvis_auth_token');
             document.cookie = 'jarvis_auth=; path=/; max-age=0; SameSite=Lax';
@@ -171,7 +175,7 @@
         }
         localStorage.setItem('jarvis_auth_token', data.token);
         document.cookie = `jarvis_auth=${data.token}; path=/; max-age=${(data.expires_in_days || 30) * 86400}; SameSite=Lax`;
-        window.location.href = new URLSearchParams(window.location.search).get('redirect') || '/';
+        window.location.href = loginDestination;
       } catch (_error) {
         showError('Connection failed');
       } finally {

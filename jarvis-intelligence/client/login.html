@@ -77,11 +77,15 @@
       <div class="footer-note">Shared auth with all Jarvis UIs</div>
     </div>
   </div>
+  <script src="/ui-navigation.js"></script>
   <script>
     const form = document.getElementById('loginForm');
     const passwordInput = document.getElementById('password');
     const loginBtn = document.getElementById('loginBtn');
     const errorMessage = document.getElementById('errorMessage');
+    const loginDestination = window.JarvisUINavigation?.loginDestination(
+      new URLSearchParams(window.location.search).get('redirect')
+    ) || '/';
     
     const existingToken = localStorage.getItem('jarvis_auth_token');
     if (existingToken) {
@@ -93,7 +97,7 @@
               ? Math.max(1, data.expires_at - Math.floor(Date.now() / 1000))
               : 30 * 86400;
             document.cookie = `jarvis_auth=${existingToken}; path=/; max-age=${remainingSeconds}; SameSite=Lax`;
-            window.location.href = new URLSearchParams(window.location.search).get('redirect') || '/';
+            window.location.href = loginDestination;
           } else {
             // Token invalid, clear both localStorage AND cookie
             localStorage.removeItem('jarvis_auth_token');
@@ -122,7 +126,7 @@
           localStorage.setItem('jarvis_auth_token', data.token);
           const expiryDays = data.expires_in_days || 30;
           document.cookie = `jarvis_auth=${data.token}; path=/; max-age=${expiryDays * 86400}; SameSite=Lax`;
-          window.location.href = new URLSearchParams(window.location.search).get('redirect') || '/';
+          window.location.href = loginDestination;
         } else { showError(data.error || 'Invalid password'); }
       } catch (err) { showError('Connection failed'); }
       finally { loginBtn.disabled = false; }

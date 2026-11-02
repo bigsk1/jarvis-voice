@@ -247,6 +247,7 @@
     </div>
   </div>
   
+  <script src="/ui-navigation.js"></script>
   <script>
     (function loadLoginHudLogo() {
       const container = document.getElementById('loginHudLogo');
@@ -273,14 +274,9 @@
     const loginBtn = document.getElementById('loginBtn');
     const errorMessage = document.getElementById('errorMessage');
     // Preserve private source citations through sign-in and shared-cookie restoration.
-    let loginDestination = '/';
-    try {
-      const requested = new URLSearchParams(window.location.search).get('redirect') || '/';
-      const target = new URL(requested, window.location.origin);
-      if (target.origin === window.location.origin) {
-        loginDestination = target.pathname + target.search + target.hash;
-      }
-    } catch { /* Invalid destinations return to the main app. */ }
+    const loginDestination = window.JarvisUINavigation?.loginDestination(
+      new URLSearchParams(window.location.search).get('redirect')
+    ) || '/';
     
     // Check if already authenticated
     const existingToken = localStorage.getItem('jarvis_auth_token');

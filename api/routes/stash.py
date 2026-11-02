@@ -218,17 +218,40 @@ def normalize_space_id(space_id: str) -> str:
     return space_id
 
 
+def _stash_component(value: object) -> str:
+    """Require one component for legacy space selectors and stored filenames."""
+    if (
+        not isinstance(value, str)
+        or not value
+        or value in {".", ".."}
+        or any(char in value for char in "/\\")
+        or any(ord(char) < 32 or ord(char) == 127 for char in value)
+    ):
+        raise ValueError("Invalid Stash path component")
+    return value
+
+
+def _confined_stash_path(parent: Path, name: object) -> Path:
+    """Resolve each component inside its canonical parent before reading it."""
+    path = (parent / _stash_component(name)).resolve()
+    if path == parent or not path.is_relative_to(parent):
+        raise ValueError("Stash path escapes its parent")
+    return path
+
+
 def get_space_meta(space_id: str) -> dict | None:
-    """Load meta.json for a space"""
-    # Normalize space_id to handle LLM date reformatting
-    space_id = normalize_space_id(space_id)
-    meta_path = get_stash_dir() / space_id / "meta.json"
-    if not meta_path.exists():
-        return None
+    """Load confined metadata, treating unsafe or unreadable spaces as unavailable."""
     try:
-        with open(meta_path) as f:
-            return json.load(f)
-    except (OSError, ValueError):
+        space_id = normalize_space_id(_stash_component(space_id))
+        root = get_stash_dir().resolve()
+        space_path = _confined_stash_path(root, space_id)
+        meta_path = _confined_stash_path(space_path, "meta.json")
+        if not meta_path.is_file():
+            return None
+        with meta_path.open() as f:
+            meta = json.load(f)
+        return meta if isinstance(meta, dict) else None
+    except (OSError, ValueError, RuntimeError):
         return None
 
 
@@ -449,16 +472,17 @@ async def download_file(space_id: str, file_id: str):
     Returns the actual file content with appropriate mime type.
     """
     try:
-        # Normalize space_id to handle LLM date reformatting
-        normalized_space_id = normalize_space_id(space_id)
-        meta = get_space_meta(normalized_space_id)
+        meta = get_space_meta(space_id)
         if not meta:
             raise HTTPException(status_code=404, detail=f"Space {space_id} not found")
+        normalized_space_id = normalize_space_id(space_id)
         
         for f in meta.get('files', []):
             if f['file_id'] == file_id:
-                file_path = get_stash_dir() / normalized_space_id / f['stored_name']
-                if not file_path.exists():
+                root = get_stash_dir().resolve()
+                space_path = _confined_stash_path(root, normalized_space_id)
+                file_path = _confined_stash_path(space_path, f['stored_name'])
+                if not file_path.is_file():
                     raise HTTPException(status_code=404, detail="File not found on disk")
                 
                 return FileResponse(
@@ -471,6 +495,8 @@ async def download_file(space_id: str, file_id: str):
         
     except HTTPException:
         raise
+    except (OSError, ValueError, RuntimeError):
+        raise HTTPException(status_code=403, detail="Stash file is not accessible")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

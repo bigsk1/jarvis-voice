@@ -341,6 +341,28 @@ The local code is the trust question. A reviewed Jarvis script calling a familia
 
 **Tests to extend when migrating a tool:** child env contains the selected-mode key, excludes unrelated secrets, `load_config()` does not rehydrate the mode file, and a legacy tool without the block is unchanged.
 
+### 9) Prefer Canonical Stash References During Maintenance
+
+**Priority:** Low / incremental, when related docs, examples, or scripts are next touched
+
+Prefer `stash://space_id/file_id` for artifact references wherever the caller
+supports them. Avoid reconstructing local paths or the older space/file download
+URL when the reference already identifies the artifact.
+
+- Keep existing field contracts: tool results may return that same URI as `ref`
+  or `stash_ref`; this does not require new aliases or renamed fields.
+- HTTP scripts should use `/api/stash/resolve`, `/api/stash/read`, or
+  `/api/stash/download` with the URI URL-encoded as `ref`, preserving the
+  selected mode and authentication.
+  Follow returned retrieval URLs when available.
+- Browser links and media players still need HTTP URLs. Retain an existing
+  route when a consumer requires it or an example documents its compatibility
+  contract; do not put a `stash://` URI directly into a media player's `src`.
+- Migrate affected examples as part of normal maintenance; no bulk rewrite or
+  removal of working legacy routes is planned.
+
+See [Stash API reference retrieval](api/STASH.md#retrieve-by-stash-reference).
+
 ---
 
 ## ⭐ State-of-the-Art Assistant Upgrades (Worth Doing Early)

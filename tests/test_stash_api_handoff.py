@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+from urllib.parse import quote
 
 import config_loader
 import pytest
@@ -27,6 +28,8 @@ def storage(tmp_path, monkeypatch):
     monkeypatch.setattr(config_loader, "get_project_root", lambda: checkout)
     monkeypatch.delenv("JARVIS_OVERRIDE_STASH_DIR", raising=False)
     monkeypatch.setenv("JARVIS_MODE", "cloud")
+    # Legacy endpoints inherit startup config instead of opening a request scope.
+    monkeypatch.setenv("STASH_DIR", str(stores["cloud"]))
     return stores
 
 
@@ -301,8 +304,8 @@ def test_query_bounds_are_validated_before_resolution(client, params):
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize("route", ["resolve", "read", "download"])
-def test_new_routes_use_existing_external_api_auth(storage, monkeypatch, route):
+@pytest.mark.parametrize("route", ["resolve", "read", "download", "legacy_download"])
+def test_retrieval_routes_use_existing_external_api_auth(storage, monkeypatch, route):
     from api import server
 
     monkeypatch.setattr(
@@ -310,13 +313,16 @@ def test_new_routes_use_existing_external_api_auth(storage, monkeypatch, route):
             "JARVIS_API_AUTH": "true", "JARVIS_API_KEY": "stash-handoff-test-key",
         }.get(key, default),
     )
-    _space, saved = save_file()
+    space, saved = save_file()
     app = FastAPI()
     app.include_router(routes.router)
     app.add_middleware(server.APIAuthMiddleware)
     with TestClient(app, client=("198.51.100.42", 54321)) as client:
         url = f"/api/stash/{route}"
         params = {"ref": saved["ref"]}
+        if route == "legacy_download":
+            url = f"/api/stash/space/{space.space_id}/file/{saved['file_id']}/download"
+            params = {}
         assert client.get(url, params=params).status_code == 401
         assert client.get(url, params=params, headers={"Authorization": "Bearer wrong"}).status_code == 403
         assert client.get(
@@ -333,3 +339,128 @@ def test_real_app_registers_new_retrieval_routes():
         parameters = {param["name"]: param for param in operation["parameters"]}
         assert parameters["ref"]["required"] is True
         assert "stash_ref" not in parameters
+
+
+@pytest.mark.parametrize("escape", ["relative", "absolute", "file_link", "sibling_link"])
+def test_legacy_download_rejects_manifest_and_artifact_escapes(client, tmp_path, escape):
+    space, saved = save_file()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("OUTSIDE FILE SENTINEL", encoding="utf-8")
+    meta = json.loads(space.meta_path.read_text())
+    if escape == "relative":
+        meta["files"][0]["stored_name"] = "../../outside.txt"
+    elif escape == "absolute":
+        meta["files"][0]["stored_name"] = str(outside)
+    else:
+        if escape == "sibling_link":
+            _other, sibling = save_file("OUTSIDE FILE SENTINEL")
+            outside = Path(sibling["path"])
+        Path(saved["path"]).unlink()
+        Path(saved["path"]).symlink_to(outside)
+    space.meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    response = client.get(
+        f"/api/stash/space/{space.space_id}/file/{saved['file_id']}/download"
+    )
+    assert response.status_code == 403
+    assert "OUTSIDE FILE SENTINEL" not in response.text
+    assert str(tmp_path) not in response.text
+
+
+@pytest.mark.parametrize("escape", ["space", "metadata"])
+@pytest.mark.parametrize("route", ["space", "info", "download"])
+def test_legacy_routes_reject_escaped_metadata(client, tmp_path, escape, route):
+    space, saved = save_file("OUTSIDE METADATA SENTINEL")
+    if escape == "space":
+        target = tmp_path / "outside-space"
+        space.space_path.rename(target)
+        space.space_path.symlink_to(target, target_is_directory=True)
+    else:
+        target = tmp_path / "outside-meta.json"
+        space.meta_path.rename(target)
+        space.meta_path.symlink_to(target)
+    url = f"/api/stash/space/{space.space_id}"
+    if route != "space":
+        url += f"/file/{saved['file_id']}"
+    if route == "download":
+        url += "/download"
+    response = client.get(url)
+    assert response.status_code == 404
+    assert str(tmp_path) not in response.text
+
+
+@pytest.mark.parametrize("selector", ["%2e%2e", ".%2e", "%2E%2E"])
+@pytest.mark.parametrize("route", ["space", "info", "download"])
+def test_legacy_routes_reject_encoded_parent_space(client, tmp_path, selector, route):
+    space, saved = save_file()
+    meta = json.loads(space.meta_path.read_text())
+    meta["labels"] = ["PARENT METADATA SENTINEL"]
+    meta["files"][0]["stored_name"] = "outside.txt"
+    (tmp_path / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    (tmp_path / "outside.txt").write_text("OUTSIDE FILE SENTINEL", encoding="utf-8")
+    url = f"/api/stash/space/{selector}"
+    if route != "space":
+        url += f"/file/{saved['file_id']}"
+    if route == "download":
+        url += "/download"
+    response = client.get(url)
+    assert response.status_code == 404
+    assert "SENTINEL" not in response.text
+    assert str(tmp_path) not in response.text
+
+
+@pytest.mark.parametrize("endpoint", ["", "/stats", "/recent", "/search?q=handoff", "/labels"])
+def test_legacy_aggregates_skip_escaped_metadata(client, storage, tmp_path, endpoint):
+    space, _saved = save_file()
+    outside = tmp_path / "outside-space"
+    outside.mkdir()
+    meta = json.loads(space.meta_path.read_text())
+    meta["space_id"] = "space_UNTRUSTED"
+    meta["labels"] = ["handoff-test", "UNTRUSTED"]
+    (outside / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    (storage["cloud"] / "space_bad").symlink_to(outside, target_is_directory=True)
+    response = client.get(f"/api/stash{endpoint}")
+    assert response.status_code == 200, response.text
+    assert "UNTRUSTED" not in response.text
+    if endpoint == "/stats":
+        assert response.json()["total_spaces"] == 1
+    elif endpoint != "/labels":
+        assert [row["space_id"] for row in response.json()["spaces"]] == [space.space_id]
+
+
+@pytest.mark.parametrize("root_link", [False, True])
+def test_legacy_download_preserves_aliases_ranges_and_file_identity(client, storage, tmp_path, root_link):
+    space, saved = save_file(b"0123456789", "Résumé..txt", mime="text/plain")
+    if root_link:
+        target = tmp_path / "configured-root-target"
+        storage["cloud"].rename(target)
+        storage["cloud"].symlink_to(target, target_is_directory=True)
+    date = space.space_id.split("_")[1]
+    dashed = space.space_id.replace(date, f"{date[:4]}-{date[4:6]}-{date[6:8]}", 1)
+    for space_id in (space.space_id, dashed):
+        url = f"/api/stash/space/{space_id}/file/{saved['file_id']}/download"
+        response = client.get(url)
+        assert response.status_code == 200
+        assert response.content == b"0123456789"
+        assert response.headers["content-type"].startswith("text/plain")
+        assert f"filename*=utf-8''{quote(saved['name'])}" in response.headers["content-disposition"]
+        partial = client.get(url, headers={"Range": "bytes=1-3", "If-Range": response.headers["etag"]})
+        assert partial.status_code == 206
+        assert partial.content == b"123"
+        assert partial.headers["content-range"] == "bytes 1-3/10"
+    # This older endpoint accepts an ID, not the filename alias supported by ?ref=.
+    base = f"/api/stash/space/{space.space_id}/file"
+    assert client.get(f"{base}/{quote(saved['name'])}/download").status_code == 404
+    assert client.get(f"{base}/f_missing/download").status_code == 404
+    Path(saved["path"]).unlink()
+    assert client.get(f"{base}/{saved['file_id']}/download").status_code == 404
+
+
+def test_legacy_download_uses_active_store_without_adding_mode_parameter(storage):
+    import asyncio
+
+    space, saved = save_file("Local legacy evidence", mode="local")
+    with config_scope("local"):
+        response = asyncio.run(routes.download_file(space.space_id, saved["file_id"]))
+        assert Path(response.path).read_text() == "Local legacy evidence"
+        assert config_loader.get_active_config_mode() == "local"
+    assert config_loader.get_active_config_mode() == "cloud"

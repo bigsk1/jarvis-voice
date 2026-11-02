@@ -30,37 +30,68 @@ def stash_viewer_page(space_id, file_id):
     return send_from_directory(_CLIENT_STATIC, "stash-viewer.html")
 
 
+def _stash_component(value: object) -> str:
+    """Keep URL selectors and stored filenames to a single path component."""
+    if (
+        not isinstance(value, str)
+        or not value
+        or value in {".", ".."}
+        or any(char in value for char in "/\\")
+        or any(ord(char) < 32 or ord(char) == 127 for char in value)
+    ):
+        abort(404)
+    return value
+
+
+def _confined_stash_path(parent: Path, name: object) -> Path:
+    """Resolve links before any read, keeping each path inside its own parent."""
+    component = _stash_component(name)
+    try:
+        path = (parent / component).resolve()
+    except (OSError, RuntimeError):
+        abort(404)
+    if path == parent or not path.is_relative_to(parent):
+        abort(404)
+    return path
+
+
 def _resolve_stash_file(space_id, file_id):
-    """Resolve a stash id to its file and public metadata."""
-    normalized_space_id = normalize_space_id(space_id)
-    space_dir = get_stash_dir() / normalized_space_id
-    if not space_dir.exists():
-        abort(404, f"Stash space not found: {normalized_space_id}")
+    """Resolve an ID or legacy filename within its configured Stash space."""
+    normalized_space_id = normalize_space_id(_stash_component(space_id))
+    _stash_component(file_id)
+    try:
+        root = get_stash_dir().resolve()
+    except (OSError, RuntimeError):
+        abort(404)
+    space_dir = _confined_stash_path(root, normalized_space_id)
+    if not space_dir.is_dir():
+        abort(404)
 
     target_file = None
     file_info = None
-    meta_file = space_dir / "meta.json"
-    if meta_file.exists():
+    meta_file = _confined_stash_path(space_dir, "meta.json")
+    if meta_file.is_file():
         try:
             with open(meta_file) as f:
                 meta = json.load(f)
+        except (OSError, ValueError):
+            meta = {}
+        entries = meta.get('files', []) if isinstance(meta, dict) else []
+        for candidate in entries if isinstance(entries, list) else []:
+            if not isinstance(candidate, dict) or candidate.get('file_id') != file_id:
+                continue
+            filename = candidate.get('stored_name') or candidate.get('name')
+            if filename:
+                # Security rejection must not be swallowed by metadata fallback.
+                target_file = _confined_stash_path(space_dir, filename)
+                file_info = dict(candidate)
+            break
 
-            for candidate in meta.get('files', []):
-                if candidate.get('file_id') != file_id:
-                    continue
-                filename = candidate.get('stored_name') or candidate.get('name')
-                if filename:
-                    target_file = space_dir / filename
-                    file_info = dict(candidate)
-                break
-        except Exception:
-            pass
+    if target_file is None or not target_file.is_file():
+        target_file = _confined_stash_path(space_dir, file_id)
 
-    if target_file is None or not target_file.exists():
-        target_file = space_dir / file_id
-
-    if not target_file.exists():
-        abort(404, f"File not found in stash: {file_id}")
+    if not target_file.is_file():
+        abort(404)
 
     return normalized_space_id, target_file, file_info or {}
 

@@ -280,10 +280,13 @@ const login=fs.readFileSync(root+'/jarvis-web/client/login.html','utf8').match(/
     const context={window:{location},document,URL,URLSearchParams,Math,Date,
       localStorage:{...localStorage,getItem:()=>existingToken},
       fetch:async()=>({json:async()=>({ok:true,token:'test-token'})})};
-    vm.createContext(context); vm.runInContext(login,context);
+    vm.createContext(context);
+    vm.runInContext(fs.readFileSync(root+'/lib/static/ui-navigation.js','utf8'),context);
+    vm.runInContext(login,context);
     if(!existingToken) await vm.runInContext('doLogin()',context);
     await new Promise(resolve=>setImmediate(resolve));
-    assert.equal(location.href,destination,'Both sign-in and cookie restoration must retain the citation');
+    assert.equal(location.href,new URL(destination,location.origin).href,
+      'Both sign-in and cookie restoration must retain the citation');
   }
 })().catch(error=>{console.error(error);process.exitCode=1;});
 """
