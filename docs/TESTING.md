@@ -134,6 +134,35 @@ default 30-minute bound for a slower development machine.
 | Explicit live integration | Validate a real provider/model/service path | May incur cost, create logs, conversations, or service sessions |
 | Manual UI/voice test | Validate browser, audio, wake-word, Docker, or tmux behavior | Normal application state |
 
+## Production installation in CI
+
+The **Production Install Check** GitHub workflow runs on pushes and pull requests
+to `main`, and supports manual runs. A fresh Ubuntu 24.04/Python 3.12 runner
+installs the required audio/native libraries, then recreates the production
+environment with `uv sync --locked --no-dev --no-install-project`. It uses a
+pinned uv version, no restored dependency cache, and an explicit `.venv-prod-ci`
+target. `uv pip check` verifies the installed dependency metadata.
+
+The smoke helper imports real provider, UI, audio, and native packages, runs a
+bundled wake-word model on silence, and checks FastAPI health in-process. It uses
+an isolated child interpreter, a temporary home directory, and an environment
+allowlist without application credentials. Python socket requests are rejected
+during the smoke check; no microphone, listening server, provider request, or
+downloaded STT model is required. This validates the locked Linux/Python
+environment, not Docker builds, other platforms, or live provider behavior.
+
+The job receives read-only repository access, does not persist checkout
+credentials, and has no application-secret inputs or artifact uploads. Before
+installation, the helper rejects tracked ignored files and existing ignored
+runtime artifacts; the existing public `data/workflows/AGENTS.md` is the sole
+tracked-guide exception. The guard checks paths, not arbitrary credential
+literals in source, so normal pre-commit privacy review still applies.
+
+`bin/check-production-environment.py` is for a clean checkout. It intentionally
+refuses a configured operator checkout. Local validation must use a disposable
+clone with no private files and a fresh production environment; do not run the
+native installer or remove active configuration/data to make this check pass.
+
 ## Focused regression examples
 
 ```bash

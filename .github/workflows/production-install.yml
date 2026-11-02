@@ -1,0 +1,58 @@
+name: Production Install Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-install-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  production-install:
+    name: Ubuntu 24.04 / Python 3.12 production install
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv-prod-ci
+      UV_PYTHON: '3.12'
+      UV_NO_CACHE: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+
+    steps:
+      - name: Check out tracked source without persisting credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Reject private runtime files in the checkout
+        run: python3 bin/check-production-environment.py --check-checkout
+
+      - name: Set up the validated uv version
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.13.5'
+          python-version: '3.12'
+          enable-cache: false
+
+      - name: Install system libraries for Python and audio imports
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libportaudio2 libsndfile1 libspeexdsp1 libgomp1 ffmpeg
+
+      - name: Recreate the locked production environment
+        run: uv sync --locked --no-dev --no-install-project
+
+      - name: Verify installed dependency consistency
+        run: uv pip check --python .venv-prod-ci/bin/python
+
+      - name: Check runtime imports, bundled wake model, and API health
+        run: .venv-prod-ci/bin/python -I bin/check-production-environment.py

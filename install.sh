@@ -113,17 +113,14 @@ EOF
 
   cd "$REPO_ROOT"
   if [[ -f uv.lock ]]; then
-    echo "Installing Python dependencies (uv sync from lockfile) ..."
-    uv sync --active --no-install-project
+    echo "Installing production Python dependencies (locked uv sync, no dev tools) ..."
+    uv sync --active --locked --no-dev --no-install-project
   elif [[ -f requirements.txt ]]; then
     echo "No uv.lock — falling back to pip install -r requirements.txt"
     uv pip install -r requirements.txt
   else
     die "No uv.lock or requirements.txt in repo root"
   fi
-
-  echo "Installing Rich (installer summary only) ..."
-  uv pip install "rich>=13.0.0"
 }
 
 seed_env_files() {
@@ -227,7 +224,7 @@ Venv: `{venv}`
 
 ### What this script did
 - System packages via `install-system-deps.sh` (unless `SKIP_SYSTEM_DEPS=1`)
-- `uv` + `uv sync` (or `pip` fallback) into `~/jarvis-venv`
+- `uv` + locked production `uv sync --no-dev` (or requirements fallback) into `{venv}`
 - Seed `config/cloud.env` / `config/local.env` **only if missing** (never overwrites)
 - Ran `setup.sh`, `verify-env.sh`, and `setup_tools.sh`
 - **Did not** run OpenCode workspace, n8n, or plugin installs

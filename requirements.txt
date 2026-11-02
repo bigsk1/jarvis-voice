@@ -32,6 +32,8 @@ docker>=7.0.0
 
 # Dashboard TUI
 textual>=6.0.0
+# Terminal formatting, including the installer summary.
+rich>=13.0.0
 
 # Existing dependencies
 av==15.1.0

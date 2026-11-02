@@ -25,6 +25,8 @@ dependencies = [
     # Dashboard
     "psutil>=7.0.0",
     "textual>=6.0.0",
+    # Terminal formatting, including the installer summary.
+    "rich>=13.0.0",
     # Core dependencies
     "av==15.1.0",
     "certifi==2026.10.19",

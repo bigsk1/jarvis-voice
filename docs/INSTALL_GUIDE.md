@@ -90,7 +90,7 @@ chmod +x install.sh
 That script handles:
 - system dependencies
 - `uv` install if missing
-- `~/jarvis-venv` creation and package sync
+- `~/jarvis-venv` creation and locked production package sync (without development tools)
 - seeding `config/cloud.env` and `config/local.env` if missing
 - `setup.sh`
 - `verify-env.sh`
@@ -126,7 +126,7 @@ python3 --version  # Should be 3.12+
 
 ## Step 4: Create Python Environment
 
-**Option A: Using uv (Recommended - faster, exact versions)**
+**Option A: Using uv (Recommended - locked production environment)**
 ```bash
 # Install uv if not present
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -140,12 +140,24 @@ source ~/jarvis-venv/bin/activate
 export JARVIS_VENV="$HOME/jarvis-venv"
 export UV_PROJECT_ENVIRONMENT="$JARVIS_VENV"
 
-# Install all packages from lockfile (exact versions)
+# Install production packages from lockfile (exact versions, no development tools)
 cd ~/jarvis-voice
-uv sync --active --no-install-project
+uv sync --active --locked --no-dev --no-install-project
 ```
 
-**Option B: Using pip (Traditional)**
+`--locked` fails if `pyproject.toml` and `uv.lock` disagree instead of resolving
+new versions during installation. Fix a stale lockfile in the development
+checkout, then commit the reviewed manifests and lockfile together. A failed
+locked install does not fall back to unpinned requirements.
+
+The production sync includes Rich for terminal formatting and the installer
+summary as a declared runtime dependency. It excludes development tools such as
+pytest, Ruff, and Pyrefly. Like other exact `uv sync` operations, it removes
+packages not selected by the project; keep development and unrelated tools in
+separate environments. See [Run Deterministic Tests](#step-7-run-deterministic-tests)
+for the repository `.venv` setup.
+
+**Option B: Using pip (Legacy fallback, not a locked installation)**
 ```bash
 # Create virtual environment
 python3 -m venv ~/jarvis-venv
@@ -160,6 +172,11 @@ pip install --upgrade pip setuptools wheel
 cd ~/jarvis-voice
 pip install -r requirements.txt
 ```
+
+Use this only when installing a checkout without `uv.lock`. Requirement ranges
+may resolve to newer versions than the production lockfile, so this path does
+not provide the same reproducibility guarantee. `install.sh` selects this
+fallback only when the lockfile is absent.
 
 ---
 
