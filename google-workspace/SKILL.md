@@ -15,10 +15,11 @@ leave a fresh clone usable. Preserve the pinned container digest, explicit
 environment allowlist, private storage, localhost binding and Bearer wrapper.
 Keep complete-tier/full-access tools unless the user requests different access.
 Consumer accounts cannot use Workspace Chat or domain-wide delegation.
-Retain the hash-locked container security baseline when rebuilding. Its v2.3.0
-pins match the new base's pypdf, FastMCP and OpenTelemetry versions; do not restore
-older overlay pins and downgrade them. Recheck the installed container packages
-rather than assuming the upstream tag is advisory-free.
+Retain the hash-locked container security baseline when rebuilding. Its pypdf
+6.21.4 override patches the v2.3.0 base's 6.21.3; FastMCP and OpenTelemetry pins
+still match the base. Do not restore older overlay pins and downgrade them.
+Recheck the installed container packages rather than assuming the upstream tag
+is advisory-free.
 
 Check credentials by presence only. Use an existing authorized OAuth client if
 available; account/app passwords cannot replace it. If Google Cloud administration

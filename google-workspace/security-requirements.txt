@@ -1,6 +1,8 @@
 # Container-only security baseline for the immutable Workspace MCP v2.3.0 base.
 # Exact compatible versions and PyPI artifact hashes; install with --no-deps.
 # pypdf: GHSA-6c7f-9265-g8fw, GHSA-gmh7-3g9r-mjh5, GHSA-jr96-gvgh-j3r4.
+# pypdf: GHSA-5849-834g-hvw5, GHSA-cggf-277g-3q54, GHSA-mfr5-77xh-9j7h.
+# Retain the pypdf override until the base includes these parser/clone fixes.
 # FastMCP: GHSA-7xgj-8392-5q4r, GHSA-vqqp-x5qm-5qp4.
 # OpenTelemetry API: GHSA-xcq7-p3pf-p88h; related family packages must match.
 
@@ -56,6 +58,6 @@ opentelemetry-semantic-conventions==0.66b1 \
     --hash=sha256:497ca63bf383723411e8eaf60c8779e9877633c936bb641080adab59d0eb6ec8 \
     --hash=sha256:d4cddeb4315490b35213f55e2bdc9ac54bb1e4d318927475bed62b35545e581b
 
-pypdf==6.21.3 \
-    --hash=sha256:11e1ca6d6cc8ca322558a3a974078d5ebc0f3a2104b8e673eee25621ee97abd8 \
-    --hash=sha256:c8ca4d9a360dbd5d4b9bb7a8389e2a9ae6a106bee722b496f918040ba2daa17e
+pypdf==6.21.4 \
+    --hash=sha256:c8817e3f888d47a087872ded69812c1ef30cacb871d6e053e0c00bbaf0bc2163 \
+    --hash=sha256:33e4fb41ca352810eb4e9838aa0d82d6888a5f8bf682f43e99cce5faa666255c

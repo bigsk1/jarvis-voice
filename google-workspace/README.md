@@ -480,10 +480,14 @@ new tools, consent requirements or approval screens. Returned documents and
 messages remain untrusted content, including their excerpts and links.
 
 The container includes Authlib 1.9.1 and dnspython 2.9.0 on its Python 3.13
-runtime. The hash-locked security baseline now matches its FastMCP 4.1.4 and
-pypdf 6.21.3 rather than downgrading them to the earlier overlay versions;
-OpenTelemetry remains 1.45.1. The image build checks dependency compatibility.
-Do not run upstream `uv sync` inside the built container.
+runtime. The hash-locked security baseline retains FastMCP 4.1.4 and
+OpenTelemetry 1.45.1 and upgrades the base's pypdf 6.21.3 to
+[6.21.4](https://github.com/py-pdf/pypdf/releases/tag/6.21.4) for xref EOF loops,
+page-tree expansion and dictionary-cloning cycles. The new page-dictionary
+budget can reject unusually expansive PDFs; failed extraction retains the
+existing download guidance. The image build checks dependency compatibility.
+Do not run upstream `uv sync` inside the built container, which would restore
+its older lockfile versions.
 
 ```bash
 bin/jarvis-google start
