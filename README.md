@@ -19,6 +19,7 @@ The project includes several ways to use and inspect the system:
 - **Memory Dashboard** for knowledge, conversations, scheduled tasks, reminders, and database maintenance.
 - **Intelligence Dashboard** for self-learning insights, tool performance, experience history, confidence tracking, and repair feedback.
 - **Docs Viewer** for browsing the project documentation with an assistant grounded in the local `docs/` folder.
+- **Optional visual workflow builder** for creating personal recipes, inspecting existing workflows, and watching supervised runs in a separate `jarvis-workflows` server.
 - **Logs Viewer and full API** for debugging, automation, webhooks, monitoring, reminders, workflows, images, Canvas, memory, and intelligence data.
 
 The `jarvis-dashboard` TUI is the terminal control center: one place to launch commands, inspect status, reach common tools, and operate Jarvis without opening a browser.
@@ -353,6 +354,12 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
   - Optional in-place `.md` editing via `DOCS_UI_EDIT_ENABLED=true`
   - **Docs Assistant** — In-panel LLM chat with read-only answers from retrieved `docs/` excerpts; retrieval uses **[QMD](docs/qmd/README.md)** when installed, otherwise **ripgrep** (no crash if neither is present)
   - Launch: `./bin/jarvis-docs`
+- **Workflow builder** (`jarvis-workflows`): Optional visual editor at localhost:5005
+  - Ordered tool steps, parameter forms, conditions, loops, validation, and complete JSON editing
+  - Drafts stay private until publication to `data/workflows/personal/`; tracked recipes are viewed or copied
+  - Live run preparation, per-call approvals, progress, cancellation, and saved history
+  - Explicit start: `./bin/start workflows` (or `./bin/start --local workflows`)
+  - See [Workflow Builder](docs/WORKFLOW_BUILDER.md) for Docker, shared login, and runtime policy boundaries
 - **Canvas Viewer**: Visual knowledge display at localhost:8890
   - Jarvis saves research results, code snippets, comparisons
   - Beautiful dark UI with Markdown rendering
@@ -492,6 +499,7 @@ jarvis-voice/
 │   ├── jarvis-dashboard      # Command dashboard TUI
 │   ├── jarvis-web            # Main chat Web UI (port 5001)
 │   ├── jarvis-docs           # docs/ browser + assistant UI (port 5004)
+│   ├── jarvis-workflows      # Optional visual workflow builder (port 5005)
 │   ├── jarvis-canvas         # Canvas & gallery (port 8890)
 │   ├── jarvis-memory         # Memory browser (port 5002)
 │   ├── jarvis-intelligence   # Intelligence UI (port 5003)
@@ -552,6 +560,7 @@ jarvis-voice/
 ├── logs/                     # tools/, llm-calls-*, api/, services/, intelligence/, tool-rag/, …
 ├── jarvis-web/               # Main Web UI — client/, server/, data/prompts/
 ├── jarvis-docs/              # docs/ reader — client/, server/ (:5004)
+├── jarvis-workflows/         # Optional workflow editor — client/, server/ (:5005)
 ├── jarvis-canvas/            # Canvas UI — client/ (static/, templates/), server/
 ├── jarvis-intelligence/      # Intelligence dashboard — client/, server/
 ├── jarvis-memory/            # Memory browser — client/, server/
@@ -665,6 +674,10 @@ docker compose --profile extras up -d
 ```
 
 The `extras` profile also starts the background task worker; individual background tools still require enabling in Web Settings. The safe Docker tool profile is enabled by default. Hybrid users can select the full `default` profile and block container-incompatible tools only in Web UI Settings. See the **[Docker Guide](docs/docker/README.md)** for setup, LAN access, authentication, shell/CLI examples, and native/Docker coexistence.
+
+The visual workflow builder is separately opt-in and stays off with `extras`:
+`docker compose --profile workflows up -d --build jarvis-workflows`.
+See [Workflow Builder](docs/WORKFLOW_BUILDER.md).
 
 ### Optional Database Browser
 
@@ -1063,6 +1076,10 @@ See [`docs/TOOL_MANAGEMENT.md`](docs/TOOL_MANAGEMENT.md) for details.
 ## 🔄 Workflow Orchestration
 
 Workflows are deterministic multi-tool pipelines that execute predefined sequences of tools. Unlike normal LLM routing (where the LLM decides which tools to use), workflows guarantee consistent, repeatable execution.
+
+Use the optional [visual workflow builder](docs/WORKFLOW_BUILDER.md) to create or
+customize recipes without editing tracked JSON files. It writes personal recipes
+for the existing executor and starts only when explicitly requested.
 
 ### Workflow Entry Points
 

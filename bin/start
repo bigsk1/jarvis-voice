@@ -11,6 +11,8 @@
 #   ./bin/start --no-api     # Start everything except API (skip sync)
 #   ./bin/start --list       # Show tmux session status
 #   ./bin/start --stop       # Stop all Jarvis sessions
+#   ./bin/start workflows    # Start the optional workflow builder only
+#   ./bin/start --stop-workflows # Stop only the workflow builder
 #
 # Session names (same as jarvis-dashboard):
 #   jarvis-api          - API server (port 8880) - does DB/tool-rag sync
@@ -20,6 +22,7 @@
 #   jarvis-memory       - Memory Browser UI (port 5002)
 #   jarvis-intelligence - Intelligence Dashboard (port 5003)
 #   jarvis-docs         - Docs Reader (port 5004)
+#   jarvis-workflows    - Optional workflow builder (port 5005)
 #   jarvis-browser-use  - Optional Browser Use callback helper
 #
 # Notes:
@@ -42,7 +45,7 @@ for arg in "$@"; do
             [ -z "$MODE_EXPLICIT" ] || { echo "Duplicate option: --local" >&2; exit 2; }
             MODE_EXPLICIT="local"
             ;;
-        --ui-only|--no-api|--list|-l|--stop|-s|--stop-task-worker|--stop-browser-use|--help|-h|api|services|web|canvas|memory|intelligence|docs|task-worker|browser-use)
+        --ui-only|--no-api|--list|-l|--stop|-s|--stop-task-worker|--stop-browser-use|--stop-workflows|--help|-h|api|services|web|canvas|memory|intelligence|docs|workflows|task-worker|browser-use)
             [ -z "$ACTION" ] || { echo "Multiple actions specified: $ACTION and $arg" >&2; exit 2; }
             ACTION="$arg"
             ;;
@@ -55,7 +58,7 @@ done
 
 require_arg=()
 case "$ACTION" in
-    --list|-l|--stop|-s|--help|-h|--stop-task-worker|--stop-browser-use|task-worker|browser-use) ;;
+    --list|-l|--stop|-s|--help|-h|--stop-task-worker|--stop-browser-use|--stop-workflows|task-worker|browser-use) ;;
     *) require_arg=(--require-config) ;;
 esac
 if [ -n "$MODE_EXPLICIT" ]; then
@@ -81,6 +84,7 @@ declare -A SESSIONS=(
     ["memory"]="jarvis-memory"
     ["intelligence"]="jarvis-intelligence"
     ["docs"]="jarvis-docs"
+    ["workflows"]="jarvis-workflows"
     ["task-worker"]="jarvis-task-worker"
     ["browser-use"]="jarvis-browser-use"
 )
@@ -91,6 +95,7 @@ CONTROL_SESSIONS=(
     "jarvis-start-all-local"
     "jarvis-start-ui"
     "jarvis-start-ui-local"
+    "jarvis-start-workflows"
     "🚀-start-all-services"  # Legacy dashboard session name
     "🚀-start-ui-only"       # Legacy dashboard session name
 )
@@ -104,6 +109,7 @@ declare -A COMMANDS=(
     ["memory"]="./bin/jarvis-memory$([ "$MODE" = local ] && echo ' local')"
     ["intelligence"]="./bin/jarvis-intelligence$([ "$MODE" = local ] && echo ' local')"
     ["docs"]="./bin/jarvis-docs$([ "$MODE" = local ] && echo ' local')"
+    ["workflows"]="./bin/jarvis-workflows$([ "$MODE" = local ] && echo ' local')"
 )
 
 # Ports for health checks
@@ -115,6 +121,7 @@ declare -A PORTS=(
     ["memory"]="5002"
     ["intelligence"]="5003"
     ["docs"]="5004"
+    ["workflows"]="5005"
 )
 
 # Health check endpoints
@@ -125,6 +132,7 @@ declare -A HEALTH_ENDPOINTS=(
     ["memory"]="/api/status"
     ["intelligence"]="/api/status"
     ["docs"]="/api/status"
+    ["workflows"]="/api/status"
 )
 
 log() {
@@ -365,6 +373,15 @@ stop_all() {
     success "All sessions stopped"
 }
 
+stop_workflows() {
+    local session=${SESSIONS[workflows]}
+    if is_session_running "$session"; then
+        tmux kill-session -t "$session" && success "Stopped $session"
+    else
+        log "$session is not running"
+    fi
+}
+
 check_services_pids() {
     # Check if background service daemons are running via PID files
     local running=0
@@ -389,7 +406,7 @@ list_sessions() {
     echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
     
-    for name in api services task-worker browser-use web canvas memory intelligence docs; do
+    for name in api services task-worker browser-use web canvas memory intelligence docs workflows; do
         local session=${SESSIONS[$name]}
         local port=${PORTS[$name]}
         local status=""
@@ -578,6 +595,8 @@ show_help() {
     echo "  ./bin/start --stop-task-worker  Stop only the tmux task worker"
     echo "  ./bin/start browser-use  Start Browser Use when it has been configured"
     echo "  ./bin/start --stop-browser-use  Stop only the managed Browser Use helper"
+    echo "  ./bin/start workflows   Start the optional workflow builder (port 5005)"
+    echo "  ./bin/start --stop-workflows  Stop only the optional workflow builder"
     echo "  ./bin/start --help       Show this help"
     echo "  --local may appear before or after an action; cloud remains the default"
     echo ""
@@ -589,6 +608,7 @@ show_help() {
     echo "  jarvis-memory       Memory Browser UI (port 5002)"
     echo "  jarvis-intelligence Intelligence Dashboard (port 5003)"
     echo "  jarvis-docs         Docs Reader (port 5004)"
+    echo "  jarvis-workflows    Workflow builder (port 5005; explicit start only)"
     echo "  jarvis-task-worker  Background tasks for Web, shared by cloud and local"
     echo "  jarvis-browser-use  Optional Browser Use callback helper"
     echo ""
@@ -620,10 +640,13 @@ case "$ACTION" in
     --stop-browser-use)
         stop_browser_use
         ;;
+    --stop-workflows)
+        stop_workflows
+        ;;
     --help|-h)
         show_help
         ;;
-    api|services|web|canvas|memory|intelligence|docs|task-worker|browser-use)
+    api|services|web|canvas|memory|intelligence|docs|workflows|task-worker|browser-use)
         start_service "$ACTION"
         ;;
     all)

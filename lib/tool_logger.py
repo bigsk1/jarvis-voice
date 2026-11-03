@@ -5,13 +5,34 @@ Tracks all tool executions for debugging and auditing.
 """
 import json
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-
 _PROXY_POLICIES = {"inherit", "off", "prefer", "require"}
 _SAFE_PROXY_TOKEN = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
+
+
+_EXECUTION_CONTEXT: ContextVar[dict[str, str] | None] = ContextVar("workflow_execution_context", default=None)
+
+
+@contextmanager
+def workflow_execution_scope(context: dict[str, Any] | None):
+    """Attach bounded server-owned invocation identity without global state."""
+    safe = {}
+    if isinstance(context, dict) and context.get("surface") == "builder":
+        safe["origin"] = "builder"
+        for name in ("run_id", "recipe_hash"):
+            value = context.get(name)
+            if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,160}", value):
+                safe[name] = value
+    token = _EXECUTION_CONTEXT.set(safe or None)
+    try:
+        yield
+    finally:
+        _EXECUTION_CONTEXT.reset(token)
 
 
 def _sanitize_proxy_metadata(proxy: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -151,6 +172,8 @@ class ToolLogger:
         if proxy_metadata:
             log_entry["proxy"] = proxy_metadata
         
+        log_entry.update(_EXECUTION_CONTEXT.get() or {})
+
         # Write as JSON lines (one JSON object per line)
         with open(self.log_file, 'a') as f:
             f.write(json.dumps(log_entry) + '\n')
@@ -199,6 +222,9 @@ class ToolLogger:
             "duration_ms": round(duration_ms, 2)
         }
         
+        log_entry.update(_EXECUTION_CONTEXT.get() or {})
+        if result.get('partial'):
+            log_entry['partial'] = True
         with open(workflow_log, 'a') as f:
             f.write(json.dumps(log_entry) + '\n')
     

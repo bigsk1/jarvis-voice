@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "orchestrator"))
 
@@ -126,3 +125,33 @@ def test_workflow_loader_ignores_skill_folder(tmp_path):
     assert set(loader.workflows) == {"shared_workflow"}
     assert loader.get_workflow("should_not_load") is None
     assert loader.match("/sneaky") is None
+
+
+def test_disabled_personal_definition_preserves_shared_runtime_behavior(tmp_path):
+    import json
+
+    _write_workflow(tmp_path / "shared.json", "same", "/shared")
+    personal = tmp_path / "personal" / "arbitrary_filename.json"
+    _write_workflow(personal, "same", "/personal")
+    disabled = json.loads(personal.read_text())
+    disabled["enabled"] = False
+    personal.write_text(json.dumps(disabled))
+    loader = WorkflowLoader(str(tmp_path))
+    assert loader.get_workflow("same")["triggers"]["explicit"] == ["/shared"]
+    assert loader.match("/shared") is not None
+    personal.unlink()
+    assert WorkflowLoader(str(tmp_path)).get_workflow("same")["triggers"]["explicit"] == ["/shared"]
+
+
+def test_new_loader_sees_published_edits_and_removed_recipes(tmp_path):
+    target = tmp_path / "not_the_workflow_id.json"
+    _write_workflow(target, "fresh", "/before")
+    loader = WorkflowLoader(str(tmp_path))
+    original = loader.get_workflow("fresh")
+    _write_workflow(target, "fresh", "/after")
+    fresh = WorkflowLoader(str(tmp_path))
+    assert fresh.match("/after") is not None
+    assert fresh.match("/before") is None
+    assert original["triggers"]["explicit"] == ["/before"]
+    target.unlink()
+    assert WorkflowLoader(str(tmp_path)).list_workflows() == []

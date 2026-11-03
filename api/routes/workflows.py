@@ -1,21 +1,22 @@
 """Workflow API endpoints - Execute predefined multi-tool workflows"""
 
-from fastapi import APIRouter, HTTPException
-import sys
 import json
-from pathlib import Path
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'orchestrator'))
 
 from api.models.workflows import (
-    WorkflowInfo,
     WorkflowExecuteRequest,
     WorkflowExecuteResponse,
     WorkflowExecution,
+    WorkflowHistoryResponse,
+    WorkflowInfo,
     WorkflowListResponse,
-    WorkflowHistoryResponse
 )
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
@@ -64,7 +65,7 @@ def _resolve_workflow(loader, workflow_id: str) -> dict | None:
     return None
 
 
-def get_workflow_logs(limit: int = 20, workflow_id: str | None = None, days: int = 7) -> list:
+def get_workflow_logs(limit: int = 20, workflow_id: str | None = None, days: int = 7, *, include_builder: bool = False) -> list:
     """Get recent workflow execution logs from JSONL files."""
     logs_dir = Path(__file__).parent.parent.parent / "logs"
     workflow_logs = []
@@ -86,6 +87,8 @@ def get_workflow_logs(limit: int = 20, workflow_id: str | None = None, days: int
                     if line.strip():
                         try:
                             entry = json.loads(line)
+                            if not include_builder and entry.get('origin') == 'builder':
+                                continue
                             if workflow_id and entry.get('workflow_id') != workflow_id:
                                 continue
                             workflow_logs.append(entry)
@@ -139,7 +142,8 @@ async def list_workflows():
 async def get_workflow_history(
     limit: int = 20,
     workflow_id: str | None = None,
-    days: int = 7
+    days: int = 7,
+    include_builder: bool = False,
 ):
     """
     Get recent workflow execution history.
@@ -155,7 +159,7 @@ async def get_workflow_history(
     - Track execution times
     """
     try:
-        logs = get_workflow_logs(limit=limit, workflow_id=workflow_id, days=days)
+        logs = get_workflow_logs(limit=limit, workflow_id=workflow_id, days=days, include_builder=include_builder)
         
         executions = []
         success_count = 0
@@ -179,7 +183,11 @@ async def get_workflow_history(
                 speech=result.get('speech'),
                 steps_completed=result.get('steps_completed', 0),
                 tools_used=result.get('tools_used', []),
-                duration_ms=log.get('duration_ms', 0)
+                duration_ms=log.get('duration_ms', 0),
+                origin=log.get('origin'),
+                run_id=log.get('run_id'),
+                recipe_hash=log.get('recipe_hash'),
+                partial=bool(log.get('partial', False)),
             ))
         
         return WorkflowHistoryResponse(

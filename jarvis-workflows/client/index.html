@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101218">
+  <title>Jarvis Workflows</title>
+  <script src="/ui-navigation.js"></script>
+  <link rel="stylesheet" href="/css/fonts.css">
+  <link rel="stylesheet" href="/css/workflows.css">
+  <link rel="icon" href="/assets/workflows.svg" type="image/svg+xml">
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="Jarvis Workflows home"><img src="/assets/workflows.svg" width="32" height="32" alt=""><span>Jarvis <strong>Workflows</strong></span><span class="beta">BUILDER</span></a>
+    <div class="header-right"><a id="webLink" class="quiet-link" href="#">Open Jarvis ↗</a><label class="mode-label">Run mode <select id="modeSelect" aria-label="Run mode"></select></label></div>
+  </header>
+  <main class="workspace">
+    <aside class="library" aria-label="Workflow library">
+      <div class="section-title"><h2>Recipes</h2><button id="newRecipe" class="icon-btn" title="Create workflow" aria-label="Create workflow">+</button></div>
+      <input id="librarySearch" type="search" placeholder="Find a workflow…" aria-label="Find a workflow">
+      <div class="library-tools"><button id="importRecipe" class="text-btn">Import JSON</button><button id="refreshLibrary" class="text-btn">Refresh</button></div>
+      <div id="recipeList" class="recipe-list"><p class="muted">Loading recipes…</p></div>
+      <div class="section-title draft-heading"><h2>Your drafts</h2></div><div id="draftList" class="recipe-list"></div>
+      <details class="palette-rail"><summary>Tool palette</summary><input id="paletteSearch" type="search" placeholder="Find a tool…" aria-label="Find a tool in palette"><div id="paletteTools" class="palette-tools"></div><p class="field-description">Drag a tool to an insertion point, or click to add it at the end.</p></details>
+      <footer class="library-footer">Personal recipes, shared tools.<br>Publishing makes a recipe available to Jarvis.</footer>
+    </aside>
+    <section class="editor" aria-label="Workflow editor">
+      <div class="editor-heading"><div><div id="sourceLabel" class="eyebrow">YOUR AUTOMATIONS</div><h1 id="recipeTitle">Build your next workflow</h1><p id="recipeDescription">Start with a recipe or connect the tools you already use.</p></div><span id="saveState" class="status-chip">Ready</span></div>
+      <div class="toolbar"><div class="toolbar-group"><button id="laneTab" class="tab active" aria-pressed="true">Steps</button><button id="jsonTab" class="tab" aria-pressed="false">JSON</button><span class="toolbar-divider"></span><button id="undoButton" class="icon-btn" aria-label="Undo" title="Undo (Ctrl+Z)">↶</button><button id="redoButton" class="icon-btn" aria-label="Redo" title="Redo (Ctrl+Shift+Z)">↷</button></div><div class="toolbar-group"><button id="settingsButton" class="ghost-btn">Recipe settings</button><button id="validateButton" class="ghost-btn">Validate</button><button id="publishButton" class="primary-btn">Publish</button></div></div>
+      <div id="editorEmpty" class="empty-state"><img src="/assets/workflows.svg" alt="" width="72" height="72"><h2>A useful outcome, one step at a time.</h2><p>Pick a recipe on the left to customize it,<br>or start fresh with your own sequence of tools.</p><button id="emptyNewRecipe" class="primary-btn">Create a workflow</button></div>
+      <div id="laneView" class="lane-view" hidden><div id="stepLane" class="step-lane" aria-label="Ordered workflow steps"></div></div>
+      <div id="jsonView" class="json-view" hidden><label for="recipeJSON">Complete recipe JSON</label><p class="muted">Unknown fields and comments are preserved. Apply valid JSON to update the step lane.</p><textarea id="recipeJSON" spellcheck="false" aria-label="Complete recipe JSON"></textarea><div class="json-actions"><span id="jsonError" class="error-text" role="alert"></span><button id="applyJSON" class="ghost-btn">Apply JSON</button></div></div>
+      <div id="diagnostics" class="diagnostics" aria-live="polite" hidden></div>
+      <section id="runPanel" class="run-panel" aria-label="Live execution">
+        <div class="section-title"><h2>Live execution</h2><button id="historyButton" class="text-btn">Run history</button></div>
+        <div class="run-controls"><label class="query-label">Query <input id="runQuery" placeholder="The text after your workflow command" autocomplete="off"></label><label>Deadline <select id="runDeadline"><option value="300">5 minutes</option><option value="900" selected>15 minutes</option><option value="1800">30 minutes</option><option value="3600">60 minutes</option></select></label><button id="runButton" class="run-btn" disabled>Run live</button></div>
+        <div class="run-help"><span id="runHint">Publish a recipe before running it.</span><button id="queryPreviewButton" class="text-btn">Preview query values</button></div>
+        <div id="activeRun" hidden><div class="run-status"><strong id="runStatus"></strong><button id="cancelRun" class="danger-btn">Stop run</button></div><div id="approvalList"></div><ol id="runEvents" class="run-events"></ol></div>
+      </section>
+    </section>
+    <aside id="inspector" class="inspector" aria-label="Step configuration"><div class="inspector-heading"><span class="eyebrow">INSPECTOR</span><h2 id="inspectorTitle">Make it yours</h2></div><div id="inspectorBody"><p class="muted">Select a step to configure its inputs, conditions, and outputs.</p></div></aside>
+  </main>
+  <dialog id="toolDialog" class="tool-dialog"><div class="dialog-heading"><div><span class="eyebrow">TOOL LIBRARY</span><h2>Add a step</h2></div><button class="icon-btn" data-close aria-label="Close tool library">×</button></div><div class="tool-search"><input id="toolSearch" type="search" placeholder="Search tools and descriptions…" aria-label="Search tools"><button id="refreshTools" class="ghost-btn">Refresh MCP tools</button></div><p class="muted">Local tools are available offline. Refresh explicitly discovers configured MCP tools.</p><div id="toolList" class="tool-list"></div></dialog>
+  <dialog id="reviewDialog" class="review-dialog"><div class="dialog-heading"><h2 id="reviewTitle"></h2><button class="icon-btn" data-close aria-label="Close review">×</button></div><div id="reviewBody"></div><div class="dialog-actions"><button id="reviewCancel" class="ghost-btn">Cancel</button><button id="reviewConfirm" class="primary-btn">Confirm</button></div></dialog>
+  <input id="importFile" type="file" accept=".json,application/json" hidden>
+  <div id="notice" class="notice" role="status" hidden></div>
+  <script src="/js/model.js"></script>
+  <script src="/js/help.js"></script>
+  <script src="/js/workflows.js"></script>
+</body>
+</html>

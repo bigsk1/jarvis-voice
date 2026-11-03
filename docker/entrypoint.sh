@@ -232,6 +232,10 @@ case "${1:-web}" in
     run_init
     exec ./bin/jarvis-docs "$JARVIS_MODE"
     ;;
+  workflows)
+    # Optional authoring server: opening the editor needs no Tool RAG sync.
+    exec ./bin/jarvis-workflows "$JARVIS_MODE"
+    ;;
   bash|sh)
     exec "$@"
     ;;

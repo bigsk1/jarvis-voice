@@ -6,6 +6,20 @@ Use this document as the **format contract** when authoring or editing workflows
 
 Private workflows can live in `data/workflows/personal/*.json`. That folder is gitignored for JSON workflow files, but loaded by the same workflow APIs and scheduler. Personal workflows with the same `id` as a shared workflow override the shared definition locally.
 
+The optional [visual workflow builder](../../docs/WORKFLOW_BUILDER.md) creates
+private drafts and publishes only personal recipes. Its reserved
+`builder_policy_version: 1` field makes the shared executor enforce managed
+recipe validation, environment restrictions, current Web/mode tool blocks, and
+interactive approval requirements across every execution entrypoint. Legacy
+filesystem recipes without that field retain their existing behavior. Upgrade
+and restart all workflow executors before publishing managed recipes.
+The publish review can explicitly authorize named tools for unattended runs of
+that exact recipe revision. The server-owned `builder_unattended_approval`
+records the recipe hash and tool names; recipe edits invalidate it. It does not
+change global tool permissions, blocked tools, or mode availability. Without
+this choice, managed recipes containing approval-required steps need the
+builder's interactive approval channel, including when those steps are optional.
+
 ### GitHub AI Radar discovery and history
 
 `/github_ai_radar` uses Brave for broad recent signals and optional

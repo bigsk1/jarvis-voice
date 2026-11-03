@@ -36,3 +36,6 @@ services:
 
   jarvis-docs:
     <<: *jarvis-mcp-base-service
+
+  jarvis-workflows:
+    <<: *jarvis-mcp-base-service

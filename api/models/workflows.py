@@ -1,7 +1,8 @@
 """Workflow API models"""
 
-from pydantic import BaseModel, ConfigDict, Field
 from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WorkflowInfo(BaseModel):
@@ -86,6 +87,10 @@ class WorkflowExecution(BaseModel):
     steps_completed: int = 0
     tools_used: list[str] = Field(default_factory=list)
     duration_ms: float = 0
+    origin: str | None = None
+    run_id: str | None = None
+    recipe_hash: str | None = None
+    partial: bool = False
     
     model_config = ConfigDict(json_schema_extra={
             "example": {

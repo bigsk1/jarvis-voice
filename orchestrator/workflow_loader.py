@@ -9,9 +9,9 @@ against workflow triggers.
 Workflows enable deterministic multi-tool execution (pipeline mode)
 as an alternative to free-form LLM routing.
 """
+import json
 import os
 import sys
-import json
 from pathlib import Path
 
 # Add lib to path
@@ -234,35 +234,10 @@ class WorkflowLoader:
         Returns:
             List of validation errors (empty if valid)
         """
-        errors = []
-        
-        # Required fields
-        if not workflow.get("id"):
-            errors.append("Missing required field: id")
-        
-        if not workflow.get("steps"):
-            errors.append("Missing required field: steps")
-        elif not isinstance(workflow["steps"], list):
-            errors.append("Field 'steps' must be a list")
-        else:
-            # Validate each step
-            for i, step in enumerate(workflow["steps"]):
-                step_num = step.get("step", i + 1)
-                
-                if not step.get("tool"):
-                    errors.append(f"Step {step_num}: Missing required field 'tool'")
-        
-        # Validate triggers if present
-        triggers = workflow.get("triggers", {})
-        if triggers:
-            if not any([
-                triggers.get("explicit"),
-                triggers.get("patterns"),
-                triggers.get("keywords")
-            ]):
-                errors.append("Triggers defined but no explicit/patterns/keywords specified")
-        
-        return errors
+        from workflow_validation import validate_workflow_document
+
+        return [item["message"] for item in validate_workflow_document(workflow)["errors"]]
+
 
 
 def main():

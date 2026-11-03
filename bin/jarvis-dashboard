@@ -165,6 +165,10 @@ COMMANDS: List[Command] = [
     Command("UniFi Webhook Logs", "journalctl -u unifi-protect-webhook -n 30 --no-pager 2>/dev/null || echo 'No logs or needs sudo'", "Recent webhook logs", "🔧 Services"),
     
     # === 🔄 WORKFLOWS ===
+    Command("Start Workflow Builder", "./bin/start workflows", "Optional visual recipe editor :5005", "🔄 Workflows", interactive=True),
+    Command("Start Workflow Builder (Local)", "./bin/start --local workflows", "Optional workflow editor with local configuration", "🔄 Workflows", interactive=True),
+    Command("Stop Workflow Builder", "./bin/start --stop-workflows", "Stop only jarvis-workflows", "🔄 Workflows"),
+    Command("Workflow Builder Logs", "tmux capture-pane -t jarvis-workflows -p -S -120", "Recent workflow builder output", "🔄 Workflows"),
     # Command("📦 Archive URL", './orchestrator/orchestrator_v2.py cloud "/archive https://example.com"', "Archive webpage to stash + Canvas", "🔄 Workflows"),
     # Command("🔍 Deep Research", './orchestrator/orchestrator_v2.py cloud "/research AI trends 2026"', "Multi-source research with Brave + crawling", "🔄 Workflows"),
     # Command("📝 Quick Note", './orchestrator/orchestrator_v2.py cloud "/note Remember to check server logs"', "Save note to memory + Canvas", "🔄 Workflows"),
@@ -689,6 +693,8 @@ class CommandRunner(App):
                 session_name = "jarvis-start-ui"
             elif cmd.command == "./bin/start --ui-only --local":
                 session_name = "jarvis-start-ui-local"
+            elif cmd.command in ("./bin/start workflows", "./bin/start --local workflows"):
+                session_name = "jarvis-start-workflows"
             elif "wake-jarvis" in cmd.command:
                 session_name = "jarvis-voice"  # Wake word loop
                 # Drop stale session so an old wake listener can't hold the mic

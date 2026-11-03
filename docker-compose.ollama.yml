@@ -81,5 +81,12 @@ services:
   jarvis-docs:
     <<: *jarvis-ollama-client
 
+  jarvis-workflows:
+    # Authoring stays usable before the daemon/model is ready. Runs use the
+    # same selected endpoint as the rest of this optional deployment.
+    environment:
+      JARVIS_DOCKER_OLLAMA_BASE_URL: http://jarvis-ollama:11434
+      JARVIS_OVERRIDE_OLLAMA_EMBEDDING_FALLBACK_URL: ""
+
 volumes:
   jarvis-ollama-models:

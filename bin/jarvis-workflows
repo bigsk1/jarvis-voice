@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Run the optional standalone Jarvis workflow builder."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+JARVIS_ROOT = Path(__file__).resolve().parent.parent
+WORKFLOWS_ROOT = JARVIS_ROOT / "jarvis-workflows"
+sys.path.insert(0, str(JARVIS_ROOT / "lib"))
+sys.path.insert(0, str(WORKFLOWS_ROOT))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Jarvis Workflows visual recipe builder")
+    parser.add_argument("mode", nargs="?", choices=["cloud", "local"], default=None)
+    parser.add_argument("--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=5005, help="HTTP port (default: 5005)")
+    parser.add_argument("--debug", action="store_true")
+    args = parser.parse_args()
+
+    from jarvis_mode import JarvisModeError, require_local_config, resolve_jarvis_mode
+
+    try:
+        mode = resolve_jarvis_mode(args.mode)
+        require_local_config(mode, JARVIS_ROOT)
+        os.environ["JARVIS_MODE"] = mode
+    except JarvisModeError as exc:
+        parser.error(str(exc))
+
+    from server.app import run_server
+
+    run_server(host=args.host, port=args.port, mode=mode, debug=args.debug)
+
+
+if __name__ == "__main__":
+    main()

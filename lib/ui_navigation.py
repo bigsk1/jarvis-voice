@@ -3,16 +3,15 @@ from __future__ import annotations
 
 import ipaddress
 import json
-from pathlib import Path
 import re
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from flask import Response, request
 
-
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "ui_urls.json"
 SCRIPT_PATH = Path(__file__).resolve().parent / "static" / "ui-navigation.js"
-SERVICES = frozenset({"web", "canvas", "memory", "intelligence", "docs", "opencode"})
+SERVICES = frozenset({"web", "canvas", "memory", "intelligence", "docs", "opencode", "workflows"})
 MAX_CONFIG_BYTES = 64 * 1024
 
 

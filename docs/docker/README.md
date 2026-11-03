@@ -57,9 +57,11 @@ cp docker.env.example .env
 printf "JARVIS_DOCKER_UID=%s\nJARVIS_DOCKER_GID=%s\n" "$(id -u)" "$(id -g)" >> .env
 ```
 
-`docker-compose.yml` defines nine services. Five start with the default command;
-the other four, including the task worker, start with the **`extras`** profile.
+`docker-compose.yml` defines ten services. Five start with the default command;
+four more, including the task worker, start with the **`extras`** profile.
 The worker also retains its **`background-tasks`** profile for core-only deployments.
+The separate workflow builder starts only through its **`workflows`** profile or
+an explicit service selection; `extras` leaves it off.
 
 | Service | Default `up` | `--profile extras` | Role |
 |---------|:------------:|:------------------:|------|
@@ -72,6 +74,7 @@ The worker also retains its **`background-tasks`** profile for core-only deploym
 | `jarvis-intelligence` | — | yes | Intelligence dashboard (`:5003`) |
 | `jarvis-docs` | — | yes | Docs reader (`:5004`) |
 | `jarvis-task-worker` | — | yes | Long-running Web tool jobs; also available by itself with `--profile background-tasks` |
+| `jarvis-workflows` | — | — | Optional visual workflow builder (`:5005`); `--profile workflows` |
 
 ```bash
 # Edit config/cloud.env (or local.env) with provider credentials and JARVIS_API_KEY.
@@ -87,6 +90,20 @@ docker compose up -d
 # (re-run after the core stack is already up — no rebuild needed)
 docker compose --profile extras up -d
 ```
+
+Start only the optional workflow builder, using the same image and existing
+configuration/data mounts:
+
+```bash
+docker compose --profile workflows up -d --build jarvis-workflows
+```
+
+Open `http://<host-ip>:5005`. It uses the existing shared WebUI login when
+configured. Authoring does not start the API, Tool RAG sync, or an embedding
+model. Its runs still need their component tools and providers. The builder,
+API, and background services read the current Web blocklist from a read-only
+`jarvis-web/config/` directory mount. See [Workflow Builder](../WORKFLOW_BUILDER.md)
+for publication, run recovery, and upgrade requirements.
 
 Or bring everything up in one step:
 
@@ -373,8 +390,10 @@ The overlay adds two services:
   config, credentials, or database mounts. It waits for Ollama, pulls
   `bigsk1/jarvis-embedding:bf16-v1` only when missing, verifies the canonical
   manifest digest, and checks that the model produces a finite, nonzero
-  768-dimensional embedding. All nine Jarvis services wait for successful
+  768-dimensional embedding. The nine ordinary Jarvis services wait for successful
   initialization before starting, including their initial Tool RAG sync.
+  The optional workflow builder receives the selected daemon URL without this
+  dependency, so its editor can open before the model is ready.
 
 This dependency gate applies to Compose-managed `up` operations. Automatic
 container restarts and `docker compose restart` do not rerun the one-shot gate;
@@ -655,6 +674,7 @@ you are done (retain any overlay `-f` arguments).
 | `jarvis-memory` | Memory browser (extras) |
 | `jarvis-intelligence` | Intelligence dashboard (extras) |
 | `jarvis-docs` | Docs reader (extras) |
+| `jarvis-workflows` | Optional workflow builder (workflows profile only) |
 | `jarvis-task-worker` | Long-running Web tool jobs (extras or background-tasks profile) |
 
 Background daemons run inside the `jarvis-services` container. Self-healing **does not** use host-style PID restart loops in Docker (`JARVIS_DEPLOYMENT=docker` disables that). Container restart policy handles crashes.

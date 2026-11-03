@@ -8,6 +8,7 @@ The LLM is only used for parameter filling and content validation, not tool sele
 This provides deterministic multi-tool execution while still leveraging LLM intelligence
 for flexible parameter resolution.
 """
+import hashlib
 import json
 import os
 import re
@@ -15,6 +16,7 @@ import sys
 import time
 from collections.abc import Callable
 from contextlib import contextmanager, nullcontext
+from copy import deepcopy
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -31,7 +33,7 @@ from config_loader import (
 )
 from llm_logger import LLMLogger
 from llm_provider import create_configured_provider, has_usage_accounting_data
-from tool_logger import ToolLogger
+from tool_logger import ToolLogger, workflow_execution_scope
 
 from lib.prompt_guard_observer import is_prompt_guard_rejection, prompt_guard_notice
 from lib.prompt_guard_policy import workflow_prompt_guard_scope
@@ -46,6 +48,14 @@ except ImportError:
         check_workflow_registry_availability,
         workflow_unavailable_message,
     )
+
+
+class _WorkflowExecutionDenied(RuntimeError):
+    """Terminal policy/approval rejection that no optional-step policy can ignore."""
+
+    def __init__(self, message: str, *, code: str = "approval_denied"):
+        super().__init__(message)
+        self.code = code
 
 
 class _WorkflowLLMError(RuntimeError):
@@ -683,14 +693,158 @@ class PipelineExecutor:
         except Exception:
             return False
     
-    def execute(self, workflow: dict, query: str, 
-                status_callback: Callable[[str], None] = None) -> dict[str, Any]:
-        """Run a workflow with an immutable, mode-bound screening context."""
-        with workflow_prompt_guard_scope(
-            mode=self.mode, workflow_id=workflow.get("id"),
-            profile=self._prompt_guard_rss_profile(workflow, query),
-        ):
-            return self._execute(workflow, query, status_callback)
+    def _emit_event(self, event_type: str, **fields: Any) -> None:
+        callback = getattr(self, "_event_callback", None)
+        if not callable(callback):
+            return
+        event = {"type": event_type, "mode": self.mode, **fields}
+        try:
+            callback(event)
+        except Exception:
+            # Telemetry is observational: a broken callback must never replay work.
+            print("Workflow event callback failed; preserving execution state", file=sys.stderr)
+
+    def _event_result(self, result: dict) -> dict:
+        if not callable(getattr(self, "_event_callback", None)):
+            return {}
+        from security_utils import redact_sensitive_data
+
+        safe = redact_sensitive_data(result)
+        encoded = json.dumps(safe, default=str, ensure_ascii=False)
+        if len(encoded) <= 6000:
+            return safe
+        return {"ok": result.get("ok"), "speech": str(safe.get("speech") or "")[:500],
+                "error": str(safe.get("error") or "")[:500], "preview": encoded[:4000], "truncated": True}
+
+    def execute(self, workflow: dict, query: str,
+                status_callback: Callable[[str], None] = None, *,
+                event_callback: Callable[[dict], None] | None = None,
+                approval_callback: Callable[[dict], bool] | None = None,
+                execution_context: dict | None = None,
+                stop_after: int | None = None) -> dict[str, Any]:
+        """Run one immutable recipe snapshot, optionally with builder supervision.
+
+        Managed recipes retain policy on every entry point. A matching published
+        recipe grant can authorize listed tools; other confirmation-requiring
+        calls need the builder's live approval callback.
+        """
+        from workflow_policy import (
+            WorkflowPolicyError,
+            validate_managed_workflow,
+            validated_workflow_approval_tools,
+        )
+
+        context = dict(execution_context or {})
+        managed = ("builder_policy_version" in workflow or "builder_unattended_approval" in workflow
+                   or context.get("managed") is True or context.get("surface") == "builder")
+        try:
+            recipe_hash = hashlib.sha256(json.dumps(workflow, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+        except (TypeError, ValueError):
+            return {"ok": False, "speech": "Workflow must contain only finite JSON values",
+                    "error": "Workflow must contain only finite JSON values", "error_code": "workflow_policy_rejected",
+                    "terminal_failure": True, "retry_safe": False, "completion": "rejected", "tools_used": []}
+        context["recipe_hash"] = recipe_hash
+        attrs = {name: getattr(self, name, None) for name in (
+            "_event_callback", "_approval_callback", "_execution_context", "_managed_run",
+            "_recipe_hash", "_stop_after", "_active_step_index", "_active_item_index", "_run_results", "_recipe_approved_tools")}
+        self._event_callback = event_callback
+        self._approval_callback = approval_callback if context.get("surface") == "builder" else None
+        self._execution_context = context
+        self._managed_run = managed
+        self._recipe_hash = recipe_hash
+        self._stop_after = stop_after
+        self._active_step_index = None
+        self._active_item_index = None
+        self._run_results = []
+        self._recipe_approved_tools = set()
+        try:
+            with workflow_execution_scope(context):
+                try:
+                    if stop_after is not None and (type(stop_after) is not int or not 0 <= stop_after <= len(workflow.get("steps", []))):
+                        raise _WorkflowExecutionDenied("Partial run count must be a valid array position count", code="workflow_policy_rejected")
+                    if stop_after == len(workflow.get("steps", [])):
+                        # Selecting the complete array is a normal complete run.
+                        self._stop_after = None
+                    if managed:
+                        diagnostics = validate_managed_workflow(
+                            workflow, self.mode, getattr(self.executor, "registry", None),
+                            interactive=callable(self._approval_callback),
+                        )
+                        if diagnostics["errors"]:
+                            raise _WorkflowExecutionDenied(
+                                "; ".join(item["message"] for item in diagnostics["errors"]),
+                                code="workflow_policy_rejected",
+                            )
+                        self._recipe_approved_tools = validated_workflow_approval_tools(workflow)
+                    self._emit_event("run_started", workflow_id=workflow.get("id"), recipe_hash=recipe_hash)
+                    with workflow_prompt_guard_scope(
+                        mode=self.mode, workflow_id=workflow.get("id"),
+                        profile=self._prompt_guard_rss_profile(workflow, query),
+                    ):
+                        result = self._execute(workflow, query, status_callback)
+                except (WorkflowPolicyError, _WorkflowExecutionDenied) as exc:
+                    result = {"ok": False, "speech": str(exc), "error": str(exc),
+                              "error_code": getattr(exc, "code", "workflow_policy_rejected"),
+                              "terminal_failure": True, "retry_safe": False, "completion": "rejected",
+                              "data": {"workflow_id": workflow.get("id"), "results": self._run_results},
+                              "tools_used": list(dict.fromkeys(item.get("tool") for item in self._run_results if item.get("tool")))}
+                    self._emit_event("step_rejected", step_index=self._active_step_index, index=self._active_step_index,
+                                     item_index=self._active_item_index, result=self._event_result(result))
+                self._emit_event("run_finished", result=self._event_result(result))
+            return result
+        finally:
+            for name, value in attrs.items():
+                setattr(self, name, value)
+
+    def _authorize_prepared_call(self, step: dict, tool_name: str, params: dict) -> dict:
+        if not getattr(self, "_managed_run", False):
+            return params
+        from workflow_policy import (
+            BUILDER_EXCLUDED_TOOLS,
+            get_workflow_excluded_tools,
+            requires_workflow_confirmation,
+        )
+
+        registry = getattr(self.executor, "registry", None)
+        schema = registry.get_tool(tool_name) if registry is not None else None
+        if (schema is None or tool_name in get_workflow_excluded_tools(self.mode)
+                or tool_name in BUILDER_EXCLUDED_TOOLS or getattr(schema, "background_required", False)):
+            raise _WorkflowExecutionDenied("Tool is no longer allowed for this managed workflow", code="workflow_policy_rejected")
+        # Keep the execution arguments detached from the callback's JSON view.
+        # Filling, defaults and loop merges have already happened exactly once.
+        try:
+            prepared = json.loads(json.dumps(params, allow_nan=False))
+        except (TypeError, ValueError) as exc:
+            raise _WorkflowExecutionDenied("Prepared tool arguments must contain only finite JSON values", code="workflow_policy_rejected") from exc
+        identity = {"tool": tool_name, "arguments": prepared, "step": step.get("step"),
+                    "index": self._active_step_index, "item_index": self._active_item_index,
+                    "attempt": 1, "mode": self.mode, "recipe_hash": self._recipe_hash,
+                    "run_id": self._execution_context.get("run_id")}
+        identity["call_hash"] = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+        if requires_workflow_confirmation(schema) and tool_name not in self._recipe_approved_tools:
+            callback = self._approval_callback
+            try:
+                approved = callable(callback) and callback(deepcopy(identity)) is True
+            except Exception:
+                approved = False
+            if not approved:
+                raise _WorkflowExecutionDenied("The prepared tool call was not approved")
+            if tool_name in get_workflow_excluded_tools(self.mode):
+                raise _WorkflowExecutionDenied("Tool was blocked while approval was pending", code="workflow_policy_rejected")
+        if self._cancel_requested():
+            raise _WorkflowExecutionDenied("Workflow was cancelled before the prepared call", code="workflow_cancelled")
+        return prepared
+
+    def _build_partial_response(self, workflow: dict, results: list[dict], tools_used: list[str], *, start_time: float, query: str) -> dict:
+        result = {"ok": True, "partial": True, "speech": f"Partial run stopped after {len(results)} workflow positions.",
+                  "data": {"workflow_id": workflow.get("id"), "results": results, "steps_completed": len(results)},
+                  "tools_used": list(dict.fromkeys(tools_used)), "usage": self._total_usage or None}
+        self.logger.log_workflow_execution(
+            workflow_id=workflow.get("id", "unknown"), workflow_name=workflow.get("name", ""),
+            user_query=query, result=result, duration_ms=(time.time() - start_time) * 1000,
+            steps_completed=len(results), tools_used=result["tools_used"], mode=self.mode,
+        )
+        return result
 
     def _prompt_guard_rss_profile(self, workflow: dict, query: str) -> str | None:
         """Capture only the configured RSS profile chosen at workflow admission.
@@ -746,11 +900,23 @@ class PipelineExecutor:
         """
         optional_tools_skipped: set[str] = set()
         registry = getattr(self.executor, "registry", None)
+        excluded_tools = set(getattr(self.executor, "excluded_tools", set()))
+        if getattr(self, "_managed_run", False):
+            from workflow_policy import get_workflow_excluded_tools
+
+            excluded_tools |= get_workflow_excluded_tools(self.mode)
         if registry is not None:
+            # A run-through-position executes only this prefix. Keep document
+            # policy and identity bound to the full snapshot while checking tool
+            # availability only for calls that this run can actually reach.
+            availability_workflow = workflow
+            stop_after = getattr(self, "_stop_after", None)
+            if stop_after is not None:
+                availability_workflow = {**workflow, "steps": workflow.get("steps", [])[:stop_after]}
             availability = check_workflow_registry_availability(
-                workflow,
+                availability_workflow,
                 registry,
-                excluded_tools=getattr(self.executor, "excluded_tools", set()),
+                excluded_tools=excluded_tools,
             )
             if not availability["available"]:
                 message = workflow_unavailable_message(workflow, availability)
@@ -815,6 +981,7 @@ class PipelineExecutor:
         self._current_workflow_id = workflow_id
         
         results = []
+        self._run_results = results
         tools_used = []
         total_retries = 0
         max_total_retries = validation_policy.get("max_total_retries", 10)
@@ -823,7 +990,12 @@ class PipelineExecutor:
             status_callback(f"Starting workflow: {workflow_name}")
         
         # Execute each step
-        for step in steps:
+        for index, step in enumerate(steps):
+            self._active_step_index = index
+            self._active_item_index = None
+            stop_after = getattr(self, "_stop_after", None)
+            if stop_after is not None and index >= stop_after:
+                return self._build_partial_response(workflow, results, tools_used, start_time=start_time, query=query)
             if self._cancel_requested():
                 return self._build_cancelled_response(
                     workflow,
@@ -844,6 +1016,7 @@ class PipelineExecutor:
                 step_identity["action"] = step_action
             description = step.get("description", f"{tool_name}")
             step_start_time = time.time()
+            self._emit_event("step_started", index=index, step_index=index, **step_identity)
             
             if status_callback:
                 status_callback(f"Step {step_num}: {description}")
@@ -857,6 +1030,7 @@ class PipelineExecutor:
                     "skipped": True,
                     "reason": skip_reason or "Condition evaluated to false"
                 })
+                self._emit_event("step_skipped", index=index, step_index=index, **step_identity, result=results[-1])
                 continue
 
             if tool_name in optional_tools_skipped:
@@ -875,6 +1049,7 @@ class PipelineExecutor:
                 })
                 if status_callback:
                     status_callback(f"Step {step_num} skipped: {reason}")
+                self._emit_event("step_skipped", index=index, step_index=index, **step_identity, result=results[-1])
                 continue
             
             # Handle for_each loops
@@ -1046,6 +1221,11 @@ class PipelineExecutor:
                 })
                 tools_used.append(tool_name)
         
+            self._emit_event("step_finished", index=index, step_index=index, **step_identity,
+                             result=self._event_result(results[-1]))
+
+        if getattr(self, "_stop_after", None) is not None:
+            return self._build_partial_response(workflow, results, tools_used, start_time=start_time, query=query)
         # Build final response and log workflow execution
         return self._build_success_response(workflow, results, variables, tools_used, 
                                             start_time=start_time, query=query)
@@ -1060,12 +1240,12 @@ class PipelineExecutor:
 
         declared = (step.get("params") or {}).get("provider")
         if tool_name not in MEDIA_SELECTIONS or not isinstance(declared, str) or "${" in declared:
-            return self.executor.execute(tool_name, params)
+            return self.executor.execute(tool_name, self._authorize_prepared_call(step, tool_name, params))
         arguments = {**params, "provider": declared.strip().lower()}
         overrides = media_job_overrides(tool_name, arguments)
         scope = config_override_scope(overrides) if get_scoped_config() is not None else config_scope(self.mode, overrides)
         with scope:
-            return self.executor.execute(tool_name, arguments)
+            return self.executor.execute(tool_name, self._authorize_prepared_call(step, tool_name, arguments))
 
     def _execute_single(self, step: dict, tool_name: str, action: str,
                         tool_defaults: dict, variables: dict,
@@ -1265,6 +1445,10 @@ class PipelineExecutor:
             and item_index < step_max_attempts
             and len(validated_outputs) < required_success
         ):
+            if self._cancel_requested():
+                variables.pop("_loop_index", None)
+                return {"cancelled": True, "items_processed": len(outputs), "items_succeeded": len(validated_outputs),
+                        "outputs": outputs, "validated_outputs": validated_outputs, "retries": retries, "abort": False}
             if current_retries + retries >= max_retries:
                 break
             
@@ -1272,6 +1456,9 @@ class PipelineExecutor:
             
             # Store loop index for LLM param generation
             variables["_loop_index"] = item_index
+            self._active_item_index = item_index
+            self._emit_event("item_started", index=getattr(self, "_active_step_index", None),
+                             step=step.get("step"), tool=tool_name, item_index=item_index)
             
             # Resolve parameters for this item
             params = self._resolve_params(step, tool_defaults.get(tool_name, {}), variables)
@@ -1322,7 +1509,17 @@ class PipelineExecutor:
             # Execute tool
             item_start_time = time.time()
             source_params = params.copy()
-            result = self._execute_workflow_tool(step, tool_name, params)
+            try:
+                result = self._execute_workflow_tool(step, tool_name, params)
+            except _WorkflowExecutionDenied as exc:
+                self._run_results.append({
+                    "step": step.get("step"), "tool": tool_name, "ok": False,
+                    "outputs": outputs, "items_processed": len(outputs),
+                    "items_succeeded": len(validated_outputs), "denied_item_index": item_index,
+                    "error": str(exc), "error_code": exc.code,
+                })
+                variables.pop("_loop_index", None)
+                raise
             from lib.background_tasks.admission import reject_background_result
             result = reject_background_result(result)
             self._merge_component_usage(result, tool_name=tool_name)
@@ -1378,6 +1575,9 @@ class PipelineExecutor:
 
             self._capture_source_arguments(result, tool_name, source_params)
             
+            self._emit_event("item_finished", index=getattr(self, "_active_step_index", None),
+                             step=step.get("step"), tool=tool_name, item_index=item_index,
+                             result=self._event_result(result))
             item_index += 1
         
         # Clean up loop variable
@@ -2496,6 +2696,11 @@ class PipelineExecutor:
                     if key in rejected_data:
                         response["data"][key] = rejected_data[key]
         
+        if results:
+            self._emit_event("step_finished", index=getattr(self, "_active_step_index", None),
+                             step=failed_step.get("step"), tool=failed_step.get("tool"),
+                             result=self._event_result(results[-1]))
+
         # Log aborted workflow execution
         if start_time:
             duration_ms = (time.time() - start_time) * 1000
@@ -2542,6 +2747,10 @@ class PipelineExecutor:
             "usage": self._total_usage if self._total_usage.get("total_tokens", 0) > 0 else None,
             "server_side_tools": self._server_side_tools if self._server_side_tools else None,
         }
+        if results and results[-1].get("cancelled"):
+            self._emit_event("step_finished", index=getattr(self, "_active_step_index", None),
+                             step=results[-1].get("step"), tool=results[-1].get("tool"),
+                             result=self._event_result(results[-1]))
         if start_time:
             self.logger.log_workflow_execution(
                 workflow_id=workflow.get("id", "unknown"),

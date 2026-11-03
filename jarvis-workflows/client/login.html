@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Jarvis Workflows · Sign in</title>
+  <link rel="stylesheet" href="/css/fonts.css"><link rel="stylesheet" href="/css/workflows.css">
+  <link rel="icon" href="/assets/workflows.svg" type="image/svg+xml">
+  <style>body{min-height:100vh;display:grid;place-items:center;padding:24px}.login-shell{width:min(100%,390px);padding:32px;background:var(--panel);border:1px solid var(--line);border-radius:14px}.login-shell img{margin-bottom:22px}.login-shell h1{margin:8px 0 14px}.login-shell label{margin:24px 0 18px}.login-shell button{width:100%}</style>
+</head>
+<body>
+  <form id="loginForm" class="login-shell">
+    <img src="/assets/workflows.svg" width="48" height="48" alt=""><div class="eyebrow">SHARED JARVIS LOGIN</div>
+    <h1>Jarvis Workflows</h1><p class="muted">Use the same password as your other Jarvis UIs.</p>
+    <p id="loginError" class="error-text" role="alert" hidden></p>
+    <label>Password<input id="password" type="password" autocomplete="current-password" required autofocus></label>
+    <button id="loginButton" class="primary-btn" type="submit">Sign in</button>
+  </form>
+  <script src="/ui-navigation.js"></script><script src="/js/login.js"></script>
+</body>
+</html>

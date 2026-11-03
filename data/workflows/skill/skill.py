@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 import tempfile
 from pathlib import Path
@@ -13,9 +12,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT / "orchestrator"))
-
-
-ID_RE = re.compile(r"^[a-z0-9][a-z0-9_]*$")
+sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -26,147 +23,16 @@ def _load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def _has_validated_content_prefix(steps: list, target: dict, content: str) -> bool:
-    """Recognize a full-page brief validated before deterministic publication."""
-    saved_ids = {}
-    content_vars = set()
-    for producer in steps:
-        if producer is target:
-            break
-        if (
-            not isinstance(producer, dict)
-            or producer.get("required", True) is not True
-            or producer.get("on_fail") == "continue"
-            or producer.get("condition") not in (None, target.get("condition"))
-        ):
-            continue
-        if producer.get("tool") != "stash":
-            continue
-        params = producer.get("params", {})
-        extracts = producer.get("extract", {})
-        validation = producer.get("llm_output_validation", {})
-        if not all(isinstance(value, dict) for value in (params, extracts, validation)):
-            continue
-        action = producer.get("action", params.get("action"))
-        patterns = validation.get("required_patterns", [])
-        if (
-            action == "save"
-            and params.get("kind") == "text"
-            and validation.get("param") == "text"
-            and isinstance(patterns, list)
-            and len(patterns) >= 3
-            and any(isinstance(pattern, str) and pattern.startswith("# ") for pattern in patterns)
-        ):
-            for name, path in extracts.items():
-                if path == "file_id":
-                    saved_ids[f"${{{name}}}"] = params.get("space_id")
-        elif (
-            action == "read"
-            and params.get("mode") == "text"
-            and params.get("file_id") in saved_ids
-            and params.get("space_id") == saved_ids[params["file_id"]]
-        ):
-            content_vars.update(name for name, path in extracts.items() if path == "content")
-    return any(content.lstrip().startswith(f"${{{name}}}") for name in content_vars)
-
-
 def _check_workflow(
     workflow: dict[str, Any], *, is_personal: bool = False
 ) -> tuple[list[str], list[str]]:
-    errors: list[str] = []
-    warnings: list[str] = []
+    from workflow_validation import validate_workflow_document
 
-    workflow_id = workflow.get("id")
-    if not isinstance(workflow_id, str) or not workflow_id.strip():
-        errors.append("Missing string field: id")
-    elif not ID_RE.match(workflow_id):
-        errors.append("id should use lowercase letters, digits, and underscores")
-
-    steps = workflow.get("steps")
-    if not isinstance(steps, list) or not steps:
-        errors.append("steps must be a non-empty list")
-        steps = []
-
-    triggers = workflow.get("triggers", {})
-    explicit = triggers.get("explicit", []) if isinstance(triggers, dict) else []
-    if not isinstance(explicit, list) or not explicit:
-        warnings.append("Add triggers.explicit so the workflow can be invoked predictably")
-    else:
-        for trigger in explicit:
-            if not isinstance(trigger, str) or (not trigger.startswith("/") and trigger != "*") or " " in trigger:
-                errors.append(f"Invalid explicit trigger: {trigger!r}")
-        if len(explicit) > 1 and not is_personal:
-            warnings.append(
-                "Shared workflows should define one canonical triggers.explicit command; "
-                "additional entries are only for temporary rename compatibility"
-            )
-
-    seen_step_numbers: set[int] = set()
-    for index, step in enumerate(steps, start=1):
-        if not isinstance(step, dict):
-            errors.append(f"Step {index} must be an object")
-            continue
-
-        step_num = step.get("step", index)
-        if isinstance(step_num, int):
-            if step_num in seen_step_numbers:
-                errors.append(f"Duplicate step number: {step_num}")
-            seen_step_numbers.add(step_num)
-        else:
-            errors.append(f"Step {index} has non-integer step value")
-
-        tool = step.get("tool")
-        if not isinstance(tool, str) or not tool.strip():
-            errors.append(f"Step {step_num}: missing tool")
-
-        action = step.get("action")
-        validation = step.get("llm_output_validation")
-        if step.get("llm_prompt") and not isinstance(validation, dict):
-            warnings.append(
-                f"Step {step_num}: llm_prompt should usually define llm_output_validation"
-            )
-
-        if tool == "canvas" and action in {"create", "update"} and step.get("llm_prompt"):
-            if not isinstance(validation, dict):
-                errors.append(f"Step {step_num}: Canvas {action} with llm_prompt needs validation")
-            else:
-                rejects = {str(item).lower() for item in validation.get("reject_patterns", [])}
-                for pattern in ("```", "<html", "<pre", "https://..."):
-                    if pattern not in rejects:
-                        warnings.append(
-                            f"Step {step_num}: consider rejecting {pattern!r} in Canvas output"
-                        )
-
-        params = step.get("params", {})
-        if (
-            tool == "canvas"
-            and action == "update"
-            and isinstance(params, dict)
-            and params.get("allow_content_shrink") is True
-        ):
-            required = (
-                validation.get("required_patterns", []) if isinstance(validation, dict) else []
-            )
-            content = str(params.get("content") or "")
-            required_headings_in_content = [
-                heading
-                for heading in ("# ", "## Current Status", "## Run Log")
-                if heading in content
-            ]
-            if (
-                len(required) < 3
-                and len(required_headings_in_content) < 3
-                and not _has_validated_content_prefix(steps, step, content)
-            ):
-                errors.append(
-                    f"Step {step_num}: allow_content_shrink=true requires strong required_patterns or deterministic full-page content"
-                )
-
-    if workflow.get("disable_server_side_tools") is True:
-        llm_steps = [step for step in steps if isinstance(step, dict) and step.get("llm_prompt")]
-        if not llm_steps:
-            warnings.append("disable_server_side_tools=true has no llm_prompt steps to protect")
-
+    diagnostics = validate_workflow_document(workflow)
+    errors = [item["message"] for item in diagnostics["errors"]]
+    warnings = [item["message"] for item in diagnostics["warnings"]]
+    if is_personal:
+        warnings = [message for message in warnings if not message.startswith("Shared workflows should define")]
     return errors, warnings
 
 
