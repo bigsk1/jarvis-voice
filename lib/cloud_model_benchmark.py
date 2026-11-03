@@ -31,7 +31,7 @@ from ollama_benchmark_fixtures import (
 )
 from paths import get_project_root
 
-FIXTURE_PATH = get_project_root() / "config/benchmarks/cloud-model-v4.json"
+FIXTURE_PATH = get_project_root() / "config/benchmarks/cloud-model-v5.json"
 LEGACY_FIXTURE_PATH = get_project_root() / "config/benchmarks/cloud-model-v1.json"
 SCHEMA_VERSION = 1
 RUBRIC_VERSION = "1.0"
@@ -194,6 +194,7 @@ def load_suite(path: Path = FIXTURE_PATH) -> dict[str, Any]:
         "jarvis-cloud-model-v2": (2, "2.0"),
         "jarvis-cloud-model-v3": (2, "2.0"),
         "jarvis-cloud-model-v4": (2, "2.0"),
+        "jarvis-cloud-model-v5": (2, "2.0"),
     }
     expected = versions.get(payload.get("fixture_id"))
     if expected is None:

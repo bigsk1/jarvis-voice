@@ -100,6 +100,24 @@ optionally reads selected articles with `crawl_url`, refreshes one Canvas page,
 and records only confirmed published links. No schedule is installed automatically.
 See [RSS setup, publication state and limits](../docs/RSS_FEEDS.md).
 
+## Offline Markdown and text to PDF
+
+Use `convert_file` with the original `.md`, `.markdown`, or `.txt` Stash reference
+and `target_format: "pdf"` to create a complete searchable PDF. The converter
+reads the UTF-8 file directly, rather than using a shortened chat preview or a
+summary. Unicode punctuation and the bundled local fonts work offline, with no
+new service or package to configure. Markdown headings, lists, tables, code, and
+clickable links are formatted; plain `.txt` files remain literal text.
+Text inputs are limited to 5 MiB and fail explicitly above that size. If a
+character is missing from the bundled fonts, the result reports a warning and
+shows its Unicode code point rather than silently dropping it.
+
+`pdf_create` also accepts original Markdown files in `files`. For new content,
+use `from_markdown` with `text` for formatting or `from_text` for plain text.
+Markdown image references remain visible references rather than being fetched;
+include image files explicitly with `pdf_create` for mixed image/text documents.
+The original is preserved and the PDF is saved to Stash for download or printing.
+
 ## Docling document conversion (optional)
 
 `docling_convert` connects to an authenticated Docling Serve deployment on a

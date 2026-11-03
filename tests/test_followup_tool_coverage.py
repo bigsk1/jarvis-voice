@@ -2247,6 +2247,22 @@ def test_generated_password_is_excluded_from_followup_context():
     assert "GENERATED_PASSWORD_SENTINEL" not in json.dumps(result)
 
 
+@pytest.mark.parametrize('tool,reference_key', [('pdf_create', 'ref'), ('convert_file', 'stash_ref')])
+def test_pdf_followup_retains_completeness_and_render_warnings(tool, reference_key):
+    payload = {
+        reference_key: 'stash://documents/guide', 'mime_type': 'application/pdf',
+        'page_count': 12, 'source_complete': True,
+        'warnings': ['Markdown images were shown as references.'],
+        'text': 'FULL_SOURCE_MUST_NOT_ENTER_FOLLOWUP',
+    }
+    result = followup.extract_followup_data({tool: payload})[tool]
+    assert result['page_count'] == 12 and result['source_complete'] is True
+    assert result['mime_type'] == 'application/pdf'
+    assert result['warnings'] == payload['warnings']
+    assert result[reference_key] == payload[reference_key]
+    assert 'FULL_SOURCE_MUST_NOT_ENTER_FOLLOWUP' not in json.dumps(result)
+
+
 def test_facade_package_and_path_imports_keep_public_exports_and_search_results():
     """The path-loaded test facade and normal server import share one contract."""
     imported = importlib.import_module(

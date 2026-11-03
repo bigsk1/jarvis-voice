@@ -9,75 +9,35 @@ This tool reads from stash and writes back to stash, enabling workflows like:
   stash.save(image) → pdf.create(image + text) → printer.print(pdf)
 """
 
-import sys
-import os
+import hashlib
 import json
+import os
+import sys
 from datetime import datetime, timezone
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config
 from paths import resolve_local_file_tool_output_path, validate_tool_output_filename
-from stash_helper import (
-    get_space, open_space, StashFile, resolve_file_path
+from pdf_rendering import (
+    MAX_SOURCE_BYTES,
+    DocumentPDF,
+    check_pdf_source,
+    read_pdf_text_source,
+    write_markdown,
 )
+from stash_helper import generate_file_id, get_space, open_space, resolve_file_path
 
-try:
-    from fpdf import FPDF
-    HAS_FPDF = True
-except ImportError:
-    HAS_FPDF = False
+HAS_FPDF = True
 
 
-class JarvisPDF(FPDF):
-    """Custom PDF class with Jarvis branding."""
-    
-    def __init__(self, title: str = "Jarvis Document"):
-        super().__init__()
-        self.doc_title = title
-        self.set_auto_page_break(auto=True, margin=15)
-    
-    def header(self):
-        self.set_font('Helvetica', 'B', 10)
-        self.set_text_color(100, 100, 100)
-        self.cell(0, 10, self.doc_title, align='L')
-        self.cell(0, 10, datetime.now().strftime('%Y-%m-%d'), align='R')
-        self.ln(15)
-    
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Helvetica', 'I', 8)
-        self.set_text_color(150, 150, 150)
-        self.cell(0, 10, f'Page {self.page_no()}', align='C')
-    
-    def add_title(self, title: str):
-        """Add a large title."""
-        self.set_font('Helvetica', 'B', 24)
-        self.set_text_color(0, 0, 0)
-        self.cell(0, 20, title, align='C')
-        self.ln(25)
-    
-    def add_heading(self, text: str, level: int = 1):
-        """Add a heading."""
-        sizes = {1: 18, 2: 14, 3: 12}
-        self.set_font('Helvetica', 'B', sizes.get(level, 12))
-        self.set_text_color(50, 50, 50)
-        self.cell(0, 10, text)
-        self.ln(12)
-    
-    def add_text(self, text: str):
-        """Add body text."""
-        self.set_font('Helvetica', '', 11)
-        self.set_text_color(0, 0, 0)
-        # Handle multi-line text
-        self.multi_cell(0, 6, text)
-        self.ln(5)
-    
+class JarvisPDF(DocumentPDF):
+    """Unicode PDF shell with explicit local-image support for mixed content."""
+
     def add_image_centered(self, image_path: str, max_width: int = 180):
         """Add an image centered on the page."""
         if not os.path.exists(image_path):
-            self.add_text(f"[Image not found: {image_path}]")
-            return
+            raise FileNotFoundError(f"PDF image source not found: {image_path}")
         
         # Get image dimensions and scale
         try:
@@ -99,21 +59,32 @@ class JarvisPDF(FPDF):
             width = height / aspect
         
         # Center horizontally
-        x = (210 - width) / 2  # A4 width is 210mm
-        
+        if self.will_page_break(height):
+            self.add_page()
+        x = (self.w - width) / 2
         self.image(image_path, x=x, w=width)
         self.ln(10)
 
 
-def create_simple_pdf(title: str, content_items: list[dict], output_path: str) -> str:
+def create_simple_pdf(
+    title: str, content_items: list[dict], output_path: str, *, metadata: dict | None = None,
+) -> str:
     """
     Create a simple PDF with mixed content.
     
-    content_items: List of {"type": "text"|"image"|"heading", "content": "..."}
+    content_items: List of {"type": "text"|"markdown"|"image"|"heading", "content": "..."}
     """
     if not HAS_FPDF:
         raise ImportError("fpdf2 required: pip install fpdf2")
-    
+    check_pdf_source(title)
+    total_bytes = 0
+    for item in content_items:
+        if item.get('type') != 'image':
+            check_pdf_source(item.get('content', ''))
+            total_bytes += len(item.get('content', '').encode('utf-8'))
+    if total_bytes > MAX_SOURCE_BYTES:
+        raise ValueError("Combined PDF text sources exceed the 5 MiB limit; no content was converted")
+
     pdf = JarvisPDF(title=title)
     pdf.add_page()
     pdf.add_title(title)
@@ -127,10 +98,14 @@ def create_simple_pdf(title: str, content_items: list[dict], output_path: str) -
             pdf.add_heading(content, level)
         elif item_type == 'text':
             pdf.add_text(content)
+        elif item_type == 'markdown':
+            write_markdown(pdf, content)
         elif item_type == 'image':
             pdf.add_image_centered(content)
     
     pdf.output(output_path)
+    if metadata is not None:
+        metadata.update(page_count=pdf.page_no(), warnings=pdf.warnings())
     return output_path
 
 
@@ -162,7 +137,14 @@ def action_create(args: dict) -> dict:
     content_items = []
     
     # Add text content if provided
-    if text:
+    if text and args.get('_text_format') == 'markdown':
+        check_pdf_source(text)
+        content_items.append({'type': 'markdown', 'content': text})
+    elif text and args.get('_text_format') == 'plain':
+        check_pdf_source(text)
+        content_items.append({'type': 'text', 'content': text})
+    elif text:
+        check_pdf_source(text)
         # Split into paragraphs
         for para in text.split('\n\n'):
             para = para.strip()
@@ -192,15 +174,20 @@ def action_create(args: dict) -> dict:
             ext = os.path.splitext(file_path)[1].lower()
             if ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
                 content_items.append({'type': 'image', 'content': file_path})
-            elif ext in ['.txt', '.md', '.json']:
-                with open(file_path, 'r') as f:
-                    file_text = f.read()
-                content_items.append({'type': 'text', 'content': file_text})
+            elif ext in ['.txt', '.md', '.markdown', '.json']:
+                file_text = read_pdf_text_source(file_path)
+                content_items.append({
+                    'type': 'markdown' if ext in ['.md', '.markdown'] else 'text',
+                    'content': file_text,
+                })
             else:
-                content_items.append({'type': 'text', 'content': f'[File: {file_ref}]'})
+                raise ValueError(
+                    f"Unsupported PDF source format {ext or '(no extension)'}. "
+                    "Use .md, .markdown, .txt, .json, or an image."
+                )
                 
         except Exception as e:
-            content_items.append({'type': 'text', 'content': f'[Error loading {file_ref}: {e}]'})
+            raise ValueError(f"Could not load PDF source {file_ref}: {e}") from e
     
     if not content_items:
         raise ValueError("No content to include in PDF")
@@ -211,21 +198,17 @@ def action_create(args: dict) -> dict:
         base_dir=space.space_path,
         label="PDF output path",
     ))
-    create_simple_pdf(title, content_items, output_path)
-    
-    # Register in stash metadata
-    StashFile(space)
+    metadata = {}
+    create_simple_pdf(title, content_items, output_path, metadata=metadata)
     
     # Get file size
     file_size = os.path.getsize(output_path)
     
     # Compute hash
-    import hashlib
     with open(output_path, 'rb') as f:
         file_hash = hashlib.sha256(f.read()).hexdigest()
     
     # Generate file_id
-    from stash_helper import generate_file_id
     file_id = generate_file_id(output_name)
     
     # Add to space metadata
@@ -271,7 +254,10 @@ def action_create(args: dict) -> dict:
             "name": output_name,
             "ref": ref,
             "path": output_path,
-            "size_bytes": file_size
+            "size_bytes": file_size,
+            "mime_type": "application/pdf",
+            "source_complete": True,
+            **metadata,
         }
     }
 
@@ -288,6 +274,7 @@ def action_from_text(args: dict) -> dict:
     create_args = {
         'text': text,
         'title': title,
+        '_text_format': 'plain',
     }
     if args.get('space_id'):
         create_args['space_id'] = args['space_id']
@@ -295,6 +282,13 @@ def action_from_text(args: dict) -> dict:
         create_args['output_name'] = args['output_name']
     
     return action_create(create_args)
+
+
+def action_from_markdown(args: dict) -> dict:
+    """Create a formatted PDF from Markdown without loading image references."""
+    if not args.get('text'):
+        raise ValueError("'text' is required")
+    return action_create({**args, '_text_format': 'markdown'})
 
 
 def main():
@@ -318,6 +312,7 @@ def main():
         handlers = {
             'create': action_create,
             'from_text': action_from_text,
+            'from_markdown': action_from_markdown,
         }
         
         if action not in handlers:

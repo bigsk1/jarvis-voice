@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "convert_file",
-  "description": "Convert media files locally, or remove a solid background from an existing image without regenerating its subject. Examples: \"make this image background transparent\", \"remove the white background from my uploaded image\", \"convert my image to PNG\", \"convert video to MP3\". Background removal uses options.remove_background=true and target_format png/webp; removes only edge-connected color and keeps enclosed matching colors. Best for plain backgrounds, not scenery or fine-hair matting. Supports image formats (jpg/png/webp/gif/tiff/bmp), raster-to-SVG tracing, video/audio conversion and video-to-audio extraction. Accepts stash:// references or local files; outputs save to Stash for inline preview and download.",
+  "description": "Convert Markdown or plain-text files directly to complete, formatted PDF documents, or convert media locally. Examples: \"convert this .md file to PDF\", \"make a PDF from my uploaded Markdown\", \"convert my image to PNG\", \"convert video to MP3\", \"remove the white background from my image\". Markdown/text PDF rendering reads the original UTF-8 source in full; no model summarization or ASCII workaround is needed. Markdown headings, lists, tables, code, clickable links, and Unicode punctuation are supported with bundled fonts. Remote/embedded Markdown images are not fetched. Also supports image formats, raster-to-SVG tracing, video/audio conversion, video-to-audio extraction, and solid edge-connected background removal. Accepts stash:// references or local files; outputs save to Stash for preview and download.",
   "script": "convert_file.py",
   "complementary_tools": [
     "stash"
@@ -41,11 +41,11 @@
       },
       "target_format": {
         "type": "string",
-        "description": "Target format extension without dot: png, jpg, webp, gif, svg, mp4, webm, mp3, wav, flac, ogg, aac"
+        "description": "Target extension without dot: pdf for .md/.markdown/.txt documents; png, jpg, webp, gif, svg, mp4, webm, mp3, wav, flac, ogg, aac for supported media."
       },
       "options": {
         "type": "object",
-        "description": "Optional conversion settings. Image: quality (1-100), resize ('800x600' or '50%'), strip_metadata (bool). Video: crf (quality 0-51), resolution ('1920x1080'), fps, duration (seconds). Audio: bitrate ('192k'), sample_rate (44100), channels (1 or 2). SVG: threshold ('50%' for tracing) Solid-background removal: remove_background (bool), background_color (auto or #RRGGBB), background_tolerance (0-25 percent, default 5). Requires PNG/WebP output and a single-frame raster input. Changing JPEG to PNG alone does not remove a background.",
+        "description": "Optional conversion settings. PDF: title (document title); Markdown/text inputs must be UTF-8 and at most 5 MB. Full source is rendered without summarization. Image: quality (1-100), resize (\"800x600\" or \"50%\"), strip_metadata (bool). Video: crf (0-51), resolution, fps, duration. Audio: bitrate, sample_rate, channels. SVG: threshold. Solid-background removal: remove_background, background_color, background_tolerance; requires PNG/WebP and a single-frame raster input.",
         "properties": {
           "remove_background": {
             "type": "boolean",
@@ -61,6 +61,11 @@
             "minimum": 0,
             "maximum": 25,
             "description": "With remove_background: color tolerance percentage, default 5. Lower retains more detail; higher removes more similar edge-connected colors. Do not use high tolerance on white subjects."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Optional PDF document title. Unicode punctuation is supported; defaults to the source filename stem."
           }
         }
       }

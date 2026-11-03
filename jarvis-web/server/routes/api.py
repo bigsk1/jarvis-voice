@@ -3317,6 +3317,7 @@ def _serve_stash_file(space_id, file_id):
         '.flac': 'audio/flac',
         '.aac': 'audio/aac',
         '.json': 'application/json',
+        '.pdf': 'application/pdf',
         '.txt': 'text/plain',
         '.md': 'text/markdown'
     }

@@ -6,11 +6,9 @@ import io
 import sys
 from pathlib import Path
 
-from flask import Flask
 import pytest
-
+from flask import Flask
 from server_package_utils import load_server_package
-
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -18,6 +16,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "jarvis-web"))
 load_server_package("jarvis_web_stash_config_test", PROJECT_ROOT / "jarvis-web" / "server")
 
 from jarvis_web_stash_config_test.routes import api  # noqa: E402
+
 from lib.stash_helper import StashFile, open_space  # noqa: E402
 
 
@@ -60,6 +59,7 @@ def test_web_stash_upload_writes_configured_stash_dir(tmp_path, monkeypatch):
 @pytest.mark.parametrize('mode', ['cloud', 'local'])
 def test_background_media_stash_url_keeps_original_mode_and_supports_seeking(tmp_path, monkeypatch, mode):
     import config_loader
+
     from lib import config_loader as package_config
 
     monkeypatch.delenv('JARVIS_OVERRIDE_STASH_DIR', raising=False)
@@ -77,3 +77,31 @@ def test_background_media_stash_url_keeps_original_mode_and_supports_seeking(tmp
     assert response.data == (mode * 8).encode()[:4]
     assert response.mimetype == 'video/mp4'
     assert response.headers['Content-Range'].startswith('bytes 0-3/')
+
+
+def test_pdf_stash_delivery_keeps_ref_ranges_and_filename_encoding(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setattr(api, 'get_stash_dir', lambda: tmp_path)
+    space = tmp_path / 'space_pdf'
+    space.mkdir()
+    filename = 'Résumé – export.pdf'
+    content = b'%PDF-1.7\n0123456789\n%%EOF\n'
+    (space / filename).write_bytes(content)
+    (space / 'meta.json').write_text(json.dumps({'files': [{
+        'file_id': 'f_pdf', 'name': filename, 'stored_name': filename,
+    }]}))
+    client = _client()
+    response = client.get('/api/stash/space_pdf/f_pdf')
+    assert response.status_code == 200
+    assert response.data == content
+    assert response.mimetype == 'application/pdf'
+    assert response.headers['X-Stash-Ref'] == 'stash://space_pdf/f_pdf'
+    assert "filename*=UTF-8''" in response.headers['Content-Disposition']
+    ranged = client.get('/api/stash/space_pdf/f_pdf', headers={'Range': 'bytes=0-7'})
+    assert ranged.status_code == 206
+    assert ranged.data == content[:8]
+    assert ranged.mimetype == 'application/pdf'
+    assert ranged.headers['Content-Range'] == f'bytes 0-7/{len(content)}'
+    assert client.get('/api/stash/../outside.pdf').status_code == 404
+    assert client.get('/api/stash/space_pdf/%2e%2e%2foutside.pdf').status_code == 404

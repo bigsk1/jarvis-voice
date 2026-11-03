@@ -312,10 +312,10 @@
                 📎
               </button>
               <input type="file" id="fileInput" accept="image/*,audio/*,video/*,.md,.txt,.pdf,.aac,.flac,.m4a,.mp3,.mp4,.mpeg,.mpga,.ogg,.wav,.webm,.mov,.mkv,.avi,.m4v,.mpg,text/plain,text/markdown,application/pdf" multiple style="display: none;">
-              <button class="icon-btn convert-btn" id="convertBtn" title="Convert file format (image/video/audio)">
+              <button class="icon-btn convert-btn" id="convertBtn" title="Convert images, video, audio, or text documents">
                 🔄
               </button>
-              <input type="file" id="convertInput" accept="image/*,video/*,audio/*,.svg,.bmp,.ico,.tiff,.tif" style="display: none;">
+              <input type="file" id="convertInput" accept="image/*,video/*,audio/*,.svg,.bmp,.ico,.tiff,.tif,.md,.markdown,.txt,text/plain,text/markdown" style="display: none;">
               <button class="icon-btn enhance-btn" id="enhanceBtn" title="✨ Enhance with AI - transforms your input into an optimal prompt">
                 ✨
               </button>
@@ -1246,6 +1246,9 @@
               <optgroup label="Extract Audio">
                 <option value="extract_mp3">Extract Audio → MP3</option>
                 <option value="extract_wav">Extract Audio → WAV</option>
+              </optgroup>
+              <optgroup label="Documents">
+                <option value="pdf">PDF (Markdown or text)</option>
               </optgroup>
             </select>
             <span class="setting-desc" id="convertFormatDesc">Select a target format</span>

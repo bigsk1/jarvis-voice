@@ -1,7 +1,7 @@
 # Cloud model benchmark for Jarvis
 
 `bin/benchmark-cloud-model` compares OpenAI, Anthropic, xAI and Ollama Cloud chat
-models through Jarvis's production adapters. **Suite v4 has 44 tasks**, normally
+models through Jarvis's production adapters. **Suite v5 has 44 tasks**, normally
 repeated three times, plus six optional, ungraded tone samples.
 
 It measures completion, discovery, factual grounding, recovery, instruction
@@ -116,9 +116,23 @@ The V3 reports that exposed these issues are preserved. V4 changes both fixture
 and runtime fingerprints, so its reports form a separate comparison group. Do
 not reinterpret an interrupted V3 conversation as a completed V4 run.
 
+## Current tool contracts in suite v5
+
+V5 keeps V4's 44 tasks, synthetic facts, reviewed aliases, rubric 2.0 and report
+schema 2. It updates only the pinned public schemas/descriptions for `convert_file`
+and `pdf_create` after their Markdown/text PDF capabilities changed. This is a new
+comparison group; it does not add document-rendering accuracy tests or change the
+simulated PDF task's expected content.
+
+The legacy runner's deterministic tests use a temporary synthetic V1 copy with
+its existing PDF-tool pin taken from reviewed V5 (`convert_file` was added in
+V2, so V1's tool catalog stays unchanged). They do not rewrite the archived V1
+fixture or bypass runtime drift checks. Unreviewed changes still fail before
+provider construction.
+
 ## Relationship to Jarvis
 
-V4 calls production `LLMRouter.build_system_prompt`, the tool-turn and conversation
+V5 calls production `LLMRouter.build_system_prompt`, the tool-turn and conversation
 formatters in `ContextAssembler`, result projections, the discovery-summary
 formatter and the learned-insight formatter. The router constructor, executor,
 databases and retrieval services are not started. A fixed clock, city, ZIP and
@@ -141,11 +155,11 @@ discovery hints. Prior user turns carry structured, bounded synthetic evidence
 through the conversation formatter. Per-trial hashes identify the actual prompt
 as tools become visible.
 
-Suite version and system-prompt version are independent: **suite v4 uses the
+Suite version and system-prompt version are independent: **suite v5 uses the
 pinned V2 system prompt**. Prompt, public schema and relevant context-function
 drift fail offline validation before inference.
 
-Suite v4 defaults to `--prompt-profile configured`. It applies the selected
+Suite v5 defaults to `--prompt-profile configured`. It applies the selected
 model's routing prepend, tool-calling prepend and routing append through the
 production loader. `baseline` omits that wording for a shared-prompt comparison.
 Reports disclose the profile, matched override and exact prompt hashes; the
@@ -248,11 +262,12 @@ model-override tree hash. Model identity is excluded. Configured profiles may
 use different model-specific wording, which is disclosed. Source changes create
 a new comparison group.
 
-The original V1, V2 and V3 fixture files are preserved byte for byte.
+The original V1, V2, V3 and V4 fixture files are preserved byte for byte.
 `--suite v1` retains its cases and original rubric, defaulting to baseline. V1
 has known fixture limitations. The archived V2 fixture rejects the changed
-production-context contract in this checkout; replay it using its original
-checkout. Existing reports still work with `--compare`. V4 is the default
+production-context contract in this checkout; older suites also reject changed
+tool schemas. Replay archived suites using their original checkout. Existing
+reports still work with `--compare`. V5 is the default
 and retains report schema 2 and rubric 2.0 because the data format and grading
 are unchanged. Do not compare grades across fixture versions as the same test.
 Runtime changes can also create separate groups with an unchanged suite.

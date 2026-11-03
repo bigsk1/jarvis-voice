@@ -111,6 +111,32 @@ def test_v3_fixture_is_preserved_after_live_calibration():
     )
 
 
+def test_v4_fixture_is_byte_for_byte_preserved():
+    path = bm.FIXTURE_PATH.with_name("cloud-model-v4.json")
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == (
+        "502a082ef680cd9fe2788cf5687d583fae0b0ec673ed242ff2ba6059a35bb022"
+    )
+
+
+def test_v5_refreshes_only_pdf_tool_contracts_and_fixture_identity(suite):
+    previous = json.loads(bm.FIXTURE_PATH.with_name("cloud-model-v4.json").read_text())
+    current = json.loads(bm.FIXTURE_PATH.read_text())
+    assert current["fixture_id"] == "jarvis-cloud-model-v5"
+    assert current["provenance"]["supersedes"] == previous["fixture_id"]
+    changed = {name for name, digest in previous["tool_schema_sha256"].items()
+               if current["tool_schema_sha256"][name] != digest}
+    assert changed == {"convert_file", "pdf_create"}
+    current["tool_schema_sha256"] = previous["tool_schema_sha256"]
+    current["fixture_id"] = previous["fixture_id"]
+    current["provenance"] = previous["provenance"]
+    old_match = case(previous, "missing_capability_is_not_substitute")["steps"][0]["result"]["data"]["matches"][0]
+    match = case(current, "missing_capability_is_not_substitute")["steps"][0]["result"]["data"]["matches"][0]
+    assert match["name"] == "pdf_create"
+    assert match["description"] == suite["tools"]["pdf_create"]["description"]
+    match["description"] = old_match["description"]
+    assert current == previous
+
+
 @pytest.mark.parametrize("location", ["Seattle, Washington", "Seattle, WA"])
 def test_declared_weather_location_equivalents_match_the_same_place(suite, location):
     task = case(suite, "negative_lesson_does_not_disable_needed_tool")
@@ -181,8 +207,8 @@ def test_human_provider_name_alias_applies_to_answer_and_saved_json_only(suite):
     assert not answer_metrics_v2(json.dumps(answer), turn)["factually_correct"]
 
 
-def test_v4_makes_literal_text_requirements_explicit(suite):
-    assert suite["fixture_id"] == "jarvis-cloud-model-v4"
+def test_current_suite_retains_v4_literal_text_requirements(suite):
+    assert suite["fixture_id"] == "jarvis-cloud-model-v5"
     email = case(suite, "authorized_literal_recipient_needs_no_memory")
     assert "subject and body verbatim" in email["turns"][0]["query"]
     image = case(suite, "discover_then_analyze_artifact")

@@ -382,7 +382,7 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'craft_video': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note', 'editable_project_ref', 'document'],
     'craft_motion': ['app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note', 'editable_project_ref', 'document'],
     'craft_inspect': ['jobs', 'app', 'app_version', 'job_id', 'request_id', 'project_id', 'project_revision', 'state', 'renderer', 'outputs', 'stash_ref', 'filename', 'mime_type', 'followup_note', 'editable_project_ref', 'document'],
-    'pdf_create': ['ref', 'name', 'size_bytes'],
+    'pdf_create': ['ref', 'name', 'size_bytes', 'mime_type', 'page_count', 'source_complete', 'warnings'],
     'pdf_read': ['page_count', 'stash_ref'],
     'document_ocr': [
         'action', 'request_id', 'filename', 'document_type', 'model',
@@ -416,7 +416,8 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'handling_note', 'source',
     ],
     'convert_file': ['stash_ref', 'filename', 'source_format', 'target_format',
-                     'transparent', 'background_removed', 'background_removal_method', 'background_removal_note'],
+                     'transparent', 'background_removed', 'background_removal_method', 'background_removal_note',
+                     'mime_type', 'page_count', 'source_complete', 'warnings'],
     'qr_code_generator': ['stash_ref', 'filename'],
     'upload_cloudflare': ['url', 'image_id', 'filename'],
     'youtube_transcript': ['video_title', 'srt_stash_ref', 'md_stash_ref'],

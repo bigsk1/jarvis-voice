@@ -2888,6 +2888,7 @@ class ChatUI {
   _collectConvertOptions() {
     const options = {};
     const targetFormat = this.convertTargetFormat?.value || '';
+    if (targetFormat === 'pdf') return options;
     
     // Image options
     const resize = document.getElementById('convertResize')?.value?.trim();
@@ -2985,6 +2986,11 @@ class ChatUI {
    */
   async _showConvertModal(file) {
     if (!this.convertModal) return;
+    const sourceType = this._convertSourceType(file);
+    if (sourceType === 'document' && file.size > 5 * 1024 * 1024) {
+      Utils.toast('Text documents must be 5 MiB or smaller', 'error');
+      return;
+    }
     
     // Validate file size (max 100MB for video)
     if (file.size > 100 * 1024 * 1024) {
@@ -3002,7 +3008,10 @@ class ChatUI {
     
     // Show preview based on file type
     this._clearConvertPreview();
-    if (file.type.startsWith('image/')) {
+    this._preselectFormat(file.name, sourceType);
+    if (sourceType === 'document') {
+      this.convertPreview.innerHTML = '<span style="font-size: 3rem;">📄</span>';
+    } else if (sourceType === 'image') {
       const img = document.createElement('img');
       this.convertPreviewUrl = URL.createObjectURL(file);
       img.src = this.convertPreviewUrl;
@@ -3011,9 +3020,7 @@ class ChatUI {
       img.style.borderRadius = 'var(--radius-md)';
       this.convertPreview.appendChild(img);
       
-      // Pre-select appropriate format based on current
-      this._preselectFormat(file.name, 'image');
-    } else if (file.type.startsWith('video/')) {
+    } else if (sourceType === 'video') {
       const video = document.createElement('video');
       this.convertPreviewUrl = URL.createObjectURL(file);
       video.src = this.convertPreviewUrl;
@@ -3023,15 +3030,13 @@ class ChatUI {
       video.controls = true;
       this.convertPreview.appendChild(video);
       
-      this._preselectFormat(file.name, 'video');
-    } else if (file.type.startsWith('audio/')) {
+    } else if (sourceType === 'audio') {
       const audio = document.createElement('audio');
       this.convertPreviewUrl = URL.createObjectURL(file);
       audio.src = this.convertPreviewUrl;
       audio.controls = true;
       this.convertPreview.appendChild(audio);
       
-      this._preselectFormat(file.name, 'audio');
     } else {
       this.convertPreview.innerHTML = '<span style="font-size: 3rem;">📄</span>';
     }
@@ -3044,13 +3049,31 @@ class ChatUI {
     void window.jarvisApp?.backgroundTasks?.refresh();
   }
   
+  _convertSourceType(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (['md', 'markdown', 'txt'].includes(ext)) return 'document';
+    const declared = (file.type || '').split('/')[0];
+    if (['image', 'video', 'audio'].includes(declared)) return declared;
+    // Browsers may leave MIME blank for an otherwise supported local file.
+    if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'tiff', 'tif', 'bmp', 'ico', 'svg'].includes(ext)) return 'image';
+    if (['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'm4v'].includes(ext)) return 'video';
+    if (['mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a', 'wma', 'opus'].includes(ext)) return 'audio';
+    return '';
+  }
+
   /**
-   * Pre-select target format based on source file type
+   * Pre-select target format and reset document-only choices for each source.
    */
   _preselectFormat(filename, mediaType) {
     const ext = filename.split('.').pop().toLowerCase();
+    const options = Array.from(this.convertTargetFormat.options || []);
+    for (const option of options) {
+      option.disabled = mediaType === 'document' ? option.value !== 'pdf' : option.value === 'pdf';
+    }
     
-    if (mediaType === 'image') {
+    if (mediaType === 'document') {
+      this.convertTargetFormat.value = 'pdf';
+    } else if (mediaType === 'image') {
       // If it's a raster image, suggest PNG or WebP; if PNG, suggest WebP
       if (ext === 'png') {
         this.convertTargetFormat.value = 'webp';
@@ -3065,6 +3088,8 @@ class ChatUI {
     } else if (mediaType === 'audio') {
       // Suggest MP3 for compatibility
       this.convertTargetFormat.value = ext === 'mp3' ? 'wav' : 'mp3';
+    } else if (this.convertTargetFormat.value === 'pdf') {
+      this.convertTargetFormat.value = options.find(option => !option.disabled)?.value || 'png';
     }
   }
   
@@ -3077,6 +3102,7 @@ class ChatUI {
     if (!descEl) return;
     
     const descriptions = {
+      'pdf': 'Create a printable PDF from Markdown or plain text',
       'png': 'Lossless compression, supports transparency',
       'jpg': 'Good compression for photos, no transparency',
       'webp': 'Modern format, excellent compression + transparency',

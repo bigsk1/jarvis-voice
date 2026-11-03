@@ -12,6 +12,7 @@ Supported conversions:
 - Video formats: mp4, webm, mov, avi, mkv (via FFmpeg)
 - Audio formats: mp3, wav, flac, ogg, aac, m4a (via FFmpeg)
 - Video/Audio extraction: video → audio (via FFmpeg)
+- Markdown/plain text → searchable PDF (offline Unicode fonts)
 """
 
 import json
@@ -37,6 +38,8 @@ from tool_child_environment import RESTRICTED_ENV_MARKER
 IMAGE_FORMATS = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'tiff', 'tif', 'bmp', 'ico'}
 VIDEO_FORMATS = {'mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'm4v'}
 AUDIO_FORMATS = {'mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a', 'wma', 'opus'}
+DOCUMENT_FORMATS = {'md', 'markdown', 'txt'}
+MAX_DOCUMENT_INPUT_BYTES = 5 * 1024 * 1024
 
 # Tool availability cache
 _tool_cache = {}
@@ -447,6 +450,31 @@ def get_media_info(input_path: str) -> dict:
     return {}
 
 
+def convert_document_to_pdf(input_path: str, output_path: str, options: dict | None = None) -> dict:
+    """Render the complete UTF-8 source locally; never use a model's text preview."""
+    from pdf_rendering import render_markdown_pdf, render_text_pdf
+
+    options = options or {}
+    title = options.get('title', Path(input_path).stem.replace('_', ' '))
+    if not isinstance(title, str) or not title.strip() or len(title) > 500:
+        raise ValueError('PDF title must be nonempty text of at most 500 characters')
+    with open(input_path, 'rb') as source:
+        content = source.read(MAX_DOCUMENT_INPUT_BYTES + 1)
+    if len(content) > MAX_DOCUMENT_INPUT_BYTES:
+        raise ValueError('Markdown/text PDF input exceeds 5 MB; split the document first')
+    try:
+        text = content.decode('utf-8-sig')
+    except UnicodeDecodeError as exc:
+        raise ValueError('Markdown/text PDF input must use UTF-8 encoding') from exc
+    conversion_timeout(300)  # Honor an already expired background deadline before rendering.
+    markdown = get_format(input_path) in {'md', 'markdown'}
+    render = render_markdown_pdf if markdown else render_text_pdf
+    metadata = render(text, output_path, title=title)
+    return {'tool': 'fpdf2', 'operation': 'markdown_to_pdf' if markdown else 'text_to_pdf',
+            'source_bytes': len(content), 'source_characters': len(text), 'source_complete': True,
+            **metadata}
+
+
 def main():
     try:
         # Parse arguments
@@ -505,7 +533,10 @@ def main():
             # Route to appropriate converter
             conversion_info = {}
             
-            if source_is_image and target_is_image:
+            if source_format in DOCUMENT_FORMATS and target_format == 'pdf':
+                conversion_info = convert_document_to_pdf(input_path, output_path, options)
+
+            elif source_is_image and target_is_image:
                 # Image → Image (ImageMagick)
                 conversion_info = convert_image_to_image(input_path, output_path, options)
                 
@@ -575,6 +606,9 @@ def main():
                     width=conversion_info['width'], height=conversion_info['height'],
                     background_removal_method=conversion_info['method'],
                     background_removal_note='Removed an edge-connected solid color; complex backgrounds and fine hair may need a subject mask.')
+            if target_format == 'pdf':
+                result_data.update(mime_type='application/pdf', page_count=conversion_info['page_count'],
+                                   source_complete=True, warnings=conversion_info.get('warnings', []))
             
             # Calculate size change
             if input_size > 0:
