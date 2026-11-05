@@ -6,9 +6,79 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from config_loader import config_scope
+from pydantic import ValidationError
 
 from api.routes import generated_images
-from config_loader import config_scope
+
+
+def test_generate_route_forwards_openai_gif_options_without_changing_config():
+    request = generated_images.GenerateRequest(
+        prompt="Make the mascot wave",
+        provider="openai",
+        model="gpt-image-2.6-flare",
+        output_format="gif",
+        complexity="high",
+        frame_count=12,
+        frame_duration_ms=80,
+        reference_image="stash://source/gif",
+        reference_frame=0,
+    )
+    completed = SimpleNamespace(
+        returncode=0,
+        stdout=json.dumps({"ok": True, "data": {"mime_type": "image/gif"}}),
+        stderr="",
+    )
+    with (
+        config_scope("cloud", {"IMAGE_TOOL_PROVIDER": "xai"}),
+        patch.object(generated_images.subprocess, "run", return_value=completed) as run,
+    ):
+        response = asyncio.run(generated_images.generate_image(request))
+    payload = json.loads(run.call_args.args[0][2])
+    for name in (
+        "model", "output_format", "complexity", "frame_count", "frame_duration_ms", "reference_frame",
+    ):
+        assert payload[name] == getattr(request, name)
+    assert run.call_args.kwargs["timeout"] == 660
+    assert run.call_args.kwargs["env"]["JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER"] == "openai"
+    assert response.ok is True
+    assert response.data["mime_type"] == "image/gif"
+
+
+@pytest.mark.parametrize("arguments", [
+    {"output_format": "mp4"}, {"complexity": "max"},
+    {"provider": "unrecognized"},
+    {"frame_count": 1}, {"frame_count": 17}, {"frame_count": True},
+    {"frame_duration_ms": 19}, {"frame_duration_ms": 655351},
+    {"reference_frame": -1}, {"reference_frame": 1.5},
+])
+def test_generate_route_rejects_invalid_animation_contract(arguments):
+    with pytest.raises(ValidationError):
+        generated_images.GenerateRequest(prompt="A loop", **arguments)
+
+
+def test_generated_gif_list_and_download_keep_animation_bytes(tmp_path, monkeypatch):
+    import base64
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (8, 8), "red").save(
+        buffer, "GIF", save_all=True, append_images=[Image.new("RGB", (8, 8), "blue")],
+        duration=[80, 140], loop=0,
+    )
+    original = buffer.getvalue()
+    filename = "generated_loop.gif"
+    (tmp_path / filename).write_bytes(original)
+    monkeypatch.setattr(generated_images, "GENERATED_IMAGES_DIR", tmp_path)
+    images, _ = generated_images.get_image_list()
+    assert images[0].extension == ".gif"
+    response = asyncio.run(generated_images.get_generated_image_base64(filename))
+    assert response.mime_type == "image/gif"
+    assert base64.b64decode(response.base64.split(",", 1)[1]) == original
+    download = asyncio.run(generated_images.get_generated_image(filename))
+    assert download.media_type == "image/gif"
 
 
 def test_generate_route_passes_shared_gemini_options_to_tool():

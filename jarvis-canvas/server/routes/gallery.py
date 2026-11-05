@@ -29,6 +29,7 @@ gallery_bp = Blueprint('gallery', __name__)
 IMAGE_CATALOG_FILE = GENERATED_IMAGES_DIR / "image_catalog.json"
 CDN_CATALOG_FILE = GENERATED_IMAGES_DIR / "cdn_catalog.json"
 IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp')
+IMAGE_ANIMATION_FIELDS = ('format', 'animated', 'frame_count', 'duration_ms', 'frame_duration_ms')
 
 
 def load_image_catalog():
@@ -169,6 +170,9 @@ def load_image_stash_metadata():
                     'tool_origin': file_info.get('tool_origin'),
                     'created_at': file_info.get('created_at')
                 }
+                for key in IMAGE_ANIMATION_FIELDS:
+                    if key in file_info:
+                        metadata_by_filename[stored_name][key] = file_info[key]
         except Exception:
             pass
     
@@ -213,7 +217,14 @@ def sync_image_catalog():
         stash_metadata = None
         for filename in actual_files:
             existing = catalog.get(filename)
-            if existing is not None and existing.get('model'):
+            if (
+                existing is not None
+                and existing.get('model')
+                and (
+                    not filename.lower().endswith('.gif')
+                    or all(key in existing for key in ('animated', 'frame_count', 'duration_ms'))
+                )
+            ):
                 continue
 
             if stash_metadata is None:
@@ -345,6 +356,7 @@ def list_gallery_images():
                     'modified': datetime.fromtimestamp(stat.st_mtime).isoformat(),
                     'favorite': bool(catalog.get(f.name, {}).get('favorite', False)),
                     'cdn_cached': bool((cdn_catalog.get(f.name) or {}).get('url')),
+                    'format': f.suffix.lstrip('.').lower(),
                 }
                 
                 # Get metadata from catalog
@@ -359,6 +371,9 @@ def list_gallery_images():
                     image_info['tags'] = meta['tags']
                 if meta.get('favorited_at'):
                     image_info['favorited_at'] = meta['favorited_at']
+                for key in IMAGE_ANIMATION_FIELDS:
+                    if key in meta:
+                        image_info[key] = meta[key]
                 
                 images.append(image_info)
                 total_size += stat.st_size
@@ -466,7 +481,7 @@ def get_cdn_url(filename):
     if CDN_CATALOG_FILE.exists():
         try:
             catalog = json.loads(CDN_CATALOG_FILE.read_text())
-            if filename in catalog:
+            if isinstance(catalog.get(filename), dict) and catalog[filename].get('url'):
                 entry = catalog[filename]
                 return jsonify({
                     'ok': True,
@@ -475,14 +490,16 @@ def get_cdn_url(filename):
                     'cached': True,
                     'image_id': entry.get('image_id')
                 })
-        except:
+        except (OSError, ValueError):
             pass
     
     # Not in catalog - call Jarvis API to upload
     try:
         encoded_filename = quote(filename, safe='')
         api_url = f"{get_internal_api_base_url()}/api/generated-images/{encoded_filename}/cdn-url"
-        response = requests.get(api_url, headers=get_internal_api_headers(), timeout=60)
+        # The API's upload waits use 10-second connect and 60-second read
+        # timeouts. Leave room for preflight and persistence in this proxy.
+        response = requests.get(api_url, headers=get_internal_api_headers(), timeout=90)
         data = response.json()
         return jsonify(data)
     except requests.exceptions.RequestException as e:

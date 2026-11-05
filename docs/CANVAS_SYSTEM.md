@@ -200,7 +200,45 @@ The canvas server includes an integrated image gallery for browsing generated im
 - Delete unwanted images
 - Keyboard shortcuts: `Escape` close, `←` / `→` navigate
 
+Animated GIFs appear in the Images Gallery with a **GIF** badge. The grid,
+lightbox, Stash image embeds, and downloads use the original GIF bytes, retaining
+frames, timing, looping, and transparency. Generated animation metadata is kept
+with provider/model provenance and can be recovered from Stash metadata when
+the gallery catalog is rebuilt. Gallery files remain separate from the Stash
+copy's retention policy.
+
+For a GIF, **Edit GIF in Jarvis** opens a new Web conversation with the original
+animation attached. Image generation uses a selected reference frame (frame 0
+by default) to generate a new image or GIF. This is regeneration from a still
+frame; it does not edit and preserve each frame of the original animation.
+Choosing **Analyze** sends one bounded contact sheet of up to six chronological
+frames, including the first and last, with frame numbers and source timestamps.
+For a single GIF, a frame picker can instead select one zero-based frame.
+Descriptions lead with visible content and retain a separate scope showing the
+selected samples. This supports comparison of sampled states rather than
+complete motion analysis. Transparent pixels use a marked neutral checkerboard;
+the original GIF retains its transparency. A one-frame GIF is labeled accordingly.
+GIF generation requires an OpenAI model with GIF support and account access to
+OpenAI's GIF preview. Canvas displays and downloads GIFs without that access.
+
 Local image deletion and generated-image cleanup preserve `cdn_catalog.json` entries. This keeps previously issued public URLs available in the CDN HTML export without keeping the local files in the main gallery. The export does not query Cloudflare to reconcile its contents. Its confirmed **Delete from Cloudflare** action permanently deletes the hosted image and removes its CDN catalog entry while leaving any local image untouched. If Cloudflare returns `404`, the row remains visible until the user confirms the offered stale-entry removal. Deletion requires opening the export through the running, authenticated Canvas server; a separately saved HTML copy remains read-only.
+
+Cloudflare sharing validates GIF bytes before upload, including file, Stash,
+URL, and base64 sources. Hosted uploads are limited to 10 MB; GIFs must fit
+within 12000 pixels per edge and 100 million cumulative decoded frame pixels.
+Jarvis also applies its 256-frame decoding safety limit. A rejected upload
+leaves the local animation and existing CDN catalog entries intact. A new
+catalog row requires a confirmed upload with both a URL and Cloudflare image
+ID. Uploads use a 10-second connection timeout and a 60-second read timeout;
+the Canvas proxy allows 90 seconds. These bound connection and response waits,
+not an exact end-to-end deadline. A timeout is not proof Cloudflare rejected
+the image, and Jarvis does not retry the upload automatically.
+
+Cloudflare preserves animation by default (`anim=true`), but its CDN may
+negotiate or transform the delivery format for the requesting browser. A CDN
+URL therefore does not promise the original GIF bytes. Use the local gallery
+download for the original animation. See Cloudflare's [hosted image limits](https://developers.cloudflare.com/images/get-started/limits/)
+and [animation delivery options](https://developers.cloudflare.com/images/optimization/features/).
 
 ### Image to Video Handoff
 
@@ -208,7 +246,7 @@ The video button sends the selected gallery image to Jarvis Web:
 
 1. Click the video icon on any image.
 2. Canvas opens Jarvis Web in a new tab and explicitly starts a new conversation.
-3. Jarvis Web copies the local `data/generated_images/<filename>` image through its normal upload pipeline, including JPEG conversion and proportional resizing to a maximum dimension of 1024 pixels.
+3. Jarvis Web copies the local `data/generated_images/<filename>` image through its normal upload pipeline, including JPEG conversion and proportional resizing to a maximum dimension of 1024 pixels for still images. GIF attachments retain the original animation and open image editing with a reference-frame selector instead.
 4. The normal attachment modal opens with **Video** selected. Configure the provider and generation settings, enter your instruction, and send the message.
 
 Canvas remains mode-agnostic: the handoff uses the mode and media provider configured in Jarvis Web. It does not upload the image to Cloudflare or reuse a public CDN URL. Cloudflare upload remains an explicit gallery action behind **Get URL**.

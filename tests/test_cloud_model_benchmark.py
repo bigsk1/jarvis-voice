@@ -21,18 +21,18 @@ from model_prompt_overrides import ModelPromptOverride  # noqa: E402
 
 @pytest.fixture(scope="module")
 def legacy_fixture_path(tmp_path_factory):
-    """Exercise the v1 runner with reviewed PDF schemas, never rewrite its archive.
+    """Exercise the v1 runner with reviewed schemas, never rewrite its archive.
 
-    Existing PDF-tool pins come from the checked-in v5 fixture, not live hashes.
+    Reviewed tool pins come from the checked-in v8 fixture, not live hashes.
     The original catalog stays intact; v1 does not declare convert_file.
     Future unreviewed manifest changes must still fail production drift checks.
     """
     payload = json.loads(bm.LEGACY_FIXTURE_PATH.read_text())
     current = json.loads(bm.FIXTURE_PATH.read_text())
-    for name in ("convert_file", "pdf_create"):
+    for name in ("pdf_create", "generate_image", "analyze_image"):
         if name in payload["tool_schema_sha256"]:
             payload["tool_schema_sha256"][name] = current["tool_schema_sha256"][name]
-    path = tmp_path_factory.mktemp("cloud-benchmark-v1-synthetic") / "v1-reviewed-pdf-schemas.json"
+    path = tmp_path_factory.mktemp("cloud-benchmark-v1-synthetic") / "v1-reviewed-tool-schemas.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
 
@@ -42,14 +42,14 @@ def suite(legacy_fixture_path):
     return bm.load_suite(legacy_fixture_path)
 
 
-def test_legacy_test_copy_changes_only_reviewed_current_pdf_pins(legacy_fixture_path):
+def test_legacy_test_copy_changes_only_reviewed_current_tool_pins(legacy_fixture_path):
     archived = json.loads(bm.LEGACY_FIXTURE_PATH.read_text())
     synthetic = json.loads(legacy_fixture_path.read_text())
     current = json.loads(bm.FIXTURE_PATH.read_text())
     changes = {name for name, digest in archived["tool_schema_sha256"].items()
                if synthetic["tool_schema_sha256"][name] != digest}
     assert synthetic["tool_schema_sha256"].keys() == archived["tool_schema_sha256"].keys()
-    assert changes == {"pdf_create"}  # convert_file first appears in v2.
+    assert changes == {"pdf_create", "generate_image", "analyze_image"}  # convert_file first appears in v2.
     for name in changes:
         assert synthetic["tool_schema_sha256"][name] == current["tool_schema_sha256"][name]
         synthetic["tool_schema_sha256"][name] = archived["tool_schema_sha256"][name]
@@ -454,12 +454,12 @@ def test_cli_default_is_offline_and_missing_case_fails_without_provider(monkeypa
     assert cli.main(["--provider", "ollama", "--model", "synthetic"]) == 0
     output = capsys.readouterr().out
     assert '"dry_run": true' in output
-    assert '"fixture": "jarvis-cloud-model-v5"' in output
+    assert '"fixture": "jarvis-cloud-model-v8"' in output
     with pytest.raises(SystemExit):
         cli.main(["--provider", "ollama", "--model", "synthetic", "--case", "missing"])
 
 
-@pytest.mark.parametrize("version", ["v1", "v2", "v3", "v4"])
+@pytest.mark.parametrize("version", ["v1", "v2", "v3", "v4", "v5", "v6", "v7"])
 def test_archived_suite_drift_stops_cli_before_provider_or_reports(version, monkeypatch, tmp_path):
     cli = cli_module()
     monkeypatch.setattr(cli, "CloudBenchmarkRunner", lambda *_args, **_kwargs: pytest.fail("archived schema drift built a provider"))
@@ -468,15 +468,15 @@ def test_archived_suite_drift_stops_cli_before_provider_or_reports(version, monk
     assert not list(tmp_path.iterdir())
 
 
-@pytest.mark.parametrize("name", ["convert_file", "pdf_create"])
-def test_new_pdf_tool_drift_still_stops_before_provider(name, monkeypatch, tmp_path):
+@pytest.mark.parametrize("name", ["convert_file", "pdf_create", "generate_image", "analyze_image"])
+def test_new_tool_drift_still_stops_before_provider(name, monkeypatch, tmp_path):
     cli = cli_module()
     original = bm.load_skill_tool
     monkeypatch.setattr(bm, "load_skill_tool", lambda tool: {
         **original(tool), **({"description": "unreviewed change"} if tool == name else {}),
     })
     monkeypatch.setattr(cli, "CloudBenchmarkRunner", lambda *_args, **_kwargs: pytest.fail("unreviewed schema drift built a provider"))
-    assert cli.main(["--provider", "ollama", "--model", "synthetic", "--suite", "v5",
+    assert cli.main(["--provider", "ollama", "--model", "synthetic", "--suite", "v8",
                      "--run", "--output-dir", str(tmp_path)]) == 2
     assert not list(tmp_path.iterdir())
 

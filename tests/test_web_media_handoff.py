@@ -71,6 +71,56 @@ def test_media_handoff_rejects_path_traversal(tmp_path, monkeypatch):
     assert response.get_json()["ok"] is False
 
 
+def test_gif_handoff_keeps_all_frames_and_returns_source_frame_metadata(tmp_path, monkeypatch):
+    client, generated_images, uploads = _client(tmp_path, monkeypatch)
+    frames = [Image.new('RGB', (32, 24), color) for color in ('red', 'blue')]
+    buffer = io.BytesIO()
+    frames[0].save(
+        buffer, 'GIF', save_all=True, append_images=frames[1:], duration=[80, 120], loop=0,
+    )
+    original = buffer.getvalue()
+    (generated_images / 'animation.gif').write_bytes(original)
+
+    response = client.post('/api/media-handoff/import', json={
+        'media_type': 'image', 'filename': 'animation.gif',
+    })
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['mime_type'] == 'image/gif'
+    assert payload['filename'].endswith('.gif')
+    assert payload['animated'] is True
+    assert payload['source_frame_count'] == 2
+    assert payload['duration_ms'] == 200
+    assert (uploads / payload['filename']).read_bytes() == original
+    assert (generated_images / 'animation.gif').read_bytes() == original
+    assert not list(uploads.glob('*.jpg'))
+    served = client.get(payload['url'])
+    assert served.status_code == 200
+    assert served.mimetype == 'image/gif'
+    assert served.data == original
+    served.close()
+
+
+def test_gif_upload_keeps_animation_and_base64_bytes(tmp_path, monkeypatch):
+    import base64
+
+    client, _, uploads = _client(tmp_path, monkeypatch)
+    frames = [Image.new('RGB', (16, 16), color) for color in ('green', 'purple')]
+    buffer = io.BytesIO()
+    frames[0].save(buffer, 'GIF', save_all=True, append_images=frames[1:], duration=100, loop=0)
+    original = buffer.getvalue()
+    response = client.post('/api/upload-image', data={
+        'image': (io.BytesIO(original), 'animation.gif', ''), 'mode': 'cloud',
+    }, content_type='multipart/form-data')
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['source_frame_count'] == 2
+    assert base64.b64decode(payload['base64']) == original
+    assert (uploads / payload['filename']).read_bytes() == original
+
+
 def test_media_handoff_is_typed_and_rejects_video_until_supported(tmp_path, monkeypatch):
     client, _, _ = _client(tmp_path, monkeypatch)
 
@@ -83,6 +133,16 @@ def test_media_handoff_is_typed_and_rejects_video_until_supported(tmp_path, monk
     payload = response.get_json()
     assert payload["ok"] is False
     assert "Unsupported media type" in payload["error"]
+
+
+def test_blank_mime_upload_still_validates_actual_gif_bytes(tmp_path, monkeypatch):
+    client, _, uploads = _client(tmp_path, monkeypatch)
+    response = client.post('/api/upload-images', data={
+        'images': (io.BytesIO(b'not an image'), 'fake.gif', ''),
+    }, content_type='multipart/form-data')
+    assert response.status_code == 400
+    assert response.get_json()['ok'] is False
+    assert not uploads.exists() or not list(uploads.iterdir())
 
 
 def test_image_upload_retains_full_resolution_and_transparency_for_craft(tmp_path, monkeypatch):

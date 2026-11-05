@@ -57,6 +57,63 @@ Sources: [Google model documentation](https://ai.google.dev/gemini-api/docs/mode
 - Generation API: `POST /v1/images/generations` (JSON body, base64 response)
 - Editing API: `POST /v1/images/edits` (multipart/form-data). Image bytes sent as a file field, prompt and other params as form fields. Supports `mask` for inpainting and `input_fidelity` (high/low).
 
+#### GPT Image 2.6 and animated GIFs
+
+Select **GPT Image 2.6 Sunburst** (`gpt-image-2.6-sunburst`) for detailed work or
+**GPT Image 2.6 Flare** (`gpt-image-2.6-flare`) for fast iteration in AI Config
+or the image action modal. The existing catalog default remains unchanged.
+Both offer optional `complexity`: `low`, `medium`, or `high` (provider default
+`high`), independent of rendering quality.
+Jarvis uses standard OpenAI dimensions for 2.6 still images; its quality
+control maps to low/medium/high rather than promising larger dimensions.
+
+To generate an animation, choose `output_format: "gif"`. Optional `frame_count`
+accepts 2–16 frames (default 9); `frame_duration_ms` controls playback speed
+(default 200 ms, minimum 20 ms, rounded by the encoder to 10 ms). Jarvis caps
+delay at the GIF encoding limit of 655350 ms. GIF output requires OpenAI's
+model-specific **GIF preview access**; credentials alone do not establish that
+access. Provider errors are returned without switching models or retrying paid
+generation. GIF dimensions use provider automatic sizing because OpenAI does
+not publish numerical GIF size limits; the size/quality control sets rendering
+quality and the requested aspect ratio is included in the prompt. Transparent
+backgrounds require PNG/WebP.
+
+```json
+{
+  "prompt": "A pixel-art cat waving in a seamless loop",
+  "provider": "openai",
+  "model": "gpt-image-2.6-flare",
+  "output_format": "gif",
+  "frame_count": 9,
+  "frame_duration_ms": 100,
+  "complexity": "medium"
+}
+```
+
+The original `.gif` bytes are saved in generated images and Stash, with actual
+frame count, duration, dimensions, and model provenance. Canvas plays GIFs in
+the gallery and lightbox, labels them GIF, and downloads the original animation.
+Uploads and **Edit in Chat** retain animation bytes.
+
+GIF reference editing uses a **selected still frame** (`reference_frame`,
+zero-based, default 0) to generate a new image or GIF. It preserves the source
+file and reports which frame was used. It does not modify all original frames
+or retime the original animation. `frame_duration_ms` controls a newly generated
+GIF. Frame extraction is bounded before uploading a PNG reference to OpenAI.
+Unsupported model/provider/format combinations fail before provider submission.
+
+GIF upload, analysis, and reference editing share a 30 MiB source limit, 256
+frames, and 40 million cumulative decoded pixels. **Analyze** samples up to six
+labeled chronological frames by default; selecting a frame inspects just that
+frame. Sample indices, timestamps, and scope remain available in Stash and chat
+context. Transparency is shown on a marked checkerboard for vision, while
+saved animation bytes remain unchanged. Frame count and duration are also
+available when choosing **Save to Stash**, without running vision.
+
+Sources: [Image generation guide](https://developers.openai.com/api/docs/guides/image-generation#gpt-image-26),
+[generation API](https://developers.openai.com/api/reference/resources/images/methods/generate),
+[editing API](https://developers.openai.com/api/reference/resources/images/methods/edit).
+
 ### xAI
 
 - Catalog default: `grok-imagine-image` (optional pin: `XAI_IMAGE_MODEL`)
@@ -194,7 +251,7 @@ The `generate_image` tool has config in several places beyond this skill. Search
 
 - **Single-call cap**: `orchestrator_v2.py` limits `generate_image` to 1 call per request (prevents LLM retry loops)
 - **Follow-up extraction**: `chat.py` extracts `provider`, `model`, `size`, `style` from results for conversation context
-- **Execution timeout**: `executor.py` sets 5-minute timeout for image generation
+- **Execution timeout**: `executor.py` sets 5 minutes for still-image generation and 11 minutes for GIF output (10-minute HTTP budget plus saving/cleanup margin); the existing background worker has a 15-minute budget.
 - **Response formatting**: `orchestrator_v2.py` categorizes the tool for speech output formatting
 
 ## Edge cases

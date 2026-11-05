@@ -2126,6 +2126,48 @@ def test_every_enabled_local_tool_has_an_audited_payload_sample():
     assert set(LOCAL_TOOL_SAMPLES) == _enabled_local_tool_names()
 
 
+def test_generated_gif_followup_keeps_animation_and_selected_reference_frame():
+    payload = {
+        "provider": "openai", "model": "gpt-image-2.6-flare",
+        "mime_type": "image/gif", "output_format": "gif", "animated": True,
+        "frame_count": 9, "duration_ms": 1800, "frame_duration_ms": 200,
+        "reference_frame": 0,
+        "reference_note": "Regenerated from source GIF frame 0; existing animation was not edited in place.",
+        "saved": {"stash_ref": "stash://images/waving", "filename": "waving.gif"},
+        "image_base64": "LARGE_BINARY_SENTINEL" * 1000,
+    }
+    result = followup.extract_followup_data({"generate_image": payload})["generate_image"]
+    for key in (
+        "mime_type", "output_format", "animated", "frame_count", "duration_ms",
+        "frame_duration_ms", "reference_frame", "reference_note",
+    ):
+        assert result[key] == payload[key]
+    assert result["stash_ref"] == "stash://images/waving"
+    assert result["filename"] == "waving.gif"
+    assert "LARGE_BINARY_SENTINEL" not in json.dumps(result)
+    assert json.loads(json.dumps(result)) == result
+
+
+def test_uploaded_gif_followup_keeps_each_sources_animation_and_analysis_scope():
+    scope = {'image_index': 0, 'vision_scope': 'selected_frame', 'frame_indices': [0], 'gif_frame': 0,
+             'timestamps_ms': [0], 'frame_count': 2, 'duration_ms': 300}
+    first = {
+        'stash_ref': 'stash://uploads/first', 'filename': 'first.gif', 'mime_type': 'image/gif',
+        'tool_origin': 'web_upload', 'animated': True, 'frame_count': 2, 'duration_ms': 300,
+        'gif_vision_scope': scope, 'vision_analysis': 'The red robot waves.', 'has_vision_analysis': True,
+    }
+    second = {**first, 'stash_ref': 'stash://uploads/second', 'filename': 'second.gif', 'frame_count': 4,
+              'duration_ms': 800, 'gif_vision_scope': {**scope, 'image_index': 1, 'vision_scope': 'sampled_frames', 'frame_indices': [0, 3]}}
+    result = followup.extract_followup_data({'_web_upload_stash': {**first, 'uploaded_images': [first, second]}})
+    assert result['uploaded_image']['frame_count'] == 2
+    assert result['uploaded_image']['gif_vision_scope']['gif_frame'] == 0
+    assert result['uploaded_images'][0]['gif_vision_scope'] == scope
+    assert result['uploaded_images'][1]['frame_count'] == 4
+    assert result['uploaded_images'][1]['duration_ms'] == 800
+    assert result['uploaded_images'][1]['gif_vision_scope']['frame_indices'] == [0, 3]
+    assert json.loads(json.dumps(result)) == result
+
+
 def test_email_contact_followup_keeps_verified_recipient_and_source_without_private_fields():
     payload, arguments = deepcopy(LOCAL_TOOL_SAMPLES["email_contacts"])
     payload["contacts"][0].update(notes="PRIVATE_NOTE", phone="PRIVATE_PHONE")

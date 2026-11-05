@@ -924,3 +924,193 @@ def test_craft_stash_uses_full_size_source_and_correct_mime(journey, monkeypatch
     assert result['mime_type']=='image/png'
     with Image.open(result['path']) as im:
         assert im.size==(100,50) and im.mode=='RGBA'
+
+
+def test_gif_upload_stash_retains_original_animation_and_truthful_metadata(journey, monkeypatch):
+    import json
+
+    import memory_db
+    from PIL import Image
+
+    monkeypatch.setattr(chat, 'JARVIS_ROOT', journey.tmp)
+    monkeypatch.setattr(memory_db, 'MemoryDB', lambda: SimpleNamespace(remember=lambda **kwargs: None))
+    uploads = journey.tmp / 'jarvis-web/data/uploads'
+    uploads.mkdir(parents=True)
+    source = uploads / 'waving.gif'
+    Image.new('RGB', (10, 8), 'red').save(
+        source, 'GIF', save_all=True, append_images=[Image.new('RGB', (10, 8), 'blue')],
+        duration=[100, 200], loop=0,
+    )
+    original = source.read_bytes()
+    result = journey.handler._auto_stash_image({'filename': source.name, 'action': 'image'}, '', 'cloud')
+    assert result['mime_type'] == 'image/gif'
+    assert result['animated'] is True
+    assert result['frame_count'] == 2
+    assert result['duration_ms'] == 300
+    assert Path(result['path']).read_bytes() == original
+    metadata = json.loads((Path(result['path']).parent / 'meta.json').read_text())['files'][0]
+    assert metadata['mime_type'] == 'image/gif'
+    assert metadata['frame_count'] == 2
+    assert metadata['duration_ms'] == 300
+
+
+@pytest.mark.parametrize('action,settings', [
+    ('image', {'provider': 'openai', 'model': 'gpt-image-2.5-flare', 'output_format': 'gif'}),
+    ('image', {'provider': 'xai'}),
+    ('video', {'provider': 'xai'}),
+    ('craft', {}),
+])
+def test_unsupported_gif_choices_stop_before_stash_or_generation(journey, monkeypatch, action, settings):
+    monkeypatch.setattr(journey.handler, '_auto_stash_image', lambda *args: pytest.fail('No stash work'))
+    result = journey.handler._prepare_uploaded_images(
+        image_data={'action': action, 'settings': settings, 'images': [{'filename': 'loop.gif'}]},
+        message='Change the loop', mode='cloud', message_id='m', conversation_id='c',
+        delivery_room='c', original_user_message='Change the loop', attachments=[],
+        check_preparation_cancelled=lambda: None,
+    )
+    assert result is None
+    assert journey.socket.events[-1][0] == 'chat:error'
+    assert journey.socket.events[-1][1]['error_code'] in {
+        'invalid_image_settings', 'unsupported_gif_video_input',
+        'unsupported_gif_craft_input',
+    }
+    assert not journey.routes
+
+
+def test_gif_frame_and_output_choices_are_forced_into_image_tool_call(journey, monkeypatch):
+    monkeypatch.setattr(journey.handler, '_auto_stash_image', lambda *args: {'stash_ref': 'stash://gif/source'})
+    settings = {
+        'provider': 'openai', 'model': 'gpt-image-2.6-flare', 'output_format': 'gif',
+        'reference_frame': 0, 'frame_count': 12, 'frame_duration_ms': 80, 'complexity': 'high',
+    }
+    result = journey.handler._prepare_uploaded_images(
+        image_data={'action': 'image', 'settings': settings, 'images': [{'filename': 'loop.gif'}]},
+        message='Make the mascot wave', mode='cloud', message_id='m', conversation_id='c',
+        delivery_room='c', original_user_message='Make the mascot wave', attachments=[],
+        check_preparation_cancelled=lambda: None,
+    )
+    assert result[3]['generate_image'] == {**settings, 'reference_image': 'stash://gif/source'}
+
+
+@pytest.mark.parametrize('gif_frame', [None, 0, 1])
+def test_gif_analysis_scope_reaches_stash_memory_and_chat_context(journey, monkeypatch, gif_frame):
+    import json
+
+    import memory_db
+    from PIL import Image
+
+    remembered = []
+    monkeypatch.setattr(chat, 'JARVIS_ROOT', journey.tmp)
+    monkeypatch.setattr(memory_db, 'MemoryDB', lambda: SimpleNamespace(remember=lambda **kwargs: remembered.append(kwargs)))
+    uploads = journey.tmp / 'jarvis-web/data/uploads'
+    uploads.mkdir(parents=True)
+    Image.new('RGB', (10, 8), 'red').save(
+        uploads / 'loop.gif', 'GIF', save_all=True,
+        append_images=[Image.new('RGB', (10, 8), 'blue')], duration=[100, 200], loop=0,
+    )
+    image_data = {'action': 'analyze', 'settings': {} if gif_frame is None else {'gif_frame': gif_frame},
+                  'images': [{'filename': 'loop.gif', 'source_frame_count': 999, 'mime_type': 'image/png'}]}
+    assert chat.ChatHandler._hydrate_uploaded_image_payload(journey.handler, image_data, authoritative=True) is None
+    assert image_data['images'][0]['source_frame_count'] == 2
+    assert image_data['images'][0]['mime_type'] == 'image/gif'
+    scope = {
+        'image_index': 0, 'vision_scope': 'sampled_frames' if gif_frame is None else 'selected_frame',
+        'frame_count': 2, 'frame_indices': [0, 1] if gif_frame is None else [gif_frame],
+        'timestamps_ms': [0, 100] if gif_frame is None else [0 if gif_frame == 0 else 100],
+        'duration_ms': 300, 'gif_frame': gif_frame,
+    }
+    calls = []
+
+    def vision(images, prompt, mode, **kwargs):
+        calls.append(kwargs)
+        kwargs['gif_scope_out'].append(scope)
+        return 'The robot changes from red to blue and waves.\n\nGIF analysis scope: sampled or selected frames only.'
+
+    monkeypatch.setattr(journey.handler, '_process_vision', vision)
+    result = journey.handler._prepare_uploaded_images(
+        image_data=image_data, message='Describe the animation', mode='cloud', message_id='m',
+        conversation_id='c', delivery_room='c', original_user_message='Describe the animation',
+        attachments=[], check_preparation_cancelled=lambda: None,
+    )
+    assert calls[0]['gif_frame'] == gif_frame
+    assert result[2]['gif_vision_scope'] == scope
+    assert 'animated GIF; 2 frames; 300 ms' in result[0]
+    assert remembered[0]['metadata']['gif_vision_scope'] == scope
+    assert remembered[0]['metadata']['animated'] is True
+    assert remembered[0]['metadata']['frame_count'] == 2
+    assert remembered[0]['metadata']['duration_ms'] == 300
+    assert remembered[0]['value'].startswith('Uploaded image: The robot changes from red to blue')
+    meta = json.loads((Path(result[2]['path']).parent / 'meta.json').read_text())['files'][0]
+    assert meta['gif_vision_scope'] == scope
+    saved_only = journey.handler._prepare_uploaded_images(
+        image_data={**image_data, 'action': 'stash'}, message='Save this GIF', mode='cloud',
+        message_id='n', conversation_id='c', delivery_room='c', original_user_message='Save this GIF',
+        attachments=[], check_preparation_cancelled=lambda: None,
+    )
+    assert 'animated GIF; 2 frames; 300 ms' in saved_only[0]
+    assert 'animated GIF; 2 frames; 300 ms' in remembered[-1]['value']
+
+
+def test_socket_metadata_cannot_turn_still_image_into_gif(journey, monkeypatch):
+    from PIL import Image
+
+    monkeypatch.setattr(chat, 'JARVIS_ROOT', journey.tmp)
+    uploads = journey.tmp / 'jarvis-web/data/uploads'
+    uploads.mkdir(parents=True)
+    Image.new('RGB', (10, 8), 'red').save(uploads / 'still.png')
+    image_data = {'images': [{'filename': 'still.png', 'mime_type': 'image/gif', 'source_frame_count': 20,
+                             'frame_count': 20, 'animated': True}]}
+    assert chat.ChatHandler._hydrate_uploaded_image_payload(journey.handler, image_data, authoritative=True) is None
+    assert image_data['images'][0]['mime_type'] == 'image/png'
+    assert 'source_frame_count' not in image_data['images'][0]
+    assert 'animated' not in image_data['images'][0]
+
+
+@pytest.mark.parametrize('images,settings,attachments', [
+    ([{'mime_type': 'image/gif', 'source_frame_count': 2}], {'gif_frame': 2}, []),
+    ([{'mime_type': 'image/gif', 'source_frame_count': 2}] * 2, {'gif_frame': 0}, []),
+    ([{'mime_type': 'image/gif', 'source_frame_count': 2}], {'gif_frame': 0}, [{'kind': 'text'}]),
+])
+def test_invalid_gif_analysis_stops_before_vision_and_stash(journey, monkeypatch, images, settings, attachments):
+    monkeypatch.setattr(journey.handler, '_process_vision', lambda *args, **kwargs: pytest.fail('No vision call'))
+    monkeypatch.setattr(journey.handler, '_auto_stash_image', lambda *args, **kwargs: pytest.fail('No stash work'))
+    result = journey.handler._prepare_uploaded_images(
+        image_data={'action': 'analyze', 'settings': settings, 'images': images},
+        message='Describe this GIF', mode='cloud', message_id='m', conversation_id='c',
+        delivery_room='c', original_user_message='Describe this GIF', attachments=attachments,
+        check_preparation_cancelled=lambda: None,
+    )
+    assert result is None
+    assert journey.socket.events[-1][1]['error_code'] == 'invalid_gif_analysis_frame'
+
+
+def test_mixed_gif_batch_keeps_independent_sampled_scopes(journey, monkeypatch):
+    scopes = [
+        {'image_index': 0, 'vision_scope': 'sampled_frames', 'frame_indices': [0, 1], 'duration_ms': 300},
+        {'image_index': 1, 'vision_scope': 'sampled_frames', 'frame_indices': [0, 3], 'duration_ms': 800},
+    ]
+
+    def vision(images, prompt, mode, **kwargs):
+        assert kwargs['gif_frame'] is None
+        kwargs['gif_scope_out'].extend(scopes)
+        return 'The first robot waves; the second robot jumps.'
+
+    def stash(payload, analysis, mode):
+        index = 0 if payload['filename'] == 'first.gif' else 1
+        return {'stash_ref': f'stash://batch/{index}', 'mime_type': 'image/gif', 'animated': True,
+                'frame_count': 2 if index == 0 else 4, 'duration_ms': scopes[index]['duration_ms'],
+                'gif_vision_scope': payload['gif_vision_scope']}
+
+    monkeypatch.setattr(journey.handler, '_process_vision', vision)
+    monkeypatch.setattr(journey.handler, '_auto_stash_image', stash)
+    result = journey.handler._prepare_uploaded_images(
+        image_data={'action': 'analyze', 'images': [
+            {'filename': 'first.gif', 'mime_type': 'image/gif', 'base64': 'first'},
+            {'filename': 'second.gif', 'mime_type': 'image/gif', 'base64': 'second'},
+        ]}, message='Compare the animations', mode='cloud', message_id='m', conversation_id='c',
+        delivery_room='c', original_user_message='Compare the animations', attachments=[],
+        check_preparation_cancelled=lambda: None,
+    )
+    assert [item['gif_vision_scope'] for item in result[2]['uploaded_images']] == scopes
+    assert 'animated GIF; 2 frames; 300 ms' in result[0]
+    assert 'animated GIF; 4 frames; 800 ms' in result[0]

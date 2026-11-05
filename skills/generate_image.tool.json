@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "generate_image",
-  "description": "\ud83c\udfa8 Generate or edit AI images with Gemini, OpenAI, or xAI. Create pictures, artwork, infographics, visualizations. Edit existing images by providing a reference_image (stash ref, path, or URL). Use when user says 'generate an image', 'create a picture', 'make artwork', 'draw', 'visualize', 'edit this image', 'change the image'. PROVIDERS: Gemini (default) has Google Search grounding; OpenAI has best text rendering; xAI is fast and cheap. All 3 support image-to-image editing. Images save to stash for email, print, canvas, PDF.",
+  "description": "\ud83c\udfa8 Generate or edit AI images with Gemini, OpenAI, or xAI. Create pictures, artwork, infographics, visualizations. Edit existing images by providing a reference_image (stash ref, path, or URL). Use when user says 'generate an image', 'create a picture', 'make artwork', 'draw', 'visualize', 'edit this image', 'change the image'. PROVIDERS: Gemini has Google Search grounding; OpenAI has best text rendering; xAI is fast and cheap. All 3 support image-to-image editing. Images save to stash for email, print, canvas, PDF. Create animated GIFs with OpenAI GPT Image 2.6 use provider=openai, model=gpt-image-2.6-sunburst or gpt-image-2.6-flare, output_format=gif. Control frames and speed. GIF edits regenerate from a selected reference frame; original frames are preserved.",
   "script": "generate_image.py",
   "parameters": {
     "type": "object",
@@ -12,7 +12,7 @@
       },
       "reference_image": {
         "type": "string",
-        "description": "Source image to edit. Accepts: stash:// ref (e.g. stash://space_xxx/file_id), local file path, public URL, or base64 data URI. Public URLs are SSRF-checked, strictly decoded as JPEG/PNG/WebP, and bounded before provider upload. When provided, the tool EDITS this image based on the prompt instead of generating from scratch. All 3 providers (Gemini, OpenAI, xAI) support image editing."
+        "description": "Source image to edit. Accepts: stash:// ref (e.g. stash://space_xxx/file_id), local file path, public URL, or base64 data URI. Public URLs are SSRF-checked, strictly decoded as JPEG/PNG/WebP, and bounded before provider upload. When provided, the tool EDITS this image based on the prompt instead of generating from scratch. All 3 providers (Gemini, OpenAI, xAI) support image editing. GPT Image 2.6 can use a GIF reference: reference_frame (default 0) selects a still frame to regenerate from, not a frame-preserving edit of the original animation."
       },
       "provider": {
         "type": "string",
@@ -25,7 +25,7 @@
       },
       "model": {
         "type": "string",
-        "description": "Explicit provider-specific image model. Only set when the user requests a particular model; otherwise omit it to use the Jarvis Web override, provider ENV pin, or catalog default."
+        "description": "Explicit provider-specific image model. Only set when the user requests a particular model; otherwise omit it to use the Jarvis Web override, provider ENV pin, or catalog default. For GIF output, select gpt-image-2.6-sunburst or gpt-image-2.6-flare even if no particular model was named."
       },
       "aspect_ratio": {
         "type": "string",
@@ -80,9 +80,10 @@
         "enum": [
           "png",
           "jpeg",
-          "webp"
+          "webp",
+          "gif"
         ],
-        "description": "OPENAI ONLY: Output format. 'png' (default, lossless), 'jpeg' (faster, smaller), 'webp' (modern, good compression). Transparent requires png/webp."
+        "description": "OPENAI ONLY: Output format. 'png' (default, lossless), 'jpeg' (faster, smaller), 'webp' (modern, good compression). Transparent requires png/webp. gif creates an animated GIF on GPT Image 2.6 only; preview account access required. GIF dimensions are automatic; image_size controls rendering quality."
       },
       "n": {
         "type": "integer",
@@ -91,6 +92,32 @@
       "save": {
         "type": "boolean",
         "description": "Save to stash for use with email/print/canvas/PDF (default: true)"
+      },
+      "complexity": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "description": "OpenAI GPT Image 2.6 only: planning complexity, independent of rendering quality (provider default high)."
+      },
+      "frame_count": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 16,
+        "description": "GIF output only: number of frames (default 9)."
+      },
+      "frame_duration_ms": {
+        "type": "integer",
+        "minimum": 20,
+        "maximum": 655350,
+        "description": "GIF output only: delay per frame in milliseconds (default 200). Smaller is faster. Encoded delays round to 10 ms."
+      },
+      "reference_frame": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "OpenAI GPT Image 2.6 GIF reference only: zero-based source frame (default 0). Uses that still frame as reference for a newly generated image or GIF; does not alter every original frame."
       }
     },
     "required": [

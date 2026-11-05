@@ -43,6 +43,11 @@ class Element {
         entity => ({'&amp;':'&', '&quot;':'"', '&#39;':"'", '&lt;':'<', '&gt;':'>'}[entity]));
       return image;
     });
+    this.generatedImages = [...value.matchAll(/<div\b[^>]*data-generated-image-url="([^"]*)"/g)].map(match => {
+      const image = new Element();
+      image.dataset.generatedImageUrl = match[1];
+      return image;
+    });
     if (value.includes('class="details-toggle"')) {
       const details = new Element(), toggle = new Element();
       details.className = 'message-details collapsed'; toggle.parentElement = details;
@@ -56,6 +61,7 @@ class Element {
     if (selector === 'button') return this.children;
     if (selector === '.tool-card-header') return this.headers || [];
     if (selector === '.message-image.converted-file[data-converted-image-url]') return this.convertedImages || [];
+    if (selector === '.message-image.generated-image[data-generated-image-url]') return this.generatedImages || [];
     return [];
   }
   closest() { return this.parentElement; }
@@ -198,6 +204,80 @@ const html = render(ui, 'OpenClaw replied.', ['openclaw'], payload, live);
 assert.match(html, /Sources: &lt;A&gt;/);
 assert.match(html, /jarvis-review/);
 assert.ok(!html.includes('<pre class="tool-card-body">{}</pre>'));
+""")
+
+
+@pytest.mark.parametrize('live', [True, False])
+@pytest.mark.parametrize('extension', ['gif', 'webp', 'png', 'jpeg'])
+def test_generated_images_preview_and_download_from_live_and_saved_results(live, extension):
+    args = json.dumps({'live': live, 'extension': extension})
+    run_message_browser('const args=' + args + ';\n' + r"""
+const filename='animation.'+args.extension;
+const body={mime_type:'image/'+args.extension,transparent:true,
+  saved:{filename,path:'/generated/'+filename,stash_ref:'stash://output_space/f_image'}};
+for (const result of [body,{ok:true,data:body},{data:body},
+  {file_path:'/generated/'+filename},{saved:{path:'/generated/'+filename}},
+  [{ok:false,data:body}, {ok:true,data:body}]]) {
+  const ui=chat(), payload={generate_image:result}, before=JSON.stringify(payload);
+  const html=render(ui,'Finished.', ['generate_image'],payload,args.live);
+  const url='/api/images/'+filename;
+  assert.equal((html.match(/<img\b/g)||[]).length,1);
+  assert.ok(html.includes('src="'+url+'"'));
+  assert.ok(html.includes('href="'+url+'" download="'+filename+'"'));
+  assert.ok(html.includes('Download '+args.extension.toUpperCase()));
+  assert.ok(html.indexOf('data-generated-image-url')<html.indexOf('class="message-bubble"'));
+  assert.equal(JSON.stringify(payload),before);
+}
+""")
+
+
+@pytest.mark.parametrize('live', [True, False])
+def test_legacy_generated_gif_and_webp_filenames_still_render(live):
+    run_message_browser(f'const live={json.dumps(live)};\n' + r"""
+for (const extension of ['gif','webp','png','jpg','jpeg']) {
+  const filename='generated_review.'+extension;
+  const html=render(chat(),'Saved /generated/'+filename,['generate_image'],{},live);
+  assert.ok(html.includes('src="/api/images/'+filename+'"'));
+  assert.ok(html.includes('download="'+filename+'"'));
+}
+assert.ok(!render(chat(),'generated_review.gif.exe',['generate_image'],{},live).includes('<img'));
+assert.ok(!render(chat(),'generated_review.gif',[],{},live).includes('<img'));
+""")
+
+
+@pytest.mark.parametrize('live', [True, False])
+def test_generated_image_lightbox_binds_encoded_url_and_download_filename(live):
+    run_message_browser(f'const live={json.dumps(live)};\n' + r"""
+const ui=chat(), opened=[];
+sandbox.window.showImageLightbox=url=>opened.push(url);
+const filename='generated_\'"<&>.gif';
+const url='/api/images/'+encodeURIComponent(filename);
+const html=render(ui,'Ready',['generate_image'],{
+  generate_image:{saved:{filename},mime_type:'image/gif'}
+},live);
+assert.ok(!html.includes('onclick='));
+assert.ok(html.includes('src="'+url+'"'));
+assert.ok(html.includes('download="generated_&#39;&quot;&lt;&amp;&gt;.gif"'));
+const images=message(ui).querySelectorAll('.message-image.generated-image[data-generated-image-url]');
+assert.equal(images.length,1);
+images[0].events.click();
+assert.deepEqual(opened,[url]);
+""")
+
+
+@pytest.mark.parametrize('live', [True, False])
+def test_failed_pending_and_non_image_generations_do_not_get_previews(live):
+    run_message_browser(f'const live={json.dumps(live)};\n' + r"""
+const body={saved:{filename:'generated_review.gif'},mime_type:'image/gif'};
+for (const result of [
+  {ok:false,data:body},{ok:true,cancelled:true,data:body},
+  {ok:true,status:'accepted',data:body},{result_kind:'background_admission',...body},
+  {saved:{filename:'generated_review.gif.exe'}},
+  {...body,mime_type:'text/plain'}, {saved:{filename:'generated_review.\uD800.gif'}}
+]) {
+  const html=render(chat(),'generated_review.gif',['generate_image'],{generate_image:result},live);
+  assert.ok(!html.includes('<img'),JSON.stringify(result));
+}
 """)
 
 

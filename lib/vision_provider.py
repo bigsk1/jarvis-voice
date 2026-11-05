@@ -23,9 +23,12 @@ from ollama_utils import (
     OLLAMA_EXECUTION_LOCAL_DAEMON,
 )
 from vision_multimodal import (
+    GifVisionScope,
     build_anthropic_content,
     build_ollama_prompt,
     build_openai_style_content,
+    describe_gif_vision_scope,
+    normalize_vision_gif_images,
     openai_vision_detail,
 )
 
@@ -323,20 +326,34 @@ def analyze_images(
     mode: str,
     provider: str | None = None,
     model: str | None = None,
+    gif_frame: int | None = None,
+    gif_scope_out: list[GifVisionScope] | None = None,
 ) -> str:
     """Analyze images with the selected mode/provider, including Ollama Cloud."""
     if not images_base64:
         raise VisionProviderError("No images were supplied for vision analysis")
 
+    images_base64, gif_scopes = normalize_vision_gif_images(images_base64, gif_frame=gif_frame)
+    if gif_scope_out is not None:
+        gif_scope_out.extend(gif_scopes)
+    gif_scope = '\n'.join(describe_gif_vision_scope(scope) for scope in gif_scopes)
+    if gif_scope:
+        prompt = (
+            f"{prompt}\n\n{gif_scope}\nDescribe the visible content first; put any scope or caveat last. "
+            "Do not mistake frame labels, gutters, or checkerboards for source image content."
+        )
+
     selected_provider = "ollama" if mode == "local" else str(
         provider or get_config_value("LLM_PROVIDER", "xai")
     ).strip().lower()
     if selected_provider == "ollama":
-        return _ollama_vision(images_base64, prompt, mode, model)
-    if selected_provider == "anthropic":
-        return _anthropic_vision(images_base64, prompt, model)
-    if selected_provider in {"xai", "openai"}:
-        return _openai_compatible_vision(
+        analysis = _ollama_vision(images_base64, prompt, mode, model)
+    elif selected_provider == "anthropic":
+        analysis = _anthropic_vision(images_base64, prompt, model)
+    elif selected_provider in {"xai", "openai"}:
+        analysis = _openai_compatible_vision(
             selected_provider, images_base64, prompt, model
         )
-    raise VisionProviderError(f"Unsupported vision provider: {selected_provider}")
+    else:
+        raise VisionProviderError(f"Unsupported vision provider: {selected_provider}")
+    return f"{analysis}\n\n{gif_scope}" if gif_scope and analysis.strip() else analysis

@@ -34,12 +34,13 @@ Environment variables required:
 - CLOUDFLARE_ACCOUNT_ID
 """
 
-import sys
-import os
-import json
 import base64
+import json
+import os
+import sys
 import tempfile
 from pathlib import Path
+from typing import BinaryIO
 from urllib.parse import quote
 
 import requests
@@ -47,9 +48,9 @@ import requests
 # Add lib to path for config_loader and stash helper
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
-from config_loader import load_config, get_config_value
+from config_loader import get_config_value, load_config
 from paths import assert_not_restricted_read_path
-from stash_helper import get_stash_dir, parse_stash_ref
+from stash_helper import SecurityError, get_stash_dir, inspect_gif_image, parse_stash_ref
 
 # Load config from correct env file (local.env or cloud.env based on JARVIS_MODE)
 load_config()
@@ -64,6 +65,29 @@ GENERATED_IMAGES_DIR = PROJECT_ROOT / "data" / "generated_images"
 
 # Supported image formats (per Cloudflare docs)
 SUPPORTED_FORMATS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.heic'}
+CLOUDFLARE_IMAGE_MAX_BYTES = 10_000_000
+CLOUDFLARE_ANIMATION_MAX_PIXELS = 100_000_000
+CLOUDFLARE_IMAGE_MAX_EDGE = 12_000
+CLOUDFLARE_UPLOAD_TIMEOUT_SECONDS = (10, 60)
+
+
+def _preflight_upload(stream: BinaryIO, filename: str) -> None:
+    """Reject oversized files and invalid/oversized GIFs before public upload."""
+    stream.seek(0, os.SEEK_END)
+    if stream.tell() > CLOUDFLARE_IMAGE_MAX_BYTES:
+        raise ValueError("Cloudflare Images uploads must be at most 10 MB")
+    stream.seek(0)
+    header = stream.read(6)
+    stream.seek(0)
+    if header in {b'GIF87a', b'GIF89a'} or Path(filename).suffix.lower() == '.gif':
+        metadata = inspect_gif_image(
+            stream.read(CLOUDFLARE_IMAGE_MAX_BYTES + 1),
+            max_size=CLOUDFLARE_IMAGE_MAX_BYTES,
+            max_pixels=CLOUDFLARE_ANIMATION_MAX_PIXELS,
+        )
+        if max(metadata['width'], metadata['height']) > CLOUDFLARE_IMAGE_MAX_EDGE:
+            raise ValueError("Cloudflare GIF dimensions must be at most 12000 pixels per edge")
+        stream.seek(0)
 
 
 def generate_custom_id(uploader: str, filename: str, category: str = None) -> str:
@@ -81,8 +105,8 @@ def generate_custom_id(uploader: str, filename: str, category: str = None) -> st
     Returns:
         Custom ID string for Cloudflare
     """
-    from datetime import datetime
     import hashlib
+    from datetime import datetime
     
     date_str = datetime.now().strftime("%Y-%m-%d")
     
@@ -172,27 +196,38 @@ def upload_to_cloudflare(file_path: str, custom_id: str = None, uploader: str = 
     
     try:
         with open(file_path, 'rb') as f:
+            _preflight_upload(f, filename)
             files = {'file': (filename, f)}
             # Include custom ID and metadata in the form data
             data = {
                 'id': custom_id,
                 'metadata': json.dumps(upload_metadata)
             }
-            response = requests.post(url, headers=headers, files=files, data=data, timeout=60)
+            response = requests.post(
+                url, headers=headers, files=files, data=data,
+                timeout=CLOUDFLARE_UPLOAD_TIMEOUT_SECONDS,
+            )
             response.raise_for_status()
             
             resp_data = response.json()
             
             if resp_data.get('success'):
                 result = resp_data.get('result', {})
-                variants = result.get('variants', [])
+                variants = [variant for variant in result.get('variants', [])
+                            if isinstance(variant, str) and variant.startswith('https://')]
                 # Get the public variant URL
                 public_url = next((v for v in variants if '/public' in v), variants[0] if variants else None)
+                image_id = result.get('id')
+                if not public_url or not isinstance(image_id, str) or not image_id.strip():
+                    return {
+                        "ok": False,
+                        "error": "Cloudflare upload returned no usable URL or image ID; check the asset before retrying",
+                    }
                 
                 return {
                     "ok": True,
                     "url": public_url,
-                    "image_id": result.get('id'),
+                    "image_id": image_id,
                     "custom_path": custom_id,
                     "filename": result.get('filename'),
                     "variants": variants,
@@ -210,13 +245,15 @@ def upload_to_cloudflare(file_path: str, custom_id: str = None, uploader: str = 
     except requests.exceptions.Timeout:
         return {
             "ok": False,
-            "error": "Upload timed out after 60 seconds"
+            "error": "Upload connection or response timed out; check Cloudflare before retrying because it may have received the image",
         }
     except requests.exceptions.RequestException as e:
         return {
             "ok": False,
             "error": f"Upload failed: {str(e)}"
         }
+    except (OSError, ValueError, SecurityError) as e:
+        return {"ok": False, "error": str(e)}
 
 
 def delete_from_cloudflare(image_id: str) -> dict:

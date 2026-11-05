@@ -52,10 +52,12 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 MAX_REDIRECTS = 3
 DOWNLOAD_TIMEOUT = 30
 STRICT_IMAGE_MAX_FILE_SIZE = 20 * 1024 * 1024
+GIF_MAX_FILE_SIZE = 30 * 1024 * 1024
 STRICT_IMAGE_MAX_DIMENSION = 1024
 STRICT_IMAGE_MAX_PIXELS = 40_000_000
 STRICT_IMAGE_MAX_OUTPUT_SIZE = 4 * 1024 * 1024
 STRICT_RASTER_FORMATS = {'JPEG', 'PNG', 'WEBP'}
+STRICT_GIF_MAX_FRAMES = 256
 
 # Allowed MIME types for downloads
 ALLOWED_MIME_TYPES = [
@@ -272,12 +274,79 @@ def safe_download(url: str, max_size: int = None) -> tuple[bytes, str, str]:
     return data, content_type, current_url
 
 
+def inspect_gif_image(
+    data: bytes,
+    *,
+    max_size: int = GIF_MAX_FILE_SIZE,
+    max_pixels: int = STRICT_IMAGE_MAX_PIXELS,
+    max_frames: int = STRICT_GIF_MAX_FRAMES,
+) -> dict[str, Any]:
+    """Decode every GIF frame within bounded work without changing its bytes."""
+    if len(data) > max_size:
+        raise SecurityError(f"GIF exceeds the {max_size}-byte safety limit")
+    try:
+        from PIL import Image, UnidentifiedImageError
+    except ImportError as exc:
+        raise SecurityError("Pillow is required for GIF validation") from exc
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as source:
+                if source.format != 'GIF':
+                    raise SecurityError("Content is not a GIF image")
+                width, height = source.size
+                durations = []
+                decoded_pixels = 0
+                has_transparency = False
+                while True:
+                    if len(durations) >= max_frames:
+                        raise SecurityError(f"GIF exceeds the {max_frames}-frame safety limit")
+                    decoded_pixels += source.width * source.height
+                    if decoded_pixels > max_pixels:
+                        raise SecurityError(
+                            f"GIF exceeds the {max_pixels:,}-pixel decoded-frame safety limit"
+                        )
+                    source.load()
+                    has_transparency = (
+                        has_transparency or source.convert('RGBA').getextrema()[3][0] < 255
+                    )
+                    durations.append(max(0, int(source.info.get('duration') or 0)))
+                    try:
+                        source.seek(len(durations))
+                    except EOFError:
+                        break
+    except SecurityError:
+        raise
+    except (Image.DecompressionBombWarning, Image.DecompressionBombError) as exc:
+        raise SecurityError("GIF exceeds Pillow's decompression safety limit") from exc
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise SecurityError("Content is not a valid GIF image") from exc
+
+    metadata = {
+        'format': 'gif',
+        'mime_type': 'image/gif',
+        'animated': len(durations) > 1,
+        'frame_count': len(durations),
+        'duration_ms': sum(durations),
+        'frame_durations_ms': durations,
+        'has_transparency': has_transparency,
+        'decoded_pixels': decoded_pixels,
+        'width': width,
+        'height': height,
+    }
+    if len(set(durations)) == 1:
+        metadata['frame_duration_ms'] = durations[0]
+    return metadata
+
+
 def safe_download_image(
     url: str,
     *,
-    max_size: int = STRICT_IMAGE_MAX_FILE_SIZE,
+    max_size: int | None = None,
     max_dimension: int = STRICT_IMAGE_MAX_DIMENSION,
     max_output_size: int = STRICT_IMAGE_MAX_OUTPUT_SIZE,
+    allow_gif: bool = False,
 ) -> tuple[bytes, str, str, dict[str, Any]]:
     """Download, decode, and bound an untrusted public raster image.
 
@@ -285,8 +354,34 @@ def safe_download_image(
     This stricter path additionally requires Pillow to decode JPEG, PNG, or
     WebP bytes, rejects oversized pixel canvases, applies EXIF orientation,
     and emits a bounded RGB JPEG suitable for Stash and provider uploads.
+    GIF-aware callers may explicitly preserve validated GIF bytes instead;
+    those retain original dimensions and use the input byte/frame-pixel limits.
     """
-    data, declared_type, final_url = safe_download(url, max_size=max_size)
+    download_limit = max_size if max_size is not None else (
+        GIF_MAX_FILE_SIZE if allow_gif else STRICT_IMAGE_MAX_FILE_SIZE
+    )
+    data, declared_type, final_url = safe_download(url, max_size=download_limit)
+
+    if allow_gif and data[:6] in {b'GIF87a', b'GIF89a'}:
+        metadata = inspect_gif_image(data, max_size=download_limit)
+        metadata.update({
+            'declared_mime_type': declared_type,
+            'detected_format': 'gif',
+            'original_width': metadata['width'],
+            'original_height': metadata['height'],
+            'processed_width': metadata['width'],
+            'processed_height': metadata['height'],
+            'original_size_bytes': len(data),
+            'processed_size_bytes': len(data),
+            'resized_for_safety': False,
+            'recompressed_for_safety': False,
+        })
+        return data, 'image/gif', final_url, metadata
+
+    # Opting into GIFs must not increase the existing still-image input limit.
+    still_limit = max_size if max_size is not None else STRICT_IMAGE_MAX_FILE_SIZE
+    if len(data) > still_limit:
+        raise SecurityError(f"Downloaded image exceeds the {still_limit}-byte safety limit")
 
     try:
         from PIL import Image, ImageOps, UnidentifiedImageError

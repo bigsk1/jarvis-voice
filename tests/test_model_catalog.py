@@ -38,6 +38,18 @@ from lib.model_catalog import (  # noqa: E402
 
 
 class ModelCatalogTests(unittest.TestCase):
+    def test_image_2_6_projects_animation_controls_without_changing_default(self):
+        for model in ("gpt-image-2.6-sunburst", "gpt-image-2.6-flare"):
+            metadata = get_media_model_metadata("image", "openai", model)
+            self.assertIsNotNone(metadata)
+            self.assertIn("animated_gif", metadata["capabilities"])
+            self.assertIn("gif", metadata["output_formats"])
+            self.assertEqual(metadata["complexities"], ["low", "medium", "high"])
+            option = get_media_provider_options("image", {"openai": model})["openai"]
+            self.assertEqual(option["output_formats"], ["png", "jpeg", "webp", "gif"])
+            self.assertEqual(option["gif"]["frame_count"], {"min": 2, "max": 16, "default": 9})
+        self.assertEqual(get_default_media_model_id("image", "openai"), "gpt-image-2.5-sunburst")
+
     def test_media_defaults_are_centralized(self):
         self.assertEqual(get_default_media_model_id("image", "gemini"), "gemini-3.1-flash-image")
         self.assertEqual(get_default_media_model_id("image", "openai"), "gpt-image-2.5-sunburst")

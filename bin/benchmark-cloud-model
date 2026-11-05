@@ -63,7 +63,7 @@ def parser() -> argparse.ArgumentParser:
     ))
     result.add_argument("--provider", choices=("ollama", "openai", "anthropic", "xai"))
     result.add_argument("--model", help="Exact provider model ID; no automatic model fallback.")
-    result.add_argument("--suite", choices=("v1", "v2", "v3", "v4", "v5"), default="v5", help="Frozen suite version (default: v5).")
+    result.add_argument("--suite", choices=("v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"), default="v8", help="Frozen suite version (default: v8).")
     result.add_argument("--rounds", type=positive_int, default=3)
     result.add_argument("--thinking", choices=("auto", "off", "minimal", "low", "medium", "high", "max", "xhigh"), default="auto")
     result.add_argument("--timeout", type=nonnegative_seconds, default=300, help="Per-request timeout in seconds.")

@@ -118,9 +118,30 @@ def test_v4_fixture_is_byte_for_byte_preserved():
     )
 
 
-def test_v5_refreshes_only_pdf_tool_contracts_and_fixture_identity(suite):
+def test_v5_fixture_is_byte_for_byte_preserved():
+    path = bm.FIXTURE_PATH.with_name("cloud-model-v5.json")
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == (
+        "9bb0722682a3a3c9ee84c6dae835caccb2259de1afa721acf91df5021925f571"
+    )
+
+
+def test_v6_fixture_is_byte_for_byte_preserved():
+    path = bm.FIXTURE_PATH.with_name("cloud-model-v6.json")
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == (
+        "0c55af070f18aec67a07f543aa598689bdb735e2b79beac8f3f976263f0d48b2"
+    )
+
+
+def test_v7_fixture_is_byte_for_byte_preserved():
+    path = bm.FIXTURE_PATH.with_name("cloud-model-v7.json")
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == (
+        "0200b1e2c82c2c7505c4446e7dfae7936c09e0d20cf9a7098130707a1a07bb8e"
+    )
+
+
+def test_v5_refreshes_only_pdf_tool_contracts_and_fixture_identity():
     previous = json.loads(bm.FIXTURE_PATH.with_name("cloud-model-v4.json").read_text())
-    current = json.loads(bm.FIXTURE_PATH.read_text())
+    current = json.loads(bm.FIXTURE_PATH.with_name("cloud-model-v5.json").read_text())
     assert current["fixture_id"] == "jarvis-cloud-model-v5"
     assert current["provenance"]["supersedes"] == previous["fixture_id"]
     changed = {name for name, digest in previous["tool_schema_sha256"].items()
@@ -132,8 +153,59 @@ def test_v5_refreshes_only_pdf_tool_contracts_and_fixture_identity(suite):
     old_match = case(previous, "missing_capability_is_not_substitute")["steps"][0]["result"]["data"]["matches"][0]
     match = case(current, "missing_capability_is_not_substitute")["steps"][0]["result"]["data"]["matches"][0]
     assert match["name"] == "pdf_create"
-    assert match["description"] == suite["tools"]["pdf_create"]["description"]
+    assert match["description"] != old_match["description"]
     match["description"] = old_match["description"]
+    assert current == previous
+
+
+def test_v6_refreshes_only_image_tool_contract_and_fixture_identity():
+    previous = json.loads(bm.FIXTURE_PATH.with_name("cloud-model-v5.json").read_text())
+    current = json.loads(bm.FIXTURE_PATH.with_name("cloud-model-v6.json").read_text())
+    assert current["fixture_id"] == "jarvis-cloud-model-v6"
+    assert current["provenance"]["supersedes"] == previous["fixture_id"]
+    changed = {name for name, digest in previous["tool_schema_sha256"].items()
+               if current["tool_schema_sha256"][name] != digest}
+    assert changed == {"generate_image"}
+    assert current["tool_schema_sha256"]["generate_image"] == (
+        "d5b738d1d9c63107a1170dccb65d29466aaf920543c103282dddbc756063e918"
+    )
+    current["tool_schema_sha256"] = previous["tool_schema_sha256"]
+    current["fixture_id"] = previous["fixture_id"]
+    current["provenance"] = previous["provenance"]
+    assert current == previous
+
+
+def test_v7_refreshes_only_vision_tool_contract_and_fixture_identity():
+    previous = json.loads(bm.FIXTURE_PATH.with_name("cloud-model-v6.json").read_text())
+    current = json.loads(bm.FIXTURE_PATH.with_name("cloud-model-v7.json").read_text())
+    assert current["fixture_id"] == "jarvis-cloud-model-v7"
+    assert current["provenance"]["supersedes"] == previous["fixture_id"]
+    changed = {name for name, digest in previous["tool_schema_sha256"].items()
+               if current["tool_schema_sha256"][name] != digest}
+    assert changed == {"analyze_image"}
+    assert current["tool_schema_sha256"]["analyze_image"] == (
+        "f02a4c086f6a24401c71a8966a8c3994887c807dee0a6e32daa815ce48e3d27f"
+    )
+    current["tool_schema_sha256"] = previous["tool_schema_sha256"]
+    current["fixture_id"] = previous["fixture_id"]
+    current["provenance"] = previous["provenance"]
+    assert current == previous
+
+
+def test_v8_refreshes_only_image_tool_contract_and_fixture_identity(suite):
+    previous = json.loads(bm.FIXTURE_PATH.with_name("cloud-model-v7.json").read_text())
+    current = json.loads(bm.FIXTURE_PATH.read_text())
+    assert current["fixture_id"] == "jarvis-cloud-model-v8"
+    assert current["provenance"]["supersedes"] == previous["fixture_id"]
+    changed = {name for name, digest in previous["tool_schema_sha256"].items()
+               if current["tool_schema_sha256"][name] != digest}
+    assert changed == {"generate_image"}
+    assert current["tool_schema_sha256"]["generate_image"] == bm.tool_schema_sha256(
+        suite["tools"]["generate_image"]
+    )
+    current["tool_schema_sha256"] = previous["tool_schema_sha256"]
+    current["fixture_id"] = previous["fixture_id"]
+    current["provenance"] = previous["provenance"]
     assert current == previous
 
 
@@ -208,7 +280,7 @@ def test_human_provider_name_alias_applies_to_answer_and_saved_json_only(suite):
 
 
 def test_current_suite_retains_v4_literal_text_requirements(suite):
-    assert suite["fixture_id"] == "jarvis-cloud-model-v5"
+    assert suite["fixture_id"] == "jarvis-cloud-model-v8"
     email = case(suite, "authorized_literal_recipient_needs_no_memory")
     assert "subject and body verbatim" in email["turns"][0]["query"]
     image = case(suite, "discover_then_analyze_artifact")

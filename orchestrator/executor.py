@@ -245,6 +245,8 @@ class ToolExecutor:
         if tool_name == "manage_intel":
             return 600  # 10 minutes; create/update/delete can trigger two sequential ingests
         if tool_name == "generate_image":
+            if (args or {}).get("output_format") == "gif":
+                return 660  # GIF rendering HTTP budget plus storage/cleanup margin.
             return 300  # 5 minutes for AI image generation (especially with grounding)
         if tool_name == "generate_music":
             return 600  # 10 minutes for music generation (can take 3-5min for longer tracks)

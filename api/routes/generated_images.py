@@ -181,7 +181,23 @@ class GenerateRequest(BaseModel):
     style: Optional[str] = Field(None, description="Art style (e.g., 'photorealistic', 'watercolor', 'anime')")
     negative_prompt: Optional[str] = Field(None, description="Things to avoid in the image")
     use_grounding: bool = Field(False, description="Use Google Search for real-time data (Gemini only)")
-    provider: Optional[str] = Field(None, description="Override provider: 'gemini', 'openai', or 'xai'")
+    provider: Literal["gemini", "openai", "xai"] | None = Field(
+        None, description="Override provider: 'gemini', 'openai', or 'xai'",
+    )
+    model: str | None = Field(None, description="Request-scoped image model override for the selected provider")
+    output_format: Literal["png", "jpeg", "webp", "gif"] | None = Field(
+        None, description="OpenAI output format; animated GIF requires a supporting model and GIF preview access",
+    )
+    complexity: Literal["low", "medium", "high"] | None = Field(
+        None, description="Rendering complexity for supporting OpenAI models",
+    )
+    frame_count: int | None = Field(None, ge=2, le=16, strict=True, description="GIF output frames (default 9)")
+    frame_duration_ms: int | None = Field(
+        None, ge=20, le=655350, strict=True, description="GIF frame delay in milliseconds (default 200; rounded to 10 ms)",
+    )
+    reference_frame: int | None = Field(
+        None, ge=0, strict=True, description="Zero-based source GIF frame to use for a new generation (default 0); existing animation is not edited in place",
+    )
     transparent: bool = Field(False, description="Transparent background (OpenAI only, png/webp)")
     n: Optional[int] = Field(None, ge=1, le=10, description="Number of images (xAI only, 1-10; forced to 1 when editing)")
     save: bool = Field(True, description="Save to disk and stash")
@@ -340,6 +356,7 @@ async def generate_image(request: GenerateRequest):
     }
     ```
     """
+    generation_timeout = 660 if request.output_format == "gif" else 300
     try:
         # Build args for generate_image tool
         args = {
@@ -358,6 +375,12 @@ async def generate_image(request: GenerateRequest):
             args["negative_prompt"] = request.negative_prompt
         if request.provider:
             args["provider"] = request.provider
+        for name in (
+            "model", "output_format", "complexity", "frame_count", "frame_duration_ms", "reference_frame",
+        ):
+            value = getattr(request, name)
+            if value is not None:
+                args[name] = value
         if request.transparent:
             args["transparent"] = request.transparent
         if request.n and request.n > 1:
@@ -368,13 +391,16 @@ async def generate_image(request: GenerateRequest):
         
         # Set environment for mode
         env = export_config_environment(request.mode)
+        if request.provider:
+            env["IMAGE_TOOL_PROVIDER"] = request.provider
+            env["JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER"] = request.provider
         
         result = await run_in_threadpool(
             subprocess.run,
             ["python3", str(tool_path), json.dumps(args)],
             capture_output=True,
             text=True,
-            timeout=300,  # 5 minute timeout for image generation
+            timeout=generation_timeout,
             cwd=str(PROJECT_ROOT),
             env=env
         )
@@ -415,7 +441,7 @@ async def generate_image(request: GenerateRequest):
                             category="generated"
                         )
                         
-                        if upload_result.get("ok"):
+                        if upload_result.get("ok") and upload_result.get("url") and upload_result.get("image_id"):
                             cdn_url = upload_result.get("url")
                             image_id = upload_result.get("image_id")
                             # Save to catalog
@@ -425,6 +451,10 @@ async def generate_image(request: GenerateRequest):
                                 "url": cdn_url,
                                 "image_id": image_id
                             }
+                        else:
+                            output["data"]["cdn_error"] = upload_result.get(
+                                "error", "Cloudflare upload returned no usable URL or image ID",
+                            )
                     except Exception as e:
                         # CDN upload failed but image was generated - still return success
                         output["data"]["cdn_error"] = str(e)
@@ -440,7 +470,10 @@ async def generate_image(request: GenerateRequest):
             return GenerateResponse(ok=False, error=f"Invalid tool output: {result.stdout[:200]}")
         
     except subprocess.TimeoutExpired:
-        return GenerateResponse(ok=False, error="Image generation timed out (5 min limit)")
+        return GenerateResponse(
+            ok=False,
+            error=f"Image generation timed out ({generation_timeout // 60} min limit)",
+        )
     except Exception as e:
         return GenerateResponse(ok=False, error=str(e))
 
@@ -627,18 +660,18 @@ async def get_or_create_cdn_url(filename: str):
     try:
         from upload_cloudflare import upload_image as cf_upload
         
-        result = cf_upload(
-            str(filepath),
+        result = await run_in_threadpool(
+            cf_upload, str(filepath),
             "file",
             uploader="gallery",
             category="generated"
         )
         
-        if not result.get("ok"):
+        if not result.get("ok") or not result.get("url") or not result.get("image_id"):
             return CdnUrlResponse(
                 ok=False,
                 name=filename,
-                error=result.get("error", "Upload failed")
+                error=result.get("error", "Cloudflare upload returned no usable URL or image ID")
             )
         
         url = result.get("url")

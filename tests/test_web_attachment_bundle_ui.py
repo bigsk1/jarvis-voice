@@ -40,7 +40,7 @@ const socket = {connected: true, mode: 'cloud', conversationId: 'a', sendMessage
 const sandbox = {
   crypto: require('node:crypto').webcrypto,
   console, URL, AbortController, FormData: FormDataFake, setTimeout, clearTimeout, history: {replaceState(){}},
-  document: {createElement: tag => new Element(tag), querySelectorAll: () => []},
+  document: {createElement: tag => new Element(tag), getElementById: () => null, querySelectorAll: () => []},
   Utils: {toast: (...args) => notices.push(args), autoResize(){}, scrollToBottom(){}, escapeHtml: value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'), storage: {get: (_key, fallback) => fallback}},
   window: {jarvisSocket: socket, URL: {createObjectURL: () => `blob:${++fileCounter}`, revokeObjectURL: url => revoked.push(url)}, commandSystem: {parseInput: message => ({message, toolHints: []}), getActiveDisplay: () => '', getPersistedDisplay: () => ''}},
   fetch: async (url, options) => { requests.push({url, ...options}); const fields = options.body.entries; return response(url.split('-').pop(), fields.file.name); }
@@ -89,6 +89,67 @@ assert.equal(ui.attachedImages.length, 1);
 assert.equal(ui.imageAttachmentAction, 'analyze');
 assert.equal(ui.filePreviewContainer.children.length, 4);
 assert.equal(ui.filePreviewContainer.children[3].children[0].children[0].textContent, 'Source 4: a.pdf');
+""")
+
+
+def test_blank_mime_gif_uses_image_upload_for_picker_drag_and_paste():
+    run_browser(r"""
+const pasteHandlers={};
+sandbox.document.addEventListener=(name,callback)=>{pasteHandlers[name]=callback;};
+sandbox.fetch=async(url,options)=>{
+  requests.push({url,...options});
+  return {ok:true,json:async()=>({ok:true,images:[{url:'/uploads/loop.gif',filename:'loop.gif',mime_type:'image/gif',source_frame_count:3}]})};
+};
+for (const route of ['picker','drop','paste']) {
+  const ui=chat();
+  ui.uploadBtn=new Element('button');ui.fileInput=new Element('input');
+  const container=new Element();
+  sandbox.document.querySelector=()=>container;
+  ui._setupImageUpload();
+  const gif=file('LOOP.GIF','');
+  assert.equal(ui._attachmentKind(gif),'image');
+  assert.equal(ui._attachmentKind(file('loop.gif','application/pdf')),'pdf');
+  if (route==='picker') await ui.fileInput.change({target:{files:[gif]}});
+  if (route==='drop') await container.drop({preventDefault(){},dataTransfer:{files:[gif]}});
+  if (route==='paste') await pasteHandlers.paste({preventDefault(){},clipboardData:{items:[{type:'',getAsFile:()=>gif}]}});
+  assert.equal(ui.pendingImageBatch[0].filename,'loop.gif');
+  assert.equal(ui.attachedDocuments.length,0);
+}
+assert.deepEqual(requests.map(item=>item.url),['/api/upload-images','/api/upload-images','/api/upload-images']);
+""")
+
+
+def test_gif_analysis_frame_picker_is_optional_and_only_for_one_source():
+    run_browser(r"""
+const ui=chat();
+const input=Object.assign(new Element('input'),{value:'',disabled:false});
+const options=new Element();
+const description=new Element();
+const elements={imgActionGifAnalysisOpts:options,imgActionAnalyzeGifFrame:input,imgActionAnalyzeGifFrameDesc:description};
+sandbox.document.getElementById=id=>elements[id]||null;
+ui.imageActionModal={querySelector:()=>({value:'analyze'})};
+ui.pendingImageBatch=[{filename:'loop.gif',mime_type:'image/gif',source_frame_count:4}];
+let settings=ui._collectImageActionSettings().settings;
+assert.equal(options.style.display,'block');
+assert.equal(input.max,'3');
+assert.equal(settings.gif_frame,undefined);
+input.value='0';
+assert.equal(ui._collectImageActionSettings().settings.gif_frame,0);
+input.value='99';
+assert.equal(ui._collectImageActionSettings().settings.gif_frame,3);
+assert.match(description.textContent,/last frame: 3/);
+assert.equal(ui._buildActionBadgeText('analyze',{gif_frame:0}),'ANALYZE GIF FRAME 0');
+ui.pendingImageBatch.push({filename:'second.gif',mime_type:'image/gif'});
+settings=ui._collectImageActionSettings().settings;
+assert.equal(options.style.display,'none');
+assert.equal(input.value,'');
+assert.equal(settings.gif_frame,undefined);
+ui.pendingImageBatch=[{filename:'still.png'}];
+assert.equal(ui._collectImageActionSettings().settings.gif_frame,undefined);
+ui.pendingImageBatch=[{filename:'loop.gif'}];
+ui.attachedDocuments=[{kind:'text'}];
+assert.equal(ui._collectImageActionSettings().settings.gif_frame,undefined);
+assert.equal(input.disabled,true);
 """)
 
 
@@ -342,6 +403,83 @@ const result=ui._collectImageActionSettings();
 assert.equal(result.settings.provider,'xai');
 assert.equal(result.settings.model,'grok-imagine-image-2.0');
 assert.equal(result.settings.image_size,'2K');
+assert.equal(requests.length,0);
+""")
+
+
+def test_gif_controls_follow_model_format_and_source_without_leaking_hidden_values():
+    run_browser(r"""
+const ui=chat();
+sandbox.Option=class {constructor(text,value){this.textContent=text;this.value=value;}};
+const makeSelect=value=>Object.assign(new Element('select'),{
+  value,add(item){this.children.push(item);},replaceChildren(...items){this.children=items;}
+});
+const input=value=>Object.assign(new Element('input'),{value,checked:false,disabled:false});
+const elements={
+  imgActionImageProvider:makeSelect('openai'),imgActionImageModel:makeSelect(''),
+  imgActionImageModelDesc:new Element(),imgActionImageSize:makeSelect('2K'),
+  imgActionImageSizeLabel:new Element(),imgActionImageSizeDesc:new Element(),
+  imgActionOutputFormat:makeSelect('gif'),imgActionOutputFormatDesc:new Element(),
+  imgActionTransparent:input(''),imgActionTransparentDesc:new Element(),
+  imgActionComplexity:makeSelect('high'),imgActionComplexityOpts:new Element(),
+  imgActionGifOpts:new Element(),imgActionFrameCount:input('99'),
+  imgActionFrameDuration:input('1'),imgActionGifReferenceOpts:new Element(),
+  imgActionReferenceFrame:input('99'),imgActionGifReferenceDesc:new Element(),
+  confirmImageAction:new Element('button'),
+};
+sandbox.document.getElementById=id=>elements[id]||null;
+sandbox.window.jarvisApp={_settingsData:{image_providers:{
+  openai:{model:'gpt-image-2.6-sunburst',models:[
+    {id:'gpt-image-2.6-sunburst',name:'GPT Image 2.6 Sunburst',capabilities:['transparent_background'],output_formats:['png','jpeg','webp','gif'],complexities:['low','medium','high']},
+    {id:'gpt-image-2.5-flare',name:'GPT Image 2.5 Flare',capabilities:['transparent_background'],output_formats:['png','jpeg','webp']},
+  ]},
+  xai:{model:'grok-imagine-image',models:[{id:'grok-imagine-image'}]},
+}}};
+ui.imageActionModal={querySelector:()=>({value:'image'})};
+ui.pendingImageBatch=[{filename:'loop.gif',mime_type:'image/gif',source_frame_count:4}];
+ui._updateImageProviderOptions(true);
+assert.deepEqual(Array.from(elements.imgActionOutputFormat.children,item=>item.value),['png','jpeg','webp','gif']);
+assert.equal(elements.imgActionOutputFormat.value,'gif');
+assert.equal(elements.imgActionGifOpts.style.display,'block');
+assert.equal(elements.imgActionFrameCount.value,'16');
+assert.equal(elements.imgActionFrameDuration.value,'20');
+assert.equal(elements.imgActionReferenceFrame.value,'3');
+assert.equal(elements.imgActionReferenceFrame.max,'3');
+assert.equal(elements.imgActionTransparent.disabled,true);
+assert.match(elements.imgActionImageSizeDesc.textContent,/dimensions are automatic/);
+assert.equal(elements.confirmImageAction.disabled,false);
+let settings=ui._collectImageActionSettings().settings;
+assert.equal(settings.output_format,'gif');
+assert.equal(settings.frame_count,16);
+assert.equal(settings.frame_duration_ms,20);
+assert.equal(settings.reference_frame,3);
+assert.equal(settings.complexity,'high');
+
+elements.imgActionImageModel.value='gpt-image-2.5-flare';
+ui._updateImageProviderOptions();
+assert.equal(elements.imgActionOutputFormat.value,'png');
+assert.equal(elements.imgActionGifOpts.style.display,'none');
+assert.equal(elements.imgActionComplexity.value,'');
+assert.equal(elements.confirmImageAction.disabled,true);
+assert.match(elements.imgActionGifReferenceDesc.textContent,/Choose OpenAI/);
+ui.pendingImageBatch=[{filename:'still.png'}];
+elements.imgActionOutputFormat.value='jpeg';
+elements.imgActionTransparent.checked=true;
+settings=ui._collectImageActionSettings().settings;
+assert.equal(settings.output_format,'jpeg');
+assert.equal(settings.transparent,undefined);
+assert.equal(settings.frame_count,undefined);
+assert.equal(settings.frame_duration_ms,undefined);
+assert.equal(settings.reference_frame,undefined);
+assert.equal(settings.complexity,undefined);
+assert.equal(elements.confirmImageAction.disabled,false);
+
+elements.imgActionImageProvider.value='xai';
+ui._updateImageProviderOptions(true);
+settings=ui._collectImageActionSettings().settings;
+assert.equal(settings.output_format,undefined);
+assert.equal(settings.complexity,undefined);
+assert.equal(settings.frame_count,undefined);
 assert.equal(requests.length,0);
 """)
 

@@ -1741,12 +1741,10 @@ class ChatUI {
       if (!items) return;
       
       for (const item of items) {
-        if (item.type.startsWith('image/')) {
+        const file = item.getAsFile?.();
+        if (file && (String(item.type || '').startsWith('image/') || this._attachmentKind(file) === 'image')) {
           e.preventDefault();
-          const file = item.getAsFile();
-          if (file) {
-            await this.attachImage(file);
-          }
+          await this.attachImage(file);
           break;
         }
       }
@@ -1801,6 +1799,9 @@ class ChatUI {
       imageProviderSelect.addEventListener('change', () => this._updateImageProviderOptions(true));
     }
     document.getElementById('imgActionImageModel')?.addEventListener(
+      'change', () => this._updateImageProviderOptions()
+    );
+    document.getElementById('imgActionOutputFormat')?.addEventListener(
       'change', () => this._updateImageProviderOptions()
     );
 
@@ -1870,6 +1871,17 @@ class ChatUI {
     
     const uploads = Array.isArray(uploadDataOrArray) ? uploadDataOrArray : [uploadDataOrArray];
     this.pendingImageBatch = uploads;
+    const hasGif = uploads.some(source => source.mime_type === 'image/gif'
+      || /\.gif(?:$|\?)/i.test(String(source.filename || source.url || '')));
+    const craftOption = this.imageActionModal.querySelector('#craftImageActionOption');
+    if (craftOption && hasGif) {
+      craftOption.hidden = true;
+      craftOption.style.display = 'none';
+    }
+    const craftRadio = this.imageActionModal.querySelector('input[name="imageAction"][value="craft"]');
+    if (craftRadio && hasGif) craftRadio.disabled = true;
+    const gifHint = document.getElementById('imageActionGifHint');
+    if (gifHint) gifHint.style.display = hasGif ? 'block' : 'none';
     
     // Show image preview(s) — order in batch = upload order (first is used for Video/Image)
     if (this.imageActionPreview) {
@@ -1896,7 +1908,7 @@ class ChatUI {
     }
     
     const allowedActions = new Set(['analyze', 'video', 'image', 'stash', 'craft']);
-    if (!this._craftImageActionAvailable) allowedActions.delete('craft');
+    if (!this._craftImageActionAvailable || hasGif) allowedActions.delete('craft');
     const selectedAction = allowedActions.has(preferredAction) ? preferredAction : 'analyze';
     const selectedRadio = this.imageActionModal.querySelector(
       `input[name="imageAction"][value="${selectedAction}"]`
@@ -1904,6 +1916,20 @@ class ChatUI {
     if (selectedRadio) selectedRadio.checked = true;
 
     this._resetImageActionOptions();
+    if (this._imageActionHasGifSource()) {
+      const gifModel = window.jarvisApp?._settingsData?.image_providers?.openai?.models
+        ?.find(model => model.output_formats?.includes('gif'));
+      if (gifModel) {
+        const provider = document.getElementById('imgActionImageProvider');
+        if (provider) provider.value = 'openai';
+        this._updateImageProviderOptions(true);
+        const model = document.getElementById('imgActionImageModel');
+        if (model) model.value = gifModel.id;
+        this._updateImageProviderOptions();
+        const format = document.getElementById('imgActionOutputFormat');
+        if (format) format.value = 'gif';
+      }
+    }
     this._updateImageActionOptions();
     
     // Show modal
@@ -1942,12 +1968,14 @@ class ChatUI {
    */
   _updateImageActionOptions() {
     const selected = this.imageActionModal?.querySelector('input[name="imageAction"]:checked')?.value || 'analyze';
+    const unsupportedGifCraft = selected === 'craft' && this._imageActionHasGifSource();
     
     const videoOpts = document.getElementById('imageActionVideoOpts');
     const imageOpts = document.getElementById('imageActionImageOpts');
     
     if (videoOpts) videoOpts.style.display = selected === 'video' ? 'block' : 'none';
     if (imageOpts) imageOpts.style.display = selected === 'image' ? 'block' : 'none';
+    this._updateGifAnalysisOptions(selected);
     
     this._updateImageActionPreviewHighlight(selected);
 
@@ -1958,7 +1986,7 @@ class ChatUI {
       this._updateVideoProviderOptions();
     }
     const confirm = document.getElementById('confirmImageAction');
-    if (confirm && selected !== 'video') confirm.disabled = false;
+    if (confirm && !['video', 'image'].includes(selected)) confirm.disabled = unsupportedGifCraft;
   }
 
   /**
@@ -2018,6 +2046,38 @@ class ChatUI {
   }
 
   /**
+   * Explicit GIF frame analysis is available for one source only.
+   */
+  _updateGifAnalysisOptions(action = 'analyze') {
+    const singleGif = this.pendingImageBatch?.length === 1 && this._imageActionHasGifSource()
+      && !this.attachedImages.length && !this.attachedDocuments.length;
+    const options = document.getElementById('imgActionGifAnalysisOpts');
+    if (options) options.style.display = action === 'analyze' && singleGif ? 'block' : 'none';
+    const input = document.getElementById('imgActionAnalyzeGifFrame');
+    if (!input) return;
+    input.disabled = !singleGif;
+    const count = this.pendingImageBatch?.[0]?.source_frame_count;
+    const maximum = Number.isInteger(count) && count > 0 ? count - 1 : undefined;
+    input.max = maximum === undefined ? '' : String(maximum);
+    if (!singleGif) input.value = '';
+    if (input.value !== '') {
+      const requested = Math.trunc(Number(input.value));
+      input.value = Number.isFinite(requested) ? String(Math.max(0, Math.min(maximum ?? Infinity, requested))) : '';
+    }
+    const description = document.getElementById('imgActionAnalyzeGifFrameDesc');
+    if (description) description.textContent = `Leave blank to sample a timeline. Enter a frame number starting at 0${maximum === undefined ? '' : ` (last frame: ${maximum})`} to analyze only that frame. The original animation stays intact.`;
+  }
+
+  /**
+   * A GIF edit regenerates from one explicitly selected source frame.
+   */
+  _imageActionHasGifSource() {
+    const source = this.pendingImageBatch?.[0];
+    return source?.mime_type === 'image/gif'
+      || /\.gif(?:$|\?)/i.test(String(source?.filename || source?.url || ''));
+  }
+
+  /**
    * Show/hide provider-specific options for Image to Image
    */
   _updateImageProviderOptions(resetModel = false) {
@@ -2043,11 +2103,70 @@ class ChatUI {
     const isGptImage2 = /^gpt-image-2(?:$|-)/.test(String(selectedModel));
     const supportsTransparent = selectedCapabilities.includes('transparent_background')
       || (selectedCapabilities.length === 0 && !isGptImage2);
+    const outputFormat = document.getElementById('imgActionOutputFormat');
+    const outputFormats = provider === 'openai' && Array.isArray(modelMetadata?.output_formats)
+      ? modelMetadata.output_formats : ['png', 'jpeg', 'webp'];
+    if (outputFormat) {
+      const previous = outputFormat.value;
+      outputFormat.replaceChildren();
+      const labels = { png: 'PNG (Lossless)', jpeg: 'JPEG (Smaller)', webp: 'WebP (Modern)', gif: 'GIF (Animated preview)' };
+      for (const format of outputFormats) outputFormat.add(new Option(labels[format] || format, format));
+      outputFormat.value = outputFormats.includes(previous) ? previous : outputFormats[0];
+    }
+    const isGif = provider === 'openai' && outputFormat?.value === 'gif';
+    const ratioLabel = document.getElementById('imgActionImageRatioLabel');
+    if (ratioLabel) ratioLabel.textContent = isGif ? 'Preferred aspect ratio' : 'Aspect Ratio';
+    const ratioDesc = document.getElementById('imgActionImageRatioDesc');
+    if (ratioDesc) ratioDesc.textContent = isGif ? 'OpenAI chooses GIF dimensions; the selected aspect ratio is a prompt preference.' : '';
+    const sourceGif = this._imageActionHasGifSource();
+    const supportsGifReference = provider === 'openai' && outputFormats.includes('gif');
+    const referenceOptions = document.getElementById('imgActionGifReferenceOpts');
+    if (referenceOptions) referenceOptions.style.display = sourceGif ? 'block' : 'none';
+    const referenceDesc = document.getElementById('imgActionGifReferenceDesc');
+    if (referenceDesc) referenceDesc.textContent = supportsGifReference
+      ? 'Use this frame (starting at 0) as the reference for a new generation. The original animation stays in Stash; this does not edit its individual frames.'
+      : 'Choose OpenAI and a GIF-capable model to regenerate from a source GIF frame.';
+    const referenceFrame = document.getElementById('imgActionReferenceFrame');
+    if (referenceFrame && sourceGif) {
+      referenceFrame.disabled = !supportsGifReference;
+      const count = this.pendingImageBatch?.[0]?.source_frame_count;
+      const maximum = Number.isInteger(count) && count > 0 ? count - 1 : undefined;
+      referenceFrame.max = maximum === undefined ? '' : String(maximum);
+      referenceFrame.value = String(Math.max(0, Math.min(maximum ?? Infinity, Math.trunc(Number(referenceFrame.value) || 0))));
+    }
+    const confirm = document.getElementById('confirmImageAction');
+    if (confirm && this.imageActionModal?.querySelector('input[name="imageAction"]:checked')?.value === 'image') {
+      confirm.disabled = sourceGif && !supportsGifReference;
+    }
+    const formatDesc = document.getElementById('imgActionOutputFormatDesc');
+    if (formatDesc) formatDesc.textContent = sourceGif && !supportsGifReference
+      ? 'Choose an OpenAI GIF-capable model to regenerate from a GIF frame.'
+      : (isGif ? 'Animated GIF requires OpenAI GIF preview access. Output dimensions are automatic.' : '');
+    const gifOptions = document.getElementById('imgActionGifOpts');
+    if (gifOptions) gifOptions.style.display = isGif ? 'block' : 'none';
+    for (const [id, minimum, maximum, fallback] of [
+      ['imgActionFrameCount', 2, 16, 9], ['imgActionFrameDuration', 20, 655350, 200],
+    ]) {
+      const input = document.getElementById(id);
+      if (input) input.value = String(Math.max(minimum, Math.min(maximum, Math.trunc(Number(input.value) || fallback))));
+    }
+    const complexities = provider === 'openai' && Array.isArray(modelMetadata?.complexities)
+      ? modelMetadata.complexities : [];
+    const complexityOptions = document.getElementById('imgActionComplexityOpts');
+    if (complexityOptions) complexityOptions.style.display = complexities.length ? 'block' : 'none';
+    const complexity = document.getElementById('imgActionComplexity');
+    if (complexity) {
+      const previous = complexity.value;
+      complexity.replaceChildren(new Option('Default', ''));
+      for (const value of complexities) complexity.add(new Option(value[0].toUpperCase() + value.slice(1), value));
+      complexity.value = complexities.includes(previous) ? previous : '';
+    }
     if (modelDesc) {
       const selectedName = modelMetadata?.name || selectedModel;
       modelDesc.textContent = selectedName ? `Selected model: ${selectedName}` : '';
     }
 
+    const qualityOnly = isGif || (provider === 'openai' && selectedCapabilities.includes('complexity_control'));
     const imageSize = document.getElementById('imgActionImageSize');
     const catalogImageSizes = Array.isArray(modelMetadata?.resolutions)
       ? modelMetadata.resolutions.filter(value => /^\d+(?:\.\d+)?K$/i.test(String(value)))
@@ -2057,14 +2176,20 @@ class ChatUI {
       const previous = imageSize.value;
       imageSize.replaceChildren();
       for (const size of imageSizes) {
-        imageSize.add(new Option(`${size}${size === '2K' ? ' (Default)' : ''}`, size));
+        const label = qualityOnly ? ({'1K': 'Low', '2K': 'Medium', '4K': 'High'}[size] || size) : size;
+        imageSize.add(new Option(`${label}${size === '2K' ? ' (Default)' : ''}`, size));
       }
       imageSize.value = imageSizes.includes(previous)
         ? previous
         : (imageSizes.includes('2K') ? '2K' : imageSizes[0]);
     }
+    const sizeLabel = document.getElementById('imgActionImageSizeLabel');
+    if (sizeLabel) sizeLabel.textContent = qualityOnly ? 'Rendering quality' : 'Size';
+    const sizeDesc = document.getElementById('imgActionImageSizeDesc');
+    if (sizeDesc) sizeDesc.textContent = isGif ? 'GIF dimensions are automatic.'
+      : (qualityOnly ? 'Still images use standard OpenAI dimensions.' : '');
     if (transparent) {
-      transparent.disabled = provider === 'openai' && !supportsTransparent;
+      transparent.disabled = provider === 'openai' && (!supportsTransparent || !['png', 'webp'].includes(outputFormat?.value || 'png'));
       if (transparent.disabled) transparent.checked = false;
     }
     if (transparentDesc) {
@@ -2084,10 +2209,16 @@ class ChatUI {
       || (provider === 'heygen' && !window.jarvisApp?._settingsData?.video_providers?.heygen);
     const confirm = document.getElementById('confirmImageAction');
     const action = this.imageActionModal?.querySelector('input[name="imageAction"]:checked')?.value;
-    if (confirm && action === 'video') confirm.disabled = !provider || (selectionRequired && unavailable);
+    const gifSource = this._imageActionHasGifSource();
+    if (confirm && action === 'video') confirm.disabled = gifSource || !provider || (selectionRequired && unavailable);
     for (const id of ['imgActionVideoModel', 'imgActionVideoResolution', 'imgActionVideoDuration', 'imgActionVideoRatio']) {
       const control = document.getElementById(id);
-      if (control) control.disabled = !provider;
+      if (control) control.disabled = gifSource || !provider;
+    }
+    if (gifSource) {
+      const description = document.getElementById('imgActionVideoModelDesc');
+      if (description) description.textContent = 'Choose image editing to regenerate from a source GIF frame. GIF-to-video input is unavailable.';
+      return;
     }
     if (!provider) {
       const model = document.getElementById('imgActionVideoModel');
@@ -2305,6 +2436,14 @@ class ChatUI {
     const outputFormat = document.getElementById('imgActionOutputFormat');
     if (transparent) transparent.checked = false;
     if (outputFormat) outputFormat.value = 'png';
+    for (const [id, value] of [
+      ['imgActionComplexity', ''], ['imgActionFrameCount', '9'],
+      ['imgActionFrameDuration', '200'], ['imgActionReferenceFrame', '0'],
+      ['imgActionAnalyzeGifFrame', ''],
+    ]) {
+      const control = document.getElementById(id);
+      if (control) control.value = value;
+    }
     
     // xAI options
     const count = document.getElementById('imgActionCount');
@@ -2330,6 +2469,7 @@ class ChatUI {
         || (window.jarvisApp?._settingsData?.video?.provider?.selection_required ? '' : 'xai');
       settings.model = document.getElementById('imgActionVideoModel')?.value || undefined;
     } else if (action === 'image') {
+      this._updateImageProviderOptions();
       const provider = document.getElementById('imgActionImageProvider')?.value || 'gemini';
       settings.provider = provider;
       settings.model = document.getElementById('imgActionImageModel')?.value || undefined;
@@ -2354,12 +2494,25 @@ class ChatUI {
         if (transparent) settings.transparent = true;
         const outputFormat = document.getElementById('imgActionOutputFormat')?.value;
         if (outputFormat) settings.output_format = outputFormat;
+        const complexity = document.getElementById('imgActionComplexity')?.value;
+        if (complexity) settings.complexity = complexity;
+        if (outputFormat === 'gif') {
+          settings.frame_count = Number(document.getElementById('imgActionFrameCount')?.value || 9);
+          settings.frame_duration_ms = Number(document.getElementById('imgActionFrameDuration')?.value || 200);
+        }
+        if (this._imageActionHasGifSource()) {
+          settings.reference_frame = Number(document.getElementById('imgActionReferenceFrame')?.value || 0);
+        }
       } else if (provider === 'xai') {
         const count = parseInt(document.getElementById('imgActionCount')?.value);
         if (count && count > 1) settings.n = count;
       }
     }
-    // For 'analyze', settings stays empty (current behavior)
+    if (action === 'analyze') {
+      this._updateGifAnalysisOptions(action);
+      const frame = document.getElementById('imgActionAnalyzeGifFrame');
+      if (frame && !frame.disabled && frame.value !== '') settings.gif_frame = Number(frame.value);
+    }
     
     return { action, settings };
   }
@@ -2374,6 +2527,10 @@ class ChatUI {
     if (!this.pendingImageBatch?.length) return;
     
     const { action, settings } = this._collectImageActionSettings();
+    if (['video', 'craft'].includes(action) && this._imageActionHasGifSource()) {
+      Utils.toast('Choose image editing to regenerate from a source GIF frame.', 'info');
+      return;
+    }
     if (action === 'video' && (!settings.provider
         || (settings.provider === 'heygen' && !window.jarvisApp?._settingsData?.video_providers?.heygen)
         || (window.jarvisApp?._settingsData?.video?.provider?.selection_required
@@ -2500,6 +2657,7 @@ class ChatUI {
     }
     if (action === 'stash') return 'SAVE TO STASH';
     if (action === 'craft') return 'CRAFT EDIT';
+    if (action === 'analyze' && settings.gif_frame !== undefined) return `ANALYZE GIF FRAME ${settings.gif_frame}`;
     return 'ANALYZE';
   }
 
@@ -2629,7 +2787,8 @@ class ChatUI {
   }
 
   _attachmentKind(file) {
-    if (String(file?.type || '').startsWith('image/')) return 'image';
+    const mimeType = String(file?.type || '');
+    if (mimeType.startsWith('image/') || (!mimeType && /\.gif$/i.test(String(file?.name || '')))) return 'image';
     if (this._isPdfFile(file)) return 'pdf';
     if (this._isVideoFile(file)) return 'video';
     if (this._isAudioFile(file)) return 'audio';
@@ -2707,6 +2866,10 @@ class ChatUI {
       return;
     }
     const imageFiles = [];
+    if (this.imageAttachmentSettings?.gif_frame !== undefined) {
+      delete this.imageAttachmentSettings.gif_frame;
+      Utils.toast('With additional sources, GIF analysis uses a sampled timeline.', 'info');
+    }
     for (const file of files) {
       const kind = this._attachmentKind(file);
       if (kind === 'image') {
@@ -3715,6 +3878,31 @@ class ChatUI {
     return messageEl;
   }
 
+  _findGeneratedImage(results) {
+    for (const result of (Array.isArray(results) ? results : [results])) {
+      if (!result || typeof result !== 'object' || result.ok === false || result.cancelled
+          || result.status === 'accepted' || result.result_kind === 'background_admission') continue;
+      const body = result.data || result;
+      if (body.ok === false || body.cancelled || body.status === 'accepted'
+          || body.result_kind === 'background_admission') continue;
+      const mime = typeof body.mime_type === 'string' ? body.mime_type.trim().toLowerCase() : '';
+      if (mime && !mime.startsWith('image/')) continue;
+      for (const path of [body.saved?.filename, body.file_path, body.saved?.path, body.filename]) {
+        if (typeof path !== 'string') continue;
+        const filename = path.split(/[\\/]/).pop();
+        if (!filename || /[\x00-\x1f\x7f]/.test(filename)
+            || !/\.(jpe?g|png|gif|webp)$/i.test(filename)) continue;
+        try {
+          return {filename, url: `/api/images/${encodeURIComponent(filename)}`,
+            transparent: body.transparent === true};
+        } catch {
+          // Ignore unusable filenames in imported conversation metadata.
+        }
+      }
+    }
+    return null;
+  }
+
   /**
    * Source upload previews already belong to the user message, for every image action.
    * Keep the stash metadata intact so follow-up turns can still re-use the image.
@@ -3838,42 +4026,34 @@ class ChatUI {
 
     // Check for generated images
     let imageHtml = '';
-    let filename = null;
-    
-    // Method 1: Check data.generate_image object
-    const imageData = data.generate_image;
-    if (imageData && typeof imageData === 'object') {
-      // Try various paths
-      filename = imageData.file_path?.split('/').pop()
-        || imageData.saved?.filename
-        || imageData.saved?.path?.split('/').pop()
-        || imageData.data?.file_path?.split('/').pop()
-        || imageData.data?.saved?.filename;
-      
-      // Try JSON search
-      if (!filename) {
-        const jsonStr = JSON.stringify(imageData);
-        const match = jsonStr.match(/generated_[^"]+\.(jpg|png|jpeg)/i);
-        if (match) filename = match[0];
-      }
-    }
+    const imageResults = toolResultsData.generate_image || data.generate_image;
+    let generatedImage = this._findGeneratedImage(imageResults);
     
     // Method 2: Extract from speech/text (fallback)
     // Check both toolsUsed array and pendingTools (which may have step-keyed entries like generate_image_step5)
     const hasImageTool = toolsUsed.includes('generate_image') || 
       (!options.late && Object.keys(this.pendingTools).some(k => k.startsWith('generate_image')));
-    if (!filename && hasImageTool) {
+    if (!generatedImage && !imageResults && hasImageTool) {
       const textToSearch = text + ' ' + JSON.stringify(data);
-      const match = textToSearch.match(/generated_[\w\-]+\.(jpg|png|jpeg)/i);
-      if (match) filename = match[0];
+      const match = textToSearch.match(/generated_[\w-]+\.(jpe?g|png|gif|webp)(?![\w.-])/i);
+      if (match) generatedImage = this._findGeneratedImage({filename: match[0]});
     }
     
-    if (filename) {
+    if (generatedImage) {
+      const {filename, url, transparent} = generatedImage;
+      const filenameAttr = Utils.escapeHtml(filename).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      const formatLabel = filename.split('.').pop().toUpperCase();
       imageHtml = `
-        <div class="message-image" onclick="window.showImageLightbox('/api/images/${filename}')">
-          <img src="/api/images/${filename}" alt="Generated image" loading="lazy">
-          <div class="image-overlay">
-            <span>🔍 Click to expand</span>
+        <div class="converted-media-container">
+          <div class="message-image generated-image${transparent ? ' transparent-image' : ''}" data-generated-image-url="${url}">
+            <img src="${url}" alt="Generated ${formatLabel}" loading="lazy">
+            <div class="image-overlay">
+              <span>🔍 Click to expand</span>
+            </div>
+          </div>
+          <div class="convert-actions">
+            <span class="convert-info">${Utils.escapeHtml(filename)}</span>
+            <a href="${url}" download="${filenameAttr}" class="convert-download-btn">⬇️ Download ${formatLabel}</a>
           </div>
         </div>
       `;
@@ -4279,6 +4459,12 @@ class ChatUI {
     messageEl.querySelectorAll('.message-image.converted-file[data-converted-image-url]').forEach(image => {
       image.addEventListener('click', () => {
         window.showImageLightbox(image.dataset.convertedImageUrl);
+      });
+    });
+
+    messageEl.querySelectorAll('.message-image.generated-image[data-generated-image-url]').forEach(image => {
+      image.addEventListener('click', () => {
+        window.showImageLightbox(image.dataset.generatedImageUrl);
       });
     });
 

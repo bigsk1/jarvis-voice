@@ -22,10 +22,10 @@ Configure via IMAGE_TOOL_PROVIDER in cloud.env (default: gemini)
 import base64
 import io
 import json
-import uuid
 import math
 import mimetypes
 import sys
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -35,10 +35,15 @@ from PIL import Image
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import get_config_value, load_config
-from remote_completion import RemoteCompletionError, completion_for_error, submission_error
 from image_catalog import upsert_image_catalog_entry
-from model_catalog import get_media_model_env_key, get_media_model_metadata, resolve_media_model, validate_media_model_provider
+from model_catalog import (
+    get_media_model_env_key,
+    get_media_model_metadata,
+    resolve_media_model,
+    validate_media_model_provider,
+)
 from paths import assert_not_restricted_read_path
+from remote_completion import RemoteCompletionError, completion_for_error, submission_error
 from stash_helper import safe_download_image
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -85,6 +90,10 @@ OPENAI_SIZES = {
     "3:4": "1024x1536",       # Approximate
     "16:9": "1536x1024",
     "9:16": "1024x1536",
+    "2:3": "1024x1536",
+    "3:2": "1536x1024",
+    "4:5": "1024x1536",
+    "5:4": "1536x1024",
     "1:1": "1024x1024"
 }
 
@@ -173,7 +182,10 @@ def _supports_openai_transparency(model_name: str) -> bool:
 
 def _resolve_openai_size(model_name: str, aspect_ratio: str, quality: str) -> str:
     aspect_key = str(aspect_ratio or "square").strip().lower()
-    if _is_gpt_image_2(model_name):
+    metadata = get_media_model_metadata("image", "openai", model_name) or {}
+    if _is_gpt_image_2(model_name) and (
+        not metadata or "flexible_sizes" in metadata.get("capabilities", [])
+    ):
         requested = str(quality or "2K").strip()
         size_key = {
             "low": "1K",
@@ -184,6 +196,34 @@ def _resolve_openai_size(model_name: str, aspect_ratio: str, quality: str) -> st
             size_key = "2K"
         return OPENAI_IMAGE_2_SIZES[size_key].get(aspect_key, OPENAI_IMAGE_2_SIZES[size_key]["square"])
     return OPENAI_SIZES.get(aspect_key, "1024x1024")
+
+
+def validate_openai_image_options(
+    model_name: str,
+    output_format: str = "png",
+    complexity: str | None = None,
+    frame_count: int | None = None,
+    frame_duration_ms: int | None = None,
+) -> None:
+    """Reject unsupported animation options before submitting paid provider work."""
+    metadata = get_media_model_metadata("image", "openai", model_name) or {}
+    formats = metadata.get("output_formats", ["png", "jpeg", "webp"])
+    if output_format not in formats:
+        raise ValueError(
+            f"{model_name} does not support {output_format} output; select GPT Image 2.6 for GIF"
+        )
+    if complexity is not None and complexity not in metadata.get("complexities", []):
+        raise ValueError(
+            f"Unsupported complexity for {model_name}; GPT Image 2.6 accepts low, medium, high"
+        )
+    if output_format != "gif" and (frame_count is not None or frame_duration_ms is not None):
+        raise ValueError("frame_count and frame_duration_ms require output_format=gif")
+    for name, value, minimum, maximum in (
+        ("frame_count", frame_count, 2, 16),
+        ("frame_duration_ms", frame_duration_ms, 20, 655350),
+    ):
+        if value is not None and (type(value) is not int or not minimum <= value <= maximum):
+            raise ValueError(f"{name} must be an integer from {minimum} through {maximum}")
 
 # =============================================================================
 # Provider: xAI Grok Imagine
@@ -254,9 +294,16 @@ def _inspect_generated_image(image_b64: str) -> dict:
     try:
         image_bytes = base64.b64decode(image_b64)
         with Image.open(io.BytesIO(image_bytes)) as image:
+            image_format = str(image.format or "").upper()
+            if image_format == "GIF":
+                from stash_helper import inspect_gif_image
+
+                metadata = inspect_gif_image(image_bytes)
+                width, height = metadata["width"], metadata["height"]
+                divisor = math.gcd(width, height)
+                return {**metadata, "aspect_ratio": f"{width // divisor}:{height // divisor}"}
             image.load()
             width, height = image.size
-            image_format = str(image.format or "").upper()
     except (ValueError, OSError) as exc:
         raise ValueError("Provider returned invalid image data") from exc
 
@@ -264,17 +311,19 @@ def _inspect_generated_image(image_b64: str) -> dict:
         "JPEG": "image/jpeg",
         "PNG": "image/png",
         "WEBP": "image/webp",
+        "GIF": "image/gif",
     }.get(image_format)
     if not mime_type:
         raise ValueError(f"Provider returned unsupported image format: {image_format or 'unknown'}")
 
     divisor = math.gcd(width, height)
-    return {
+    metadata = {
         "mime_type": mime_type,
         "width": width,
         "height": height,
         "aspect_ratio": f"{width // divisor}:{height // divisor}",
     }
+    return metadata
 
 
 def _extension_for_image_mime(mime_type: str) -> str:
@@ -282,13 +331,14 @@ def _extension_for_image_mime(mime_type: str) -> str:
         "image/jpeg": "jpg",
         "image/png": "png",
         "image/webp": "webp",
+        "image/gif": "gif",
     }.get(str(mime_type or "").lower(), "png")
 
 
 # =============================================================================
 # Image resolution helper
 # =============================================================================
-def _resolve_image_to_base64(image_source: str) -> tuple[str, str]:
+def _resolve_image_to_base64(image_source: str, *, allow_gif: bool = False) -> tuple[str, str]:
     """
     Resolve an image source to (base64_data, mime_type).
     
@@ -309,13 +359,14 @@ def _resolve_image_to_base64(image_source: str) -> tuple[str, str]:
         # Format: data:image/jpeg;base64,/9j/4AAQ...
         header, data = image_source.split(',', 1)
         mime = header.split(':')[1].split(';')[0]
+        if mime == "image/gif" and not allow_gif:
+            raise ValueError("GIF references require OpenAI GPT Image 2.6 with a reference frame")
         return data, mime
     
     # HTTP/HTTPS URL - download it
     if image_source.startswith(('http://', 'https://')):
-        image_bytes, content_type, _final_url, _metadata = safe_download_image(
-            image_source
-        )
+        options = {"allow_gif": True} if allow_gif else {}
+        image_bytes, content_type, _final_url, _metadata = safe_download_image(image_source, **options)
         return base64.b64encode(image_bytes).decode('utf-8'), content_type
     
     # Stash reference
@@ -353,7 +404,48 @@ def _resolve_image_to_base64(image_source: str) -> tuple[str, str]:
     mime_type = mimetypes.guess_type(local_path)[0] or 'image/jpeg'
     with open(local_path, 'rb') as f:
         data = f.read()
+    if (mime_type == "image/gif" or data.startswith((b"GIF87a", b"GIF89a"))) and not allow_gif:
+        raise ValueError("GIF references require OpenAI GPT Image 2.6 with a reference frame")
     return base64.b64encode(data).decode('utf-8'), mime_type
+
+
+def _prepare_openai_reference(
+    image_source: str, model_name: str, reference_frame: int | None,
+) -> tuple[str, str, dict]:
+    """Use one explicitly reported GIF frame as a still reference for regeneration."""
+    metadata = get_media_model_metadata("image", "openai", model_name) or {}
+    supports_gif = "animated_gif" in metadata.get("capabilities", [])
+    if reference_frame is not None and (type(reference_frame) is not int or reference_frame < 0):
+        raise ValueError("reference_frame must be a non-negative integer (first frame is 0)")
+    if supports_gif:
+        encoded, mime = _resolve_image_to_base64(image_source, allow_gif=True)
+    else:
+        encoded, mime = _resolve_image_to_base64(image_source)
+    raw = base64.b64decode(encoded)
+    if mime != "image/gif" and not raw.startswith((b"GIF87a", b"GIF89a")):
+        if reference_frame is not None:
+            raise ValueError("reference_frame is only supported for GIF source images")
+        return encoded, mime, {}
+    if not supports_gif:
+        raise ValueError("GIF references require OpenAI GPT Image 2.6")
+    from stash_helper import inspect_gif_image
+
+    source = inspect_gif_image(raw)
+    frame = reference_frame if reference_frame is not None else 0
+    if frame >= source["frame_count"]:
+        raise ValueError(f"reference_frame must be less than {source['frame_count']}")
+    with Image.open(io.BytesIO(raw)) as image:
+        image.seek(frame)
+        output = io.BytesIO()
+        image.convert("RGBA").save(output, format="PNG")
+    return base64.b64encode(output.getvalue()).decode("ascii"), "image/png", {
+        "reference_frame": frame,
+        "reference_frame_count": source["frame_count"],
+        "reference_note": (
+            f"Used GIF frame {frame} as a still reference; generated a new image or animation. "
+            "Original frames are unchanged."
+        ),
+    }
 
 
 def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = None,
@@ -644,7 +736,10 @@ def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size:
 def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: str = "medium",
                           style: str = None, negative_prompt: str = None,
                           transparent: bool = False, output_format: str = "png",
-                          reference_image: str = None, model: str | None = None) -> dict:
+                          reference_image: str = None, model: str | None = None,
+                          complexity: str | None = None, frame_count: int | None = None,
+                          frame_duration_ms: int | None = None,
+                          reference_frame: int | None = None) -> dict:
     """
     Generate or edit an image using OpenAI GPT Image API.
     
@@ -658,7 +753,7 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
         style: Optional art style to prepend
         negative_prompt: Things to avoid (appended to prompt)
         transparent: Enable transparent background (png/webp only)
-        output_format: png, jpeg, or webp
+        output_format: png, jpeg, webp, or gif (GPT Image 2.6 preview)
         reference_image: Source image for editing (stash ref, path, URL, or data URI)
     """
     
@@ -668,6 +763,11 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
     
     # Get model from env or use default
     model_name = _resolve_configured_image_model("openai", model)
+    validate_openai_image_options(model_name, output_format, complexity, frame_count, frame_duration_ms)
+    if reference_frame is not None and not reference_image:
+        raise ValueError("reference_frame requires reference_image")
+    if transparent and output_format not in ("png", "webp"):
+        raise ValueError("Transparent backgrounds require png or webp output")
     
     # Build the prompt
     full_prompt = prompt
@@ -683,6 +783,22 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
     # Map aspect ratio and requested size to OpenAI dimensions. GPT Image 2+
     # supports larger flexible sizes, while earlier models keep the legacy set.
     size = _resolve_openai_size(model_name, aspect_ratio, quality)
+    if output_format == "gif":
+        # The API documents model-specific GIF size limits without numerical
+        # bounds. Let the provider choose a supported size instead of sending
+        # still-image 2K/4K dimensions. Quality remains independent of size.
+        size = "auto"
+        ratio = GEMINI_ASPECT_RATIOS.get(aspect_ratio, aspect_ratio)
+        full_prompt += f"\nCreate a looping animated GIF. Requested aspect ratio: {ratio}."
+
+    animation_options = {}
+    if complexity is not None:
+        animation_options["complexity"] = complexity
+    if output_format == "gif":
+        animation_options["frame_count"] = frame_count if frame_count is not None else 9
+        animation_options["frame_duration_ms"] = (
+            frame_duration_ms if frame_duration_ms is not None else 200
+        )
 
     if transparent and not _supports_openai_transparency(model_name):
         print(
@@ -700,13 +816,16 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
         file=sys.stderr
     )
     
-    timeout = 180  # OpenAI can take up to 2 minutes for complex prompts
+    timeout = 600 if output_format == "gif" else 180
+    reference_metadata = {}
     
     if reference_image:
         # ---- IMAGE EDITING: POST /v1/images/edits (multipart/form-data) ----
         print("[generate_image] OpenAI image editing mode - reference image resolved", file=sys.stderr)
         
-        img_b64, img_mime = _resolve_image_to_base64(reference_image)
+        img_b64, img_mime, reference_metadata = _prepare_openai_reference(
+            reference_image, model_name, reference_frame,
+        )
         img_bytes = base64.b64decode(img_b64)
         
         # Determine file extension from mime
@@ -731,8 +850,9 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
         }
         if transparent and output_format in ("png", "webp"):
             form_data["background"] = "transparent"
-        if output_format in ("jpeg", "webp"):
+        if output_format in ("jpeg", "webp", "gif"):
             form_data["output_format"] = output_format
+        form_data.update({key: str(value) for key, value in animation_options.items()})
         
         response = requests.post(
             OPENAI_EDIT_API,
@@ -761,8 +881,9 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
             payload["background"] = "transparent"
         
         # Set output format (default png)
-        if output_format in ("jpeg", "webp"):
+        if output_format in ("jpeg", "webp", "gif"):
             payload["output_format"] = output_format
+        payload.update(animation_options)
         
         response = requests.post(
             OPENAI_API_BASE,
@@ -792,8 +913,13 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
         raise RuntimeError("No image data in response")
     
     # Determine mime type
-    mime_map = {"png": "image/png", "jpeg": "image/jpeg", "webp": "image/webp"}
+    mime_map = {"png": "image/png", "jpeg": "image/jpeg", "webp": "image/webp", "gif": "image/gif"}
     mime_type = mime_map.get(output_format, "image/png")
+    delivered = {}
+    if output_format == "gif":
+        delivered = _inspect_generated_image(image_b64)
+        if delivered["mime_type"] != "image/gif" or not delivered.get("animated"):
+            raise RuntimeError("OpenAI returned a still image instead of the requested animated GIF")
     
     # Get revised prompt if available
     revised_prompt = data[0].get('revised_prompt')
@@ -811,7 +937,14 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
         "quality": quality_setting,
         "transparent": transparent,
         "is_edit": reference_image is not None,
-        "used_grounding": False  # OpenAI doesn't have grounding
+        "used_grounding": False,  # OpenAI doesn't have grounding
+        "complexity": complexity,
+        "output_format": output_format,
+        "requested_aspect_ratio": aspect_ratio,
+        "requested_frame_count": animation_options.get("frame_count"),
+        "requested_frame_duration_ms": animation_options.get("frame_duration_ms"),
+        **delivered,
+        **reference_metadata,
     }
 
 
@@ -820,7 +953,10 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
                    negative_prompt: str = None, context_data: str = None,
                    transparent: bool = False, output_format: str = "png",
                    provider: str = None, n: int = 1,
-                   reference_image: str = None, model: str | None = None) -> dict:
+                   reference_image: str = None, model: str | None = None,
+                   complexity: str | None = None, frame_count: int | None = None,
+                   frame_duration_ms: int | None = None,
+                   reference_frame: int | None = None) -> dict:
     """
     Generate or edit an image using configured provider (Gemini, OpenAI, or xAI).
     
@@ -848,6 +984,11 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
     provider = str(get_config_value('IMAGE_TOOL_PROVIDER', provider or 'gemini')).strip().lower()
     if provider not in {'gemini', 'openai', 'xai'}:
         raise ValueError(f"Unsupported image provider: {provider}")
+    if provider != "openai" and (
+        output_format == "gif" or complexity is not None or frame_count is not None
+        or frame_duration_ms is not None or reference_frame is not None
+    ):
+        raise ValueError("GIF output, complexity and GIF frame options require OpenAI GPT Image 2.6")
 
     # Credential preflight: fail with configured alternatives instead of a
     # provider-specific API error. Never auto-switches providers.
@@ -872,6 +1013,10 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
             output_format=output_format,
             reference_image=reference_image,
             model=model,
+            complexity=complexity,
+            frame_count=frame_count,
+            frame_duration_ms=frame_duration_ms,
+            reference_frame=reference_frame,
         )
     elif provider == 'xai':
         return generate_image_xai(
@@ -952,11 +1097,14 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
             tool_origin='generate_image'
         )
 
-        if model:
+        if model or image_data.get("format") == "gif":
             file_id = result.get('file_id')
             for file_info in space.meta.get('files', []):
                 if file_info.get('file_id') == file_id:
                     file_info['model'] = model
+                    for key in ("format", "animated", "frame_count", "duration_ms", "frame_duration_ms"):
+                        if key in image_data:
+                            file_info[key] = image_data[key]
                     space._save_meta()
                     break
 
@@ -986,6 +1134,11 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
                 "width": image_data.get('width'),
                 "height": image_data.get('height'),
                 "mime_type": mime,
+                **{
+                    key: image_data[key]
+                    for key in ("format", "animated", "frame_count", "duration_ms", "frame_duration_ms")
+                    if key in image_data
+                },
                 "tags": tags,
                 "tool_origin": "generate_image",
                 "created_at": datetime.now().isoformat(),
@@ -1133,6 +1286,10 @@ def main():
         # OpenAI-specific parameters
         transparent = args.get('transparent', False)
         output_format = args.get('output_format', 'png')
+        complexity = args.get('complexity')
+        frame_count = args.get('frame_count')
+        frame_duration_ms = args.get('frame_duration_ms')
+        reference_frame = args.get('reference_frame')
         provider = args.get('provider')  # Override provider if specified
         model = args.get('model')  # Explicit model wins over Web/ENV defaults
         
@@ -1156,7 +1313,11 @@ def main():
             provider=provider,
             model=model,
             n=n,
-            reference_image=reference_image
+            reference_image=reference_image,
+            complexity=complexity,
+            frame_count=frame_count,
+            frame_duration_ms=frame_duration_ms,
+            reference_frame=reference_frame,
         )
         
         provider_completed = True
@@ -1202,6 +1363,8 @@ def main():
         provider_used = result.get('provider', 'gemini')
         is_edit = result.get('is_edit', False)
         action_word = "Edited image" if is_edit else "Generated image"
+        if result.get("animated"):
+            action_word = "Generated animated GIF"
         speech = f"{action_word} with {provider_used}: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
         
         response = {
@@ -1224,6 +1387,16 @@ def main():
         elif provider_used == 'openai':
             response["data"]["size"] = result.get('size')
             response["data"]["quality"] = result.get('quality')
+            for key in (
+                "output_format", "complexity", "format", "animated", "frame_count",
+                "duration_ms", "frame_duration_ms", "width", "height", "requested_aspect_ratio",
+                "requested_frame_count", "requested_frame_duration_ms", "reference_frame",
+                "reference_frame_count", "reference_note",
+            ):
+                if result.get(key) is not None:
+                    response["data"][key] = result[key]
+            if result.get("reference_note"):
+                response["speech"] += f". {result['reference_note']}"
             if result.get('transparent'):
                 response["data"]["transparent"] = True
             if result.get('revised_prompt'):

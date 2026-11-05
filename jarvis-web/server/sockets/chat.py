@@ -4037,6 +4037,17 @@ Previous structured data:
             print(f"[CHAT] Image action: {image_action}, count: {len(image_items)}, settings: {image_settings}")
 
             if image_action in ('stash', 'craft'):
+                if image_action == 'craft' and any(
+                    str(item.get('filename', '')).lower().endswith('.gif') for item in image_items
+                ):
+                    self._emit_run_event('chat:error', {
+                        'message_id': message_id,
+                        'conversation_id': conversation_id,
+                        'error': 'Craft editing does not accept GIF input. Choose image editing to regenerate from a source GIF frame.',
+                        'error_code': 'unsupported_gif_craft_input',
+                        'timestamp': time.time(),
+                    }, room=delivery_room)
+                    return
                 uploaded_images = []
                 for index, img in enumerate(image_items, start=1):
                     check_preparation_cancelled()
@@ -4053,6 +4064,7 @@ Previous structured data:
                 inventory = '\n'.join(
                     f"Image {item['ordinal']}: {item['stash_ref']} — source {item.get('width')}x{item.get('height')} pixels; "
                     f"preview {item.get('preview_width')}x{item.get('preview_height')} pixels"
+                    f"{self._gif_upload_summary(item)}"
                     for item in uploaded_images)
                 instruction = (
                     'Use craft_image for supported edits ON these source images. Preserve the first image as the base; '
@@ -4065,6 +4077,15 @@ Previous structured data:
                 message += f'\n\n[IMAGE SOURCES]\n{inventory}\n[END IMAGE SOURCES]\n{instruction}'
 
             elif image_action == 'video':
+                if str(primary_payload.get('filename', '')).lower().endswith('.gif'):
+                    self._emit_run_event('chat:error', {
+                        'message_id': message_id,
+                        'conversation_id': conversation_id,
+                        'error': 'GIF-to-video input is unavailable. Choose image editing to regenerate from a source GIF frame.',
+                        'error_code': 'unsupported_gif_video_input',
+                        'timestamp': time.time(),
+                    }, room=delivery_room)
+                    return
                 # IMAGE TO VIDEO: Skip vision, stash image, force params via overrides
                 print("[CHAT] Image-to-video mode - skipping vision analysis")
                 user_video_prompt = message.strip()
@@ -4139,6 +4160,24 @@ Previous structured data:
 
             elif image_action == 'image':
                 # IMAGE TO IMAGE: Skip vision, stash image, force params via overrides
+                from ..services.image_generation_options import validate_image_generation_settings
+
+                try:
+                    validate_image_generation_settings(
+                        image_settings,
+                        source_gif=primary_payload.get('mime_type') == 'image/gif'
+                        or str(primary_payload.get('filename', '')).lower().endswith('.gif'),
+                        source_frame_count=primary_image.get('source_frame_count'),
+                    )
+                except ValueError as error:
+                    self._emit_run_event('chat:error', {
+                        'message_id': message_id,
+                        'conversation_id': conversation_id,
+                        'error': str(error),
+                        'error_code': 'invalid_image_settings',
+                        'timestamp': time.time(),
+                    }, room=delivery_room)
+                    return
                 print("[CHAT] Image-to-image mode - skipping vision analysis")
                 self._emit_run_event('chat:status', {
                     'message_id': message_id,
@@ -4217,6 +4256,25 @@ Previous structured data:
 
             else:
                 # ANALYZE (default): Vision analysis flow (supports multiple images)
+                from ..services.image_generation_options import validate_gif_analysis_frame
+
+                try:
+                    gif_frame = validate_gif_analysis_frame(image_settings, image_items)
+                    if gif_frame is not None and attachments:
+                        raise ValueError('Choose a sampled timeline when analyzing a GIF alongside other sources')
+                except ValueError as error:
+                    self._emit_run_event('chat:error', {
+                        'message_id': message_id,
+                        'conversation_id': conversation_id,
+                        'error': str(error),
+                        'error_code': 'invalid_gif_analysis_frame',
+                        'timestamp': time.time(),
+                    }, room=delivery_room)
+                    return
+                gif_scopes = []
+                gif_options = {}
+                if any(item.get('mime_type') == 'image/gif' for item in image_items):
+                    gif_options = {'gif_frame': gif_frame, 'gif_scope_out': gif_scopes}
                 image_count = len(image_items)
                 status_label = f'Analyzing {image_count} images...' if image_count > 1 else 'Analyzing image...'
                 print(f"[CHAT] Processing {image_count} image(s) with vision model...")
@@ -4235,7 +4293,8 @@ Previous structured data:
                             f"Image {index}: {str(img.get('filename') or 'uploaded image')}"
                             for index, img in enumerate(image_items, 1)
                         ),
-                        mode
+                        mode,
+                        **gif_options,
                     )
                 except Exception as exc:
                     from vision_provider import VisionCapabilityError
@@ -4301,6 +4360,9 @@ Previous structured data:
                             'settings': image_settings,
                             'uploaded_sha256': img.get('uploaded_sha256'),
                         }
+                        gif_scope = next((scope for scope in gif_scopes if scope.get('image_index') == index - 1), None)
+                        if gif_scope:
+                            stash_payload['gif_vision_scope'] = gif_scope
                         if batch_id:
                             stash_payload.update({
                                 'batch_id': batch_id,
@@ -4353,7 +4415,7 @@ Previous structured data:
                         vision_prefix = f"{WEB_UPLOAD_MULTI_IMAGE_VISION_ANALYSIS_PREFIX} ({image_count}). Vision analysis:"
                     image_inventory = '\n'.join(
                         f"Image {item['ordinal']}: {item.get('source_filename') or 'uploaded image'} "
-                        f"— Stash reference: {item['stash_ref']}"
+                        f"— Stash reference: {item['stash_ref']}{self._gif_upload_summary(item)}"
                         for item in uploaded_images
                     )
                     if image_inventory:
@@ -5737,6 +5799,14 @@ Mode: {mode}
         
         return output_path
 
+    @staticmethod
+    def _gif_upload_summary(metadata: dict) -> str:
+        """Keep retained animation identity in chat and cross-session memory."""
+        if metadata.get('mime_type') != 'image/gif':
+            return ''
+        kind = 'animated GIF' if metadata.get('animated') else 'GIF'
+        return f"; {kind}; {metadata.get('frame_count', '?')} frames; {metadata.get('duration_ms', '?')} ms"
+
     def _auto_stash_image(self, image_data: dict, vision_analysis: str = '', mode: str = 'cloud') -> dict | None:
         """
         Auto-stash uploaded image for future tool access.
@@ -5774,6 +5844,13 @@ Mode: {mode}
                     uploads_path = original
             with Image.open(uploads_path) as source:
                 source_size = source.size
+            animation_metadata = {}
+            if uploads_path.suffix.lower() == '.gif':
+                from stash_helper import inspect_gif_image
+
+                animation_metadata = inspect_gif_image(uploads_path.read_bytes())
+                if isinstance(image_data.get('gif_vision_scope'), dict):
+                    animation_metadata['gif_vision_scope'] = image_data['gif_vision_scope']
             
             # Import stash helper
             from stash_helper import open_space
@@ -5830,7 +5907,9 @@ Mode: {mode}
                 'file_id': file_id,
                 'name': dest_filename,
                 'stored_name': dest_filename,
-                'mime_type': 'image/png' if dest_path.suffix == '.png' else 'image/jpeg',
+                'mime_type': {
+                    '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp',
+                }.get(dest_path.suffix.lower(), 'image/jpeg'),
                 'size_bytes': file_size,
                 'width': source_size[0], 'height': source_size[1],
                 'hash_sha256': file_hash,
@@ -5839,6 +5918,7 @@ Mode: {mode}
                 'created_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z',
                 'vision_analysis': vision_analysis[:500] if has_vision else '',
                 'vision_analysis_scope': vision_scope,
+                **animation_metadata,
             }
             if is_multi_image_batch:
                 file_meta.update({
@@ -5874,6 +5954,7 @@ Mode: {mode}
                 else:
                     image_action = image_data.get('action', 'upload')
                     memory_value = f"Uploaded image for {image_action}. STASH: {stash_ref}. FILE: {dest_filename}"
+                memory_value += self._gif_upload_summary(animation_metadata)
                 
                 memory_tags = ["image", "user_upload"]
                 if has_vision:
@@ -5887,6 +5968,8 @@ Mode: {mode}
                     "tags": memory_tags,
                     "type": "image",
                     "vision_analysis_scope": vision_scope,
+                    "mime_type": file_meta['mime_type'],
+                    **animation_metadata,
                 }
                 if is_multi_image_batch:
                     memory_metadata.update({
@@ -5922,6 +6005,7 @@ Mode: {mode}
                 'has_vision_analysis': has_vision,
                 'vision_analysis': vision_analysis[:500] if has_vision else '',
                 'vision_analysis_scope': vision_scope,
+                **animation_metadata,
             }
             if is_multi_image_batch:
                 result.update({
@@ -6012,6 +6096,17 @@ Mode: {mode}
                     return f'Uploaded image exceeds 30MB: {filename}'
                 hydrated['base64'] = base64.b64encode(pixels).decode('utf-8')
                 hydrated['uploaded_sha256'] = hashlib.sha256(pixels).hexdigest()
+                # Animation identity and frame bounds come from stored bytes,
+                # never browser-supplied metadata.
+                for field in ('source_frame_count', 'frame_count', 'duration_ms', 'animated', 'gif_vision_scope'):
+                    hydrated.pop(field, None)
+                hydrated['mime_type'] = 'image/png' if upload_path.suffix.lower() == '.png' else 'image/jpeg'
+                if pixels.startswith((b'GIF87a', b'GIF89a')):
+                    from stash_helper import inspect_gif_image
+
+                    metadata = inspect_gif_image(pixels)
+                    hydrated.update(metadata)
+                    hydrated['source_frame_count'] = metadata['frame_count']
             except Exception as exc:
                 print(f"[VISION] Failed to load uploaded image {filename}: {exc}")
                 return f'Could not load uploaded image: {filename}'
@@ -6021,7 +6116,10 @@ Mode: {mode}
         image_data['images'] = hydrated_images
         return None
 
-    def _process_vision(self, images_base64: list[str], prompt: str, mode: str) -> str | None:
+    def _process_vision(
+        self, images_base64: list[str], prompt: str, mode: str, *,
+        gif_frame: int | None = None, gif_scope_out: list[dict] | None = None,
+    ) -> str | None:
         """
         Process one or more images with a vision model.
         Returns the vision model's description/analysis.
@@ -6046,11 +6144,15 @@ Mode: {mode}
             )
             model = mode_config.get('llm_model')
         print(f"[VISION] Shared dispatch: mode={mode}, provider={provider}, model={model or '(default)'}")
+        gif_options = {}
+        if gif_frame is not None or gif_scope_out is not None:
+            gif_options = {'gif_frame': gif_frame, 'gif_scope_out': gif_scope_out}
         analysis = analyze_images(
             images_base64,
             _web_vision_prompt(prompt),
             mode=mode,
             provider=provider,
             model=model,
+            **gif_options,
         )
         return _validate_web_vision_analysis(analysis)

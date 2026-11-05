@@ -184,7 +184,7 @@ def test_canvas_cdn_upload_quotes_filename_for_internal_api(tmp_path, monkeypatc
     get.assert_called_once_with(
         f"http://jarvis-api:8880/api/generated-images/{quote(filename, safe='')}/cdn-url",
         headers={},
-        timeout=60,
+        timeout=90,
     )
 
 

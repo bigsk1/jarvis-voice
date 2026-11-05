@@ -17,15 +17,17 @@ shareable infographics, public content meant for distribution.
 """
 import sys
 from pathlib import Path
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 # Add lib and skills to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / 'lib'))
 sys.path.insert(0, str(PROJECT_ROOT / 'skills'))
 
-from config_loader import load_config, get_config_value
+from config_loader import get_config_value, load_config  # noqa: E402
 
 # Load config from correct env file (local.env or cloud.env based on JARVIS_MODE)
 load_config()
@@ -115,8 +117,8 @@ async def upload_image(request: ImageUploadRequest):
         if request.provider:
             metadata['provider'] = request.provider
         
-        result = cf_upload(
-            request.source, 
+        result = await run_in_threadpool(
+            cf_upload, request.source,
             request.source_type,
             uploader=request.uploader,
             category=request.category,
@@ -187,7 +189,10 @@ async def upload_base64_image(data: dict):
     try:
         from upload_cloudflare import upload_image as cf_upload
         
-        result = cf_upload(base64_data, "base64", uploader=uploader, category=category, metadata=metadata if metadata else None)
+        result = await run_in_threadpool(
+            cf_upload, base64_data, "base64", uploader=uploader, category=category,
+            metadata=metadata if metadata else None,
+        )
         
         return ImageUploadResponse(
             ok=result.get("ok", False),

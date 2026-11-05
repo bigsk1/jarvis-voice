@@ -39,6 +39,7 @@ def analyze_image(
     question: str = "Describe this image in detail.",
     stash_after: bool = False,
     images: list = None,
+    gif_frame: int | None = None,
 ) -> dict:
     """
     Analyze an image using vision model.
@@ -51,6 +52,7 @@ def analyze_image(
         question: What to ask about the image (default: general description)
         stash_after: If True and image is from URL, save to stash for future access
         images: Optional list of image sources for multi-image analysis
+        gif_frame: Optional zero-based frame for one GIF; omitted samples its timeline
         
     Returns:
         dict with analysis results, image info, and optional stash reference
@@ -103,7 +105,15 @@ def analyze_image(
             resolved_images.append(resolved)
 
         images_base64 = [item['base64'] for item in resolved_images if item.get('base64')]
-        analysis = _analyze_with_vision(images_base64, question, mode)
+        gif_scopes = []
+        if any(item.get('mime_type') == 'image/gif' for item in resolved_images) or gif_frame is not None:
+            analysis = _analyze_with_vision(
+                images_base64, question, mode, gif_frame=gif_frame, gif_scope_out=gif_scopes,
+            )
+        else:
+            analysis = _analyze_with_vision(images_base64, question, mode)
+        for scope in gif_scopes:
+            resolved_images[scope['image_index']]['gif_vision_scope'] = scope
         
         if not analysis:
             return {
@@ -131,6 +141,8 @@ def analyze_image(
             "source_count": len(resolved_images),
             "sources": [item.get('original_path') for item in resolved_images],
         }
+        if gif_scopes:
+            response_data['gif_vision_scopes'] = gif_scopes
 
         if len(resolved_images) == 1:
             primary = resolved_images[0]
@@ -147,6 +159,11 @@ def analyze_image(
                 'processed_height',
                 'resized_for_vision',
                 'recompressed_for_vision',
+                'animated',
+                'frame_count',
+                'duration_ms',
+                'vision_scope',
+                'gif_vision_scope',
             ):
                 if field in primary:
                     response_data[field] = primary[field]
@@ -205,10 +222,12 @@ def _load_from_url(url: str) -> dict | None:
         # - SSRF protection (blocks private IPs)
         # - Safe redirect handling
         # - Size limits
-        from stash_helper import safe_download, sanitize_filename, SecurityError
+        from stash_helper import GIF_MAX_FILE_SIZE, SecurityError, safe_download, sanitize_filename
         
         try:
-            image_bytes, content_type, final_url = safe_download(url, max_size=20*1024*1024)  # 20MB limit
+            image_bytes, content_type, final_url = safe_download(url, max_size=GIF_MAX_FILE_SIZE)
+            if len(image_bytes) > 20 * 1024 * 1024 and image_bytes[:6] not in {b'GIF87a', b'GIF89a'}:
+                raise SecurityError('Still image exceeds the 20 MiB safety limit')
         except SecurityError as sec_err:
             _debug(f"[ANALYZE_IMAGE] Security error downloading URL: {sec_err}")
             return None
@@ -252,9 +271,14 @@ def _load_from_file(path: str) -> dict | None:
             _debug(f"[ANALYZE_IMAGE] Not a file: {file_path}")
             return None
         
-        # Check file size (limit to 20MB)
+        # GIFs retain the same 30 MiB source cap as Web upload and image editing.
+        from stash_helper import GIF_MAX_FILE_SIZE
+
         size = file_path.stat().st_size
-        if size > 20 * 1024 * 1024:
+        with file_path.open('rb') as stream:
+            is_gif = stream.read(6) in {b'GIF87a', b'GIF89a'}
+        max_bytes = GIF_MAX_FILE_SIZE if is_gif else 20 * 1024 * 1024
+        if size > max_bytes:
             _debug(f"[ANALYZE_IMAGE] File too large: {size} bytes")
             return None
         
@@ -363,7 +387,7 @@ def _guess_mime_type(file_path: Path) -> str:
 
 def _prepare_image_for_vision(image_bytes: bytes, mime_type: str = 'image/jpeg') -> tuple[str, dict]:
     """
-    Convert images into a bounded JPEG payload for vision APIs.
+    Bound still images; retain validated GIFs for shared frame normalization.
 
     Browser uploads are already resized on /api/upload-image, but follow-up
     stash refs, URLs, and local files can be much larger. Keep the visual
@@ -372,6 +396,17 @@ def _prepare_image_for_vision(image_bytes: bytes, mime_type: str = 'image/jpeg')
     from PIL import Image, ImageOps
 
     original_bytes = len(image_bytes)
+    if image_bytes[:6] in {b'GIF87a', b'GIF89a'}:
+        from stash_helper import inspect_gif_image
+
+        metadata = inspect_gif_image(image_bytes)
+        # The shared dispatcher samples the timeline or selects one requested frame.
+        # Retain the animation here so URL stash_after and follow-ups keep it.
+        return base64.b64encode(image_bytes).decode('ascii'), {
+            **metadata,
+            'original_width': metadata['width'],
+            'original_height': metadata['height'],
+        }
     try:
         with Image.open(io.BytesIO(image_bytes)) as img:
             img = ImageOps.exif_transpose(img)
@@ -464,7 +499,10 @@ def _sanitize_vision_prompt(question: str) -> str:
     return question
 
 
-def _analyze_with_vision(images_base64: list[str], question: str, mode: str) -> str | None:
+def _analyze_with_vision(
+    images_base64: list[str], question: str, mode: str, *,
+    gif_frame: int | None = None, gif_scope_out: list | None = None,
+) -> str | None:
     """Perform vision analysis through the shared mode-aware dispatcher."""
     question = _sanitize_vision_prompt(question)
     if not images_base64:
@@ -496,12 +534,16 @@ def _analyze_with_vision(images_base64: list[str], question: str, mode: str) -> 
         f"provider={provider}, model={model or '(vision default)'}, "
         f"count={len(images_base64)}"
     )
+    options = {}
+    if gif_scope_out is not None or gif_frame is not None:
+        options = {'gif_frame': gif_frame, 'gif_scope_out': gif_scope_out}
     return analyze_images(
         images_base64,
         question,
         mode=mode,
         provider=provider,
         model=model,
+        **options,
     )
 
 
@@ -528,7 +570,10 @@ def _stash_image(image_data: dict, analysis: str, mode: str) -> dict | None:
         raw_filename = image_data.get('filename', f'image_{timestamp}.jpg')
         # Use stash_helper's sanitize_filename for path traversal protection
         filename = sanitize_filename(raw_filename)
-        if not filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+        is_gif = image_data.get('mime_type') == 'image/gif'
+        if is_gif and not filename.lower().endswith('.gif'):
+            filename = str(Path(filename).with_suffix('.gif'))
+        if not filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
             filename += '.jpg'
         
         dest_path = space.space_path / filename
@@ -543,7 +588,7 @@ def _stash_image(image_data: dict, analysis: str, mode: str) -> dict | None:
             'file_id': file_id,
             'name': filename,
             'stored_name': filename,
-            'mime_type': 'image/jpeg',
+            'mime_type': 'image/gif' if is_gif else 'image/jpeg',
             'size_bytes': len(image_bytes),
             'hash_sha256': file_hash,
             'tags': ['analyzed', 'downloaded'],
@@ -552,6 +597,13 @@ def _stash_image(image_data: dict, analysis: str, mode: str) -> dict | None:
             'vision_analysis': analysis[:500],
             'original_url': image_data.get('original_path', '')
         }
+        if is_gif:
+            for key in (
+                'format', 'animated', 'frame_count', 'duration_ms', 'frame_duration_ms',
+                'gif_vision_scope',
+            ):
+                if key in image_data:
+                    file_meta[key] = image_data[key]
         
         space.meta.setdefault('files', []).append(file_meta)
         space._save_meta()
@@ -580,7 +632,13 @@ def _stash_image(image_data: dict, analysis: str, mode: str) -> dict | None:
                     "filename": filename,
                     "original_url": image_data.get('original_path', ''),
                     "tags": ["image", "analyzed", "downloaded"],
-                    "type": "image"
+                    "type": "image",
+                    **({
+                        'mime_type': 'image/gif',
+                        'frame_count': image_data.get('frame_count'),
+                        'duration_ms': image_data.get('duration_ms'),
+                        'gif_vision_scope': image_data.get('gif_vision_scope'),
+                    } if is_gif else {}),
                 }
             )
         except Exception as mem_err:
@@ -623,6 +681,7 @@ def main():
             question=question,
             stash_after=stash_after,
             images=images,
+            gif_frame=args.get('gif_frame'),
         )
         
         # Output result as JSON

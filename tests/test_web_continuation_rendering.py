@@ -215,6 +215,7 @@ assert.equal(ui.messagesContainer.querySelectorAll('.message-response-actions').
 @pytest.mark.parametrize('form', ['live', 'saved', 'nested', 'object', 'object_nested', 'object_marker'])
 @pytest.mark.parametrize('tool,filename,mime,tag', [
     ('generate_image', 'image.png', 'image/png', 'img'),
+    ('generate_image', 'animation.gif', 'image/gif', 'img'),
     ('generate_video', 'video.mp4', 'video/mp4', 'video'),
     ('generate_music', 'music.wav', 'audio/wav', 'audio'),
     ('create_social_clip', 'social.mp4', 'video/mp4', 'video'),

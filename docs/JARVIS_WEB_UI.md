@@ -648,6 +648,37 @@ forced into that tool call and is not written back to AI Config. For ordinary
 tool calls, an explicit `model` argument wins; when omitted, the tool uses the
 request-scoped Web/ENV pin and then the catalog default.
 
+OpenAI's model picker includes GPT Image 2.6 Sunburst and Flare. Their attachment
+options offer animated GIF output, complexity, frame count (2–16), and frame delay
+(at least 20 ms). GIF generation requires OpenAI GIF preview access; choosing a
+model does not grant that access. GIF dimensions are automatic, while the size
+control selects rendering quality. Changing models removes unsupported formats
+and clears hidden animation settings before submission.
+
+Generated GIFs, WebP, PNG, and JPEG images appear inline with a download button
+and click-to-expand lightbox, both in new responses and saved chat history.
+GIF previews play the original animation. Uploaded GIFs use the same animated
+image previews as other image attachments, with download available in the lightbox.
+
+Canvas's GIF **Edit in Jarvis Web** action imports the original animation and
+opens image editing with an OpenAI GIF-capable model. Choose a source frame
+(starting at 0) and describe the new result. This regenerates from that one frame;
+it does not preserve or edit the existing animation frame by frame. The original
+GIF remains available in Stash and Canvas. Provider/model selections in this
+modal apply only to this request.
+
+GIF **Analyze** samples a bounded timeline by default, including the first and
+last frames. With one GIF as the only source, the optional **Analyze GIF frame**
+field selects a single frame starting at 0. Leave it blank to use the sampled
+timeline. Mixed image/document batches sample each GIF independently; adding
+another source clears a previous single-frame choice. The analysis records the
+sampled or selected frame indices and timestamps, without claiming to review
+every frame. Previews and Stash keep the original animation. Saved chat context
+and cross-session memory retain its frame count, duration, and analysis scope.
+
+GIF output uses a **Preferred aspect ratio** hint. OpenAI chooses the final GIF
+dimensions; Jarvis reports the delivered dimensions and aspect ratio.
+
 **Child configuration loading:**
 Child tool scripts (for example `generate_image.py`) call `load_config()` in
 their own process. An ordinary unprefixed provider value would be replaced by

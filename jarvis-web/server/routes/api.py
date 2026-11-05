@@ -3468,9 +3468,11 @@ def _process_uploaded_image_file(file, suffix: str = '', include_base64: bool = 
     Resizes large images and stores for conversation history.
     Returns {ok, filename, url, base64, ...} or {ok: False, error}.
     """
-    from datetime import datetime
-    from PIL import Image, ImageOps
     import io
+    from datetime import datetime
+
+    from PIL import Image, ImageOps
+    from stash_helper import GIF_MAX_FILE_SIZE, inspect_gif_image
     
     if not file or file.filename == '':
         return {'ok': False, 'error': 'No file selected'}
@@ -3488,6 +3490,31 @@ def _process_uploaded_image_file(file, suffix: str = '', include_base64: bool = 
 
     try:
         img = Image.open(file.stream)
+        if img.format == 'GIF':
+            file.stream.seek(0)
+            gif_bytes = file.stream.read(GIF_MAX_FILE_SIZE + 1)
+            img.close()
+            metadata = inspect_gif_image(gif_bytes)
+            UPLOADS_PATH.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S%f')
+            filename = f"upload_{timestamp}{suffix}.gif"
+            (UPLOADS_PATH / filename).write_bytes(gif_bytes)
+            result = {
+                'ok': True,
+                'filename': filename,
+                'url': f'/api/uploads/{filename}',
+                **metadata,
+                'size_kb': round(len(gif_bytes) / 1024, 1),
+                'source_width': metadata['width'],
+                'source_height': metadata['height'],
+                'source_frame_count': metadata['frame_count'],
+                'source_preserved': True,
+            }
+            if include_base64:
+                import base64
+
+                result['base64'] = base64.b64encode(gif_bytes).decode('ascii')
+            return result
         img = ImageOps.exif_transpose(img)
         source_size = img.size
         source_img = None

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "analyze_image",
-  "description": "👁️ Analyze images using AI vision. Understands photos, screenshots, documents, artwork. Accepts: URLs (https://...), local files (/path/to/image.jpg), stash references (stash://space_id/file_id). Supports multiple images in one request (up to 6 cloud / 2 local). Use for: identifying objects, reading text in images, describing scenes, comparing images, answering questions about visual content. Can optionally save web images to stash for future tool access.",
+  "description": "👁️ Analyze images using AI vision. Understands photos, screenshots, documents, artwork, and GIFs. GIF analysis uses a bounded chronological contact sheet of sampled frames; optional gif_frame selects one frame. Accepts URLs, local files, and stash references. Supports up to 6 cloud / 2 local source images. Use for identifying objects, reading text, describing scenes, comparing images or sampled GIF states. Can optionally save web images to stash for future tool access.",
   "complementary_tools": [
     "canvas",
     "stash",
@@ -27,6 +27,11 @@
       "stash_after": {
         "type": "boolean",
         "description": "If true and image is from URL, download and save to stash for future access by other tools (email, print, canvas). Default: false"
+      },
+      "gif_frame": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Optional zero-based frame index when analyzing exactly one GIF source. Omit to inspect up to 6 chronological sampled frames spanning the animation. This is sampled visual analysis, not complete continuous-motion analysis."
       }
     },
     "required": []
@@ -39,4 +44,3 @@
     "auto_approve": true
   }
 }
-

@@ -92,6 +92,7 @@ function renderGallery() {
         const provider = img.provider || detectProvider(img.name);
         const model = String(img.model || '').trim();
         const favorite = Boolean(img.favorite);
+        const gif = img.format === 'gif' || /\.gif$/i.test(img.name);
         
         return `
         <div class="image-card${favorite ? ' is-favorite' : ''}" data-index="${index}">
@@ -99,8 +100,9 @@ function renderGallery() {
                 <img src="/api/gallery/images/${encodeURIComponent(img.name)}" 
                      alt="${escapeHtml(formatImageName(img.name, false))}"
                      loading="lazy">
-                ${provider || model ? `
+                ${provider || model || gif ? `
                     <div class="image-badges">
+                        ${gif ? `<span class="image-format" title="${img.animated ? 'Animated GIF' : 'GIF image'}">GIF</span>` : ''}
                         ${provider ? `<span class="image-provider">${escapeHtml(provider)}</span>` : ''}
                         ${model ? `<span class="image-model" title="${escapeHtml(model)}">${escapeHtml(model)}</span>` : ''}
                     </div>
@@ -117,7 +119,7 @@ function renderGallery() {
                         <button class="btn btn-favorite${favorite ? ' is-favorite' : ''}" onclick="event.stopPropagation(); toggleFavoriteByIndex(${index}, this)" title="${favorite ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${favorite ? 'true' : 'false'}">${favorite ? '♥' : '♡'}</button>
                         <button class="btn btn-primary" onclick="event.stopPropagation(); downloadByIndex(${index})" title="Download image">⬇️</button>
                         <button class="btn btn-secondary" onclick="event.stopPropagation(); getCdnUrlByIndex(${index}, this)" title="${img.cdn_cached ? 'Copy cached CDN URL' : 'Create CDN URL'}">🔗</button>
-                        <button class="btn btn-accent" onclick="event.stopPropagation(); sendImageToJarvisWebByIndex(${index})" title="Send to Jarvis Web for video">🎬</button>
+                        <button class="btn btn-accent" onclick="event.stopPropagation(); sendImageToJarvisWebByIndex(${index})" title="${gif ? 'Regenerate GIF from a reference frame in Jarvis Web' : 'Send to Jarvis Web for video'}">${gif ? '✏️' : '🎬'}</button>
                     </div>
                     <div class="image-actions-right">
                         <button class="btn btn-danger" onclick="event.stopPropagation(); deleteByIndex(${index})" title="Delete image">🗑️</button>
@@ -396,6 +398,12 @@ function openLightbox(filename) {
     label.dataset.filename = filename;
     label.textContent = formatImageName(filename, false);
     updateLightboxFavoriteButton(filename);
+    const handoffButton = document.getElementById('lightboxVideoBtn');
+    if (handoffButton) {
+        const gif = /\.gif$/i.test(filename);
+        handoffButton.textContent = gif ? '✏️ Edit GIF in Jarvis' : '🎬 Send to Jarvis';
+        handoffButton.title = gif ? 'Regenerate a GIF from a selected reference frame' : 'Send to Jarvis Web for video';
+    }
     document.getElementById('lightbox').classList.add('active');
     document.body.style.overflow = 'hidden';
 }
@@ -589,7 +597,8 @@ function sendImageToJarvisWeb(filename) {
         return;
     }
 
-    window.open(buildJarvisWebMediaHandoffUrl(filename), '_blank', 'noopener');
+    const action = /\.gif$/i.test(filename) ? 'image' : 'video';
+    window.open(buildJarvisWebMediaHandoffUrl(filename, 'image', action), '_blank', 'noopener');
     showToast('Opened image in a new Jarvis Web conversation', 'success');
 }
 

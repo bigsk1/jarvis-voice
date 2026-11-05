@@ -229,6 +229,12 @@ curl -X POST http://localhost:8880/api/generated-images/generate \
 | `negative_prompt` | string | null | Things to avoid |
 | `use_grounding` | bool | false | Use Google Search for real-time data (Gemini only) |
 | `provider` | string | null | Override provider: "gemini", "openai", or "xai" |
+| `model` | string | null | Override the selected provider's model for this request |
+| `output_format` | string | null | OpenAI: png, jpeg, webp, or gif (GIF requires a supporting model and GIF preview access) |
+| `complexity` | string | null | low, medium, or high on supporting OpenAI models |
+| `frame_count` | int | null | GIF output frames, 2–16; OpenAI default 9 |
+| `frame_duration_ms` | int | null | GIF frame delay, 20–655350 ms; OpenAI default 200, rounded to 10 ms |
+| `reference_frame` | int | null | Zero-based source GIF frame for regeneration; defaults to 0. Requires an OpenAI GIF-capable model. |
 | `transparent` | bool | false | Transparent background (OpenAI only, png/webp) |
 | `n` | int | 1 | Number of images to generate, 1-10 (xAI only; forced to 1 when editing) |
 | `save` | bool | true | Save to disk and stash |
@@ -293,6 +299,35 @@ curl -X POST http://localhost:8880/api/generated-images/generate \
     "aspect_ratio": "landscape"
   }'
 ```
+
+**Generate an animated GIF with GPT Image 2.6:**
+```bash
+curl -X POST http://localhost:8880/api/generated-images/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "A small robot waving in a smooth repeating loop",
+    "provider": "openai",
+    "model": "gpt-image-2.6-sunburst",
+    "output_format": "gif",
+    "frame_count": 9,
+    "frame_duration_ms": 200,
+    "complexity": "medium"
+  }'
+```
+
+Both `gpt-image-2.6-sunburst` and `gpt-image-2.6-flare` support GIF output, subject
+to the account's OpenAI GIF preview access. Existing model defaults are unchanged.
+GIF dimensions use OpenAI's automatic size; `image_size` selects rendering
+quality rather than fixed GIF dimensions. Transparent backgrounds require PNG
+or WebP. GIF generation has an 11-minute route deadline; a timeout does not prove
+that the provider stopped work.
+
+Generated GIFs retain their original animation bytes in local storage, Stash,
+downloads, and Canvas's images gallery. The list, file, and base64 routes support
+`image/gif`. To regenerate from a GIF, provide `reference_image` and optionally
+`reference_frame`. Jarvis extracts that one frame for the new generation and
+reports the selection; this is not an editor for preserving the source animation
+frame by frame. Use `output_format: "gif"` for a new animated result.
 
 **Batch generation (xAI only - multiple variations):**
 ```bash

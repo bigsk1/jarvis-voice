@@ -873,6 +873,44 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
             "name": "OpenAI GPT Image",
             "models": [
                 {
+                    "id": "gpt-image-2.6-sunburst",
+                    "name": "GPT Image 2.6 Sunburst",
+                    "capabilities": [
+                        "generation", "editing", "quality_control",
+                        "transparent_background", "complexity_control", "animated_gif",
+                    ],
+                    "resolutions": ["1K", "2K", "4K"],
+                    "qualities": ["low", "medium", "high", "xhigh", "max", "auto"],
+                    "output_formats": ["png", "jpeg", "webp", "gif"],
+                    "complexities": ["low", "medium", "high"],
+                    "gif": {
+                        "frame_count": {"min": 2, "max": 16, "default": 9},
+                        "frame_duration_ms": {"min": 20, "max": 655350, "default": 200},
+                        "size": "auto",
+                        "preview": True,
+                    },
+                    "pricing": {"unit": "variable", "note": "Usage-based pricing; GIF preview access required"},
+                },
+                {
+                    "id": "gpt-image-2.6-flare",
+                    "name": "GPT Image 2.6 Flare",
+                    "capabilities": [
+                        "generation", "editing", "quality_control",
+                        "transparent_background", "complexity_control", "animated_gif",
+                    ],
+                    "resolutions": ["1K", "2K", "4K"],
+                    "qualities": ["low", "medium", "high", "xhigh", "max", "auto"],
+                    "output_formats": ["png", "jpeg", "webp", "gif"],
+                    "complexities": ["low", "medium", "high"],
+                    "gif": {
+                        "frame_count": {"min": 2, "max": 16, "default": 9},
+                        "frame_duration_ms": {"min": 20, "max": 655350, "default": 200},
+                        "size": "auto",
+                        "preview": True,
+                    },
+                    "pricing": {"unit": "variable", "note": "Usage-based pricing; GIF preview access required"},
+                },
+                {
                     "id": "gpt-image-2.5-sunburst",
                     "name": "GPT Image 2.5 Sunburst",
                     "default": True,
@@ -1306,6 +1344,9 @@ def get_media_provider_options(
             "aspect_ratios",
             "duration_seconds",
             "qualities",
+            "output_formats",
+            "complexities",
+            "gif",
             "pricing",
         ):
             if key in metadata:

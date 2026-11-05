@@ -174,7 +174,8 @@ body {
     z-index: 1;
 }
 
-.image-provider {
+.image-provider,
+.image-format {
     flex: 0 0 auto;
     padding: 4px 8px;
     border-radius: 4px;
@@ -183,6 +184,10 @@ body {
     color: white;
     text-transform: uppercase;
     background: var(--accent);
+}
+
+.image-format {
+    background: rgba(0, 0, 0, 0.78);
 }
 
 .image-model {

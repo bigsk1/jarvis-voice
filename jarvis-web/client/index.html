@@ -1415,6 +1415,14 @@
             </div>
           </div>
 
+          <p class="setting-desc" id="imageActionGifHint" style="display: none;">GIFs stay animated in Stash. Analysis samples a timeline of frames. Image editing regenerates from a selected frame with an OpenAI GIF-capable model; GIF input is unavailable for video and Craft editing.</p>
+
+          <div class="setting-group" id="imgActionGifAnalysisOpts" style="display: none;">
+            <label class="setting-label" for="imgActionAnalyzeGifFrame">Analyze GIF frame (optional)</label>
+            <input type="number" class="setting-input" id="imgActionAnalyzeGifFrame" min="0" step="1" placeholder="Automatic sampled timeline">
+            <span class="setting-desc" id="imgActionAnalyzeGifFrameDesc">Leave blank to sample a timeline. Enter a frame number starting at 0 to analyze only that frame. The original animation stays intact.</span>
+          </div>
+
           <!-- Video Options (shown when Image to Video selected) -->
           <div class="image-action-options" id="imageActionVideoOpts" style="display: none; margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border-color);">
             <div class="setting-group">
@@ -1471,7 +1479,7 @@
               <span class="setting-desc" id="imgActionImageModelDesc"></span>
             </div>
             <div class="setting-group">
-              <label class="setting-label">Aspect Ratio</label>
+              <label class="setting-label" id="imgActionImageRatioLabel">Aspect Ratio</label>
               <select class="setting-input" id="imgActionImageRatio">
                 <option value="">Default</option>
                 <option value="square">Square (1:1)</option>
@@ -1485,14 +1493,21 @@
                 <option value="4:5">4:5</option>
                 <option value="5:4">5:4</option>
               </select>
+              <span class="setting-desc" id="imgActionImageRatioDesc"></span>
             </div>
             <div class="setting-group">
-              <label class="setting-label">Size</label>
+              <label class="setting-label" id="imgActionImageSizeLabel">Size</label>
               <select class="setting-input" id="imgActionImageSize">
                 <option value="2K">2K (Default)</option>
                 <option value="1K">1K (Fast)</option>
                 <option value="4K">4K (Best)</option>
               </select>
+              <span class="setting-desc" id="imgActionImageSizeDesc"></span>
+            </div>
+            <div class="setting-group" id="imgActionGifReferenceOpts" style="display: none;">
+              <label class="setting-label" for="imgActionReferenceFrame">Source GIF frame</label>
+              <input type="number" class="setting-input" id="imgActionReferenceFrame" min="0" step="1" value="0">
+              <span class="setting-desc" id="imgActionGifReferenceDesc">Use this frame (starting at 0) as the reference for a new generation. The existing animation is preserved in Stash; this does not edit its individual frames.</span>
             </div>
             <div class="setting-group">
               <label class="setting-label">Style</label>
@@ -1528,6 +1543,27 @@
                   <option value="jpeg">JPEG (Smaller)</option>
                   <option value="webp">WebP (Modern)</option>
                 </select>
+                <span class="setting-desc" id="imgActionOutputFormatDesc"></span>
+              </div>
+              <div class="setting-group" id="imgActionComplexityOpts" style="display: none;">
+                <label class="setting-label" for="imgActionComplexity">Complexity</label>
+                <select class="setting-input" id="imgActionComplexity">
+                  <option value="">Default</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+              <div id="imgActionGifOpts" style="display: none;">
+                <div class="setting-group">
+                  <label class="setting-label" for="imgActionFrameCount">GIF frames</label>
+                  <input type="number" class="setting-input" id="imgActionFrameCount" min="2" max="16" step="1" value="9">
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label" for="imgActionFrameDuration">Frame delay (milliseconds)</label>
+                  <input type="number" class="setting-input" id="imgActionFrameDuration" min="20" max="655350" step="10" value="200">
+                  <span class="setting-desc">Smaller values play faster. OpenAI rounds delays to 10 ms.</span>
+                </div>
               </div>
             </div>
 

@@ -51,6 +51,25 @@ Each tool has no standard way to:
 | **Lifecycle-managed** | TTL + scope-based auto-cleanup |
 | **Cross-session** | Spaces can persist across conversations |
 
+Generated animated GIFs are stored as binary `image/gif` files. Stash preserves
+their frames, timing, loop setting, and transparency; Canvas serves the same
+bytes for image embeds and downloads. GIF generation also saves a durable
+Images Gallery copy and provider/model/animation metadata, so Stash expiration
+does not remove the gallery file.
+
+The normal strict `kind="image_url"` import remains a JPEG/PNG/WebP-to-JPEG
+normalizer. GIF-aware generation explicitly opts into the shared downloader's
+`allow_gif=True` path, which preserves GIF bytes after decoding every frame.
+GIF references and Web uploads share a 30 MiB limit, 256 frames, and 40 million
+cumulative decoded frame pixels. Choosing a reference frame for
+image editing leaves these stored originals intact.
+`analyze_image` also retains GIF bytes for URL, local-file, and Stash sources;
+its default analysis samples a bounded timeline, with an optional single-frame
+selection. The analysis records its frame indices and timestamps, while Stash
+and cross-session memory preserve animation metadata separately from the
+useful visual description. With `stash_after=true`, a URL
+GIF is saved as an animation with `image/gif` metadata, not a still preview.
+
 ### Use Cases Beyond Documents
 
 | Use Case | Examples |
