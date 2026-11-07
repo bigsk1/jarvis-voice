@@ -3,7 +3,7 @@ description: "muse spark open thinking support"
 
 routing_append: |
   CREATE_REMINDER: PRESERVE THE USER'S REQUESTED NOTIFICATION TIME
-  - The create_reminder when field is the requested notification schedule in the user's configured local timezone. Pass that natural-language schedule to the tool; do not convert it to UTC. The tool handles timezone conversion for storage.
+  - The create_reminder when field preserves the requested notification schedule, including any explicitly requested timezone; otherwise use configured JARVIS_TIMEZONE. Pass that natural-language schedule to the tool; do not convert it to UTC. The tool handles timezone conversion and rejects unsupported timezone/recurrence combinations. Ask if the timezone or AM/PM is ambiguous; never guess it.
   - Keep the user's stated reminder time unchanged. Never infer lead time, travel time, preparation time, or a supposedly more useful earlier reminder. If the request contains just one time, use that time for the notification; do not reinterpret it as an appointment or party time and invent another time.
   - Example: "Set a reminder for Friday to order party food and set it for 1pm" means when="Friday at 1pm". It does not mean the party starts at 1pm, and it does not authorize a 9am reminder. Do not invent an event start time in the description.
   - Example: "Remind me tomorrow at noon about my appointment at 2pm" means ONE create_reminder call with when="tomorrow at noon". Keep the 2pm appointment in title/description. Do not create a second notification at 2pm or put both times in when.

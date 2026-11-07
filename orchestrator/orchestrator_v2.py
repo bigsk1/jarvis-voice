@@ -8,6 +8,7 @@ import sys
 import json
 import time
 import re
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 from datetime import datetime, timedelta
@@ -18,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import (
     load_config,
+    config_scope,
     get_int,
     get_float,
     get_config_value,
@@ -49,6 +51,14 @@ from workflow_availability import (
 from pipeline_executor import PipelineExecutor
 from lib.background_tasks.admission import carry_pending_jobs
 from lib.prompt_guard_observer import is_prompt_guard_rejection, prompt_guard_notice
+from lib.reminder_feedback import reminder_schedule_rejection
+from lib.reminder_receipts import reminder_schedule_warning
+from lib.reminder_schedule import resolve_schedule
+from lib.reminder_request import (
+    reminder_request_coverage_warning,
+    reminder_request_rejection,
+    reminder_request_timezone,
+)
 
 
 SINGLE_CALL_TOOLS = frozenset({
@@ -496,6 +506,7 @@ class Orchestrator:
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")  # Unique session ID
         self.executor.set_session_context(jarvis_session_id=self.session_id)
         self.timezone = ZoneInfo(get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles"))
+        self._timezone_is_configured = bool(get_config_value("JARVIS_TIMEZONE"))
         
         # Auto-context configuration
         self.auto_context_enabled = get_config_value('AUTO_CONTEXT_ENABLED', 'true').lower() == 'true'
@@ -1375,12 +1386,25 @@ Mode: {self.mode}
         
         return result
     
+    def _reminder_coverage_warning(self, original_query: str, state: TurnState) -> str | None:
+        """Retain proven missing notifications for both the answer and follow-ups."""
+        warning = reminder_request_coverage_warning(
+            original_query, state.conversation_context, reference_time=datetime.now(self.timezone),
+        )
+        if warning:
+            state.accumulated_data['_reminder_request_coverage_warning'] = warning
+        else:
+            state.accumulated_data.pop('_reminder_request_coverage_warning', None)
+        return warning
+
     def _reminder_response_speech(
-        self, conversation_context: list[dict], router_commentary: str = ""
+        self, conversation_context: list[dict], router_commentary: str = "", *,
+        coverage_warning: str | None = None,
     ) -> str | None:
         """Select actual receipts for a reminder turn, including recovery stops."""
         actual_contexts = [
-            ctx for ctx in conversation_context if ctx.get("tool") != "duplicate_guard"
+            ctx for ctx in conversation_context
+            if ctx.get("tool") not in {"duplicate_guard", "reminder_completion_guard"}
         ]
         if not any(ctx.get("tool") == "create_reminder" for ctx in actual_contexts):
             return None
@@ -1391,7 +1415,7 @@ Mode: {self.mode}
             ctx.get("tool") not in self.DIRECT_SPEECH_TOOLS | preparation_tools
             for ctx in actual_contexts
         )
-        if has_other_actions and not router_commentary:
+        if has_other_actions and not router_commentary and not coverage_warning:
             # A safety-stop summary must still account for cancellation/other actions.
             return None
 
@@ -1399,11 +1423,13 @@ Mode: {self.mode}
         saved_subjects = set()
         for ctx in reversed(actual_contexts):
             tool = ctx.get("tool")
-            if tool not in self.DIRECT_SPEECH_TOOLS:
+            if tool not in self.DIRECT_SPEECH_TOOLS and not (
+                has_other_actions and coverage_warning and tool not in preparation_tools
+            ):
                 continue
             result = ctx.get("result", {})
             if tool == "create_reminder":
-                if has_other_actions:
+                if has_other_actions and not coverage_warning:
                     # A later cancellation may invalidate an earlier create receipt.
                     continue
                 arguments = ctx.get("arguments", {})
@@ -1426,10 +1452,17 @@ Mode: {self.mode}
                 receipt = receipt.strip()
                 if receipt and not receipt.endswith((".", "!", "?")):
                     receipt += "."
+                warning = reminder_schedule_warning(
+                    ctx.get("arguments", {}), result, local_timezone=self.timezone,
+                )
+                if warning:
+                    receipt = f"{receipt} {warning}".strip()
             if receipt:
                 receipts.append(receipt)
         receipts.reverse()
-        if has_other_actions:
+        if coverage_warning:
+            receipts.append(coverage_warning)
+        if has_other_actions and not coverage_warning:
             receipts.append(router_commentary)
         return " ".join(receipts).strip() or None
 
@@ -2043,6 +2076,26 @@ Mode: {self.mode}
                     tool_name == "workflow"
                     and _workflow_run_is_capped(arguments, state.tool_trace)
                 )
+                is_reminder_recovery_stalled = False
+                if tool_name == 'create_reminder' and any(
+                    ctx.get('tool') == 'reminder_completion_guard' for ctx in state.conversation_context
+                ):
+                    reference_time = datetime.now(self.timezone)
+                    before = reminder_request_coverage_warning(
+                        original_query, state.conversation_context, reference_time=reference_time,
+                    )
+                    projected_context = {
+                        'tool': 'create_reminder', 'arguments': arguments,
+                        'result': {'ok': True, 'data': {
+                            'schedule_reference_time': reference_time.isoformat(),
+                            'schedule_timezone': str(self.timezone),
+                        }},
+                    }
+                    after = reminder_request_coverage_warning(
+                        original_query, [*state.conversation_context, projected_context],
+                        reference_time=reference_time,
+                    )
+                    is_reminder_recovery_stalled = not before or after == before
 
                 # @TOOL_CONFIG: single-call cap — expensive tools limited to
                 # one attempt per request (including failed attempts).
@@ -2054,13 +2107,16 @@ Mode: {self.mode}
                     or is_workflow_run_capped
                 )
 
-                if is_exact_duplicate or is_over_cap or is_fresh_same_target_recall or is_canvas_capped:
+                if (is_exact_duplicate or is_over_cap or is_fresh_same_target_recall
+                        or is_canvas_capped or is_reminder_recovery_stalled):
                     if is_exact_duplicate:
                         reason = "exact duplicate"
                     elif is_canvas_capped:
                         reason = canvas_cap_reason
                     elif is_over_cap:
                         reason = f"{tool_name} already called (max 1)"
+                    elif is_reminder_recovery_stalled:
+                        reason = "this call does not cover an unsaved requested notification"
                     else:
                         reason = f"{tool_name} already has fresh result for same target"
                     if sys.stdout.isatty():
@@ -2128,18 +2184,22 @@ Mode: {self.mode}
 
                     # Generate intelligent summary using accumulated data (not just tool list!)
                     # This ensures the user gets actual research results, not just "I used tools"
-                    reminder_speech = self._reminder_response_speech(state.conversation_context)
+                    reminder_speech = self._reminder_response_speech(
+                        state.conversation_context,
+                        coverage_warning=self._reminder_coverage_warning(original_query, state),
+                    )
                     final_speech = reminder_speech or self._synthesize_duplicate_prevented_response(
                         transcript, state.tools_used, state.accumulated_data, state.conversation_context
                     )
 
+                    coverage_warning = state.accumulated_data.get('_reminder_request_coverage_warning')
                     completed_any_tool = bool(state.tools_used)
 
                     self._log_conversation(
                         conversation_query,
                         final_speech,
                         state.tools_used,
-                        success=completed_any_tool,
+                        success=completed_any_tool and not coverage_warning,
                     )
 
                     # Mark status updates complete
@@ -2147,10 +2207,12 @@ Mode: {self.mode}
 
                     return {
                         "speech": final_speech,
-                        "ok": completed_any_tool,
+                        "ok": completed_any_tool and not coverage_warning,
                         "tools_used": state.tools_used,
                         "data": state.accumulated_data,
                         "duplicate_prevented": True,
+                        **({'error_code': 'incomplete_reminder_request', 'error': coverage_warning}
+                           if coverage_warning else {}),
                         **({
                             "raw_llm_response": final_speech,
                             "tool_trace": state.tool_trace,
@@ -2266,14 +2328,61 @@ Mode: {self.mode}
                 # Execute the tool with timing
                 tool_start_time = time.time()
                 self._active_tool_call_index = call_index
+                timezone_scope = ExitStack()
                 try:
-                    if background_context:
+                    schedule_rejection = None
+                    if tool_name == "create_reminder":
+                        reference_time = datetime.now(self.timezone)
+                        reason = None
+                        request_timezone_only = False
+                        if not getattr(self, '_timezone_is_configured', True):
+                            request_zone = reminder_request_timezone(
+                                original_query, reference_time=reference_time,
+                            )
+                            zone_name = getattr(request_zone, 'key', None)
+                            if request_zone is not None and request_zone.utcoffset(None) == timedelta(0):
+                                zone_name = zone_name or 'UTC'
+                            if not zone_name:
+                                reason = 'No reminder timezone is configured; ask the user for an IANA timezone'
+                            else:
+                                # Pin the child to a zone supplied by the human, never
+                                # a model guess copied from a prompt's legacy fallback.
+                                timezone_scope.enter_context(config_scope(
+                                    self.mode, overrides={'JARVIS_TIMEZONE': zone_name},
+                                ))
+                                request_timezone_only = True
+                                reference_time = reference_time.astimezone(request_zone)
+                        if not reason:
+                            reason = reminder_request_rejection(
+                                original_query, arguments, reference_time=reference_time,
+                            )
+                        if not reason and request_timezone_only:
+                            try:
+                                _, recurrence = resolve_schedule(
+                                    arguments.get('when'), now=reference_time,
+                                    schedule=arguments.get('schedule'),
+                                )
+                                if recurrence:
+                                    reason = ('No reminder timezone is configured; recurring reminders '
+                                              'require a persistent JARVIS_TIMEZONE setting')
+                            except ValueError as error:
+                                reason = str(error)
+                        if reason:
+                            schedule_rejection = reminder_schedule_rejection(
+                                reason, when=arguments.get("when"), reference_time=reference_time,
+                            )
+                    if schedule_rejection is not None:
+                        # Preserve the normal failed-result trace/recovery path, without
+                        # running a child that could write to the DB or Calendar.
+                        result = schedule_rejection
+                    elif background_context:
                         result = self.executor.execute(
                             tool_name, arguments, background_context=background_context,
                             invocation_id=str(route.get('tool_call_id') or f'{tool_name}:{call_index}'))
                     else:
                         result = self.executor.execute(tool_name, arguments)
                 finally:
+                    timezone_scope.close()
                     self._active_tool_call_index = None
                 tool_duration_ms = int((time.time() - tool_start_time) * 1000)
                 from lib.background_tasks.admission import is_admission
@@ -2664,16 +2773,52 @@ Mode: {self.mode}
                     ctx for ctx in state.conversation_context
                     if ctx.get("tool") == "create_reminder"
                 ]
+                coverage_warning = None
 
                 if reminder_contexts:
                     router_commentary = route.get("text_response", "") or ""
+                    coverage_warning = self._reminder_coverage_warning(original_query, state)
+                    recovered_coverage = any(
+                        ctx.get('tool') == 'reminder_completion_guard'
+                        for ctx in state.conversation_context
+                    )
+                    has_saved_reminder = any(ctx.get('result', {}).get('ok') for ctx in reminder_contexts)
+                    has_inconsistent_receipt = any(
+                        reminder_schedule_warning(
+                            ctx.get('arguments', {}), ctx.get('result', {}), local_timezone=self.timezone,
+                        ) for ctx in reminder_contexts
+                    )
+                    only_reminder_actions = all(
+                        ctx.get('tool') in {
+                            'create_reminder', 'tool_search', 'get_time', 'list_reminders',
+                            'duplicate_guard', 'reminder_completion_guard',
+                        } for ctx in state.conversation_context
+                    )
+                    if (coverage_warning and has_saved_reminder and not has_inconsistent_receipt
+                            and only_reminder_actions and not recovered_coverage
+                            and (turn_num + 1) < max_turns):
+                        # Only an explicitly requested, independently identified missing
+                        # notification may be completed. Saved reminders are never retried.
+                        state.conversation_context.append({
+                            'tool': 'reminder_completion_guard',
+                            'arguments': {},
+                            'result': {'ok': False, 'error': coverage_warning},
+                            'speech': (
+                                coverage_warning + ' Complete only the missing notifications '
+                                'explicitly requested by the user. Do not recreate, replace, '
+                                'or cancel saved reminders, and do not repeat other actions. '
+                                'If clarification is needed, ask instead of guessing.'
+                            ),
+                        })
+                        self._emit_progress('routing', message='Checking the remaining requested reminders...')
+                        continue
                     # Keep unverified QA for review without presenting it as a receipt.
                     for entry in reversed(state.tool_trace):
                         if entry.get("tool") == "create_reminder":
                             entry["reminder_router_commentary"] = router_commentary
                             break
                     raw_speech = self._reminder_response_speech(
-                        state.conversation_context, router_commentary
+                        state.conversation_context, router_commentary, coverage_warning=coverage_warning,
                     ) or router_commentary
                     # Preserve receipts and mixed-action answers without another model pass.
                     use_direct_speech = True
@@ -2723,7 +2868,7 @@ Mode: {self.mode}
                 response = {
                     "speech": speech,
                     "raw_llm_response": raw_speech,  # Original LLM response before voice formatting
-                    "ok": True,
+                    "ok": not bool(coverage_warning),
                     "tools_used": state.tools_used,
                     "data": state.accumulated_data,
                     "tool_trace": state.tool_trace,
@@ -2734,6 +2879,8 @@ Mode: {self.mode}
                     "response_style": response_style,
                     "qa_word_limit": int(get_config_value('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT))),
                     "multi_turn_word_limit": int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', str(DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT))),
+                    **({'error_code': 'incomplete_reminder_request', 'error': coverage_warning}
+                       if coverage_warning else {}),
                 }
                 
                 # Add token info to response if available (cloud only)
@@ -2775,7 +2922,7 @@ Mode: {self.mode}
                     conversation_query,
                     speech,
                     state.tools_used,
-                    success=True,
+                    success=response['ok'],
                     token_info=token_info,
                     experience_id=experience_id if experience_id > 0 else None,
                 )
@@ -2817,7 +2964,10 @@ Mode: {self.mode}
         # Generate intelligent summary of what was accomplished
         response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'casual').lower()
         
-        reminder_speech = self._reminder_response_speech(state.conversation_context)
+        reminder_speech = self._reminder_response_speech(
+            state.conversation_context,
+            coverage_warning=self._reminder_coverage_warning(original_query, state),
+        )
         if reminder_speech:
             final_speech = reminder_speech
         elif response_style == 'casual' or response_style == 'auto':
@@ -2830,18 +2980,21 @@ Mode: {self.mode}
         if sys.stdout.isatty():
             print(f"⚠️  Max turns ({max_turns}) reached")
         
-        self._log_conversation(conversation_query, final_speech, state.tools_used, success=True)
+        coverage_warning = state.accumulated_data.get('_reminder_request_coverage_warning')
+        self._log_conversation(conversation_query, final_speech, state.tools_used, success=not bool(coverage_warning))
         
         # Mark status updates complete
         self.status_updater.mark_complete()
         
         result = {
             "speech": final_speech,
-            "ok": True,
+            "ok": not bool(coverage_warning),
             "tools_used": state.tools_used,
             "data": state.accumulated_data,
             "tool_trace": state.tool_trace,
             "max_turns_reached": True,
+            **({'error_code': 'incomplete_reminder_request', 'error': coverage_warning}
+               if coverage_warning else {}),
             "available_tools": state.available_tools,
             "web_search_hint_tools": sorted(state.web_search_hint_tools),
             "usage": state.total_usage if self._has_usage_data(state.total_usage) else None,

@@ -648,7 +648,14 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'semantic_recall': ['count'],
     'update_memory': ['memory_id', 'old_value', 'new_value'],
     'forget': ['deleted_id', 'deleted_key', 'deleted_ids', 'deleted_keys', 'missing_ids'],
-    'create_reminder': ['reminder_id', 'formatted_time'],
+    'create_reminder': [
+        'reminder_id', 'formatted_time', 'trigger_time', 'trigger_time_local',
+        'recurring', 'recurrence_rule', 'duplicate_suppressed', 'duplicate_recent',
+        'gcal_synced', 'gcal_synced_count', 'reminders_created', 'reminders_total',
+        'newly_created_count', 'reminders_reused', 'schedule_reference_time',
+        'schedule_timezone', 'requested_when', 'needs_clarification',
+        'clarification_question', 'schedule_rejection_reason',
+    ],
     'create_notification': ['id', 'title', 'source', 'mode', 'created_at', 'deduplicated', 'deliveries'],
     'acknowledge_alerts': ['alert_id', 'acknowledged', 'cleared_count'],
     'acknowledge_reminders': [
@@ -2834,6 +2841,136 @@ def _extract_deepwiki_followup(data: dict, key: str, value, max_candidates: int)
     }
 
 
+_REMINDER_ROW_FIELDS = (
+    'reminder_id', 'trigger_time', 'trigger_time_local', 'formatted_time',
+    'recurring', 'recurrence_rule', 'duplicate_suppressed', 'gcal_synced',
+)
+_REMINDER_SCHEDULE_FIELDS = (
+    'kind', 'timezone', 'delay_seconds', 'date', 'time', 'weekday', 'day',
+    'count', 'start_offset',
+)
+
+
+def _reminder_scalars(payload: dict, fields) -> dict:
+    return {
+        field: value for field in fields
+        if (value := _compact_generic_scalar(field, payload.get(field))) is not None
+    }
+
+
+def _compact_reminder_run(value: dict, arguments: dict, max_candidates: int, max_chars: int) -> dict:
+    payload = value.get('data') if isinstance(value.get('data'), dict) else value
+    failed = value.get('ok') is False or payload.get('needs_clarification') is True
+    fields = FOLLOWUP_FIELDS['create_reminder'] if not failed else (
+        'needs_clarification', 'clarification_question', 'schedule_rejection_reason',
+        'requested_when', 'schedule_reference_time', 'schedule_timezone',
+    )
+    compact = _reminder_scalars(payload, fields)
+    if failed:
+        compact['ok'] = False
+        if value.get('error_code') or payload.get('needs_clarification'):
+            compact['error_code'] = value.get('error_code') or 'invalid_reminder_schedule'
+        if value.get('error'):
+            compact['error'] = _truncate_followup_text(str(value['error']), 300)
+    elif isinstance(value.get('ok'), bool):
+        compact['ok'] = value['ok']
+    request = _reminder_scalars(arguments, ('title', 'description', 'when'))
+    if isinstance(arguments.get('schedule'), dict):
+        request['schedule'] = _reminder_scalars(arguments['schedule'], _REMINDER_SCHEDULE_FIELDS)
+    if request:
+        compact['request'] = request
+    if isinstance(payload.get('requested_schedule'), dict):
+        compact['requested_schedule'] = _reminder_scalars(
+            payload['requested_schedule'], _REMINDER_SCHEDULE_FIELDS,
+        )
+    rows = payload.get('reminders')
+    if not failed and isinstance(rows, list):
+        rows = [row for row in rows if isinstance(row, dict)]
+        ids = [row['reminder_id'] for row in rows if type(row.get('reminder_id')) is int]
+        # Keep every ID in the supported 366-day batch without repeating its
+        # title, semantic schedule and reference clock hundreds of times.
+        compact['reminder_ids'] = ids[:366]
+        compact['reminder_ids_total'] = len(ids)
+        compact['reminders'] = [
+            _reminder_scalars(row, _REMINDER_ROW_FIELDS)
+            for row in rows[:max(1, min(max_candidates, 5))]
+        ]
+        compact['reminders_shown'] = len(compact['reminders'])
+        compact['reminders_truncated'] = len(rows) > len(compact['reminders'])
+        for field, row in (('first_reminder', rows[0] if rows else None),
+                           ('last_reminder', rows[-1] if rows else None)):
+            if row:
+                compact[field] = _reminder_scalars(row, _REMINDER_ROW_FIELDS)
+        if compact['reminders_truncated'] or len(ids) > len(compact['reminder_ids']):
+            compact['followup_note'] = (
+                'Occurrence details are sampled; use list_reminders for omitted times or current state. '
+                'Use only the reminder IDs retained here for follow-up actions.'
+            )
+        # Multiple independent creations share the same total history budget.
+        # Prefer IDs to repeated occurrence details; any omitted IDs are explicit.
+        while len(_strict_json_text(compact)) > max_chars and compact['reminders']:
+            compact['reminders'].pop()
+            compact['reminders_shown'] = len(compact['reminders'])
+            compact['reminders_truncated'] = True
+        while len(_strict_json_text(compact)) > max_chars and compact['reminder_ids']:
+            compact['reminder_ids'].pop()
+        compact['reminder_ids_truncated'] = len(ids) > len(compact['reminder_ids'])
+        if compact['reminder_ids_truncated']:
+            compact['followup_note'] = (
+                'Some reminder IDs or occurrence details were omitted for follow-up context. '
+                'Use list_reminders to recover them before acting on omitted reminders.'
+            )
+    if len(_strict_json_text(compact)) > max_chars:
+        compact = _bounded_structured_followup_value(compact, max_chars=max_chars)
+    return compact
+
+
+def _extract_reminder_followup(data: dict, max_candidates: int, *, max_chars: int = 6500) -> dict:
+    value = data.get('create_reminder')
+    canonical = value if isinstance(value, list) else [value] if isinstance(value, dict) else []
+    failures = [run for run in canonical if isinstance(run, dict) and (
+        run.get('ok') is False or run.get('needs_clarification') is True or (isinstance(run.get('data'), dict)
+                                  and run['data'].get('needs_clarification') is True)
+    )]
+    successes = [run for run in canonical if isinstance(run, dict) and run not in failures]
+    trace = [entry for entry in data.get('_tool_trace') or []
+             if isinstance(entry, dict) and entry.get('tool') == 'create_reminder']
+    matched_trace = sum(entry.get('ok') is True for entry in trace) == len(successes)
+    pending = iter(successes if matched_trace else [])
+    # A partial trace cannot identify which saved receipt its arguments own.
+    # Retain canonical receipts without attaching another reminder's subject.
+    runs = [] if matched_trace else [(run, {}) for run in successes]
+    reconstructed_failure = False
+    for entry in trace:
+        arguments = entry.get('arguments') if isinstance(entry.get('arguments'), dict) else {}
+        if entry.get('ok') is True:
+            saved = next(pending, None)
+            if isinstance(saved, dict):
+                runs.append((saved, arguments))
+        elif entry.get('ok') is False:
+            details = entry.get('result_data')
+            if isinstance(details, dict) and details.get('needs_clarification') is True:
+                runs.append(({'ok': False, 'error': entry.get('error'), 'data': details}, arguments))
+                reconstructed_failure = True
+    runs.extend((run, {}) for run in pending if isinstance(run, dict))
+    if not reconstructed_failure:
+        runs.extend((run, {}) for run in failures)
+    if not runs:
+        return {}
+    selected = runs[-3:]
+    # Reserve room for the wrapper and ordinary JSON whitespace around all IDs.
+    projected = [_compact_reminder_run(run, arguments, max_candidates, max_chars // len(selected))
+                 for run, arguments in selected]
+    if len(runs) == 1:
+        return projected[0]
+    return {
+        'runs_count': len(runs), 'results': projected,
+        'results_truncated': len(selected) < len(runs),
+        **({'followup_note': 'Some creation receipts were omitted; use list_reminders before acting on them.'}
+           if len(selected) < len(runs) else {}),
+    }
+
+
 def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict | None:
     """
     Extract key data from tool results that enables follow-up actions.
@@ -2855,6 +2992,14 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
     if max_candidates is None:
         max_candidates = FOLLOWUP_DEFAULT_MAX_CANDIDATES
     followup: dict = {}
+    coverage_warning = data.get('_reminder_request_coverage_warning')
+    coverage_note = _truncate_followup_text(coverage_warning, 1200) if isinstance(coverage_warning, str) else ''
+    reminder_budget = 6500 - len(_strict_json_text({'request_coverage_warning': coverage_note})) - 64 if coverage_note else 6500
+    reminder_followup = _extract_reminder_followup(data, max_candidates, max_chars=reminder_budget)
+    if reminder_followup:
+        followup['create_reminder'] = reminder_followup
+    if coverage_note:
+        followup.setdefault('create_reminder', {})['request_coverage_warning'] = coverage_note
 
     # Older/trace-only failed audio runs still own an already paid recording.
     # Reconstruct only when the canonical accumulated result is absent.
@@ -2905,7 +3050,7 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             followup['send_webhook'] = projected
 
     for key, value in data.items():
-        if key == 'send_webhook':
+        if key in {'send_webhook', 'create_reminder'}:
             continue
         if key in FOLLOWUP_DATA_SKIP_KEYS:
             continue

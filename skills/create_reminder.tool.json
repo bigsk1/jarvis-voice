@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "create_reminder",
-  "description": "Create reminder(s) that can trigger TTS notifications. Use when user says: 'remind me', 'set a reminder', 'add to calendar', 'schedule', 'create event', 'calendar event', etc. IMPORTANT: Supports bounded daily spans in a SINGLE call. Examples: 'next 5 days at 2pm', 'for the next 5 days at 2pm', '5 days in a row at 2pm', 'every day for 5 days at 2pm', 'every day the next 2 weeks at 5pm'. Do NOT split bounded daily requests into separate one-time plus recurring reminders unless the user explicitly asks for separate reminders. Also supports: 'in 30 minutes', 'tomorrow at 3pm', 'May 1st at 6pm', 'next month on the 1st at 6pm', 'every Wednesday at 2pm' (weekly), 'every month on the 10th' (monthly), 'every day at 2pm' (daily recurring). IMPORTANT: when is the requested notification schedule only; preserve any later appointment time in title/description. For 'Remind me tomorrow at noon about my appointment at 2pm', create ONE reminder with when='tomorrow at noon' and title='Appointment at 2pm'. Do not infer lead time or create a second notification from a time mentioned in the reminder message. Create separate reminders only for explicitly requested distinct notifications. After success, confirm the saved result; do not call again to verify or correct that reminder with different arguments. If the saved schedule is wrong, report the actual saved schedule and the mismatch rather than silently creating a replacement.",
+  "description": "Create reminder notifications and optional Calendar events. Interpret the user's wording into schedule selectors; Jarvis computes and validates dates before saving. Keep when as the original notification schedule and prefer the structured schedule argument for varied phrasing. For Monday at 5pm use kind=weekday, weekday=0, time=17:00; do not compute a calendar date. Keep appointment/event times in title/description, not the notification schedule. Bounded daily spans use ONE call, not separate recurring and one-time reminders. Never approximate unclear times, unsupported recurrence, or missing information: ask for clarification. On success confirm the actual saved result; do not create a replacement to correct or verify it. An invalid_reminder_schedule rejection means nothing was saved; only retry a faithful equivalent interpretation, never discard constraints.",
   "script": "create_reminder.py",
   "parameters": {
     "type": "object",
@@ -16,13 +16,76 @@
       },
       "when": {
         "type": "string",
-        "description": "When Jarvis should notify the user, as a natural time expression. Extract the requested notification schedule, not an appointment/event time in the reminder's subject. For 'Remind me tomorrow at noon about my appointment at 2pm', use 'tomorrow at noon'; keep '2pm' in title/description. Bounded daily spans: 'next 5 days at 2pm', 'for the next 5 days at 2pm', '5 days in a row at 2pm', 'every day for 5 days at 2pm', 'every day the next 2 weeks at 5pm' (creates multiple reminders from ONE tool call). One-time: 'in 30 minutes', 'tomorrow at noon', 'tomorrow at 3pm', 'May 1st at 6pm', 'next month on the 1st at 6pm', 'at 5pm'. Recurring: 'every day at 2pm', 'every Wednesday at 2pm', 'every month on the 10th'."
+        "description": "Original notification schedule wording, separate from what the reminder is about. Preserve weekdays, date qualifiers, timezone, and recurrence bounds. Use schedule to represent its meaning without calendar arithmetic. Examples: Monday at 5pm; tomorrow at noon; in 30 minutes; next 5 days at 2pm; every Wednesday at 14:00. For a bare 12-hour clock such as 'tomorrow at 3', ask AM/PM unless the user supplied a daypart; 24-hour clocks are unambiguous. Unsupported or ambiguous wording must be clarified, never shortened to a matching clock."
+      },
+      "schedule": {
+        "type": "object",
+        "description": "Optional structured interpretation of when. Prefer this for natural-language variants. Do not drop constraints or replace unsupported schedules with approximations. Fields must match kind; omit irrelevant fields. Defaults use the configured timezone and 10:00 when no clock was requested. Without schedule, when is parsed strictly. relative requires delay_seconds (elapsed time); date requires date; weekday/weekly require weekday; monthly requires day. daily supports optional count/start_offset for bounded daily spans. Use when without schedule for other supported calendar-relative expressions, explicit ISO offsets, and qualifiers such as next/this weekday.",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "relative",
+              "date",
+              "weekday",
+              "daily",
+              "weekly",
+              "monthly"
+            ]
+          },
+          "time": {
+            "type": "string",
+            "description": "24-hour wall clock HH:MM, e.g. 17:00; omit for relative delay."
+          },
+          "date": {
+            "type": "string",
+            "description": "Explicit YYYY-MM-DD for kind=date. Use only when the user specified a calendar date; do not calculate one for a weekday."
+          },
+          "weekday": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 6,
+            "description": "Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6."
+          },
+          "day": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31,
+            "description": "Day of month for kind=monthly."
+          },
+          "delay_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Elapsed duration for kind=relative; do not convert wall-clock calendar days across DST into elapsed hours."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 366,
+            "description": "Number of occurrences, only for a bounded daily schedule."
+          },
+          "start_offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Bounded daily only: 0 includes today if its clock is still ahead; 1 starts tomorrow."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Explicit IANA timezone such as America/Los_Angeles or UTC; omit to use configured timezone. Do not guess an ambiguous abbreviation."
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": false
       }
     },
     "required": [
       "title",
       "when"
-    ]
+    ],
+    "additionalProperties": false
   },
   "permissions": {
     "dangerous": false,

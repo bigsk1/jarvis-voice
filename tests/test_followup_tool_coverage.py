@@ -3271,3 +3271,188 @@ def test_request_context_is_bounded_and_drops_secret_or_bulky_arguments():
     assert "SECRET_SENTINEL" not in json.dumps(request)
     assert "headers" not in request
     assert "image" not in request
+
+
+def _reminder_followup_receipt(reminder_id=135):
+    return {
+        "reminder_id": reminder_id,
+        "trigger_time": "2026-11-10T01:00:00",
+        "trigger_time_local": "2026-11-09T17:00:00-08:00",
+        "formatted_time": "Monday, November 09 at 05:00 PM PST",
+        "recurring": False, "recurrence_rule": None,
+        "duplicate_suppressed": False, "gcal_synced": True,
+        "schedule_reference_time": "2026-11-07T05:17:34-08:00",
+        "schedule_timezone": "America/Los_Angeles",
+        "requested_when": "Monday at 5pm",
+        "requested_schedule": {"kind": "weekday", "weekday": 0, "time": "17:00"},
+    }
+
+
+def test_reminder_followup_keeps_saved_times_provenance_and_subject():
+    receipt = _reminder_followup_receipt()
+    arguments = {"title": "Update firewall", "description": "Deny the requested host.",
+                 "when": "Monday at 5pm", "schedule": receipt["requested_schedule"]}
+    compact = followup.extract_followup_data({
+        "create_reminder": receipt,
+        "_tool_trace": [{"tool": "create_reminder", "ok": True, "arguments": arguments}],
+    })["create_reminder"]
+
+    for field in ("reminder_id", "trigger_time", "trigger_time_local", "formatted_time",
+                  "recurring", "gcal_synced", "duplicate_suppressed", "schedule_reference_time",
+                  "schedule_timezone", "requested_when", "requested_schedule"):
+        assert compact[field] == receipt[field]
+    assert compact["request"] == arguments
+
+
+def test_reminder_followup_keeps_missing_request_warning_with_actual_receipt():
+    warning = "The milk reminder for Tuesday at 6pm has no saved receipt."
+    compact = followup.extract_followup_data({
+        "create_reminder": _reminder_followup_receipt(19),
+        "_reminder_request_coverage_warning": warning,
+    })["create_reminder"]
+    assert compact["reminder_id"] == 19
+    assert compact["request_coverage_warning"] == warning
+
+    batch = {"reminders": [_reminder_followup_receipt(index) for index in range(500)],
+             "reminders_total": 500}
+    compact = followup.extract_followup_data({
+        "create_reminder": [batch] * 4,
+        "_reminder_request_coverage_warning": warning * 100,
+    })["create_reminder"]
+    assert compact["request_coverage_warning"].startswith(warning)
+    assert compact["results_truncated"] is True
+    assert len(json.dumps(compact, allow_nan=False)) <= 8000
+
+
+@pytest.mark.parametrize("max_candidates", [2, 5, 12])
+def test_bounded_reminder_followup_keeps_all_ids_with_sampled_occurrence_details(max_candidates):
+    rows = [_reminder_followup_receipt(index) for index in range(1, 367)]
+    payload = {
+        "reminders": rows, "reminders_total": 366, "reminders_created": 366,
+        "newly_created_count": 365, "reminders_reused": 1, "gcal_synced_count": 365,
+        "first_reminder": rows[0], "last_reminder": rows[-1],
+        "schedule_reference_time": rows[0]["schedule_reference_time"],
+        "schedule_timezone": "America/Los_Angeles", "requested_when": "every day for 366 days at 5pm",
+        "requested_schedule": {"kind": "daily", "count": 366, "time": "17:00"},
+    }
+    compact = followup.extract_followup_data({"create_reminder": payload}, max_candidates)["create_reminder"]
+
+    assert compact["reminder_ids"] == list(range(1, 367))
+    assert compact["reminder_ids_total"] == 366
+    assert compact["reminder_ids_truncated"] is False
+    assert compact["reminders_shown"] == min(max_candidates, 5)
+    assert compact["reminders_truncated"] is True
+    assert compact["first_reminder"]["reminder_id"] == 1
+    assert compact["last_reminder"]["reminder_id"] == 366
+    assert compact["newly_created_count"] == 365
+    assert compact["reminders_reused"] == 1
+    assert compact["gcal_synced_count"] == 365
+    assert "list_reminders" in compact["followup_note"]
+    encoded = json.dumps(compact, allow_nan=False)
+    assert len(encoded) <= 8000
+    assert encoded.count("schedule_reference_time") == 1
+    assert encoded.count("requested_schedule") == 1
+
+
+def test_reused_recurring_reminder_followup_keeps_false_and_zero_receipt_fields():
+    payload = {**_reminder_followup_receipt(), "recurring": True, "recurrence_rule": "WEEKLY:0",
+               "duplicate_suppressed": True, "duplicate_recent": True, "gcal_synced": False,
+               "newly_created_count": 0}
+    compact = followup.extract_followup_data({"create_reminder": payload})["create_reminder"]
+    assert compact["recurrence_rule"] == "WEEKLY:0"
+    assert compact["duplicate_suppressed"] is True
+    assert compact["gcal_synced"] is False
+    assert compact["newly_created_count"] == 0
+
+
+def test_reminder_followup_recovers_failed_clarification_without_claiming_a_save():
+    details = {"needs_clarification": True, "clarification_question": "Which Monday do you mean?",
+               "schedule_rejection_reason": "Conflicting dates", "requested_when": "Monday or Tuesday",
+               "schedule_reference_time": "2026-11-07T05:17:34-08:00"}
+    arguments = {"title": "Update firewall", "description": "Deny the host.", "when": "Monday or Tuesday"}
+    failure_trace = {"tool": "create_reminder", "ok": False, "arguments": arguments,
+                     "error": "Conflicting dates. No reminder was created.", "result_data": details}
+    compact = followup.extract_followup_data({"_tool_trace": [failure_trace]})["create_reminder"]
+    assert compact["ok"] is False
+    assert compact["error_code"] == "invalid_reminder_schedule"
+    assert compact["needs_clarification"] is True
+    assert compact["clarification_question"] == details["clarification_question"]
+    assert compact["request"] == arguments
+    assert "reminder_id" not in compact and "trigger_time" not in compact
+
+    # A caller supplying both the envelope and its trace retains one failure.
+    envelope = {"ok": False, "data": details}
+    compact = followup.extract_followup_data({
+        "create_reminder": envelope, "_tool_trace": [failure_trace],
+    })["create_reminder"]
+    assert "results" not in compact
+
+
+def test_reminder_followup_preserves_mixed_creation_and_rejection_order():
+    details = {"needs_clarification": True, "requested_when": "soon",
+               "clarification_question": "When should I notify you?"}
+    compact = followup.extract_followup_data({
+        "create_reminder": [_reminder_followup_receipt(1), _reminder_followup_receipt(2)],
+        "_tool_trace": [
+            {"tool": "create_reminder", "ok": True, "arguments": {"title": "First"}},
+            {"tool": "create_reminder", "ok": False, "arguments": {"title": "Unclear"}, "result_data": details},
+            {"tool": "create_reminder", "ok": True, "arguments": {"title": "Second"}},
+        ],
+    })["create_reminder"]
+    assert compact["runs_count"] == 3
+    assert [row["request"]["title"] for row in compact["results"]] == ["First", "Unclear", "Second"]
+    assert compact["results"][1]["ok"] is False
+    assert compact["results"][2]["reminder_id"] == 2
+
+
+def test_reminder_followup_partial_trace_never_rebinds_another_receipts_arguments():
+    first = {**_reminder_followup_receipt(1), "requested_when": "Monday at 5pm"}
+    second = {**_reminder_followup_receipt(2), "requested_when": "Tuesday at 6pm"}
+    details = {"needs_clarification": True, "requested_when": "soon",
+               "clarification_question": "When should I notify you?"}
+    compact = followup.extract_followup_data({
+        "create_reminder": [first, second],
+        "_tool_trace": [
+            {"tool": "create_reminder", "ok": True, "arguments": {
+                "title": "Only the second reminder", "when": "Tuesday at 6pm"}},
+            {"tool": "create_reminder", "ok": False, "arguments": {
+                "title": "Unclear third reminder"}, "result_data": details},
+        ],
+    })["create_reminder"]
+
+    assert compact["runs_count"] == 3
+    receipts = compact["results"][:2]
+    assert [row["reminder_id"] for row in receipts] == [1, 2]
+    assert [row["requested_when"] for row in receipts] == ["Monday at 5pm", "Tuesday at 6pm"]
+    assert all("request" not in row for row in receipts)
+    failure = compact["results"][2]
+    assert failure["ok"] is False and "reminder_id" not in failure
+    assert failure["request"]["title"] == "Unclear third reminder"
+
+
+def test_reminder_followup_legacy_receipts_and_semantic_selector_allowlist():
+    assert followup.extract_followup_data({"create_reminder": {"reminder_id": 19,
+        "formatted_time": "tomorrow at 9:00 AM"}})["create_reminder"] == {
+            "reminder_id": 19, "formatted_time": "tomorrow at 9:00 AM"}
+    payload = _reminder_followup_receipt()
+    payload["requested_schedule"]["api_token"] = "SECRET_SENTINEL"
+    payload["requested_schedule"]["raw"] = "HUGE_BODY_SENTINEL" * 1000
+    compact = followup.extract_followup_data({"create_reminder": payload})["create_reminder"]
+    assert compact["requested_schedule"] == {"kind": "weekday", "weekday": 0, "time": "17:00"}
+    assert "SENTINEL" not in json.dumps(compact)
+
+
+def test_reminder_id_and_repeated_receipt_overflow_is_explicit_and_bounded():
+    payload = {"reminders": [_reminder_followup_receipt(index) for index in range(500)],
+               "reminders_total": 500}
+    compact = followup.extract_followup_data({"create_reminder": payload})["create_reminder"]
+    assert len(compact["reminder_ids"]) == 366
+    assert compact["reminder_ids_total"] == 500
+    assert compact["reminder_ids_truncated"] is True
+    assert "list_reminders" in compact["followup_note"]
+
+    compact = followup.extract_followup_data({"create_reminder": [payload] * 4})["create_reminder"]
+    assert compact["runs_count"] == 4 and compact["results_truncated"] is True
+    assert len(compact["results"]) == 3
+    assert "list_reminders" in compact["followup_note"]
+    assert len(json.dumps(compact, allow_nan=False)) <= 8000

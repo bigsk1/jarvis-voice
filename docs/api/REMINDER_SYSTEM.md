@@ -37,6 +37,77 @@ an explicit request for distinct notifications; repeating creation is not a way
 to verify success or edit an existing reminder. Bounded daily schedules still
 use one `create_reminder` call.
 
+### Natural-language interpretation and validation
+
+The existing conversation model can interpret varied wording into an optional
+structured `schedule`; a shared resolver computes dates using one captured
+reference time and the configured timezone. The model supplies selectors rather
+than doing weekday/date arithmetic. For example:
+
+```json
+{
+  "title": "Update firewall",
+  "when": "Monday at 5pm",
+  "schedule": {"kind": "weekday", "weekday": 0, "time": "17:00"}
+}
+```
+
+`when` retains the original notification schedule. Supported selectors cover
+elapsed delays, explicit dates, one-time weekdays, daily/weekly/monthly
+recurrence, and bounded daily spans. There is no extra model request, service,
+package, or database migration. Existing callers can continue supplying only
+`when`; its parser must understand the complete expression rather than extract
+one matching clock and ignore the remaining words.
+
+Recognizable dates, weekdays, clocks and repetition constraints must agree with
+the structured interpretation. Ambiguous or unsupported schedules require
+clarification; the tool never intentionally approximates unsupported recurrence
+or silently drops qualifiers. Invalid schedules return
+`error_code: invalid_reminder_schedule` and `data.needs_clarification: true`
+before opening the reminder database or calling Calendar. The spoken response
+explains the problem and asks a specific clarification question, also returned
+as `data.clarification_question`. It does not repeat a model's unverified claim
+that a reminder was saved. All occurrences of a
+bounded span are validated before any is saved, with a maximum of 366 dates.
+
+Bare weekdays such as `Monday at 5pm` select the next upcoming occurrence,
+including today if its time is still ahead. `next Monday` skips today when
+today is Monday; `this Monday` also selects the upcoming occurrence, including
+the coming Monday when requested on a weekend. Explicit past dates and impossible dates such
+as February 30 are rejected. Month-end clamping remains limited to monthly
+recurrence, where the original requested day remains in the recurrence rule.
+
+Local times that fall inside a DST gap or ambiguous repeated hour require an
+unambiguous time/offset; Jarvis does not silently move them or choose a fold.
+An explicit ISO offset must agree with any accompanying natural-language
+schedule. US standard/daylight abbreviations such as PST/PDT and EST/EDT denote
+their fixed UTC offsets; they are not interchangeable across seasons. `Pacific`
+or `PT` and `Eastern` or `ET` use the region's daylight-saving rules. Other
+ambiguous abbreviations require an IANA zone or explicit UTC offset.
+Calendar-day offsets preserve local wall
+time; hour/minute delays are elapsed time. Infinite recurrence continues to use
+the configured application timezone; a different zone requires clarification
+rather than a silently incorrect recurring schedule.
+
+The saved metadata and result retain the original schedule, reference time,
+timezone and optional structured selectors. Confirmation independently compares
+the actual tool arguments with returned times, recurrence and bounded sets at
+that reference time. A proven mismatch adds a factual warning; it never creates
+a replacement. Legacy receipts without a reference time remain readable.
+
+The conversational orchestrator also checks an independently recognizable
+notification clause in the original human request before executing the tool.
+For example, if the request says `Monday at 5pm` but the model supplies only
+`5pm`, a differing plan is rejected before any save or Calendar call. Appointment
+times in the reminder message are not treated as extra notification times.
+This is a bounded safeguard, not a second language model: wording that cannot
+be independently resolved or associated with a particular reminder in a
+multi-reminder request requires clarification when recognizable notification
+constraints are present. Subject-first requests such as `remind me to update
+the firewall at 5pm` retain their trailing notification clock. Conjoined
+reminders retain separate subjects and schedules; an unfamiliar clause requires
+clarification before saving rather than silently disappearing.
+
 If `when` contains distinct times written with am/pm, noon/midday, midnight, or
 24-hour clocks such as `14:00` (for example,
 `October 23rd at noon about my appointment at 2pm`), creation fails before any
@@ -45,8 +116,30 @@ database access or Calendar sync. Retry with only the notification schedule in
 between those times or save a reminder that then needs cancellation.
 Equivalent clocks such as `noon`/`12pm` or `14:00`/`2pm` count as one time.
 Clock minutes are preserved, including `tomorrow at 8:00am` and `tomorrow at
-1:30pm`. This validation reads explicit clock tokens; it does not decide which
-time the user intended.
+1:30pm`. A bare 12-hour clock such as `at five`, `5 o'clock` or `half past five`
+requires AM/PM or an explicit daypart such as `in the evening`; a model-supplied
+structured clock cannot replace the missing distinction. These hours and their
+minutes are validated before fallback interpretation, so they cannot silently
+become the default 10am. Colon clocks such as `17:00` use 24-hour notation.
+Date numbers, occurrence counts and durations are not clock hours.
+
+The existing `when` argument description explains bare-hour clarification,
+dayparts and 24-hour clocks. The system prompt's current-date/time block and
+versioned base instructions remain unchanged. Model-specific reminder overlays
+also preserve explicitly requested timezones.
+
+The system clock supplies the current instant; local interpretation and display
+use the installation's configured `JARVIS_TIMEZONE` IANA zone. Non-US regions,
+non-whole-hour offsets and their daylight-saving transitions use the same
+validation. Stored trigger times remain UTC. There is no
+`JARVIS_DEFAULT_TIMEZONE`/`JARVIS_DEFUALT_TIMEZONE` setting.
+
+Other application paths retain their existing `America/Los_Angeles` fallback
+when configuration is absent. Conversational reminders reject that implicit
+fallback: ask the user for a timezone. A human-specified IANA zone or UTC can
+supply a request-scoped timezone for a one-time or finite reminder; a model guess
+cannot supply it. This does not modify the environment files. Recurrence requires
+a persistent configured timezone because the scheduler uses the app setting.
 
 Built-in reminders work without Google Workspace MCP or the legacy n8n Calendar
 workflow. Calendar sync is optional and a sync failure does not invalidate the
@@ -65,9 +158,20 @@ same title and description, its obsolete validation failure stays in the trace
 without being spoken. Uncertain write failures and failures for other subjects
 remain audible. Preparatory `tool_search`, `get_time`, and `list_reminders` calls
 do not replace the saved receipts with model prose. Additional router commentary
-is not appended to these confirmations.
+is not appended to these confirmations; independently verified scheduling
+mismatches are reported alongside the receipt.
 It is retained as unverified audit context on the reminder's existing tool trace
 for Completion Guard; it is not another tool execution or saved-state evidence.
+
+An independently parsed multi-reminder request is checked against successful
+receipts before confirmation. A reminder-only turn may take one bounded recovery
+step to complete explicitly requested missing notifications; it cannot recreate
+an already covered notification. Recovery does not repeat unrelated actions or
+replace a receipt with a different saved time. If notifications remain missing,
+the answer retains actual receipts, identifies the unconfirmed requests, and
+returns `error_code: incomplete_reminder_request` with `ok: false`. The same
+check applies at duplicate and turn limits. Its warning survives follow-up
+extraction within the existing context budget.
 
 When a reminder shares a request with `status_recap`, `phone_call`, or
 `generate_music`, their actual receipts are preserved verbatim in execution
@@ -90,6 +194,14 @@ reused active rows. The legacy `reminders_created` field still counts requested
 occurrences for compatibility; `newly_created_count`, `reminders_reused`, and
 `reminders_total` expose the actual breakdown.
 
+Web follow-up context keeps the request title/description, saved UTC/local
+times, recurrence, original schedule and selectors, reference clock/timezone,
+Calendar status, and insert/reuse counts. A bounded batch retains up to all 366
+reminder IDs, plus its first/last occurrence and a small detail sample. Repeated
+receipts share a bounded context budget; omitted IDs or details are marked and
+require `list_reminders` before acting on them. Schedule rejections retain their
+clarification question and failed status, without inventing a saved reminder ID.
+
 Completion Guard can audit these outcomes in automatic or manual mode. Its
 repair pass verifies attempted reminder creations with a read-only tool scope;
 it does not create replacements or cancel reminders. See
@@ -107,12 +219,29 @@ executing `create_reminder` use its schedule validation just like other callers.
 - "in X minutes" → `in 30 minutes`
 - "in X hours" → `in 4 hours`
 - "in X days" → `in 2 days`
+- "in X weeks" → `in two weeks`
 - Compound: "in 1 hour 30 minutes"
+- Fractional: "in half an hour", "in an hour and a half", "in 1.5 hours"
 
 **Absolute:**
 - "tomorrow at 3pm"
+- "Monday at 5pm", "on Monday at 17:00", "5pm on Monday"
+- "a week from Monday at 5pm"
+- "today at noon", "day after tomorrow at 3pm"
+- "November 9 at 5pm", "9 November 2026 at 17:00"
+- "2026-11-09T17:00:00-08:00" (explicit date and UTC offset)
 - "at 5pm" (today if not passed, else tomorrow)
-- "on the 15th" (defaults to 10am)
+- Structured selectors support additional conversational phrasing; unsupported
+  expressions are clarified rather than partially parsed.
+
+Bounded daily examples include `for a week at 9am` (seven notifications,
+including today if that time is still ahead) and `every day this week at 5pm`
+(remaining dates through Sunday). Vague times such as `soon`, ambiguous numeric
+dates such as `11/9`, and recurrence the scheduler cannot represent (for example,
+`every other day` or `every two hours`) require clarification.
+Comparative requests such as `before Monday at 5pm` or `in less than an hour`
+also require an exact notification time; their boundary is never silently used
+as the reminder time.
 
 **Recurring:**
 - "every Monday" → Weekly, 10am default

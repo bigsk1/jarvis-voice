@@ -23,6 +23,20 @@ Guiding principles:
 
 ## 🔨 In Progress / Near Term
 
+### Cloud model benchmark maintenance
+
+**Status:** Deferred follow-up, requested November 7, 2026.
+
+Occasional model comparisons should not require a new frozen fixture version
+whenever a production tool description or schema changes. Separate ordinary
+simulator tests from historical production-schema hash checks. Explicit benchmark
+runs should load the current tool contracts and capture their actual schemas,
+prompts and fingerprints with the results. Contract changes can then create a
+different comparison identity automatically. Preserve archived fixtures/reports
+for optional historical replay. Real argument or simulator behavior changes may
+still require updated examples; removing hash checks alone does not solve that.
+This is a proposal, not an implemented change to benchmark validation.
+
 ### 1) Action-Level Permission and Preflight Policies (Optional)
 **Priority:** Deferred / narrow high-risk use only
 

@@ -1,7 +1,7 @@
 # Cloud model benchmark for Jarvis
 
 `bin/benchmark-cloud-model` compares OpenAI, Anthropic, xAI and Ollama Cloud chat
-models through Jarvis's production adapters. **Suite v8 has 44 tasks**, normally
+models through Jarvis's production adapters. **Suite v9 has 44 tasks**, normally
 repeated three times, plus six optional, ungraded tone samples.
 
 It measures completion, discovery, factual grounding, recovery, instruction
@@ -138,22 +138,31 @@ public `analyze_image` schema/description for bounded GIF frame sampling and
 the optional `gif_frame` selection. This creates a new comparison group without
 adding vision accuracy tests or changing simulated task results.
 
-## Current image discovery description in suite v8
+## Image discovery description in suite v8
 
 V8 keeps V7's tasks, facts, aliases and grading. It updates only the pinned
 public `generate_image` description after removing a hardcoded provider-default
 claim and revising the GPT Image 2.6 discovery wording. The argument schema and
 tool behavior remain unchanged. This creates a separate comparison group.
 
+## Current reminder tool contract in suite v9
+
+V9 keeps V8's tasks, facts, aliases and grading. It updates only the pinned
+public `create_reminder` schema and description for the optional structured
+schedule argument and validated scheduling guidance. This creates a separate
+comparison group without adding date-parsing accuracy tests or changing the
+simulated reminder results.
+
 The legacy runner's deterministic tests use a temporary synthetic V1 copy with
-its existing `pdf_create`, `generate_image` and `analyze_image` pins taken from reviewed V8
+its existing `pdf_create`, `generate_image`, `analyze_image` and `create_reminder`
+pins taken from reviewed V9
 (`convert_file` was added in V2, so V1's tool catalog stays unchanged). They do
 not rewrite the archived V1 fixture or bypass runtime drift checks. Unreviewed
 changes still fail before provider construction.
 
 ## Relationship to Jarvis
 
-V8 calls production `LLMRouter.build_system_prompt`, the tool-turn and conversation
+V9 calls production `LLMRouter.build_system_prompt`, the tool-turn and conversation
 formatters in `ContextAssembler`, result projections, the discovery-summary
 formatter and the learned-insight formatter. The router constructor, executor,
 databases and retrieval services are not started. A fixed clock, city, ZIP and
@@ -176,11 +185,11 @@ discovery hints. Prior user turns carry structured, bounded synthetic evidence
 through the conversation formatter. Per-trial hashes identify the actual prompt
 as tools become visible.
 
-Suite version and system-prompt version are independent: **suite v8 uses the
+Suite version and system-prompt version are independent: **suite v9 uses the
 pinned V2 system prompt**. Prompt, public schema and relevant context-function
 drift fail offline validation before inference.
 
-Suite v8 defaults to `--prompt-profile configured`. It applies the selected
+Suite v9 defaults to `--prompt-profile configured`. It applies the selected
 model's routing prepend, tool-calling prepend and routing append through the
 production loader. `baseline` omits that wording for a shared-prompt comparison.
 Reports disclose the profile, matched override and exact prompt hashes; the
@@ -283,12 +292,12 @@ model-override tree hash. Model identity is excluded. Configured profiles may
 use different model-specific wording, which is disclosed. Source changes create
 a new comparison group.
 
-The original V1, V2, V3, V4, V5, V6 and V7 fixture files are preserved byte for byte.
+The original V1, V2, V3, V4, V5, V6, V7 and V8 fixtures are preserved byte for byte.
 `--suite v1` retains its cases and original rubric, defaulting to baseline. V1
 has known fixture limitations. The archived V2 fixture rejects the changed
 production-context contract in this checkout; older suites also reject changed
 tool schemas. Replay archived suites using their original checkout. Existing
-reports still work with `--compare`. V8 is the default
+reports still work with `--compare`. V9 is the default
 and retains report schema 2 and rubric 2.0 because the data format and grading
 are unchanged. Do not compare grades across fixture versions as the same test.
 Runtime changes can also create separate groups with an unchanged suite.

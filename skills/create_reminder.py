@@ -20,68 +20,40 @@ Output: {
 }
 """
 
-import sys
-import os
 import json
-import re
-import requests
+import os
+import sys
+from contextlib import ExitStack
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+import requests
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import (
+    config_override_scope,
+    config_scope,
+    get_active_config_mode,
+    get_config_value,
+    get_scoped_config,
+    load_config,
+)
 from memory_db import MemoryDB
+from reminder_feedback import reminder_schedule_rejection
+from reminder_schedule import explicit_schedule_timezone, resolve_schedule
 from time_utils import (
-    add_days_local,
-    add_months_local,
     ensure_local,
     format_utc_db,
     format_utc_z,
     get_app_timezone,
     now_local,
     now_utc,
-    replace_day_safe,
-)
-
-
-MONTH_NAME_TO_NUMBER = {
-    "january": 1,
-    "jan": 1,
-    "february": 2,
-    "feb": 2,
-    "march": 3,
-    "mar": 3,
-    "april": 4,
-    "apr": 4,
-    "may": 5,
-    "june": 6,
-    "jun": 6,
-    "july": 7,
-    "jul": 7,
-    "august": 8,
-    "aug": 8,
-    "september": 9,
-    "sep": 9,
-    "sept": 9,
-    "october": 10,
-    "oct": 10,
-    "november": 11,
-    "nov": 11,
-    "december": 12,
-    "dec": 12,
-}
-MONTH_NAME_PATTERN = "|".join(sorted(MONTH_NAME_TO_NUMBER.keys(), key=len, reverse=True))
-EXPLICIT_CLOCK_PATTERN = re.compile(
-    r'(?<![\w:])(?P<hour12>\d{1,2})(?::(?P<minute12>\d{2}))?\s*(?P<meridiem>am|pm)\b'
-    r'|\b(?P<named>noon|midday|midnight)\b'
-    # Consume seconds as part of an ISO clock; signed UTC offsets are not clocks.
-    r'|(?<![\d:+-])(?:\b|(?<=t))(?P<hour24>[01]?\d|2[0-3]):(?P<minute24>[0-5]\d)'
-    r'(?::[0-5]\d(?:\.\d+)?)?(?![\d:])'
 )
 
 
 def sync_to_google_calendar(reminder_id: int, title: str, description: str, 
-                            trigger_time_utc: datetime, recurrence_rule: str = None) -> dict:
+                            trigger_time_utc: datetime, recurrence_rule: str = None) -> dict | None:
     """Sync reminder to Google Calendar via n8n webhook.
     
     Args:
@@ -135,417 +107,18 @@ def sync_to_google_calendar(reminder_id: int, title: str, description: str,
         print(f"Warning: Google Calendar sync error: {e}", file=sys.stderr)
         return None
 
-def word_to_number(word: str) -> int:
-    """Convert word numbers to integers."""
-    word_map = {
-        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
-        'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
-        'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
-        'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
-        'thirty': 30, 'forty': 40, 'fifty': 50, 'sixty': 60,
-        'a': 1, 'an': 1
-    }
-    return word_map.get(word.lower(), None)
-
-def normalize_time_words(text: str) -> str:
-    """Convert word numbers in time expressions to digits.
-    
-    Examples:
-    - "in one hour" -> "in 1 hour"
-    - "in thirty minutes" -> "in 30 minutes"
-    - "in two days" -> "in 2 days"
-    """
-    # Pattern: word + time unit
-    pattern = r'\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|' \
-              r'thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|' \
-              r'thirty|forty|fifty|sixty|a|an)\s+(minute|min|hour|hr|day|week)s?\b'
-    
-    def replace_word(match):
-        word = match.group(1)
-        unit = match.group(2)
-        number = word_to_number(word)
-        if number:
-            return f"{number} {unit}"
-        return match.group(0)
-    
-    return re.sub(pattern, replace_word, text, flags=re.IGNORECASE)
-
-
-def normalize_meridiem(text: str) -> str:
-    """Normalize meridiem variants like 'p.m.' and 'a m' to 'pm'/'am'."""
-    if not text:
-        return text
-    normalized = text.lower()
-    # Handle dotted and spaced forms: p.m., p m, p.m, etc.
-    normalized = re.sub(r'\b([ap])\s*\.?\s*m\.?\b', r'\1m', normalized)
-    return normalized
-
-def parse_multi_day_pattern(when: str):
-    """Parse bounded daily patterns that create multiple individual reminders.
-    
-    Supported examples:
-    - "next 5 days at 2pm"
-    - "for the next 5 days at 2pm"
-    - "5 days in a row at 2pm"
-    - "every day for 5 days at 2pm"
-    - "every day the next 2 weeks at 5pm"
-    - "every day for the next 2 weeks at 5pm"
-    
-    Returns:
-        dict with:
-          - count: number of reminders to create
-          - include_today: whether today's occurrence should be included when still upcoming
-        or None if not a bounded daily pattern.
-    """
-    when_lower = when.lower().replace("everyday", "every day")
-    
-    patterns = [
-        # Explicit bounded daily spans should include today when the target time hasn't passed yet.
-        (r'every\s+day\s+(?:for\s+)?(?:the\s+)?next\s+(\d+)\s+weeks?', 7, True),
-        (r'every\s+day\s+(?:for\s+)?(?:the\s+)?next\s+(\d+)\s+days?', 1, True),
-        (r'every\s+day\s+for\s+(\d+)\s+weeks?', 7, True),
-        (r'every\s+day\s+for\s+(\d+)\s+days?', 1, True),
-        # Legacy multi-day phrases keep the original "start tomorrow" behavior.
-        (r'(?:for\s+)?(?:the\s+)?next\s+(\d+)\s+days?', 1, False),
-        (r'(\d+)\s+days?\s+in\s+a\s+row', 1, False),
-    ]
-    
-    for pattern, multiplier, include_today in patterns:
-        match = re.search(pattern, when_lower)
-        if not match:
-            continue
-        count = int(match.group(1)) * multiplier
-        if count > 0:
-            return {
-                "count": count,
-                "include_today": include_today,
-            }
-    
-    return None
-
-
-def parse_recurrence(when: str):
-    """Parse recurring patterns from time expression.
-    
-    Returns: recurrence_rule string or None
-    - "DAILY" for every day
-    - "WEEKLY:1" for every Monday (0=Mon, 6=Sun)
-    - "MONTHLY:10" for 10th of each month
-    - None if not recurring
-    """
-    when_lower = when.lower()
-    
-    # "every wednesday" or "every week on wednesday"
-    days_of_week = {
-        'monday': 0, 'mon': 0,
-        'tuesday': 1, 'tue': 1, 'tues': 1,
-        'wednesday': 2, 'wed': 2,
-        'thursday': 3, 'thu': 3, 'thurs': 3,
-        'friday': 4, 'fri': 4,
-        'saturday': 5, 'sat': 5,
-        'sunday': 6, 'sun': 6
-    }
-    
-    if when_lower.startswith('every '):
-        when_lower = when_lower[6:].strip()  # Remove "every "
-        
-        # Check for "month on the Xth" or "month on Xth" FIRST (before day names)
-        month_match = re.search(r'month\s+(?:on\s+)?(?:the\s+)?(\d+)(?:st|nd|rd|th)?', when_lower)
-        if month_match:
-            day = int(month_match.group(1))
-            if 1 <= day <= 31:
-                return f"MONTHLY:{day}"
-        
-        # Check for day of week
-        for day_name, day_num in days_of_week.items():
-            if day_name in when_lower:
-                return f"WEEKLY:{day_num}"
-        
-        # Check for "every day" (infinite daily - no bounded limit)
-        # Must NOT have a day limit like "for 5 days"
-        if when_lower.startswith('day') and not re.search(r'for\s+(?:the\s+)?(?:next\s+)?\d+\s+days?', when.lower()):
-            return "DAILY"
-    
-    return None
-
-
-def explicit_clock_times(when: str) -> list[tuple[int, int]]:
-    """Read clock tokens at the reminder parser's minute precision, not intent."""
-    times = []
-    for match in EXPLICIT_CLOCK_PATTERN.finditer(normalize_meridiem(when)):
-        if match['named']:
-            times.append((0 if match['named'] == 'midnight' else 12, 0))
-        elif match['hour12']:
-            hour = int(match['hour12'])
-            minute = int(match['minute12'] or 0)
-            if not 1 <= hour <= 12 or not 0 <= minute <= 59:
-                raise ValueError('Invalid 12-hour clock time in notification schedule')
-            times.append((hour % 12 + (12 if match['meridiem'] == 'pm' else 0), minute))
-        else:
-            times.append((int(match['hour24']), int(match['minute24'])))
-    return times
-
-
-def extract_time_from_expression(when: str, default_hour: int = 10):
-    """Extract hour and minute from a time expression.
-    
-    Returns: (hour, minute) tuple
-    """
-    times = explicit_clock_times(when)
-    return times[0] if times else (default_hour, 0)
-
-
-def _build_month_day_target(now: datetime, month: int, day: int, hour: int, minute: int, year: int | None = None) -> datetime:
-    """Build a local datetime for a month/day combination, rolling forward when needed."""
-    target_year = year if year is not None else now.year
-    target = now.replace(
-        year=target_year,
-        month=month,
-        day=1,
-        hour=hour,
-        minute=minute,
-        second=0,
-        microsecond=0,
+def parse_time_expression(
+    when: str,
+    default_hour: int = 10,
+    *,
+    schedule: dict | None = None,
+    reference_time: datetime | None = None,
+):
+    """Resolve the complete schedule against one captured local clock."""
+    return resolve_schedule(
+        when, now=reference_time if reference_time is not None else now_local(),
+        default_hour=default_hour, schedule=schedule,
     )
-    target = replace_day_safe(target, day)
-
-    if year is None and target <= now:
-        target = target.replace(year=target.year + 1, month=month, day=1)
-        target = replace_day_safe(target, day)
-
-    return target
-
-
-def parse_absolute_date_expression(when: str, now: datetime, default_hour: int = 10):
-    """Parse one-time absolute date expressions like 'May 1st' or 'next month on the 1st'."""
-    hour, minute = extract_time_from_expression(when, default_hour)
-
-    next_month_match = re.search(
-        r'\bnext\s+month(?:\s+on)?\s+(?:the\s+)?(\d+)(?:st|nd|rd|th)?\b',
-        when,
-        flags=re.IGNORECASE,
-    )
-    if next_month_match:
-        day = int(next_month_match.group(1))
-        if 1 <= day <= 31:
-            target = add_months_local(now, 1).replace(
-                day=1,
-                hour=hour,
-                minute=minute,
-                second=0,
-                microsecond=0,
-            )
-            return replace_day_safe(target, day)
-
-    month_day_match = re.search(
-        rf'\b(?:on\s+)?({MONTH_NAME_PATTERN})\s+(\d+)(?:st|nd|rd|th)?(?:,\s*|\s+)?(\d{{4}})?\b',
-        when,
-        flags=re.IGNORECASE,
-    )
-    if month_day_match:
-        month_name = month_day_match.group(1).lower()
-        day = int(month_day_match.group(2))
-        explicit_year = int(month_day_match.group(3)) if month_day_match.group(3) else None
-        month = MONTH_NAME_TO_NUMBER[month_name]
-        if 1 <= day <= 31:
-            return _build_month_day_target(now, month, day, hour, minute, explicit_year)
-
-    return None
-
-
-def parse_time_expression(when: str, default_hour: int = 10):
-    """Parse natural time expressions into datetime.
-    
-    Args:
-        when: Natural language time expression
-        default_hour: Default hour to use when time not specified (default 10am)
-    
-    Returns:
-        tuple: (trigger_datetime OR list of datetimes, recurrence_rule or None)
-    
-    Examples:
-    - "in 30 minutes" -> (datetime, None)
-    - "every wednesday" -> (next Wed 10am, "WEEKLY:2")
-    - "every month on the 10th" -> (next 10th 10am, "MONTHLY:10")
-    - "every day at 2pm" -> (tomorrow 2pm, "DAILY")
-    - "tomorrow at 3pm" -> (datetime, None)
-    - "next 5 days at 2pm" -> ([datetime1, datetime2, ...], None)  # Multiple!
-    """
-    when = normalize_meridiem(when).strip()
-    
-    # Normalize word numbers to digits (e.g., "one hour" -> "1 hour")
-    when = normalize_time_words(when)
-    # A schedule has one wall-clock time. Do not guess between notification
-    # and appointment times if the caller accidentally includes both.
-    if len(set(explicit_clock_times(when))) > 1:
-        raise ValueError(
-            "when contains multiple times of day. Send only the requested notification "
-            "schedule in when; keep appointment/event times in title or description. "
-            "No reminder was created."
-        )
-    now = now_local()
-    
-    # Check for bounded daily patterns FIRST (creates multiple reminders)
-    multi_day = parse_multi_day_pattern(when)
-    if multi_day:
-        hour, minute = extract_time_from_expression(when, default_hour)
-        include_today = multi_day.get("include_today", False)
-        count = multi_day["count"]
-        today_target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        start_offset = 0 if include_today and today_target > now else 1
-        
-        # Create list of datetimes for each day
-        datetimes = []
-        for day_offset in range(start_offset, start_offset + count):
-            target = add_days_local(now, day_offset)
-            target = target.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            datetimes.append(target)
-        
-        return datetimes, None  # Returns LIST, not single datetime
-    
-    # Check for recurring patterns
-    recurrence = parse_recurrence(when)
-    
-    # If recurring, calculate first trigger time
-    if recurrence:
-        rule = recurrence
-        
-        # Handle DAILY recurrence (every day at X time)
-        if rule == "DAILY":
-            hour, minute = extract_time_from_expression(when, default_hour)
-            
-            # First trigger is tomorrow at the specified time
-            trigger_time = add_days_local(now, 1)
-            trigger_time = trigger_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            
-            return trigger_time, rule
-        
-        if rule.startswith("WEEKLY:"):
-            target_weekday = int(rule.split(':')[1])
-            days_ahead = (target_weekday - now.weekday()) % 7
-            if days_ahead == 0:
-                days_ahead = 7  # Next week if today
-            
-            trigger_time = add_days_local(now, days_ahead)
-            
-            # Extract time from expression if provided, else use default
-            time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)\b', when)
-            if time_match:
-                hour = int(time_match.group(1))
-                minute = int(time_match.group(2)) if time_match.group(2) else 0
-                meridiem = time_match.group(3)
-                
-                if meridiem == 'pm' and hour != 12:
-                    hour += 12
-                elif meridiem == 'am' and hour == 12:
-                    hour = 0
-                
-                trigger_time = trigger_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            else:
-                trigger_time = trigger_time.replace(hour=default_hour, minute=0, second=0, microsecond=0)
-            
-            return trigger_time, rule
-        
-        elif rule.startswith("MONTHLY:"):
-            target_day = int(rule.split(':')[1])
-            
-            # Find next occurrence of this day
-            trigger_time = now.replace(day=1, hour=default_hour, minute=0, second=0, microsecond=0)
-            
-            # Try this month
-            trigger_time = replace_day_safe(trigger_time, target_day)
-            if trigger_time <= now:
-                # Next month, preserving the intended wall-clock time.
-                trigger_time = replace_day_safe(add_months_local(trigger_time, 1), target_day)
-            
-            # Extract time if provided
-            time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)\b', when)
-            if time_match:
-                hour = int(time_match.group(1))
-                minute = int(time_match.group(2)) if time_match.group(2) else 0
-                meridiem = time_match.group(3)
-                
-                if meridiem == 'pm' and hour != 12:
-                    hour += 12
-                elif meridiem == 'am' and hour == 12:
-                    hour = 0
-                
-                trigger_time = trigger_time.replace(hour=hour, minute=minute)
-            
-            return trigger_time, rule
-    
-    # Pattern: "in X minutes/hours/days" (one-time)
-    if when.startswith("in "):
-        when = when[3:].strip()  # Remove "in "
-        
-        # Handle compound times like "1 hour 30 minutes"
-        total_delta = timedelta()
-        
-        # Extract all time components
-        minutes_match = re.search(r'(\d+)\s*(?:minute|min|m)s?', when)
-        hours_match = re.search(r'(\d+)\s*(?:hour|hr|h)s?', when)
-        days_match = re.search(r'(\d+)\s*(?:day|d)s?', when)
-        
-        if minutes_match:
-            total_delta += timedelta(minutes=int(minutes_match.group(1)))
-        if hours_match:
-            total_delta += timedelta(hours=int(hours_match.group(1)))
-        if days_match:
-            total_delta += timedelta(days=int(days_match.group(1)))
-        
-        if total_delta.total_seconds() > 0:
-            return now + total_delta, None
-        else:
-            raise ValueError(f"Could not parse time from: {when}")
-    
-    # Pattern: "tomorrow at 3pm" (one-time)
-    if "tomorrow" in when:
-        tomorrow = add_days_local(now, 1)
-        hour, minute = extract_time_from_expression(when, default_hour)
-        return tomorrow.replace(hour=hour, minute=minute, second=0, microsecond=0), None
-
-    # Pattern: "May 1st at 6pm" or "next month on the 1st at 6pm" (one-time)
-    absolute_date = parse_absolute_date_expression(when, now, default_hour)
-    if absolute_date is not None:
-        return absolute_date, None
-    
-    # Pattern: "at 3pm" or "3pm" (one-time)
-    time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)\b', when)
-    if time_match:
-        hour = int(time_match.group(1))
-        minute = int(time_match.group(2)) if time_match.group(2) else 0
-        meridiem = time_match.group(3)
-        
-        if meridiem == 'pm' and hour != 12:
-            hour += 12
-        elif meridiem == 'am' and hour == 12:
-            hour = 0
-        
-        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        
-        # If time has passed today, schedule for tomorrow
-        if target <= now:
-            target = add_days_local(target, 1)
-        
-        return target, None
-    
-    # Pattern: "on the 10th" or "the 10th" (one-time, default to 10am)
-    date_match = re.search(r'(?:on\s+)?(?:the\s+)?(\d+)(?:st|nd|rd|th)?', when)
-    if date_match:
-        day = int(date_match.group(1))
-        if 1 <= day <= 31:
-            target = now.replace(day=day, hour=default_hour, minute=0, second=0, microsecond=0)
-            
-            # If day has passed this month, next month
-            if target <= now:
-                if target.month == 12:
-                    target = target.replace(year=target.year + 1, month=1)
-                else:
-                    target = target.replace(month=target.month + 1)
-            
-            return target, None
-    
-    raise ValueError(f"Could not parse time expression: {when}")
 
 
 def format_local_time(dt: datetime) -> str:
@@ -610,8 +183,9 @@ def find_existing_reminder(cursor, title: str, trigger_time_utc: datetime, recur
     }
 
 
-def create_single_reminder(title: str, description: str, trigger_time_local: datetime, 
-                           recurrence_rule: str = None, db_path: str = None):
+def create_single_reminder(title: str, description: str, trigger_time_local: datetime,
+                           recurrence_rule: str = None, db_path: str = None,
+                           schedule_context: dict | None = None):
     """Create a single reminder in the database and sync to Google Calendar.
     
     Returns: dict with reminder details
@@ -633,11 +207,14 @@ def create_single_reminder(title: str, description: str, trigger_time_local: dat
     )
     if existing:
         conn.close()
+        saved_utc = _parse_db_timestamp(existing['trigger_time'])
+        assert saved_utc is not None
+        saved_local = saved_utc.astimezone(get_app_timezone())
         return {
             "reminder_id": existing["reminder_id"],
             "trigger_time": existing["trigger_time"],
-            "trigger_time_local": trigger_time_local.isoformat(),
-            "formatted_time": format_local_time(trigger_time_local),
+            "trigger_time_local": saved_local.isoformat(),
+            "formatted_time": format_local_time(saved_local),
             "recurring": recurrence_rule is not None,
             "recurrence_rule": recurrence_rule,
             "gcal_synced": False,
@@ -651,13 +228,14 @@ def create_single_reminder(title: str, description: str, trigger_time_local: dat
             created_at, spoken, spoken_at, triggered_at,
             acknowledged_at, callback_url, recurrence_rule,
             related_intel_file, metadata
-        ) VALUES (?, ?, ?, 'scheduled', ?, 0, NULL, NULL, NULL, NULL, ?, NULL, NULL)
+        ) VALUES (?, ?, ?, 'scheduled', ?, 0, NULL, NULL, NULL, NULL, ?, NULL, ?)
     """, (
         title,
         description,
         format_utc_db(trigger_time_utc),
         now_utc().isoformat(),
-        recurrence_rule
+        recurrence_rule,
+        json.dumps(schedule_context) if schedule_context else None,
     ))
     
     reminder_id = cursor.lastrowid
@@ -683,6 +261,7 @@ def create_single_reminder(title: str, description: str, trigger_time_local: dat
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             metadata_fields = {
+                **(schedule_context or {}),
                 "gcal_event_id": gcal_event_id,
                 "gcal_synced": True,
                 "gcal_synced_at": now_utc().isoformat()
@@ -708,7 +287,33 @@ def create_single_reminder(title: str, description: str, trigger_time_local: dat
     }
 
 
-def main():
+def _require_reminder_timezone(when: str, scopes: ExitStack) -> bool:
+    """Require a configured zone or a usable explicit zone for this request only."""
+    configured = get_config_value('JARVIS_TIMEZONE')
+    if isinstance(configured, str) and configured.strip():
+        try:
+            ZoneInfo(configured)
+        except (ValueError, ZoneInfoNotFoundError) as error:
+            raise ValueError("The configured reminder timezone is invalid; check JARVIS_TIMEZONE") from error
+        return True
+    explicit = explicit_schedule_timezone(when)
+    timezone_name = getattr(explicit, 'key', None)
+    if explicit == timezone.utc or str(explicit).upper() in {'UTC', 'GMT'}:
+        timezone_name = 'UTC'
+    if not timezone_name:
+        raise ValueError(
+            "No reminder timezone is configured; configure JARVIS_TIMEZONE "
+            "or specify an IANA timezone"
+        )
+    overrides = {'JARVIS_TIMEZONE': timezone_name}
+    if get_scoped_config() is None:
+        scopes.enter_context(config_scope(get_active_config_mode(), overrides=overrides))
+    else:
+        scopes.enter_context(config_override_scope(overrides))
+    return False
+
+
+def _run_main(scopes: ExitStack):
     try:
         # Parse arguments
         if len(sys.argv) > 1:
@@ -721,24 +326,36 @@ def main():
         
         # Extract parameters
         title = args.get('title')
-        if not title:
-            raise ValueError("title is required")
+        if not isinstance(title, str) or not title.strip():
+            raise ValueError("title must be a non-empty string")
         
         description = args.get('description', '')
         when = args.get('when')
-        if not when:
-            raise ValueError("when is required (e.g., 'in 4 hours', 'tomorrow at 3pm')")
         
-        # Parse time (returns tuple: datetime OR list of datetimes, recurrence_rule)
+        # Resolve and validate the entire plan before opening the DB or syncing Calendar.
+        reference_time = now_utc()
         try:
-            trigger_result, recurrence_rule = parse_time_expression(when)
+            timezone_is_configured = _require_reminder_timezone(when, scopes)
+            reference_time = now_local()
+            schedule_context: dict = {
+                'schedule_reference_time': reference_time.isoformat(),
+                'schedule_timezone': str(get_app_timezone()),
+                'requested_when': when,
+            }
+            if 'schedule' in args:
+                schedule_context['requested_schedule'] = args['schedule']
+            trigger_result, recurrence_rule = parse_time_expression(
+                when, schedule=args.get('schedule'), reference_time=reference_time,
+            )
+            if recurrence_rule and not timezone_is_configured:
+                raise ValueError(
+                    "No reminder timezone is configured; recurring reminders require persistent JARVIS_TIMEZONE "
+                    "so later occurrences preserve the requested timezone"
+                )
         except ValueError as error:
-            print(json.dumps({
-                "ok": False,
-                "error": str(error),
-                "error_code": "invalid_reminder_schedule",
-                "speech": "I couldn't create the reminder because the notification schedule is invalid.",
-            }))
+            print(json.dumps(reminder_schedule_rejection(
+                str(error), when=when, reference_time=reference_time,
+            )))
             sys.exit(1)
         
         # Get database path
@@ -757,8 +374,10 @@ def main():
                     description=description,
                     trigger_time_local=trigger_time_local,
                     recurrence_rule=None,  # Individual reminders, not recurring
-                    db_path=db_path
+                    db_path=db_path,
+                    schedule_context=schedule_context,
                 )
+                result.update(schedule_context)
                 reminders_created.append(result)
                 if result.get('gcal_synced'):
                     gcal_synced_count += 1
@@ -792,7 +411,8 @@ def main():
                     "reminders": reminders_created,
                     "first_reminder": reminders_created[0],
                     "last_reminder": reminders_created[-1],
-                    "gcal_synced_count": gcal_synced_count
+                    "gcal_synced_count": gcal_synced_count,
+                    **schedule_context,
                 }
             }))
         else:
@@ -804,8 +424,10 @@ def main():
                 description=description,
                 trigger_time_local=trigger_time_local,
                 recurrence_rule=recurrence_rule,
-                db_path=db_path
+                db_path=db_path,
+                schedule_context=schedule_context,
             )
+            result.update(schedule_context)
             
             # Format response
             if result.get('duplicate_suppressed'):
@@ -831,6 +453,11 @@ def main():
             "speech": f"Failed to create reminder: {e}"
         }))
         sys.exit(1)
+
+
+def main():
+    with ExitStack() as scopes:
+        _run_main(scopes)
 
 
 if __name__ == "__main__":
