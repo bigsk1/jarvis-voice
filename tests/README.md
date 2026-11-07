@@ -12,8 +12,9 @@ Use the repo `.venv` for development (`uv sync --dev --frozen` if needed):
 # Canonical full core suite (Python and core UI Node tests)
 ./bin/test-suite
 
-# Same full suite in two processes, keeping each test file together
-./bin/test-suite --workers 2
+# Same full suite in four processes, keeping each test file together
+./bin/test-suite --workers 4
+# Use --workers 2 for a lower-resource parallel run
 
 # Check sandbox/local HTTP support without running tests
 ./bin/test-suite --preflight-only

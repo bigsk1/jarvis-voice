@@ -246,8 +246,8 @@ def main(argv=None) -> int:
     parser.add_argument('--preflight-only', action='store_true', help='Check local fixture support only')
     parser.add_argument('--report-dir', type=Path, help='New directory for log, JUnit and run summary')
     parser.add_argument('--timeout', type=float, default=1800, help='Whole pytest timeout in seconds (default: 1800)')
-    parser.add_argument('--workers', type=int, choices=(1, 2), default=1,
-                        help='Pytest processes: 1 (serial, default) or 2 (parallel by file)')
+    parser.add_argument('--workers', type=int, choices=(1, 2, 4), default=1,
+                        help='Pytest processes: 1 (serial, default), 2 or 4 (parallel by file)')
     args = parser.parse_args(argv)
     if args.timeout <= 0:
         parser.error('--timeout must be greater than zero')

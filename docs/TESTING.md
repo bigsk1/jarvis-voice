@@ -14,7 +14,10 @@ cd ~/jarvis-voice
 # Complete deterministic core suite (Python and core UI Node tests)
 ./bin/test-suite
 
-# Same complete suite with two worker processes, grouped by test file
+# Same complete suite with four worker processes, grouped by test file
+./bin/test-suite --workers 4
+
+# Lower-resource parallel option
 ./bin/test-suite --workers 2
 
 # Environment check only, without collecting or executing tests
@@ -34,8 +37,9 @@ target explicitly: `UV_PROJECT_ENVIRONMENT=.venv uv sync --dev --frozen`.
 ## Full-suite execution and sandbox boundaries
 
 `./bin/test-suite` runs all collected tests under `tests/` serially by default.
-Use `./bin/test-suite --workers 2` for two worker processes with pytest-xdist's
-`loadfile` distribution: every test in a file stays on the same worker. Both modes
+Use `./bin/test-suite --workers 4` for four worker processes, or `--workers 2`
+for a lower-resource parallel run. Both use pytest-xdist's `loadfile`
+distribution: every test in a file stays on the same worker. All three modes
 use one pytest invocation, the same isolation/preflight, and one combined report.
 The development lockfile includes pytest-xdist; it is not a production dependency.
 

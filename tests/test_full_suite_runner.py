@@ -55,7 +55,7 @@ def test_preflight_preserves_dependency_failure_vs_permission_denial(monkeypatch
     assert ('ENVIRONMENT BLOCKED' in captured.out) == (returncode == 3)
 
 
-@pytest.mark.parametrize('workers', [1, 2])
+@pytest.mark.parametrize('workers', [1, 2, 4])
 def test_preflight_requires_xdist_only_for_parallel_mode(monkeypatch, tmp_path, capsys, workers):
     block_xdist = '''
 import builtins
@@ -69,10 +69,10 @@ builtins.__import__ = import_without_xdist
     monkeypatch.setattr(runner, 'PREFLIGHT', block_xdist + runner.PREFLIGHT)
     python = Path(sys.executable)
     assert runner.preflight(python, runner.child_environment(python), tmp_path, workers) == (
-        2 if workers == 2 else 0
+        2 if workers > 1 else 0
     )
     captured = capsys.readouterr()
-    if workers == 2:
+    if workers > 1:
         assert 'simulated missing pytest-xdist' in captured.err
         assert 'uv sync --dev --frozen' in captured.err
     else:
@@ -156,7 +156,7 @@ def test_concrete_permission_denial_requests_host_rerun_without_starting_pytest(
 
 
 @pytest.mark.parametrize('passing', [False, True])
-@pytest.mark.parametrize('workers', [1, 2])
+@pytest.mark.parametrize('workers', [1, 2, 4])
 def test_real_pytest_exit_and_evidence_are_preserved(monkeypatch, tmp_path, passing, workers):
     (tmp_path / '.venv').symlink_to(ROOT / '.venv', target_is_directory=True)
     (tmp_path / 'tests').mkdir()
@@ -178,18 +178,18 @@ def test_optional_fixture():
     monkeypatch.setenv('PYTEST_ADDOPTS', '-k nonexistent')
     reports = tmp_path / 'evidence'
     arguments = ['--report-dir', str(reports)]
-    if workers == 2:
-        arguments.extend(['--workers', '2'])
+    if workers > 1:
+        arguments.extend(['--workers', str(workers)])
     code = runner.main(arguments)
     assert code == (0 if passing else 1)
     summary = json.loads((reports / 'summary.json').read_text())
     assert summary['exit_code'] == code
     assert summary['scope'] == 'full'
     assert summary['workers'] == workers
-    assert summary['distribution'] == ('loadfile' if workers == 2 else 'no')
-    if workers == 2:
+    assert summary['distribution'] == ('loadfile' if workers > 1 else 'no')
+    if workers > 1:
         assert summary['command'][-5:] == [
-            '-n', '2', '--dist', 'loadfile', '--max-worker-restart=0',
+            '-n', str(workers), '--dist', 'loadfile', '--max-worker-restart=0',
         ]
     else:
         assert '-n' not in summary['command']
@@ -208,7 +208,7 @@ def test_optional_fixture():
     assert '2 subtests passed' in (reports / 'pytest.log').read_text()
 
 
-@pytest.mark.parametrize('workers', ['0', '3', '-1', 'auto'])
+@pytest.mark.parametrize('workers', ['0', '3', '5', '-1', 'auto'])
 def test_worker_count_is_bounded_before_starting_preflight(monkeypatch, workers):
     monkeypatch.setattr(runner, 'preflight', lambda *args: pytest.fail('preflight ran'))
     with pytest.raises(SystemExit) as error:
@@ -216,7 +216,8 @@ def test_worker_count_is_bounded_before_starting_preflight(monkeypatch, workers)
     assert error.value.code == 2
 
 
-def test_two_workers_execute_distinct_files_without_splitting_them(monkeypatch, tmp_path):
+@pytest.mark.parametrize('workers', [2, 4])
+def test_workers_execute_distinct_files_without_splitting_them(monkeypatch, tmp_path, workers):
     (tmp_path / '.venv').symlink_to(ROOT / '.venv', target_is_directory=True)
     (tmp_path / 'tests').mkdir()
     records = tmp_path / 'records'
@@ -232,21 +233,22 @@ def test_record_worker(step):
     name = Path(__file__).stem + str(step) + '.json'
     (Path(RECORDS) / name).write_text(json.dumps(record))
 '''
-    for name in ('test_first.py', 'test_second.py'):
-        (tmp_path / 'tests' / name).write_text(f'RECORDS={str(records)!r}\n' + source)
+    names = ('first', 'second', 'third', 'fourth')[:workers]
+    for name in names:
+        (tmp_path / 'tests' / f'test_{name}.py').write_text(f'RECORDS={str(records)!r}\n' + source)
     monkeypatch.setattr(runner, 'ROOT', tmp_path)
     monkeypatch.setattr(runner, 'preflight', lambda *args: 0)
     reports = tmp_path / 'evidence'
-    assert runner.main(['--workers', '2', '--report-dir', str(reports)]) == 0
+    assert runner.main(['--workers', str(workers), '--report-dir', str(reports)]) == 0
     observed = []
-    for name in ('first', 'second'):
+    for name in names:
         rows = [json.loads((records / f'test_{name}{step}.json').read_text()) for step in (1, 2)]
         assert rows[0] == rows[1], f'Test file {name} was split between workers'
         observed.append(rows[0])
-    assert {row['worker'] for row in observed} == {'gw0', 'gw1'}
-    assert len({row['pid'] for row in observed}) == 2
+    assert {row['worker'] for row in observed} == {f'gw{number}' for number in range(workers)}
+    assert len({row['pid'] for row in observed}) == workers
     summary = json.loads((reports / 'summary.json').read_text())
-    assert summary['junit']['testcase_counts']['passed'] == 4
+    assert summary['junit']['testcase_counts']['passed'] == workers * 2
 
 
 @pytest.mark.parametrize('contents', [None, '<testsuites><broken>'])
@@ -312,7 +314,8 @@ raise SystemExit(runner.run_tests([sys.executable, '-c', child], os.environ.copy
                     pass
 
 
-def test_termination_cleans_up_both_workers_and_their_detached_children(tmp_path):
+@pytest.mark.parametrize('workers', [2, 4])
+def test_termination_cleans_up_workers_and_their_detached_children(tmp_path, workers):
     tests = tmp_path / 'tests'
     tests.mkdir()
     source = '''
@@ -326,8 +329,8 @@ def test_blocking_fixture():
     Path(os.environ['PYTEST_XDIST_WORKER'] + '.json').write_text(json.dumps(record))
     time.sleep(60)
 '''
-    for name in ('test_first.py', 'test_second.py'):
-        (tests / name).write_text(source)
+    for number in range(workers):
+        (tests / f'test_worker_{number}.py').write_text(source)
     script = '''
 import importlib.machinery, importlib.util, os, sys
 from pathlib import Path
@@ -335,22 +338,22 @@ loader = importlib.machinery.SourceFileLoader('runner', sys.argv[1])
 spec = importlib.util.spec_from_loader(loader.name, loader)
 runner = importlib.util.module_from_spec(spec)
 loader.exec_module(runner)
-command = [sys.executable, '-m', 'pytest', 'tests', '-q', '-n', '2', '--dist', 'loadfile',
+command = [sys.executable, '-m', 'pytest', 'tests', '-q', '-n', sys.argv[2], '--dist', 'loadfile',
            '--max-worker-restart=0']
 raise SystemExit(runner.run_tests(command, runner.child_environment(Path(sys.executable)),
                                  Path.cwd(), Path('run.log'), 60))
 '''
     process = subprocess.Popen(
-        [sys.executable, '-c', script, str(ROOT / 'bin/test-suite')],
+        [sys.executable, '-c', script, str(ROOT / 'bin/test-suite'), str(workers)],
         cwd=tmp_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
     owned = []
     try:
-        markers = [tmp_path / f'gw{number}.json' for number in (0, 1)]
+        markers = [tmp_path / f'gw{number}.json' for number in range(workers)]
         deadline = time.monotonic() + 15
         while not all(marker.exists() for marker in markers) and time.monotonic() < deadline:
             time.sleep(0.02)
-        assert all(marker.exists() for marker in markers), 'Both worker fixtures did not start'
+        assert all(marker.exists() for marker in markers), 'All worker fixtures did not start'
         records = [json.loads(marker.read_text()) for marker in markers]
         owned = [psutil.Process(pid) for pid in {pid for row in records for pid in row.values()}]
         process.terminate()
