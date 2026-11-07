@@ -1684,6 +1684,51 @@ operator's permission configuration.
 
 ---
 
+## Consistent GIF Validation Across Downloads and Email Ingestion
+
+**Priority:** Security hardening
+**Status:** Proposed; not implemented
+
+Generic Stash URL downloads and email attachment ingestion can currently store
+GIF bytes without decoding the animation. URL/MIME checks, authenticated mail,
+and attachment size/hash verification do not establish that those bytes are a
+valid, bounded image. The existing GIF-aware image paths decode every frame,
+but preserve the original container rather than re-encode it. The strict
+`kind="image_url"` importer still rejects GIFs. See [Stash](STASH_SYSTEM.md) and
+the [email inbox](tools/email-inbox-tool/README.md).
+
+**Goal:** Apply a shared GIF validation policy to generic web downloads and
+email-to-Stash ingestion before files become available for preview, analysis,
+or editing, while preserving valid animation.
+
+- Detect actual GIF bytes and check filename/MIME inconsistencies; do not trust
+  a `.gif` extension or `image/gif` declaration alone. Reject malformed content
+  claiming to be a GIF rather than silently falling back to unchecked storage.
+- Reuse `inspect_gif_image` and its existing limits: 30 MiB, 256 frames, and
+  40 million cumulative decoded frame pixels. Decode every frame and reject
+  malformed/truncated data and decompression-limit failures across entry paths.
+- Preserve URL/redirect restrictions, authenticated-origin downloads, inbox
+  quotas, and verification against the original email attachment's size/hash.
+  Record the validation result and policy version with the Stash artifact.
+- Evaluate bounded, isolated decoding and rebuilding GIFs to remove unwanted
+  metadata or trailing payloads. Re-encoding is a separate hardening decision;
+  it must preserve timing, looping, and transparency. Keep any derived file
+  separate from the authenticated original and its hash/provenance.
+- Treat decoded image content as untrusted model input. Successful validation
+  is neither malware scanning nor proof against decoder vulnerabilities or
+  instructions embedded in an image.
+
+**Acceptance checks:** Cover spoofed MIME/extensions, invalid and truncated
+GIFs, byte/frame/pixel-limit violations, and failures without an unchecked
+fallback. Verify consistent decisions across generic downloads and email
+ingestion, unchanged email integrity checks, and valid animated Canvas previews
+and downloads. This proposal does not enable GIFs in the strict still-image
+importer or add a new scanner/service dependency.
+
+- Note: Jarvis already validates GIFs with Pillow, which is pinned at Pillow>=13.0.0, and that pin includes the fix for the GIF frame-seek decompression bug.
+
+---
+
 ## Scheduled Tasks UI follow-ups — resolved October 12, 2026
 
 - **Alert-on-failure state mismatch:** an API/CLI-created task can have no
@@ -1742,5 +1787,5 @@ edited or run by the check. Source: `jarvis-memory/client/js/app.js` and
 
 ---
 
-**Last Updated:** October 15, 2026
-**Version:** 2.16 (JPEG XL conversion candidate and installation constraints)
+**Last Updated:** November 5, 2026
+**Version:** 2.17 (GIF ingestion validation and security hardening proposal)
