@@ -9,8 +9,6 @@ from pathlib import Path
 
 from flask import Blueprint, Response, jsonify, request
 
-from ..config import CANVAS_DIR
-
 try:
     from stash_helper import get_stash_dir
 except ImportError:
@@ -274,14 +272,7 @@ pinned: {page.get('pinned', False)}
 
 @pages_bp.route('/api/pages/upload', methods=['POST'])
 def upload_page():
-    """
-    Upload/import a page from JSON.
-    
-    Accepts JSON body with page data. If 'id' is provided and exists, 
-    it will be treated as an update. Otherwise creates a new page.
-    
-    Set 'force_new': true to always create a new page even if ID matches.
-    """
+    """Import JSON as a new page, ignoring imported IDs and legacy force_new flags."""
     data = request.get_json()
     
     if not data:
@@ -290,28 +281,9 @@ def upload_page():
     if not data.get('title'):
         return jsonify({"error": "Title is required"}), 400
     
-    force_new = data.pop('force_new', False)
-    existing_id = data.get('id')
-    
-    # Check if page with this ID exists
-    if existing_id and not force_new:
-        existing_path = CANVAS_DIR / f"{existing_id}.json"
-        if existing_path.exists():
-            # Update existing page
-            with open(existing_path) as f:
-                existing = json.load(f)
-            
-            existing['title'] = data.get('title', existing.get('title'))
-            existing['content'] = data.get('content', existing.get('content', ''))
-            existing['tags'] = data.get('tags', existing.get('tags', []))
-            existing['pinned'] = data.get('pinned', existing.get('pinned', False))
-            existing['updated'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "Z"
-
-            if existing.get('pinned', False):
-                sync_stash_pins(existing.get('content', ''), pinned=True, stash_dir=get_stash_dir())
-
-            save_page(existing)
-            return jsonify({"action": "updated", "page": existing})
+    url_error = canvas_url_validation_error(data.get('content', ''))
+    if url_error:
+        return jsonify(url_error), 400
     
     # Create new page
     now_utc = datetime.now(timezone.utc)

@@ -1044,25 +1044,27 @@ async function togglePin(id) {
 
 async function saveEdit() {
     if (!editingPage) return;
+    const pageId = editingPage;
     
     const title = document.getElementById('editTitle').value;
     const tags = document.getElementById('editTags').value.split(',').map(t => t.trim()).filter(Boolean);
     const content = document.getElementById('editContent').value;
     
     try {
-        await fetch(`/api/pages/${editingPage}`, {
+        const response = await fetch(`/api/pages/${pageId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ title, tags, content })
         });
+        await parseApiResponse(response);
         showToast('Page updated', 'success');
         closeEditModal();
-        fetchPages();
-        if (currentPage === editingPage) {
-            selectPage(editingPage);
+        await fetchPages();
+        if (currentPage === pageId) {
+            selectPage(pageId);
         }
     } catch (err) {
-        showToast('Failed to save changes', 'error');
+        showToast(err.message || 'Failed to save changes', 'error');
     }
 }
 
@@ -1427,7 +1429,6 @@ function openUploadModal() {
     document.getElementById('uploadFile').value = '';
     document.getElementById('uploadPreview').classList.remove('active');
     document.getElementById('uploadSubmitBtn').disabled = true;
-    document.getElementById('uploadForceNew').checked = false;
     document.getElementById('uploadModal').classList.add('active');
 }
 
@@ -1464,11 +1465,6 @@ function handleFileSelect(event) {
 async function submitUpload() {
     if (!uploadData) return;
 
-    const forceNew = document.getElementById('uploadForceNew').checked;
-    if (forceNew) {
-        uploadData.force_new = true;
-    }
-
     try {
         const response = await fetch('/api/pages/upload', {
             method: 'POST',
@@ -1480,7 +1476,7 @@ async function submitUpload() {
         if (response.ok) {
             showToast(`Page ${result.action}!`, 'success');
             closeUploadModal();
-            fetchPages();
+            await fetchPages();
             if (result.page && result.page.id) {
                 selectPage(result.page.id);
             }

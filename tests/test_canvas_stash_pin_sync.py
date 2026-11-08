@@ -59,7 +59,8 @@ def _load_pages_route(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "append_content", lambda old, new: f"{old}\n\n{new}")
     monkeypatch.setattr(module, "canvas_url_validation_error", canvas_url_validation_error)
     monkeypatch.setattr(module, "is_suspicious_content_shrink", lambda _old, _new: False)
-    monkeypatch.setattr(module, "generate_canvas_page_id", lambda _now: "page_new")
+    page_ids = iter(["page_new", "page_imported_again"])
+    monkeypatch.setattr(module, "generate_canvas_page_id", lambda _now: next(page_ids))
     monkeypatch.setattr(module, "get_stash_dir", lambda: tmp_path / "stash")
 
     app = Flask(__name__)
@@ -90,7 +91,7 @@ def test_updating_already_pinned_page_syncs_new_stash_references(tmp_path, monke
     )
 
 
-def test_upload_syncs_stash_references_for_new_and_existing_pinned_pages(tmp_path, monkeypatch):
+def test_upload_syncs_stash_references_for_independent_pinned_imports(tmp_path, monkeypatch):
     app, sync_pins = _load_pages_route(tmp_path, monkeypatch)
     client = app.test_client()
 
@@ -104,7 +105,7 @@ def test_upload_syncs_stash_references_for_new_and_existing_pinned_pages(tmp_pat
     )
     assert created.status_code == 201
 
-    updated = client.post(
+    imported_again = client.post(
         "/api/pages/upload",
         json={
             "id": "page_new",
@@ -113,7 +114,12 @@ def test_upload_syncs_stash_references_for_new_and_existing_pinned_pages(tmp_pat
             "pinned": True,
         },
     )
-    assert updated.status_code == 200
+    assert imported_again.status_code == 201
+    assert created.get_json()["page"]["id"] == "page_new"
+    assert imported_again.get_json()["page"]["id"] == "page_imported_again"
+    assert json.loads((tmp_path / "page_new.json").read_text())["content"] == (
+        "stash://space_created/file.png"
+    )
 
     assert [call.args[0] for call in sync_pins.call_args_list] == [
         "stash://space_created/file.png",

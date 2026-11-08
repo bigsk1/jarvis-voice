@@ -384,6 +384,11 @@ curl -X POST http://localhost:8890/api/pages \
 
 ### Update Page
 
+Supplying `content` replaces the complete content field. Truncated URLs return
+HTTP `400`; a suspiciously large reduction returns HTTP `409` unless
+`allow_content_shrink: true` is explicitly supplied. The Canvas editor shows the
+server's rejection and keeps the draft open so it can be corrected.
+
 ```bash
 curl -X PUT http://localhost:8890/api/pages/page_20241201_143022 \
   -H "Content-Type: application/json" \
@@ -412,6 +417,17 @@ curl "http://localhost:8890/api/pages/{id}/download?format=markdown"
 ```
 
 ### Upload/Import Page
+
+Importing a JSON file always creates a new page with a fresh ID and timestamps.
+An ID in the file cannot replace an existing page; legacy `force_new` values are
+ignored. The import preserves the title, content, tags, pin setting, and source
+query. Pinned imports also pin their referenced Stash spaces.
+
+Imports use the same URL check as normal page creation. Incomplete URLs such as
+`https://example.com/...` are rejected with HTTP `400` and
+`error_code: truncated_content_url`, including placeholders in examples. Complete
+comparison URLs such as `https://github.com/example/repo/compare/v1...v2` remain
+valid. A rejected import does not save a page or change Stash pins.
 
 ```bash
 curl -X POST http://localhost:8890/api/pages/upload \
