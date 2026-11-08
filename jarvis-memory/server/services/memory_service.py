@@ -382,6 +382,7 @@ class MemoryService:
             params.append(embedding_blob)
         
         if not updates:
+            conn.close()
             return False
         
         updates.append("updated_at = CURRENT_TIMESTAMP")
