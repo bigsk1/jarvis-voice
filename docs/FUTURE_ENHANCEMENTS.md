@@ -13,7 +13,14 @@ Guiding principles:
 ## ✅ Recently Completed (High-Level)
 
 - **Stash system**: structured, tool-accessible artifact store for multi-step workflows (`stash`)
-- **PDF creation**: `pdf_create` tool that composes PDFs from stash artifacts
+- **PDF creation**: `pdf_create` composes PDFs from Stash artifacts. Markdown
+  reports in `pdf_create` and `convert_file` embed validated raster images from
+  `stash://` references, public HTTP(S) URLs, inline data images, and relative
+  paths confined to the original source directory. GIFs use their first frame
+  with a warning after full validation. Image tables preserve their grid when
+  they fit, and explicit image files share the same validation and limits.
+  Blocked or unavailable images remain labeled placeholders with warnings.
+  Canvas PDF export remains separate. See [PDF image behavior and bounds](STASH_SYSTEM.md#markdown-images-in-pdf-reports).
 - **Printer upgrades**: compact mode + better formatting + image printing
 - **Tool blocklist**: `BLOCKED_TOOLS` support in tool sync + startup display filtering
 - **Native provider web search**: optional built-in search for xAI + Anthropic to reduce tool calls/loops
@@ -1874,4 +1881,4 @@ edited or run by the check. Source: `jarvis-memory/client/js/app.js` and
 ---
 
 **Last Updated:** November 8, 2026
-**Version:** 2.20 (shared GIF validation implemented)
+**Version:** 2.21 (Validated images in Markdown PDF reports)

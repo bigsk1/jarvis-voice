@@ -1,6 +1,8 @@
 """Real local media, trusted policy, isolated stash and process ownership evidence."""
 
+import base64
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -94,6 +96,58 @@ def test_actual_conversion_keeps_input_and_writes_decodable_stash(conversion, mo
     assert hashlib.sha256(c.source.read_bytes()).hexdigest() == before
     assert result['result']['data']['stash_ref'].startswith('stash://')
     assert c.store.pending_deliveries()
+    assert not list((c.store.path.parent / 'task-workspaces').iterdir())
+
+
+@pytest.mark.parametrize('mode', ['cloud', 'local'])
+def test_background_markdown_pdf_embeds_relative_and_data_images_with_complete_saved_evidence(
+    conversion, mode,
+):
+    import fitz
+    from PIL import Image
+
+    c = conversion
+    assets = c.source.parent / 'report-assets'
+    assets.mkdir()
+    chart = assets / 'chart.png'
+    Image.new('RGB', (84, 42), (30, 140, 90)).save(chart)
+    inline = io.BytesIO()
+    Image.new('RGB', (60, 30), (180, 40, 20)).save(inline, format='PNG')
+    data_url = 'data:image/png;base64,' + base64.b64encode(inline.getvalue()).decode('ascii')
+    source = c.source.with_suffix('.md')
+    source.write_text(
+        '# Background report\n\nFIRST PARAGRAPH\n\n'
+        '![Relative chart](./report-assets/chart.png)\n\n'
+        f'![Inline chart]({data_url})\n\nFINAL PARAGRAPH',
+        encoding='utf-8',
+    )
+    original_source = source.read_bytes()
+    original_chart = chart.read_bytes()
+    job = c.admit(mode, args={'source': str(source), 'target_format': 'pdf'})
+
+    assert TaskWorker(c.store, production.worker_adapters()).run_once()
+    saved = c.store.get(job['id'])
+
+    assert saved['state'] == 'succeeded', saved
+    assert saved['adapter'] == production.ADAPTER
+    assert saved['mode'] == mode
+    assert saved['delivery_state'] == 'pending'
+    data = saved['result']['data']
+    assert data['source_complete'] is True
+    assert data['warnings'] == []
+    assert data['conversion_info']['source_bytes'] == len(original_source)
+    output = c.stash / data['space_id'] / data['filename']
+    manifest = json.loads((output.parent / 'meta.json').read_text())
+    row = next(item for item in manifest['files'] if item['file_id'] == data['file_id'])
+    assert row['hash_sha256'] == hashlib.sha256(output.read_bytes()).hexdigest()
+    with fitz.open(output) as document:
+        assert data['page_count'] == document.page_count
+        text = ''.join(page.get_text() for page in document)
+        assert 'FIRST PARAGRAPH' in text and 'FINAL PARAGRAPH' in text and '[Image:' not in text
+        dimensions = {(image[2], image[3]) for page in document for image in page.get_images(full=True)}
+        assert {(84, 42), (60, 30)} <= dimensions
+    assert source.read_bytes() == original_source
+    assert chart.read_bytes() == original_chart
     assert not list((c.store.path.parent / 'task-workspaces').iterdir())
 
 

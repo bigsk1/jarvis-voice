@@ -33,10 +33,20 @@ TRUSTED_BINDINGS = {
     'apify_run_actor': 'apify_actor_v1',
 }
 
-# Outbound calls retain their dangerous/non-auto-approved manifest policy.
-# Only this reviewed tool/adapter pair may use that policy in the shared runner;
-# neither a manifest nor another binding may select the exception by itself.
+# Named exceptions bind every permission value to a reviewed tool/adapter pair;
+# neither a manifest nor another binding may select an exception by itself.
 TRUSTED_PERMISSION_POLICIES = {
+    # PDF rendering may GET public raster assets, but submits no independent
+    # remote job. Downloads and conversion stop with the supervised process.
+    'convert_file': {
+        'tool': 'convert_file',
+        'adapter': ADAPTER,
+        'permissions': {
+            'dangerous': False, 'auto_approve': True, 'network': True,
+            'bash': True, 'filesystem': True,
+        },
+    },
+    # Outbound calls retain their dangerous/non-auto-approved manifest policy.
     'phone_call': {
         'tool': 'phone_call',
         'adapter': REMOTE_ADAPTER,
@@ -60,6 +70,7 @@ CHILD_ENVIRONMENT_POLICIES = {
             'STASH_CLEANUP_MAX_SPACES', 'STASH_CLEANUP_MAX_BYTES_MB',
             'MAGICK_MEMORY_LIMIT', 'MAGICK_MAP_LIMIT', 'MAGICK_DISK_LIMIT', 'MAGICK_THREAD_LIMIT',
             'MAGICK_CONFIGURE_PATH', 'MAGICK_TEMPORARY_PATH',
+            'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
         }),
         'if_true': {},
     },

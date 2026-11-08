@@ -35,35 +35,8 @@ class JarvisPDF(DocumentPDF):
     """Unicode PDF shell with explicit local-image support for mixed content."""
 
     def add_image_centered(self, image_path: str, max_width: int = 180):
-        """Add an image centered on the page."""
-        if not os.path.exists(image_path):
-            raise FileNotFoundError(f"PDF image source not found: {image_path}")
-        
-        # Get image dimensions and scale
-        try:
-            from PIL import Image
-            with Image.open(image_path) as img:
-                img_width, img_height = img.size
-        except ImportError:
-            # Without PIL, just use max width
-            img_width, img_height = max_width, max_width
-        
-        # Scale to fit
-        aspect = img_height / img_width if img_width > 0 else 1
-        width = min(max_width, img_width)
-        height = width * aspect
-        
-        # Max height check
-        if height > 200:
-            height = 200
-            width = height / aspect
-        
-        # Center horizontally
-        if self.will_page_break(height):
-            self.add_page()
-        x = (self.w - width) / 2
-        self.image(image_path, x=x, w=width)
-        self.ln(10)
+        """Embed an explicitly supplied image through the shared raster validator."""
+        self.add_raster_image(image_path, max_width=max_width)
 
 
 def create_simple_pdf(
@@ -72,7 +45,8 @@ def create_simple_pdf(
     """
     Create a simple PDF with mixed content.
     
-    content_items: List of {"type": "text"|"markdown"|"image"|"heading", "content": "..."}
+    content_items: List of {"type": "text"|"markdown"|"image"|"heading", "content": "..."}.
+    Original Markdown file items may include source_path for confined relative images.
     """
     if not HAS_FPDF:
         raise ImportError("fpdf2 required: pip install fpdf2")
@@ -99,7 +73,7 @@ def create_simple_pdf(
         elif item_type == 'text':
             pdf.add_text(content)
         elif item_type == 'markdown':
-            write_markdown(pdf, content)
+            write_markdown(pdf, content, source_path=item.get('source_path'))
         elif item_type == 'image':
             pdf.add_image_centered(content)
     
@@ -176,10 +150,13 @@ def action_create(args: dict) -> dict:
                 content_items.append({'type': 'image', 'content': file_path})
             elif ext in ['.txt', '.md', '.markdown', '.json']:
                 file_text = read_pdf_text_source(file_path)
-                content_items.append({
+                item = {
                     'type': 'markdown' if ext in ['.md', '.markdown'] else 'text',
                     'content': file_text,
-                })
+                }
+                if item['type'] == 'markdown':
+                    item['source_path'] = file_path
+                content_items.append(item)
             else:
                 raise ValueError(
                     f"Unsupported PDF source format {ext or '(no extension)'}. "
@@ -285,7 +262,7 @@ def action_from_text(args: dict) -> dict:
 
 
 def action_from_markdown(args: dict) -> dict:
-    """Create a formatted PDF from Markdown without loading image references."""
+    """Create a formatted PDF with bounded Stash, public URL, or inline data images."""
     if not args.get('text'):
         raise ValueError("'text' is required")
     return action_create({**args, '_text_format': 'markdown'})

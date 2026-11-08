@@ -93,6 +93,21 @@ def test_bold_italic_adds_only_local_text_stroke_and_normal_text_stays_filled(tm
     assert ("Normal tail", 1) not in runs
 
 
+@pytest.mark.parametrize("opener", ["**Formatted opener**", "`Formatted opener`"])
+def test_list_marker_keeps_body_font_when_first_inline_run_is_formatted(tmp_path, opener):
+    output = tmp_path / "formatted-list-opener.pdf"
+    render_markdown_pdf(f"# Heading\n\n1. {opener} with body text.", str(output))
+    with fitz.open(output) as document:
+        spans = [
+            span for page in document for block in page.get_text("dict")["blocks"]
+            if "lines" in block for line in block["lines"] for span in line["spans"]
+        ]
+    marker = next(span for span in spans if span["text"].strip() == "1.")
+    assert marker["size"] == pytest.approx(10.5)
+    assert "Inter" in marker["font"] and "Mono" not in marker["font"]
+    assert "Bold" not in marker["font"]
+
+
 def test_long_source_keeps_its_tail_and_long_code_links_and_table_cells_wrap(tmp_path):
     output = tmp_path / "complete.pdf"
     source = (
@@ -112,25 +127,26 @@ def test_long_source_keeps_its_tail_and_long_code_links_and_table_cells_wrap(tmp
     assert any("labeled rows" in warning for warning in metadata["warnings"])
 
 
-def test_markdown_images_never_load_local_or_remote_resources(tmp_path, monkeypatch):
+def test_blocked_or_unresolved_markdown_images_preserve_references(tmp_path, monkeypatch):
     from fpdf import FPDF
     def forbidden(*_args, **_kwargs):
-        pytest.fail("Markdown renderer must not load an image resource")
+        pytest.fail("Blocked or unresolved images must not reach the PDF image loader")
     monkeypatch.setattr(FPDF, "image", forbidden)
     source = (
-        "![Remote diagram](https://example.invalid/private.png)\n\n"
+        "![Remote diagram](http://127.0.0.1/private.png)\n\n"
         "![Local file](./private.png)\n\n"
         "![File URL](file:///etc/passwd)\n\n"
         "<img src='/etc/passwd'>\n\n"
-        "| Image |\n|---|\n| ![Table diagram](https://example.invalid/table.png) |"
+        "| Image |\n|---|\n| ![Table diagram](http://127.0.0.1/table.png) |"
     )
     output = tmp_path / "images-as-references.pdf"
     metadata = render_markdown_pdf(source, str(output))
     text = extracted(output)
-    assert "Remote diagram" in text and "https://example.invalid/private.png" in text
+    assert "Remote diagram" in text and "http://127.0.0.1/private.png" in text
     assert "Local file" in text and "./private.png" in text
     assert "Table diagram" in text
-    assert any("no image URLs or local files were loaded" in warning for warning in metadata["warnings"])
+    assert any("blocked IP range" in warning for warning in metadata["warnings"])
+    assert any("original Markdown source file" in warning for warning in metadata["warnings"])
     with fitz.open(output) as document:
         assert not any(page.get_images() for page in document)
 

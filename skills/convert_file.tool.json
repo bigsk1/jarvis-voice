@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "convert_file",
-  "description": "Convert Markdown or plain-text files directly to complete, formatted PDF documents, or convert media locally. Examples: \"convert this .md file to PDF\", \"make a PDF from my uploaded Markdown\", \"convert my image to PNG\", \"convert video to MP3\", \"remove the white background from my image\". Markdown/text PDF rendering reads the original UTF-8 source in full; no model summarization or ASCII workaround is needed. Markdown headings, lists, tables, code, clickable links, and Unicode punctuation are supported with bundled fonts. Remote/embedded Markdown images are not fetched. Also supports image formats, raster-to-SVG tracing, video/audio conversion, video-to-audio extraction, and solid edge-connected background removal. Accepts stash:// references or local files; outputs save to Stash for preview and download.",
+  "description": "Convert Markdown or plain-text files directly to complete, formatted PDF documents, or convert media locally. Examples: \"convert this .md file to PDF\", \"make a PDF from my uploaded Markdown\", \"convert my image to PNG\", \"convert video to MP3\", \"remove the white background from my image\". Markdown/text PDF rendering reads the original UTF-8 source in full; no model summarization or ASCII workaround is needed. Markdown headings, lists, tables, code, clickable links, and Unicode punctuation are supported with bundled fonts. Markdown images embed validated rasters from stash:// references, public HTTP(S) URLs, inline data:image URLs, and relative paths confined to the original source file's directory. Private network URLs and absolute/file image paths are blocked. Animated GIFs render their first frame with a warning after full animation validation. Missing, blocked, unsupported, or over-limit images stay labeled placeholders with warnings. Also supports image formats, raster-to-SVG tracing, video/audio conversion, video-to-audio extraction, and solid edge-connected background removal. Accepts stash:// references or local files; outputs save to Stash for preview and download.",
   "script": "convert_file.py",
   "complementary_tools": [
     "stash"
@@ -78,7 +78,7 @@
   "permissions": {
     "dangerous": false,
     "bash": true,
-    "network": false,
+    "network": true,
     "filesystem": true,
     "auto_approve": true
   },

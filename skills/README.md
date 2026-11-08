@@ -100,7 +100,7 @@ optionally reads selected articles with `crawl_url`, refreshes one Canvas page,
 and records only confirmed published links. No schedule is installed automatically.
 See [RSS setup, publication state and limits](../docs/RSS_FEEDS.md).
 
-## Offline Markdown and text to PDF
+## Markdown and text to PDF
 
 Use `convert_file` with the original `.md`, `.markdown`, or `.txt` Stash reference
 and `target_format: "pdf"` to create a complete searchable PDF. The converter
@@ -114,9 +114,24 @@ shows its Unicode code point rather than silently dropping it.
 
 `pdf_create` also accepts original Markdown files in `files`. For new content,
 use `from_markdown` with `text` for formatting or `from_text` for plain text.
-Markdown image references remain visible references rather than being fetched;
-include image files explicitly with `pdf_create` for mixed image/text documents.
+Markdown images embed validated rasters from `stash://space_id/file_id`, public
+HTTP(S) URLs, inline `data:image/...` URLs, and relative paths inside the original
+Markdown file's directory. Public image URLs are fetched when generating the
+PDF; the resulting PDF contains embedded image bytes and needs no network access
+to display them. Stash, data, and relative images work offline. Private network
+URLs, absolute image paths, `file://` URLs, and raw HTML image tags are not loaded.
+Relative paths require an original `.md`/`.markdown` file: inline `from_markdown`
+text has no implicit working directory. Missing, blocked, unsupported, or
+over-limit images stay labeled placeholders and are listed in the result's
+`warnings`. Images are decoded and re-encoded before embedding, including images
+passed explicitly in `files`. A GIF is fully validated before its first frame
+is used; animated GIFs also produce a warning explaining that the PDF is static.
+Ordinary tables keep their grid with image and cell text; wide or over-tall
+tables use labeled rows when a grid cannot fit. Plain-text conversion stays literal.
 The original is preserved and the PDF is saved to Stash for download or printing.
+This shared renderer serves `pdf_create` and `convert_file`; Canvas page PDF
+export uses its existing separate renderer. See
+[supported formats and PDF image limits](../docs/STASH_SYSTEM.md#markdown-images-in-pdf-reports).
 
 ## Docling document conversion (optional)
 

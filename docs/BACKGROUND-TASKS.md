@@ -347,7 +347,7 @@ The timeout is required, is an integer from 1 to 86400 seconds, and is stored in
 
 Arguments are validated against the manifest's JSON Schema using Draft 2020-12 with external retrieval disabled. Top-level undeclared arguments are rejected unless `additionalProperties` explicitly permits them. Optional `argument_constraints` adds runtime-only JSON Schema restrictions without changing provider parameters or descriptions. Conversion's source/format constraints live there. No Tool RAG resync is required for these metadata changes.
 
-The local policy requires `dangerous: false`, `auto_approve: true`, and `network: false`, plus the reviewed `completion_scope: "process_group"` declaration. Review child processes, daemonization, side effects, timeout/resource needs, and cancellation evidence before adding a binding. A local process ending cannot prove that a submitted remote operation stopped; the remote policy below handles this uncertainty. The separate `http_callback_v1` adapter serves the opt-in [Browser Use](BROWSER-USE.md) binding and does not change this process policy. Resource limits and permission metadata are not an OS network or filesystem sandbox.
+The default local policy requires `dangerous: false`, `auto_approve: true`, and `network: false`, plus the reviewed `completion_scope: "process_group"` declaration. `convert_file` has an exact named production permission policy allowing `network: true`, because Markdown PDF rendering may download public image assets. Those GET requests and conversion finish inside the supervised process; they do not submit independent remote jobs. Its restricted child environment and `proxy_policy: "off"` remain in effect. The exception is fingerprinted with the script and manifest and does not authorize networking for another local tool. Review child processes, daemonization, side effects, timeout/resource needs, and cancellation evidence before adding a binding. A local process ending cannot prove that a submitted remote operation stopped; the remote policy below handles this uncertainty. The separate `http_callback_v1` adapter serves the opt-in [Browser Use](BROWSER-USE.md) binding and does not change this process policy. Resource limits and permission metadata are not an OS network or filesystem sandbox.
 
 Phone calls use an exact named production permission policy for
 `remote_skill_v1`, retaining `dangerous: true` and `auto_approve: false`. The
@@ -415,7 +415,11 @@ Background conversion uses the remaining admitted job budget (900 seconds by def
 
 These are process/file ceilings, not a container-wide memory quota. Configure container/host quotas separately for aggregate limits. Files already created in stash may survive an uncertain execution and must not be inferred absent from a cancelled/failed card. A killed worker can leave an isolated temporary workspace; inspect its recorded process group before cleaning that job's workspace. Never delete the task database to clear an uncertain slot.
 
-PDF conversion is not supported by this adapter. Incoming callbacks have a
+Markdown and plain-text PDF conversion uses this same process-contained adapter
+and the shared renderer's image validation, source-directory confinement, and
+resource limits. Local and inline assets work offline; public HTTP(S) images are
+downloaded while generating the PDF. See [PDF image behavior and bounds](STASH_SYSTEM.md#markdown-images-in-pdf-reports).
+Incoming callbacks have a
 separate authenticated [service protocol](TASK-CALLBACKS.md#self-hosted-protocol).
 A private long-task binding needs a packaged and verified completion POST
 contract for that deployment. A public relay is not included or required for

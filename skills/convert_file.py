@@ -468,8 +468,10 @@ def convert_document_to_pdf(input_path: str, output_path: str, options: dict | N
         raise ValueError('Markdown/text PDF input must use UTF-8 encoding') from exc
     conversion_timeout(300)  # Honor an already expired background deadline before rendering.
     markdown = get_format(input_path) in {'md', 'markdown'}
-    render = render_markdown_pdf if markdown else render_text_pdf
-    metadata = render(text, output_path, title=title)
+    if markdown:
+        metadata = render_markdown_pdf(text, output_path, title=title, source_path=input_path)
+    else:
+        metadata = render_text_pdf(text, output_path, title=title)
     return {'tool': 'fpdf2', 'operation': 'markdown_to_pdf' if markdown else 'text_to_pdf',
             'source_bytes': len(content), 'source_characters': len(text), 'source_complete': True,
             **metadata}

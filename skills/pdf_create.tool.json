@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "pdf_create",
-  "description": "Create PDF documents from complete Stash Markdown/text files, explicit images, or supplied text. Supports Unicode titles/body text using bundled offline fonts. For an uploaded .md guide, pass its original stash:// reference in files; the whole file is rendered directly with headings, lists, tables, code and clickable links, without a model summary or truncated chat preview. Use convert_file with source and target_format pdf for a straightforward Markdown/text file conversion. Actions: create for Stash files and mixed content; from_markdown for formatted Markdown supplied in text; from_text for literal plain text. Markdown-linked images are not fetched; supply image files explicitly to include them. Outputs save to Stash for download/printing. For reading, merging or splitting existing PDFs, use pdf_read instead.",
+  "description": "Create PDF documents from complete Stash Markdown/text files, explicit images, or supplied text. Supports Unicode titles/body text using bundled fonts. For an uploaded .md guide, pass its original stash:// reference in files; the whole file is rendered directly with headings, lists, tables, code and clickable links, without a model summary or truncated chat preview. Use convert_file with source and target_format pdf for a straightforward Markdown/text file conversion. Actions: create for Stash files and mixed content; from_markdown for formatted Markdown supplied in text; from_text for literal plain text. Markdown images embed validated rasters from stash:// references, public HTTP(S) URLs, inline data:image URLs, or relative paths confined to the original Markdown file's directory. Relative paths require an original source file; supplied inline text has no working-directory fallback. Private network URLs, absolute/file paths, and unsupported formats are blocked. Animated GIFs use the first frame after full animation validation and report a warning. Missing, blocked, or over-limit images remain labeled placeholders with warnings. Outputs save to Stash for download/printing. For reading, merging or splitting existing PDFs, use pdf_read instead.",
   "complementary_tools": [
     "stash",
     "printer"
@@ -32,7 +32,7 @@
       },
       "text": {
         "type": "string",
-        "description": "Content to include. Use from_markdown for headings, lists, tables, code and links; from_text preserves literal plain text. Prefer files when converting an existing Stash document."
+        "description": "Content to include. Use from_markdown for headings, lists, tables, code, links, and raster images from stash:// references, public HTTP(S) URLs, or data:image URLs. Relative image paths require a Markdown source in files. from_text preserves literal plain text. Prefer files when converting an existing Stash document."
       },
       "title": {
         "type": "string",
@@ -50,7 +50,7 @@
   "permissions": {
     "dangerous": false,
     "bash": false,
-    "network": false,
+    "network": true,
     "filesystem": true,
     "auto_approve": true
   }

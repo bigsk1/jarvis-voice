@@ -536,6 +536,49 @@ Read file contents or get path for binary files.
 
 ---
 
+### Markdown images in PDF reports
+
+For report creation, use `pdf_create` or `convert_file` with the original
+Markdown Stash reference. Both embed `![caption](stash://space_id/file_id)`
+raster images directly into the PDF, so charts and photos do not need to be
+passed again as separate files. Public HTTP(S) image URLs, inline
+`data:image/...` images, and relative image paths are also supported. Public
+images are downloaded during PDF generation; the PDF stores embedded bytes and
+does not fetch them when viewed. Local and inline image sources work offline.
+
+Relative paths resolve from the original Markdown file's directory, including
+subdirectories, and cannot escape it through traversal or symlinks. An inline
+`pdf_create` Markdown string has no source directory and cannot load relative
+paths. Absolute paths, `file://` URLs, private network image URLs, and raw HTML
+image tags are not loaded. Stash references retain the shared restricted-read
+policy and cannot escape their Stash space. Public downloads use the shared
+Stash URL validation, redirect checks, and configured proxy policy; they do not
+use a browser session or authenticated image fetch.
+
+The renderer decodes and re-encodes allowed raster bytes before embedding and
+applies the same validation to explicit image files passed to `pdf_create`.
+GIFs are fully validated and rendered as the first frame; animated GIFs also
+produce a warning. Unsupported, blocked, missing, or over-limit Markdown images
+remain labeled placeholders with warnings in the tool result. Tables retain
+their grid and cell text with images when they fit; wide or over-tall tables
+fall back to labeled rows. Plain-text conversion remains literal. See
+[PDF creation](../skills/README.md#markdown-and-text-to-pdf).
+Canvas page PDF export uses a separate renderer and keeps its existing behavior.
+
+Supported Markdown image formats are PNG, JPEG, single-frame WebP, and GIF.
+SVG, BMP, TIFF, animated PNG, and animated WebP stay placeholders. The PDF
+renderer bounds each still source to 20 MiB and 40 million decoded pixels. GIFs
+retain the shared 30 MiB, 256-frame, 40-million-total-decoded-pixel limits. A PDF
+allows 32 image occurrences and loads at most 60 MiB of original image bytes and
+80 million decoded source pixels. Repeated references reuse a decoded image
+without charging the source-byte/pixel totals again, while each occurrence still
+counts toward 32. Embedded rasters are reduced to a longest side of 2,048 pixels;
+the source artifacts are preserved. Inline data images also count toward the
+5 MiB Markdown source limit. Limits are shared across Markdown images and
+explicit `pdf_create` image items in one PDF.
+
+---
+
 ### 3.5 `stash.compose` (Not Yet Implemented)
 
 > **Status**: Planned — see Phase 3 checklist below. The action is not in `skills/stash.tool.json` yet.
