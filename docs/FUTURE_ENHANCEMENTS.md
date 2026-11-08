@@ -69,14 +69,21 @@ Concrete improvements:
 
 #### Soft Empty-Result Tool Failures Should Continue In-Loop
 **Priority:** Medium reliability / token control
-**Status:** Possible patch; separate from the request-wide `MAX_TOOL_TURNS` accounting fix
+**Status:** Shared recovery policy still proposed; Yelp's empty-result handling is already fixed
 
 Some live-data tools can return a technically failed result for a normal
-research miss, such as `serpapi_yelp_search` reporting that Yelp returned no
-results for a narrow query. Today these failures can enter the recursive
-tool-failure retry path. That preserves trace context, but after the single
+research miss. `serpapi_google_events`, for example, can still turn SerpApi's
+"Google hasn't returned any results for this query" response into `ok: false`.
+These failures can enter the recursive tool-failure retry path. That preserves
+trace context, but after the single
 retry budget is spent, a later soft miss can end an otherwise useful
 multi-tool research run.
+
+**Already fixed:** `serpapi_yelp_search` accepts its known empty-result response
+and returns a successful empty search. The shared recovery policy remains
+separate from that tool-specific fix and the request-wide `MAX_TOOL_TURNS`
+accounting fix. Preserve provider-incident classification; an outage is not
+an ordinary empty search.
 
 **Goal:** Treat recognized empty-result misses as in-loop context rather than
 terminal error recovery. The model should see the failed result, spend one
@@ -101,7 +108,7 @@ tool, fetch/search source, or final answer from gathered evidence.
   already gathered."
 
 **Regression coverage to add:**
-- Yelp empty result followed by Maps/search fallback stays within
+- Google Events empty result followed by a broader search stays within
   `MAX_TOOL_TURNS`.
 - A second empty-result miss does not abort the whole run before remaining
   turns are exhausted.
@@ -142,10 +149,15 @@ Keep the existing descriptions as the control and roll back individual tools
 that lose adherence. Provider/model-specific compact variants are a possible
 later step only if one shared description cannot perform reliably everywhere.
 
-### 3) Short-Lived Continuation Across Wake Activations - HAVE THIS ALREADY IN AUTO CONTEXT NUM AND MINUTES - IS DIFFERENT IN SESSION ID AND LOADING CONVERSATION FROM MEMORY DB
-**Priority:** Medium
+### 3) Short-Lived Continuation Across Wake Activations
+**Status:** Recent-context fallback implemented; shared resumable sessions remain future work
 
-**Goal:** Remember context across wake word activations for ~5–10 minutes (without polluting long-term memory).
+DB auto-context already supplies recent exchanges across wake activations when
+enabled. `AUTO_CONTEXT_ENABLED`, `AUTO_CONTEXT_WINDOW`, and
+`AUTO_CONTEXT_MINUTES` control the fallback; it reads the active mode's recent
+conversation log when no nonempty conversation history was supplied.
+See [Auto-Context](AUTO_CONTEXT_SYSTEM.md) and
+[conversation state](CONVERSATION_STATE_ARCHITECTURE.md).
 
 **Example:**
 ```
@@ -158,24 +170,26 @@ You: "Hey Jarvis, what about the Italian ones?"
 Jarvis: "From the Portland restaurants, here are the Italian options..."
 ```
 
-**Implementation:**
-- Session ID tied to time window
-- Load recent conversation from memory DB
-- Include in LLM context
-- Expire after idle timeout
+**Remaining:** A named, resumable session/task shared across voice, CLI and Web
+is a different capability. See the Unified Session / Task Layer below; the
+existing age/count window does not provide that shared identity.
 
-### 4) Anthropic SDK Consolidation (Stray Raw HTTP) then we also have to do it for XAI, OpenAI and Olama Cloud because they all have functions for HTTP requests for analyze vision
+### 4) Provider SDK Consolidation for Vision
 **Priority:** Low / housekeeping
+**Status:** Shared vision dispatch implemented; remaining HTTP-to-SDK migration is optional
 
-Main chat/tool path in `lib/llm_provider.py` already uses the Anthropic SDK (thinking, caching, native web search). A few stragglers still POST to `api.anthropic.com` directly:
-- `skills/analyze_image.py`
-- `skills/stash.py`
-- `jarvis-web/server/sockets/chat.py` (one path) vision?
+The main chat/tool path in `lib/llm_provider.py` already uses provider adapters,
+including the Anthropic SDK. Image analysis and Web upload vision now use the
+shared mode-aware dispatcher in `lib/vision_provider.py`; the former per-caller
+vision implementations are not separate migration targets. Stash text summaries
+also use the shared configured-provider factory.
 
-**Goal:** One SDK path for auth headers, error handling, and future SDK features (e.g. `service_tier` for latency-sensitive voice/status calls).
+**Remaining:** Evaluate SDK transport inside the shared vision provider where
+it simplifies auth, errors or provider features. Anthropic and OpenAI-compatible
+vision helpers still use raw HTTP; preserve their existing mode/model selection,
+multimodal inputs and provider-specific authentication when considering changes.
 
-**Not urgent:** Current raw HTTP paths work; this is maintainability, not a user-facing feature.
-NOTE: The same can be said about xAI and Openai as they also send POST requests to their respective API endpoints and dont use the SDK.
+**Not urgent:** This is maintainability work, not a missing vision feature.
 
 ### 5) Replace Werkzeug for Jarvis Web Socket.IO Serving
 **Priority:** Low / runtime hardening
@@ -319,7 +333,10 @@ Ordinary local tools launched by `ToolExecutor` inherit the selected mode's full
 **What already shipped**
 - Shared policy: `lib/tool_child_environment.py`, applied in `orchestrator/executor.py`
 - Restricted children get declared credentials plus central runtime, TLS, mode, session, and proxy settings, a temporary empty `HOME`, and `load_config()` that does not reread the mode file
-- `tavily_search`, `tavily_extract`, and `searxng_search` opt in today
+- Initial examples were `tavily_search`, `tavily_extract`, and `searxng_search`;
+  migrations also include `ssh_remote`, `crawl_url`, `convert_file`,
+  `docling_convert`, Craft tools, and selected media/network tools. The reviewed
+  `child_environment` block in each manifest is authoritative
 - Background `local_skill_v1` still uses trusted allowlists in `lib/background_tasks/production.py`. A tool with `child_environment` cannot be admitted as a background skill without one of those allowlists
 - This is not a sandbox. The child still runs as the Jarvis user and can read files that user can read, including local env files. Stronger isolation would need a separate identity or container
 
@@ -331,9 +348,9 @@ Do not flip this on for the whole catalog. Availability lists hard requirements;
 
 The local code is the trust question. A reviewed Jarvis script calling a familiar HTTP API is usually lower concern than a tool that shells out, loads an unfamiliar package, or takes a URL/command from the model. Start with the second group.
 
-**Suggested review order**
-1. Tools that run other programs or user-shaped commands: `ssh_remote`, `opencode`, `api_call`, `send_webhook`, `network_tools`
-2. Tools that wrap local helpers or downloaders: `crawl_url`, `screenshot_url`, `youtube_video`, `youtube_transcript`, `convert_file`, `document_ocr`
+**Remaining review candidates**
+1. Tools that run other programs or user-shaped commands: `opencode`, `api_call`, `send_webhook`, `network_tools`
+2. Tools that wrap local helpers or downloaders: `screenshot_url`, `youtube_video`, `youtube_transcript`, `document_ocr`
 3. Network tools that need a small set of connection settings, after a config-read pass: SerpApi, Brave, and similar search tools (Tavily and SearXNG are templates)
 4. Leave simple local utilities (`calculator`, `get_time`, memory tools) on the full environment unless a review finds a real inheritance risk
 
@@ -382,36 +399,62 @@ See [Stash API reference retrieval](api/STASH.md#retrieve-by-stash-reference).
 These are the “we wish we’d designed for this up front” features that make a real difference once you have lots of tools, multiple providers, and long-running workflows.
 
 ### A) Provider Capability Matrix + Auto-Detection
+**Status:** Catalog and routing metadata implemented; unified runtime matrix and auto-detection remain proposals
+
 **Why:** Prevent “unknown unknowns” (e.g., built-in web search) and reduce unnecessary tools.
 
-Ideas:
-- Maintain a runtime “capabilities” object (search, vision, structured output, tool calling limits, context size, etc.)
-- Auto-detect (or explicitly declare) per-provider features and expose them to routing + prompts
-- One-page doc/command to print current capability matrix (cloud/local)
+`lib/model_catalog.py` already declares model limits and capabilities, and
+routing already includes provider-native search guidance. Extend those sources
+rather than introducing a competing catalog.
+
+Remaining ideas:
+- Project existing metadata into one runtime capabilities object across domains
+- Add explicit declarations or bounded detection where metadata is missing
+- Provide one diagnostic command/view for the effective cloud/local matrix
 
 ### B) Hybrid Retrieval: FTS5 + Semantic + Reranking
+**Status:** Hybrid retrieval and deterministic ranking implemented; optional learned reranking/query expansion remain proposals
+
 **Why:** Memory/tool retrieval quality is everything; hybrid beats either alone.
 
-Ideas:
-- Always run **FTS5 keyword** + **semantic search** and merge results
-- Add a lightweight reranker step (LLM or local model) to order the merged candidates
-- Add “query rewrite” for recall (expand synonyms, normalize entities, strip filler)
+Memory and tool retrieval already combine lexical and semantic candidates with
+weighted/fusion ranking. Shared query handling also removes filler and creates
+bounded compound-query views. Keyword fallback remains available when embeddings
+are unavailable; running a semantic request is not a prerequisite for retrieval.
+
+Remaining ideas, only after measuring retrieval gaps:
+- Evaluate a learned reranker against the existing deterministic ranking
+- Evaluate synonym expansion or entity normalization beyond current query handling
 
 ### C) Tool Routing Evals + Regression Suite
+**Status:** Model-routing benchmarks and deterministic regressions implemented; production retrieval evaluation remains
+
 **Why:** Prevent silent regressions as tool count grows or providers change.
 
-Ideas:
-- Curated set of routing test prompts (“should call tool X”, “should not call search”, “should answer directly”)
-- Track: tool calls count, latency, cost, success rate, loop rate, fallbacks
-- CI-friendly runner that can test cloud + local modes (even a small subset)
+The [cloud model benchmark](CLOUD_MODEL_BENCHMARK.md) already tests synthetic
+routing, discovery, recovery and completion through production provider adapters.
+Ollama model evaluation also has routing replay, and deterministic tests cover
+individual Tool RAG rules. These are existing coverage, not a missing new suite.
+
+**Remaining:** Curated synthetic cases that exercise actual Tool RAG retrieval,
+catalog gates and the resulting shortlist. Current model benchmarks do not start
+the retrieval services or measure their recall. Extend the existing evaluation
+paths with controlled catalogs/indexes rather than adding another frozen-contract
+suite. Measure expected tool inclusion/exclusion, ranking, fallback and loops
+without executing real tools.
 
 ### D) Observability: Tracing, Costs, and “Why Did You Do That?”
+**Status:** LLM/tool logging and request caps implemented; unified correlation, budgets and decision summaries remain proposals
+
 **Why:** Debugging assistants without traces is pain.
 
-Ideas:
-- Per-turn trace ID; log routing decision, chosen tools, retries, and final outcome
-- Cost/latency budgets per request (“max tools”, “max time”, “max cost”)
-- A debug command that prints a short “decision summary” (for humans)
+Existing LLM and tool logs record routing provenance, tool outcomes, duration,
+usage and cost where supplied. Tool-turn and provider-search caps also exist.
+
+Remaining ideas:
+- Shared end-to-end turn correlation across existing logs, retries and outcomes
+- Unified cost/time budgets alongside the existing tool/search limits
+- A short human-readable decision summary built from recorded evidence
 
 ### E) Background Jobs + Notifications (Headless)
 
@@ -683,15 +726,20 @@ is already simpler and reliable.
 
 ### 5) Remote VPS Ops (Tailscale + SSH + tmux)
 **Priority:** High
+**Status:** SSH command/admin execution implemented; persistent sessions and artifact transfers remain proposals
 
 **Why:** A headless VPS becomes a "remote executor" for long-running jobs, deployments, and isolated workloads.
+
+`ssh_remote` already lists configured hosts, tests connections, runs commands,
+performs reviewed admin actions and runs commands across hosts. It closes the
+connection after each call. See [SSH tools](tools/ssh/README.md).
 
 Design notes:
 - Prefer **Tailscale** networking (no public SSH ports required)
 - Use `tmux` for persistence (stateless tool calls still map to a stable session)
 - Support: run, upload/download stash artifacts, log tailing, process inspection
 
-Potential tool: `remote_shell`
+Potential extensions to `ssh_remote`:
 - `connect` (ensure host reachable, choose session)
 - `exec` (run command in tmux session)
 - `upload_from_stash` / `download_to_stash` (safe artifact bridge)
@@ -699,12 +747,15 @@ Potential tool: `remote_shell`
 
 ### 6) Profiles / Tool Packs (Not Multi-User)
 **Priority:** Medium
+**Status:** Named tool-availability profiles implemented; bundled behavior profiles remain proposals
 
-Instead of multi-user identity, support **named profiles** that change:
-- tool availability (`BLOCKED_TOOLS` overlays)
-- response style defaults
-- safe-mode policies (disable dangerous tools)
-- preferred search mode (native search vs MCP)
+`JARVIS_TOOL_PROFILE` already selects named local/MCP tool overlays, including
+profiles that disable tools. See [tool management](TOOL_MANAGEMENT.md).
+This does not provide multi-user identity or authorization.
+
+Remaining: optionally bundle tool selection with response-style defaults,
+action-safety policy and preferred search behavior. A tool profile alone does
+not currently select all of those settings.
 
 ### 7) Smart Home Integration (Optional)
 **Priority:** Low
@@ -723,11 +774,14 @@ You: "Is the garage door open?"
 
 ### 8) Memory UX (Headless-Friendly)
 **Priority:** Medium
+**Status:** Browser/editor and basic source metadata implemented; portability and clearer decision trace remain follow-ups
 
-Ideas:
-- Memory browser/editor (simple local web UI)
-- Export/import tooling (backup + restore)
-- Clear "what was remembered and why" traceability
+The [Memory UI](../jarvis-memory/README.md) already browses and edits memories,
+including source, timestamps and metadata. It should not be proposed as a new UI.
+
+Remaining ideas:
+- Portable memory export/import, distinct from existing database backup tools
+- Clearer "what was remembered and why" decision traceability
 
 ### 9) Reliability: Manual "Tool Doctor" Skill or Script
 **Priority:** Medium
@@ -1148,26 +1202,36 @@ selecting an implementation.
 
 ## 📊 Implementation Priority
 
-**High Priority (Next Sprint):**
-- Verbal Confirmation Loop (dangerous ops)
-- Provider capability matrix + auto-detection (avoid redundant tools)
-- Hybrid retrieval + reranking (FTS5 + semantic)
-- Routing evals + regression suite (prevent breakage as tools/providers change)
-- Remote VPS Ops (Tailscale + SSH + tmux) if you want remote execution
-- Tool set hygiene + diagnostics (reduce loops)
+Updated status notes below separate unfinished extensions from shipped foundations.
+The historical May 2026 ordering later in this document is retained for context.
+These are broad priority buckets, not a dated delivery schedule.
 
-**Medium Priority (Next Month):**
-- Short-lived continuation across wake activations
-- Profiles / tool packs (not multi-user)
-- Background jobs + notifications (stash-first artifacts)
-- Observability improvements (trace + budgets + “why” summaries)
+**High Priority (Candidates):**
+- Provider capability projection/diagnostics beyond existing catalog metadata
+- Measured optional reranking/query expansion (hybrid retrieval already ships)
+- Production Tool RAG retrieval/routing evaluation beyond existing model benchmarks
+- Persistent remote sessions/artifact transfers beyond existing SSH execution, if needed
+- Tool set hygiene + diagnostics (reduce loops)
+- Recognized empty-result recovery within the existing tool-turn budget
+
+**Medium Priority (Candidates):**
+- Shared resumable session/task identity beyond existing short-lived auto-context
+- Behavior bundles beyond existing tool-availability profiles (not multi-user)
+- Opt-in MCP background execution and explicit notification rules (foundations shipped)
+- Observability extensions: shared correlation, unified budgets and decision summaries
 - Generic tool-result references and automatic payload hydration, after a
   measured opaque-token pilot
 - Cache-aware Intelligence reflection prompts and measured cache/cost telemetry
   (chunked Process 20 and individual queue processing are implemented)
-- Per-provider media model pickers in Web AI config (Gemini Veo/Omni, Grok Imagine variants, etc.)
-- Credential-aware tool/provider availability + manual Tool Doctor diagnostics
+- Manual Tool Doctor and optional live health checks (static availability shipped)
 - Restricted child environments for higher-risk local tools (opt-in; Tavily and SearXNG are templates)
+- Consistent GIF validation across generic downloads and email ingestion
+
+**Already shipped; removed from pending work:** recent-context fallback,
+hybrid retrieval/fusion, model-routing benchmarks, Memory browser/editor,
+per-provider media model pickers, static credential-aware availability, and
+native-tool background jobs/notification foundations. Broader action-level
+approval/preflight policies remain optional and deferred as described in section 1.
 
 **Low Priority (Future):**
 - Smart home integration (optional)
@@ -1330,7 +1394,12 @@ All rows still land in `knowledge_base` on write. **Auto-memory injection** filt
 **Priority:** High (architectural)  
 **Status:** Not implemented — see [WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md) and [CONVERSATION_STATE_ARCHITECTURE.md](CONVERSATION_STATE_ARCHITECTURE.md) for current context handling.
 
-First-class `session` and `task` objects shared across voice, CLI, and Web UI. Auto-context handles wake-word continuity; Web UI has its own client-side history — no shared resumable work model yet. Unlocks cross-surface handoff, proactive "open tasks", and cleaner attachment of OpenCode session IDs, stash refs, and guard tickets.
+First-class `session` and `task` objects shared across voice, CLI, and Web UI.
+Auto-context handles wake-word continuity; Web uses server-persisted conversation
+history. Durable background jobs already have their own task store, but there is
+no general resumable session/task shared across these surfaces. This broader
+layer would unlock cross-surface handoff, proactive "open tasks", and cleaner
+attachment of OpenCode session IDs, stash refs, and guard tickets.
 
 ### 5) OpenCode Supervised Subprocess
 **Priority:** Medium–High  
@@ -1361,9 +1430,16 @@ rather than metadata-only noise.
 
 ### 6) Personal Corpus Ingestion
 **Priority:** Medium (visible product win)  
-**Status:** Building blocks exist — not unified
+**Status:** Source Library ingestion/search implemented; automatic collection across existing sources remains a proposal
 
-Bookmarks + URL ingest + intel files → one searchable personal corpus with dedup, tags, and provenance. Reuses `bookmark_search`, `url_ingest`, `deep_research` workflows.
+The [Source Library](SOURCE_LIBRARY.md) already retains original documents,
+deduplicates by content within a mode, supports FTS/optional semantic search,
+and preserves provenance and citations. Web uploads, inbox imports and Firefox
+page capture feed that library.
+
+Remaining: an explicit collection workflow spanning bookmarks, URL ingestion and
+intel files. These sources do not automatically become one corpus simply because
+their individual tools exist; reuse the library rather than building another store.
 
 ### 7) Daily Recap
 **Priority:** Medium
@@ -1373,9 +1449,12 @@ On-demand or scheduled: short voice summary + full canvas detail (services, aler
 
 ### 8) Routing Evals + Regression Suite
 **Priority:** Medium
-**Status:** Listed above (section C) — not built
+**Status:** Model-routing coverage implemented; production retrieval evaluation remains (section C)
 
-~50 curated prompts with expected tool/no-tool behavior; CI-friendly runner for cloud + local. Prevents silent regressions as tool count and providers change.
+Existing cloud/Ollama benchmarks and deterministic tests cover model-routing
+behavior. The remaining curated evaluation should exercise actual Tool RAG
+retrieval and availability gates with controlled synthetic catalogs, across
+cloud/local configurations, without executing real tools.
 
 ### 9) Credential-Aware Tool and Provider Availability
 **Priority:** Medium
@@ -1627,7 +1706,10 @@ tests.
 | Orchestrator kernel refactor | Extract modules **during** session/task work, not as a standalone sprint |
 | Smart home | Low unless used daily |
 
-### Suggested Next Steps (May 2026)
+### Suggested Next Steps (May 2026; Historical Snapshot)
+
+Retained as planning history. Use the current Implementation Priority section
+and each feature's status for remaining work.
 
 ```
 Done: Profile Card injection, memory type auto-inject filter, backfill, correction apply mode
@@ -1636,7 +1718,7 @@ Next: Phase 4 session/task layer OR routing evals — pick by daily pain
 Optional: Phase 3B tool recall filter only if search_memory noise returns
 ```
 
-### Updated Priority Stack (May 2026)
+### Updated Priority Stack (May 2026; Historical Snapshot)
 
 1. ~~Structured user model / Profile Card~~ — **shipped**
 2. ~~Memory quality gates (auto-inject)~~ — **shipped**
@@ -1737,7 +1819,10 @@ ingestion, unchanged email integrity checks, and valid animated Canvas previews
 and downloads. This proposal does not enable GIFs in the strict still-image
 importer or add a new scanner/service dependency.
 
-- Note: Jarvis already validates GIFs with Pillow, which is pinned at Pillow>=13.0.0, and that pin includes the fix for the GIF frame-seek decompression bug.
+**Existing dependency:** GIF-aware image paths already validate with Pillow;
+the declared minimum is `Pillow>=13.0.0`. That does not extend validation to
+generic downloads or email ingestion. Shared validation is not a malware scan;
+isolated decoding or re-encoding remains a separate hardening decision.
 
 ---
 
@@ -1799,5 +1884,5 @@ edited or run by the check. Source: `jarvis-memory/client/js/app.js` and
 
 ---
 
-**Last Updated:** November 5, 2026
-**Version:** 2.17 (GIF ingestion validation and security hardening proposal)
+**Last Updated:** November 7, 2026
+**Version:** 2.18 (verified shipped/partial status notes and remaining-work summary)
