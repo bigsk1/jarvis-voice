@@ -12,6 +12,7 @@ from config_loader import config_scope
 from embedding_metadata import (
     MEMORY_KNOWLEDGE_NAMESPACE,
     ensure_embedding_metadata_table,
+    prepare_mirrored_embedding,
     record_embedding_namespace_complete,
     require_embedding_namespace,
 )
@@ -99,6 +100,7 @@ class MemoryService:
         metadata_json: str | None,
         embedding_blob: bytes | None,
         embedding_changed: bool,
+        embedding_fingerprint: dict | None = None,
     ) -> int:
         """
         Update the equivalent logical memory in the sibling DB by original category+key.
@@ -119,21 +121,23 @@ class MemoryService:
                 vector_count = cursor.execute(
                     "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL"
                 ).fetchone()[0]
-                try:
-                    require_embedding_namespace(
+                sibling_mode = 'local' if self.mode == 'cloud' else 'cloud'
+                with config_scope(sibling_mode):
+                    embedding_blob = prepare_mirrored_embedding(
                         conn,
                         MEMORY_KNOWLEDGE_NAMESPACE,
                         vector_count=vector_count,
+                        embedding_blob=embedding_blob,
+                        source_fingerprint=embedding_fingerprint,
                     )
-                except Exception:
-                    return 0
-                if embedding_blob is not None:
-                    record_embedding_namespace_complete(conn, MEMORY_KNOWLEDGE_NAMESPACE)
             cursor.execute(
                 """
                 UPDATE knowledge_base
                 SET category = ?, key = ?, value = ?, importance = ?, metadata = ?,
-                    embedding = CASE WHEN ? THEN ? ELSE embedding END,
+                    embedding = CASE
+                        WHEN ? OR key IS NOT ? OR value IS NOT ? THEN ?
+                        ELSE embedding
+                    END,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE category = ? AND key = ?
                 """,
@@ -144,6 +148,8 @@ class MemoryService:
                     importance,
                     metadata_json,
                     1 if embedding_changed else 0,
+                    new_key,
+                    value,
                     embedding_blob,
                     original_category,
                     original_key,
@@ -337,6 +343,7 @@ class MemoryService:
         final_value = value if value is not None else existing["value"]
         embedding_changed = key is not None or value is not None
         embedding_blob = None
+        embedding_fingerprint = None
 
         if embedding_changed:
             try:
@@ -345,7 +352,7 @@ class MemoryService:
                     vector_count = cursor.execute(
                         "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL"
                     ).fetchone()[0]
-                    require_embedding_namespace(
+                    embedding_fingerprint = require_embedding_namespace(
                         conn,
                         MEMORY_KNOWLEDGE_NAMESPACE,
                         vector_count=vector_count,
@@ -407,6 +414,7 @@ class MemoryService:
                     metadata_json=final_metadata,
                     embedding_blob=embedding_blob,
                     embedding_changed=embedding_changed,
+                    embedding_fingerprint=embedding_fingerprint,
                 )
             return updated
         finally:

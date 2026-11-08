@@ -88,6 +88,14 @@ zipping the shorter vector.
 
 ## Sync boundaries
 
+Editing an existing memory mirrors its text and fields to matching category/key
+rows in the existing sibling database, even when that sibling's embedding
+namespace is incompatible or rebuilding. A changed key or value clears the
+sibling row's stale vector unless the new vector matches both modes' configured
+contracts and the sibling namespace. This does not mark an incompatible rebuild
+complete; keyword retrieval remains available until vectors are rebuilt.
+Edits that leave the sibling row's key/value unchanged preserve its vector.
+
 `./bin/sync-memory-db.py` remains the automatic portable-memory sync path.
 It copies newer memory text and regenerates changed or missing target vectors.
 Conversation history and user-model rows remain non-vector sync data. Alerts,

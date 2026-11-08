@@ -8,7 +8,10 @@ See the [memory system infographic](images/memory-info-graph.jpeg) for an archit
 
 ## Database Location
 
-Cloud mode uses **`data/jarvis_memory.db`**; local mode (Ollama / smaller embeddings) uses **`data/jarvis_memory_local.db`**. Same schema; sync between them is `./bin/sync-memory-db.py` (see `docs/DUAL_DATABASE_SYSTEM.md`).
+Cloud mode uses **`data/jarvis_memory.db`**; local mode uses
+**`data/jarvis_memory_local.db`**. Both use the same schema and pinned Ollama
+embedding contract. See [Cloud and Local Database System](DUAL_DATABASE_SYSTEM.md)
+for edit mirroring, portable sync, and embedding compatibility rules.
 
 **Note:** The main store is *not* named `memory.db`. The facts table is `knowledge_base` (not `memories`).
 

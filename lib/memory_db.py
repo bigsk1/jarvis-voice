@@ -14,11 +14,12 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from config_loader import config_scope
 from embedding_metadata import (
     MEMORY_KNOWLEDGE_NAMESPACE,
     MEMORY_TOOLS_NAMESPACE,
-    EmbeddingCompatibilityError,
     ensure_embedding_metadata_table,
+    prepare_mirrored_embedding,
     record_embedding_namespace_complete,
     require_embedding_namespace,
 )
@@ -873,6 +874,7 @@ class MemoryDB:
         importance: int | None,
         embedding_blob: bytes | None = None,
         embedding_generated: bool = False,
+        embedding_fingerprint: dict | None = None,
     ) -> int:
         """
         Update the equivalent logical memory in the sibling DB by category+key.
@@ -894,26 +896,26 @@ class MemoryDB:
             if value is not None:
                 updates.append("value = ?")
                 params.append(value)
-                updates.append("embedding = ?")
-                params.append(embedding_blob)
                 if embedding_generated:
                     ensure_embedding_metadata_table(conn)
                     vector_count = cursor.execute(
                         "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL"
                     ).fetchone()[0]
-                    try:
-                        require_embedding_namespace(
+                    sibling_mode = 'local' if sibling_path.name == 'jarvis_memory_local.db' else 'cloud'
+                    with config_scope(sibling_mode):
+                        embedding_blob = prepare_mirrored_embedding(
                             conn,
                             MEMORY_KNOWLEDGE_NAMESPACE,
                             vector_count=vector_count,
+                            embedding_blob=embedding_blob,
+                            source_fingerprint=embedding_fingerprint,
                         )
-                    except EmbeddingCompatibilityError as exc:
+                    if embedding_blob is None:
                         logging.getLogger(__name__).warning(
-                            "Sibling memory update skipped because embeddings are incompatible: %s",
-                            exc,
+                            "Sibling memory text updated without a semantic vector because embedding contracts differ",
                         )
-                        return 0
-                    record_embedding_namespace_complete(conn, MEMORY_KNOWLEDGE_NAMESPACE)
+                updates.append("embedding = ?")
+                params.append(embedding_blob)
             if importance is not None:
                 updates.append("importance = ?")
                 params.append(importance)
@@ -969,6 +971,7 @@ class MemoryDB:
         params = []
         embedding_blob = None
         embedding_generated = False
+        embedding_fingerprint = None
         
         if value is not None:
             updates.append("value = ?")
@@ -978,7 +981,7 @@ class MemoryDB:
                 vector_count = cursor.execute(
                     "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL"
                 ).fetchone()[0]
-                require_embedding_namespace(
+                embedding_fingerprint = require_embedding_namespace(
                     self.conn,
                     MEMORY_KNOWLEDGE_NAMESPACE,
                     vector_count=vector_count,
@@ -1025,6 +1028,7 @@ class MemoryDB:
                 importance=importance,
                 embedding_blob=embedding_blob,
                 embedding_generated=embedding_generated,
+                embedding_fingerprint=embedding_fingerprint,
             )
 
         return updated

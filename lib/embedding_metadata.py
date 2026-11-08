@@ -6,7 +6,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from embeddings import EmbeddingRole, get_embedding_fingerprint
+from embeddings import EmbeddingConfigurationError, EmbeddingRole, get_embedding_fingerprint
 
 MEMORY_KNOWLEDGE_NAMESPACE = "memory.knowledge_base.embedding"
 MEMORY_TOOLS_NAMESPACE = "memory.tool_definitions.embedding"
@@ -241,6 +241,32 @@ def record_embedding_namespace_complete(conn: sqlite3.Connection, namespace: str
         state="complete",
         last_row_id=0,
     )
+
+
+def prepare_mirrored_embedding(
+    conn: sqlite3.Connection,
+    namespace: str,
+    *,
+    vector_count: int,
+    embedding_blob: bytes | None,
+    source_fingerprint: dict | None,
+) -> bytes | None:
+    """Reuse a vector only when both contracts match, without blocking a text edit.
+
+    The caller supplies the target mode's configuration scope. An incompatible
+    or rebuilding namespace remains unchanged; the edited row loses its stale
+    vector while its text can still be mirrored in the same transaction.
+    """
+    if embedding_blob is None or source_fingerprint is None:
+        return None
+    try:
+        expected = require_embedding_namespace(conn, namespace, vector_count=vector_count)
+    except (EmbeddingCompatibilityError, EmbeddingConfigurationError):
+        return None
+    if not _fingerprint_matches(source_fingerprint, expected):
+        return None
+    record_embedding_namespace_complete(conn, namespace)
+    return embedding_blob
 
 
 def start_embedding_namespace_rebuild(
