@@ -1,4 +1,4 @@
-"""Frozen, synthetic Jarvis tool-loop evaluation through production cloud adapters.
+"""Synthetic Jarvis tool-loop evaluation through production cloud adapters.
 
 This deliberately has no executor, memory DB, tool retrieval service, or live
 tool implementation. Every tool result comes from a reviewed local fixture.
@@ -31,7 +31,7 @@ from ollama_benchmark_fixtures import (
 )
 from paths import get_project_root
 
-FIXTURE_PATH = get_project_root() / "config/benchmarks/cloud-model-v9.json"
+FIXTURE_PATH = get_project_root() / "config/benchmarks/cloud-model-current.json"
 LEGACY_FIXTURE_PATH = get_project_root() / "config/benchmarks/cloud-model-v1.json"
 SCHEMA_VERSION = 1
 RUBRIC_VERSION = "1.0"
@@ -186,10 +186,9 @@ def validate_arguments(arguments: Any, tool: dict[str, Any]) -> bool:
     return not list(Draft202012Validator(schema).iter_errors(arguments))
 
 
-def load_suite(path: Path = FIXTURE_PATH) -> dict[str, Any]:
-    """Fail closed on prompt/schema drift before credentials or inference are used."""
-    payload = json.loads(path.read_text(encoding="utf-8"))
+def _validate_fixture_header(payload: dict[str, Any]) -> None:
     versions = {
+        "jarvis-cloud-model-current": (2, "2.0"),
         "jarvis-cloud-model-v1": (1, "1.0"),
         "jarvis-cloud-model-v2": (2, "2.0"),
         "jarvis-cloud-model-v3": (2, "2.0"),
@@ -208,32 +207,22 @@ def load_suite(path: Path = FIXTURE_PATH) -> dict[str, Any]:
     if (payload.get("provenance", {}).get("synthetic_only") is not True
         or payload.get("provenance", {}).get("live_user_text_copied") is not False):
         raise ValueError("cloud benchmark requires synthetic-only fixtures")
-    version, prompt = load_router_prompt(payload["prompt"]["version"])
-    digest = hashlib.sha256(prompt.encode()).hexdigest()
-    if digest != payload["prompt"]["sha256"]:
-        raise ValueError("cloud benchmark prompt drift; review and version the fixture")
-    source = ast.parse((get_project_root() / "orchestrator/router_v2.py").read_text())
-    greetings = [node.value.value for node in ast.walk(source)
-                 if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
-                 and isinstance(node.value.value, str)
-                 and any(isinstance(t, ast.Name) and t.id == "greeting_hint" for t in node.targets)]
-    if greetings != [payload["runtime_hints"]["greeting_hint"]]:
-        raise ValueError("cloud benchmark greeting hint drift; review and version the fixture")
-    if payload["schema_version"] == 2:
-        from cloud_benchmark_context import contract_fingerprints
 
-        if payload.get("production_contract_sha256") != contract_fingerprints():
-            raise ValueError(
-                "cloud benchmark production context drift; use the current default suite, "
-                "or its original checkout to replay an archived suite"
-            )
-    tools = {}
-    for name, expected_hash in payload["tool_schema_sha256"].items():
-        tool = canonical_tool_schema(load_skill_tool(name))
-        if tool_schema_sha256(tool) != expected_hash or tool["name"] != name:
-            raise ValueError(f"cloud benchmark schema drift: {name}")
+
+def prepare_suite(
+    payload: dict[str, Any], tools: dict[str, Any], base_prompt: str, *,
+    prompt_version: str, contract_mode: str = "simulator",
+    production_contract_sha256: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Validate synthetic cases against supplied contracts without reading production files."""
+    _validate_fixture_header(payload)
+    if contract_mode not in {"current", "frozen", "simulator"}:
+        raise ValueError("invalid benchmark contract mode")
+    payload, tools = copy.deepcopy(payload), copy.deepcopy(tools)
+    for name, tool in tools.items():
+        if tool.get("name") != name:
+            raise ValueError(f"invalid benchmark tool name: {name}")
         Draft202012Validator.check_schema(tool["input_schema"])
-        tools[name] = tool
     ids = set()
     for case in payload["cases"]:
         if not case["case_id"] or case["case_id"] in ids:
@@ -258,7 +247,10 @@ def load_suite(path: Path = FIXTURE_PATH) -> dict[str, Any]:
                 raise ValueError("fixture results must be structured tool results")
             example = step["example_arguments"]
             if not validate_arguments(example, tools[step["tool"]]) or not arguments_match(example, step):
-                raise ValueError(f"invalid fixture operation example: {case['case_id']}/{step['step_id']}")
+                raise ValueError(
+                    f"invalid fixture operation example: {case['case_id']}/{step['step_id']} "
+                    f"({step['tool']}); update its example or simulator for the current arguments"
+                )
             for field, aliases in step.get("argument_aliases", {}).items():
                 if field not in step.get("arguments", {}) or not isinstance(aliases, list) or not aliases:
                     raise ValueError("invalid fixture argument alias declaration")
@@ -293,13 +285,65 @@ def load_suite(path: Path = FIXTURE_PATH) -> dict[str, Any]:
                 preferred = insight.get("preferred_workflow_id")
                 if preferred and preferred not in workflow_ids:
                     raise ValueError("normal learned insights must name a current fixture workflow")
+    hints = payload.get("runtime_hints", {})
     return {
-        **payload, "tools": tools, "base_prompt": prompt,
-        "system_prompt": "\n\n".join((prompt, HARNESS_POLICY,
-            payload["runtime_hints"]["context"], payload["runtime_hints"]["greeting_hint"],
-            payload["runtime_hints"]["profile_card"])),
-        "prompt_version": version, "fixture_sha256": content_hash(payload),
+        **payload, "tools": tools, "base_prompt": base_prompt,
+        "system_prompt": "\n\n".join(part for part in (
+            base_prompt, HARNESS_POLICY, hints.get("context", ""),
+            hints.get("greeting_hint", ""), hints.get("profile_card", ""),
+        ) if part),
+        "prompt_version": prompt_version, "fixture_sha256": content_hash(payload),
+        "prompt": {"version": prompt_version, "sha256": hashlib.sha256(base_prompt.encode()).hexdigest()},
+        "contract_mode": contract_mode,
+        "tool_schema_sha256": {name: tool_schema_sha256(tool) for name, tool in tools.items()},
+        "production_contract_sha256": dict(production_contract_sha256 or {}),
     }
+
+
+def load_suite(path: Path | None = None) -> dict[str, Any]:
+    """Load today's contracts by default; explicit archived fixtures retain strict replay checks."""
+    path = Path(path) if path is not None else FIXTURE_PATH
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    _validate_fixture_header(payload)
+    current = payload["fixture_id"] == "jarvis-cloud-model-current"
+    version, prompt = load_router_prompt(payload["prompt"]["version"])
+    contracts = {}
+    if payload["schema_version"] == 2:
+        from cloud_benchmark_context import contract_fingerprints
+
+        contracts = contract_fingerprints()
+    if current:
+        names = payload.get("tool_names")
+        if (not isinstance(names, list) or not names
+                or any(not isinstance(name, str) or not name for name in names)
+                or len(set(names)) != len(names)):
+            raise ValueError("current benchmark requires distinct tool_names")
+    else:
+        if hashlib.sha256(prompt.encode()).hexdigest() != payload["prompt"]["sha256"]:
+            raise ValueError("cloud benchmark prompt drift; replay this archive with its original checkout")
+        source = ast.parse((get_project_root() / "orchestrator/router_v2.py").read_text())
+        greetings = [node.value.value for node in ast.walk(source)
+                     if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
+                     and isinstance(node.value.value, str)
+                     and any(isinstance(t, ast.Name) and t.id == "greeting_hint" for t in node.targets)]
+        if greetings != [payload["runtime_hints"]["greeting_hint"]]:
+            raise ValueError("cloud benchmark greeting hint drift; replay this archive with its original checkout")
+        if payload["schema_version"] == 2 and payload.get("production_contract_sha256") != contracts:
+            raise ValueError(
+                "cloud benchmark production context drift; use the current suite, "
+                "or its original checkout to replay an archived suite"
+            )
+        names = payload["tool_schema_sha256"]
+    tools = {}
+    for name in names:
+        tool = canonical_tool_schema(load_skill_tool(name))
+        if not current and tool_schema_sha256(tool) != payload["tool_schema_sha256"][name]:
+            raise ValueError(f"cloud benchmark schema drift: {name}; replay this archive with its original checkout")
+        tools[name] = tool
+    return prepare_suite(
+        payload, tools, prompt, prompt_version=version,
+        contract_mode="current" if current else "frozen", production_contract_sha256=contracts,
+    )
 
 
 class Scenario:
@@ -484,11 +528,63 @@ class CloudBenchmarkRunner:
         self.checkpoint = checkpoint or (lambda _event: None)
         self.requests = 0
         self.prompt_metadata: dict[str, Any] = {}
+        self.request_snapshots: list[dict[str, Any]] = []
+        # Snapshot loaded contracts, rather than historical expected hashes. Model
+        # responses and model-specific prompt overrides are deliberately excluded:
+        # different candidates must still be comparable on the same workload.
+        self.contract_snapshot = {
+            "contract_mode": suite.get("contract_mode", "frozen"),
+            "fixture_id": suite["fixture_id"],
+            "fixture_sha256": suite["fixture_sha256"],
+            "schema_version": suite["schema_version"],
+            "rubric_version": suite["rubric_version"],
+            "prompt_version": suite["prompt_version"],
+            "base_prompt": suite["base_prompt"],
+            "base_prompt_sha256": hashlib.sha256(suite["base_prompt"].encode()).hexdigest(),
+            "tools": copy.deepcopy(suite["tools"]),
+            "tool_schema_sha256": {
+                name: tool_schema_sha256(tool) for name, tool in suite["tools"].items()
+            },
+            "production_contract_sha256": copy.deepcopy(
+                suite.get("actual_production_contract_sha256",
+                    suite.get("production_contract_sha256", {}))
+            ),
+            "workload": {
+                key: copy.deepcopy(suite[key]) for key in (
+                    "cases", "runtime", "runtime_hints", "style_probes", "search_tool_names",
+                    "provenance",
+                ) if key in suite
+            },
+            "category_weights": dict(CATEGORY_WEIGHTS),
+        }
+        self.contract_snapshot_sha256 = content_hash(self.contract_snapshot)
         self.v2_context = None
         if suite["schema_version"] == 2:
             from cloud_benchmark_context import BenchmarkContext
 
             self.v2_context = BenchmarkContext(suite, provider_name, model, prompt_profile)
+
+    def record_request(
+        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], prompt: str,
+        **metadata: Any,
+    ) -> dict[str, Any]:
+        """Persist the exact adapter inputs before a potentially billable call."""
+        snapshot = {
+            "request": self.requests,
+            **metadata,
+            "system_prompt": prompt,
+            "messages": copy.deepcopy(messages),
+            "tools": copy.deepcopy(tools),
+            "enable_thinking": False,
+            "system_prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+            "messages_sha256": content_hash(messages),
+            "tools_sha256": content_hash(tools),
+            "prompt_metadata": copy.deepcopy(self.prompt_metadata),
+        }
+        snapshot["request_snapshot_sha256"] = content_hash(snapshot)
+        self.request_snapshots.append(snapshot)
+        self.checkpoint({"event": "request", **copy.deepcopy(snapshot)})
+        return snapshot
 
     def system_prompt(self, *, greeting: bool = True, casual: bool = False) -> str:
         if self.v2_context:
@@ -544,11 +640,15 @@ class CloudBenchmarkRunner:
                 self.requests += 1
                 if self.pause and self.requests > 1:
                     time.sleep(self.pause)
-                started = time.monotonic()
                 tools = provider_tools(self.provider_name, [world.tools[n] for n in world.available])
+                prompt = self.system_prompt()
+                request_messages = copy.deepcopy(messages)
+                self.record_request(request_messages, tools, prompt, kind="case",
+                    case_id=case["case_id"], round=round_number, turn=turn_index)
+                started = time.monotonic()
                 try:
                     text, call, usage, _thinking = provider.chat_with_tools(
-                        copy.deepcopy(messages), tools, system_prompt=self.system_prompt(),
+                        request_messages, tools, system_prompt=prompt,
                         enable_thinking=False,
                     )
                 except Exception as exc:
@@ -629,10 +729,13 @@ class CloudBenchmarkRunner:
                 self.prompt_metadata = context.prompt_metadata
                 prompt_hashes.append(hashlib.sha256(prompt.encode()).hexdigest())
                 self.requests += 1
+                tools = provider_tools(self.provider_name, [world.tools[n] for n in world.available])
+                snapshot = self.record_request(messages, tools, prompt, kind="case",
+                    case_id=case["case_id"], round=round_number, turn=index)
                 started = time.monotonic()
                 try:
                     text, call, usage, _ = provider.chat_with_tools(messages=messages,
-                        tools=provider_tools(self.provider_name, [world.tools[n] for n in world.available]),
+                        tools=tools,
                         system_prompt=prompt, enable_thinking=False)
                 except Exception:
                     text, call, usage = "Error: benchmark transport exception", None, None
@@ -641,7 +744,7 @@ class CloudBenchmarkRunner:
                 self.checkpoint({"event": "response", "request": self.requests, "case_id": case["case_id"],
                     "round": round_number, "turn": index, "text": text if text and not text.startswith("Error:") else None,
                     "call": call, "usage": usages[-1], "wall_ms": timings[-1],
-                    "system_prompt_sha256": prompt_hashes[-1], "messages_sha256": content_hash(messages),
+                    "system_prompt_sha256": prompt_hashes[-1], "messages_sha256": snapshot["messages_sha256"],
                     "available_tools": list(world.available)})
                 if call is None and isinstance(text, str) and text.startswith("Error:"):
                     error_kind = classify_provider_error(text).kind
@@ -691,11 +794,14 @@ class CloudBenchmarkRunner:
                     time.sleep(self.pause)
                 label = "included" if greeting else "omitted"
                 self.progress(f"Ungraded tone sample: {probe['probe_id']}; personal-touch hint {label}")
+                messages = copy.deepcopy(probe["messages"])
+                prompt = self.system_prompt(greeting=greeting, casual=True)
+                self.record_request(messages, [], prompt, kind="style",
+                    probe_id=probe["probe_id"], greeting_hint=greeting)
                 started = time.monotonic()
                 try:
                     text, call, usage, _ = provider.chat_with_tools(
-                        copy.deepcopy(probe["messages"]), [],
-                        system_prompt=self.system_prompt(greeting=greeting, casual=True), enable_thinking=False,
+                        messages, [], system_prompt=prompt, enable_thinking=False,
                     )
                 except Exception:
                     text, call, usage = None, None, None
@@ -720,7 +826,9 @@ class CloudBenchmarkRunner:
         samples = []
         # Metadata failures must happen before the first billable request.
         runtime = runtime_fingerprint()
-        self.checkpoint({"event": "runtime", "runtime": runtime})
+        self.checkpoint({"event": "runtime", "runtime": runtime,
+            "contract_snapshot": copy.deepcopy(self.contract_snapshot),
+            "contract_snapshot_sha256": self.contract_snapshot_sha256})
         with config_scope("cloud", overrides=benchmark_overrides(self.thinking, self.timeout)):
             for round_number in range(1, self.rounds + 1):
                 # Rotate the order to avoid always giving the same family a warm cache.
@@ -745,8 +853,12 @@ class CloudBenchmarkRunner:
             "requests": self.requests, "runtime": runtime,
             "prompt_profile": self.prompt_profile, "prompt_metadata": self.prompt_metadata,
             "effective_prompt_sha256": hashlib.sha256(effective_prompt.encode()).hexdigest(),
+            "contract_snapshot_sha256": self.contract_snapshot_sha256,
             "style_probes": self.style_probes,
         }, samples)
+        report["contract_snapshot"] = copy.deepcopy(self.contract_snapshot)
+        report["contract_snapshot_sha256"] = self.contract_snapshot_sha256
+        report["request_snapshots"] = copy.deepcopy(self.request_snapshots)
         report["style_samples"] = samples
         report["style_samples_complete"] = (len(samples) == 2 * len(self.suite.get("style_probes", []))
             and all(sample["status"] == "completed" for sample in samples)) if self.style_probes else None
@@ -828,6 +940,8 @@ def summarize_results(suite, selected, results, configuration, samples=None) -> 
         "memory_and_insights": "fixture_only", "hosted_tools": False,
         "style_probes": configuration.get("style_probes", False),
     }
+    if configuration.get("contract_snapshot_sha256"):
+        comparison["contract_snapshot_sha256"] = configuration["contract_snapshot_sha256"]
     case_lookup = {c["case_id"]: c for c in selected}
     discovery_trials = [r for r in results if any(
         s["tool"] == "tool_search" and s.get("required", True)
@@ -932,8 +1046,15 @@ def report_markdown(report: dict[str, Any]) -> str:
         f"Prompt profile: {cfg.get('prompt_profile', 'baseline')}.",
         grade_explanation(report),
         f"Comparison key: {report['comparison_key']}", "",
-        "| Area | Quality | Strict pass | Trials |", "| --- | ---: | ---: | ---: |",
     ]
+    if report.get("contract_snapshot_sha256"):
+        lines += [
+            f"Contracts: {report.get('contract_snapshot', {}).get('contract_mode', 'frozen')} · "
+            f"snapshot {report['contract_snapshot_sha256']}. "
+            f"Adapter input snapshots saved in JSON: {len(report.get('request_snapshots', []))}.",
+            "",
+        ]
+    lines += ["| Area | Quality | Strict pass | Trials |", "| --- | ---: | ---: | ---: |"]
     for category, row in report["categories"].items():
         lines.append(f"| {category} | {row['score']} | {row['pass_rate']}% | {row['trials']} |")
     if report.get("dimensions"):
@@ -976,7 +1097,7 @@ def report_markdown(report: dict[str, Any]) -> str:
                 if not check["correct"]:
                     lines.append(f"- Saved artifact has incorrect {check['field']} in {check['step_id']}.")
             lines.append("")
-    lines += ["", "Only synthetic tool results were used. This evaluates the frozen provider/tool-loop path, not live Tool RAG, memory ranking, native continuations, or external services.", ""]
+    lines += ["", "Only synthetic tool results were used. This evaluates the controlled provider/tool-loop path, not live Tool RAG, memory ranking, native continuations, or external services.", ""]
     if report.get("style_samples"):
         lines += ["## Ungraded response samples", "", "The personal touch is optional. Compare usefulness and tone manually; absence of an opener is not a failure.", ""]
         lines += [f"Usable samples: {sum(s.get('status', 'completed') == 'completed' for s in report['style_samples'])}/{len(report['style_samples'])}. Both hint variants retain the synthetic Profile Card. These samples do not affect the task grade.", ""]

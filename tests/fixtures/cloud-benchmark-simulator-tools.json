@@ -1,0 +1,955 @@
+{
+  "description": "Test-owned structural tool contracts for legacy simulator regressions. These do not track production schema hashes or descriptions. Update only when a simulator regression needs a changed test contract.",
+  "tools": {
+    "brave_llm_context": {
+      "name": "brave_llm_context",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "search_lang": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "freshness": {
+            "type": "string",
+            "enum": [
+              "pd",
+              "pw",
+              "pm",
+              "py"
+            ]
+          },
+          "freshness_range": {
+            "type": "string"
+          },
+          "maximum_number_of_urls": {
+            "type": "integer"
+          },
+          "maximum_number_of_tokens": {
+            "type": "integer"
+          },
+          "maximum_number_of_snippets": {
+            "type": "integer"
+          },
+          "maximum_number_of_tokens_per_url": {
+            "type": "integer"
+          },
+          "maximum_number_of_snippets_per_url": {
+            "type": "integer"
+          },
+          "context_threshold_mode": {
+            "type": "string",
+            "enum": [
+              "strict",
+              "balanced",
+              "lenient",
+              "disabled"
+            ]
+          },
+          "enable_local": {
+            "type": "boolean"
+          },
+          "enable_source_metadata": {
+            "type": "boolean"
+          },
+          "loc_city": {
+            "type": "string"
+          },
+          "loc_state": {
+            "type": "string"
+          },
+          "loc_state_name": {
+            "type": "string"
+          },
+          "loc_country": {
+            "type": "string"
+          },
+          "loc_postal_code": {
+            "type": "string"
+          },
+          "loc_lat": {
+            "type": "number"
+          },
+          "loc_long": {
+            "type": "number"
+          },
+          "goggles": {
+            "type": "string"
+          },
+          "include_raw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "description": "Synthetic simulator tool: brave_llm_context."
+    },
+    "crawl_url": {
+      "name": "crawl_url",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1
+          },
+          "stealth": {
+            "type": "boolean"
+          },
+          "wait_for": {
+            "type": "string"
+          },
+          "wait_for_js": {
+            "type": "boolean"
+          },
+          "wait_strategy": {
+            "type": "string",
+            "enum": [
+              "fast",
+              "normal",
+              "full"
+            ]
+          },
+          "page_timeout": {
+            "type": "integer"
+          },
+          "delay_before_return_html": {
+            "type": "number"
+          },
+          "css_selector": {
+            "type": "string"
+          },
+          "exclude_tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "extraction_type": {
+            "type": "string",
+            "enum": [
+              "cosine",
+              "regex",
+              "css"
+            ]
+          },
+          "semantic_filter": {
+            "type": "string"
+          },
+          "similarity_threshold": {
+            "type": "number"
+          },
+          "top_k": {
+            "type": "integer"
+          },
+          "regex_patterns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "email",
+                "phone",
+                "url",
+                "currency",
+                "date",
+                "percentage"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 6
+          },
+          "css_schema": {
+            "type": "object"
+          }
+        },
+        "required": []
+      },
+      "description": "Synthetic simulator tool: crawl_url."
+    },
+    "canvas": {
+      "name": "canvas",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "append",
+              "update",
+              "delete",
+              "list",
+              "open",
+              "read"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "image_url": {
+            "type": "string"
+          },
+          "image_alt": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source_query": {
+            "type": "string"
+          },
+          "page_id": {
+            "type": "string"
+          },
+          "search": {
+            "type": "string"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "allow_content_shrink": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "description": "Synthetic simulator tool: canvas."
+    },
+    "stash": {
+      "name": "stash",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "open_space",
+              "info",
+              "save",
+              "list",
+              "read",
+              "update",
+              "cleanup",
+              "remember"
+            ]
+          },
+          "space_id": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "session",
+              "user"
+            ]
+          },
+          "ttl_days": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "json",
+              "base64",
+              "url",
+              "image_url",
+              "file"
+            ]
+          },
+          "file_path": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "json": {
+            "type": "object"
+          },
+          "data": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "on_conflict": {
+            "type": "string",
+            "enum": [
+              "error",
+              "overwrite",
+              "version"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "text",
+              "path",
+              "metadata"
+            ]
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "search": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "contact",
+              "personal",
+              "preference",
+              "location",
+              "technical",
+              "network",
+              "credentials",
+              "project",
+              "system",
+              "fact"
+            ]
+          },
+          "importance": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "summary": {
+            "type": "string"
+          },
+          "summarize": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "description": "Synthetic simulator tool: stash."
+    },
+    "tool_search": {
+      "name": "tool_search",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "tool_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "include_schema": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Synthetic simulator tool: tool_search."
+    },
+    "workflow": {
+      "name": "workflow",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "search",
+              "describe",
+              "run"
+            ]
+          },
+          "query": {
+            "type": "string"
+          },
+          "workflow_id": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Synthetic simulator tool: workflow."
+    },
+    "weather": {
+      "name": "weather",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string"
+          },
+          "forecast": {
+            "type": "boolean"
+          },
+          "days": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "location"
+        ]
+      },
+      "description": "Synthetic simulator tool: weather."
+    },
+    "calculator": {
+      "name": "calculator",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "expression",
+              "percentage",
+              "conversion",
+              "statistics",
+              "dosage"
+            ]
+          }
+        },
+        "required": [
+          "expression"
+        ]
+      },
+      "description": "Synthetic simulator tool: calculator."
+    },
+    "search_memory": {
+      "name": "search_memory",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "description": "Synthetic simulator tool: search_memory."
+    },
+    "semantic_recall": {
+      "name": "semantic_recall",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "description": "Synthetic simulator tool: semantic_recall."
+    },
+    "send_email": {
+      "name": "send_email",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "attachment": {
+            "type": "string"
+          },
+          "attachment_path": {
+            "type": "string"
+          },
+          "image_url": {
+            "type": "string"
+          },
+          "link_url": {
+            "type": "string"
+          },
+          "link_text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "to",
+          "subject",
+          "body"
+        ]
+      },
+      "description": "Synthetic simulator tool: send_email."
+    },
+    "create_reminder": {
+      "name": "create_reminder",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "when": {
+            "type": "string"
+          },
+          "schedule": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "relative",
+                  "date",
+                  "weekday",
+                  "daily",
+                  "weekly",
+                  "monthly"
+                ]
+              },
+              "time": {
+                "type": "string"
+              },
+              "date": {
+                "type": "string"
+              },
+              "weekday": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 6
+              },
+              "day": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 31
+              },
+              "delay_seconds": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 366
+              },
+              "start_offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "timezone": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "title",
+          "when"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Synthetic simulator tool: create_reminder."
+    },
+    "list_reminders": {
+      "name": "list_reminders",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "current",
+              "scheduled",
+              "triggered",
+              "acknowledged",
+              "all"
+            ]
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": []
+      },
+      "description": "Synthetic simulator tool: list_reminders."
+    },
+    "network_tools": {
+      "name": "network_tools",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "ping",
+              "dns",
+              "port",
+              "http",
+              "traceroute",
+              "connectivity"
+            ]
+          },
+          "host": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST",
+              "HEAD",
+              "OPTIONS"
+            ]
+          },
+          "follow_redirects": {
+            "type": "boolean"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "timeout": {
+            "type": "integer"
+          },
+          "max_hops": {
+            "type": "integer"
+          },
+          "test_hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "description": "Synthetic simulator tool: network_tools."
+    },
+    "generate_image": {
+      "name": "generate_image",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string"
+          },
+          "reference_image": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "gemini",
+              "openai",
+              "xai"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "enum": [
+              "square",
+              "landscape",
+              "portrait",
+              "wide",
+              "1:1",
+              "16:9",
+              "9:16",
+              "4:3",
+              "3:4",
+              "2:3",
+              "3:2",
+              "4:5",
+              "5:4"
+            ]
+          },
+          "image_size": {
+            "type": "string",
+            "enum": [
+              "1K",
+              "2K",
+              "4K"
+            ]
+          },
+          "use_grounding": {
+            "type": "boolean"
+          },
+          "style": {
+            "type": "string"
+          },
+          "negative_prompt": {
+            "type": "string"
+          },
+          "context_data": {
+            "type": "string"
+          },
+          "transparent": {
+            "type": "boolean"
+          },
+          "output_format": {
+            "type": "string",
+            "enum": [
+              "png",
+              "jpeg",
+              "webp",
+              "gif"
+            ]
+          },
+          "n": {
+            "type": "integer"
+          },
+          "save": {
+            "type": "boolean"
+          },
+          "complexity": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "frame_count": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 16
+          },
+          "frame_duration_ms": {
+            "type": "integer",
+            "minimum": 20,
+            "maximum": 655350
+          },
+          "reference_frame": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      },
+      "description": "Synthetic simulator tool: generate_image."
+    },
+    "analyze_image": {
+      "name": "analyze_image",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "image": {
+            "type": "string"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "question": {
+            "type": "string"
+          },
+          "stash_after": {
+            "type": "boolean"
+          },
+          "gif_frame": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": []
+      },
+      "description": "Synthetic simulator tool: analyze_image."
+    },
+    "source_library": {
+      "name": "source_library",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "save",
+              "search",
+              "read",
+              "list",
+              "index",
+              "rename",
+              "remove"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "passage": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "semantic": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "description": "Synthetic simulator tool: source_library."
+    },
+    "pdf_create": {
+      "name": "pdf_create",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "from_text",
+              "from_markdown"
+            ]
+          },
+          "space_id": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "text": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "output_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "description": "Synthetic simulator tool: pdf_create."
+    },
+    "get_time": {
+      "name": "get_time",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Synthetic simulator tool: get_time."
+    }
+  }
+}

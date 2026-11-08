@@ -1,7 +1,7 @@
 # Cloud model benchmark for Jarvis
 
 `bin/benchmark-cloud-model` compares OpenAI, Anthropic, xAI and Ollama Cloud chat
-models through Jarvis's production adapters. **Suite v9 has 44 tasks**, normally
+models through Jarvis's production adapters. **The current workload has 44 tasks**, normally
 repeated three times, plus six optional, ungraded tone samples.
 
 It measures completion, discovery, factual grounding, recovery, instruction
@@ -67,102 +67,59 @@ of the requests a successful model will need.
 During calibration, `--rounds 1 --skip-style-probes` keeps usage down. Repeat
 trials later to assess consistency; one round's grade is provisional evidence.
 
-## Improvements in suite v2
+## Current contracts without fixture bumps
 
-The full v1 calibration exposed valid routes its mocks rejected. V2 accepts
-separate or combined source searches, interleaved reads, individual or batch
-crawls, workflow search/describe confirmation, and relevant calculator calls.
-Search evidence uses Brave LLM Context's grounding envelope and returns only
-matching synthetic sources, not all answers for an unrelated query.
+The default `--suite current` uses `config/benchmarks/cloud-model-current.json`.
+This file owns the synthetic tasks, expected facts, reviewed argument aliases,
+fixed clock/location/Profile Card, selected tool names and intended base-prompt
+version. It does not pin production tool descriptions, argument schemas, greeting
+wording or context-function hashes.
 
-Canvas accepts the requested JSON inside a larger document. A save containing
-wrong facts returns its actual success receipt; content grading fails separately.
-Conflicting JSON reports do not pass. Correct requested facts retain credit when
-extra fields violate the requested output format.
+Each run reads the selected public tools' current manifests and current prompt
+assembly. Descriptions, optional parameters and prompt/context changes no longer
+require editing expected hashes or creating a new fixture version. The synthetic
+eligible catalog remains intentional; the benchmark does not discover or enable
+real services just because a new tool is installed.
 
-Discovery uses the production summary formatter and a frozen eligible catalog.
-Exact-name lookups and reasonable prefetches are valid. Normal learned-strategy
-cases use current recipes and the production insight format. Candidate choice,
-running before confirmation and final outcomes are separate diagnostics.
+Before any provider is constructed, the loader checks that the tasks and their
+example arguments still work with those contracts. A new required argument,
+removed operation or incompatible alias can still require a task/example or
+simulator update. The error identifies the affected case and step. A schema-valid
+route outside simulator coverage remains an ungraded **fixture gap**, not a model
+failure. It stops the run without an overall grade. Incorrect arguments,
+unauthorized actions, wrong artifact content and invented receipts remain model
+errors. No hash check is used to conceal an actual behavior mismatch.
 
-A schema-valid route without simulator coverage is a **fixture gap**. The runner
-saves evidence and stops without an overall grade. Invented selectors,
-unauthorized recipients and prohibited actions remain model errors. Review
-gaps and apparently valid rejected paths before judging a model; the simulator
-is finite. Repairs to valid alternate routes change the recorded simulator
-source fingerprint and form separate comparison groups. Changes to tasks,
-expected facts or pinned prompt contracts require a new fixture version.
+Ordinary legacy simulator tests use test-owned structural schemas through the
+pure `prepare_suite` validator. They do not repin historical fixtures against
+whatever production happens to contain today. Current-contract integration tests
+separately check today's workload, schemas, adapter inputs and report identity.
 
-Stash saves support direct saving or opening a space first, including a named
-space. Opening a space does not complete the save. The final answer must use
-an actually issued receipt, and the stored JSON is graded independently of the
-successful save receipt.
+## Saved contracts and model inputs
 
-## Live-calibration fixes in suite v4
+The JSON report and flushed checkpoints retain a run-level contract snapshot:
+actual canonical tool schemas and descriptions, base-prompt text/version,
+context/policy fingerprints, synthetic workload and grading weights. Its hash
+participates in comparison identity. Changing a tool description or schema can
+therefore create a different comparison group automatically, even when no task
+file or benchmark version changes.
 
-V4 retains 44 tasks and rubric 2.0. Reviewed aliases accept `Seattle, WA` for
-`Seattle, Washington` and PDF `create` for text-only `from_text`, matching the
-production tools. PDF saves still grade the actual requested text, title and
-filename; wrong content is a scored failure, not a simulator gap.
+Every provider request is checkpointed **before** the adapter call. The snapshot
+contains the actual system prompt, messages and provider-facing tool schemas
+passed to Jarvis's production adapter, their hashes, and case/round/turn or tone
+metadata. The final JSON retains these inputs too. This includes tools revealed
+through discovery and style probes. Adapter credentials, environment dumps,
+personal memory and private Profile Cards are not captured.
 
-The runtime-context question accepts the `PST` label actually shown to the model,
-as well as the configured IANA name. Human provider names accept declared case
-variants in final answers and saved reports. These are per-field fixture aliases;
-URLs, references, error codes and literal requested content retain their checks.
-Email and screenshot questions now explicitly state when verbatim text or a code
-without its explanation is required.
-
-The V3 reports that exposed these issues are preserved. V4 changes both fixture
-and runtime fingerprints, so its reports form a separate comparison group. Do
-not reinterpret an interrupted V3 conversation as a completed V4 run.
-
-## PDF tool contracts in suite v5
-
-V5 keeps V4's 44 tasks, synthetic facts, reviewed aliases, rubric 2.0 and report
-schema 2. It updates only the pinned public schemas/descriptions for `convert_file`
-and `pdf_create` after their Markdown/text PDF capabilities changed. This is a new
-comparison group; it does not add document-rendering accuracy tests or change the
-simulated PDF task's expected content.
-
-## Image tool contract in suite v6
-
-V6 keeps V5's 44 tasks, synthetic facts, reviewed aliases, rubric 2.0 and report
-schema 2. It updates only the pinned public `generate_image` schema/description
-for GPT Image 2.6 and GIF controls. This creates a new comparison group without
-adding image-generation accuracy tests or changing any task's expected content.
-
-## Vision tool contract in suite v7
-
-V7 keeps V6's tasks, facts, aliases and grading. It updates only the pinned
-public `analyze_image` schema/description for bounded GIF frame sampling and
-the optional `gif_frame` selection. This creates a new comparison group without
-adding vision accuracy tests or changing simulated task results.
-
-## Image discovery description in suite v8
-
-V8 keeps V7's tasks, facts, aliases and grading. It updates only the pinned
-public `generate_image` description after removing a hardcoded provider-default
-claim and revising the GPT Image 2.6 discovery wording. The argument schema and
-tool behavior remain unchanged. This creates a separate comparison group.
-
-## Current reminder tool contract in suite v9
-
-V9 keeps V8's tasks, facts, aliases and grading. It updates only the pinned
-public `create_reminder` schema and description for the optional structured
-schedule argument and validated scheduling guidance. This creates a separate
-comparison group without adding date-parsing accuracy tests or changing the
-simulated reminder results.
-
-The legacy runner's deterministic tests use a temporary synthetic V1 copy with
-its existing `pdf_create`, `generate_image`, `analyze_image` and `create_reminder`
-pins taken from reviewed V9
-(`convert_file` was added in V2, so V1's tool catalog stays unchanged). They do
-not rewrite the archived V1 fixture or bypass runtime drift checks. Unreviewed
-changes still fail before provider construction.
+Response-dependent continuation messages are evidence, not part of comparison
+identity: models taking different valid routes can still be compared. Model and
+provider identities are excluded as before. Configured model-specific prompt
+wording is disclosed in the actual request snapshots; the configured override
+tree fingerprint and prompt profile keep the same comparison boundaries.
 
 ## Relationship to Jarvis
 
-V9 calls production `LLMRouter.build_system_prompt`, the tool-turn and conversation
+The current workload calls production `LLMRouter.build_system_prompt`, the tool-turn and conversation
 formatters in `ContextAssembler`, result projections, the discovery-summary
 formatter and the learned-insight formatter. The router constructor, executor,
 databases and retrieval services are not started. A fixed clock, city, ZIP and
@@ -171,12 +128,11 @@ timing fixed while ordinary callers retain the runtime clock.
 Supplied clocks must be timezone-aware and are normalized to the configured
 timezone; naive values are rejected rather than interpreted using the host zone.
 
-V3 retains V2's tasks and scoring but fixes context fidelity. Its synthetic card
-uses the production Profile Card wrapper, including the rule that the current
+The synthetic card uses the production Profile Card wrapper, including the rule that the current
 instruction and active preferences win on conflict. It imports the same router
 and context modules as the live app. Background, chat-only and search guidance
-use the live route's policy helpers, in the same order. Offline drift checks also
-cover those helpers, their policy text and the profile boundary. Synthetic cards
+use the live route's policy helpers, in the same order. Current runs record those
+helpers' fingerprints, policy text fingerprints and profile boundary. Synthetic cards
 bypass personal profile configuration and storage.
 
 Provider input follows ordinary single-message text replay, including the
@@ -185,11 +141,12 @@ discovery hints. Prior user turns carry structured, bounded synthetic evidence
 through the conversation formatter. Per-trial hashes identify the actual prompt
 as tools become visible.
 
-Suite version and system-prompt version are independent: **suite v9 uses the
-pinned V2 system prompt**. Prompt, public schema and relevant context-function
-drift fail offline validation before inference.
+Workload identity and base-prompt version are independent: the current workload
+selects the V2 base prompt and captures its actual text. It uses the current
+production context builder; routine contract changes are recorded rather than
+rejected as drift.
 
-Suite v9 defaults to `--prompt-profile configured`. It applies the selected
+The current workload defaults to `--prompt-profile configured`. It applies the selected
 model's routing prepend, tool-calling prepend and routing append through the
 production loader. `baseline` omits that wording for a shared-prompt comparison.
 Reports disclose the profile, matched override and exact prompt hashes; the
@@ -292,17 +249,19 @@ model-override tree hash. Model identity is excluded. Configured profiles may
 use different model-specific wording, which is disclosed. Source changes create
 a new comparison group.
 
-The original V1, V2, V3, V4, V5, V6, V7 and V8 fixtures are preserved byte for byte.
-`--suite v1` retains its cases and original rubric, defaulting to baseline. V1
-has known fixture limitations. The archived V2 fixture rejects the changed
-production-context contract in this checkout; older suites also reject changed
-tool schemas. Replay archived suites using their original checkout. Existing
-reports still work with `--compare`. V9 is the default
-and retains report schema 2 and rubric 2.0 because the data format and grading
-are unchanged. Do not compare grades across fixture versions as the same test.
-Runtime changes can also create separate groups with an unchanged suite.
-Preserve old reports; changed simulator behavior requires a new run, not a
-retroactive regrade of the old conversation.
+The V1–V9 fixture files are preserved byte for byte. Explicit `--suite v1` through
+`--suite v9` selects historical replay with the original strict prompt, greeting,
+context and tool-schema checks. Use the compatible original checkout when those
+checks report drift; do not rewrite an archive's pins to make it fit today's
+code. V1 retains its original rubric and defaults to baseline. Current runs keep
+report schema 2 and rubric 2.0; snapshots are additive report fields.
+
+Existing schema-1/schema-2 JSON reports still compare offline using their saved
+comparison keys, without loading current contracts or constructing providers.
+They are never overwritten, migrated or retrospectively regraded. New runs use
+the captured contracts, workload/rubric, selected cases, repetitions, thinking,
+prompt profile and runtime fingerprints to establish compatibility. Changes to
+real simulator behavior or grading require a new run and form a separate group.
 
 Deterministic checks:
 

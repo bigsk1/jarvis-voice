@@ -146,6 +146,13 @@ def test_v8_fixture_is_byte_for_byte_preserved():
     )
 
 
+def test_v9_fixture_is_byte_for_byte_preserved():
+    path = bm.FIXTURE_PATH.with_name("cloud-model-v9.json")
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == (
+        "269aaae528f3bf6c40a8d84072b6a708fee2feb5b73ca62b91d3dc1fb794ad11"
+    )
+
+
 def test_v5_refreshes_only_pdf_tool_contracts_and_fixture_identity():
     previous = json.loads(bm.FIXTURE_PATH.with_name("cloud-model-v4.json").read_text())
     current = json.loads(bm.FIXTURE_PATH.with_name("cloud-model-v5.json").read_text())
@@ -216,16 +223,16 @@ def test_v8_refreshes_only_image_tool_contract_and_fixture_identity():
     assert current == previous
 
 
-def test_v9_refreshes_only_reminder_tool_contract_and_fixture_identity(suite):
+def test_v9_refreshes_only_reminder_tool_contract_and_fixture_identity():
     previous = json.loads(bm.FIXTURE_PATH.with_name("cloud-model-v8.json").read_text())
-    current = json.loads(bm.FIXTURE_PATH.read_text())
+    current = json.loads(bm.FIXTURE_PATH.with_name("cloud-model-v9.json").read_text())
     assert current["fixture_id"] == "jarvis-cloud-model-v9"
     assert current["provenance"]["supersedes"] == previous["fixture_id"]
     changed = {name for name, digest in previous["tool_schema_sha256"].items()
                if current["tool_schema_sha256"][name] != digest}
     assert changed == {"create_reminder"}
-    assert current["tool_schema_sha256"]["create_reminder"] == bm.tool_schema_sha256(
-        suite["tools"]["create_reminder"]
+    assert current["tool_schema_sha256"]["create_reminder"] == (
+        "5f38930f01c67c8c4365cec26697d69afdd9699bb526b4b5eb74719869304569"
     )
     current["tool_schema_sha256"] = previous["tool_schema_sha256"]
     current["fixture_id"] = previous["fixture_id"]
@@ -304,7 +311,7 @@ def test_human_provider_name_alias_applies_to_answer_and_saved_json_only(suite):
 
 
 def test_current_suite_retains_v4_literal_text_requirements(suite):
-    assert suite["fixture_id"] == "jarvis-cloud-model-v9"
+    assert suite["fixture_id"] == "jarvis-cloud-model-current"
     email = case(suite, "authorized_literal_recipient_needs_no_memory")
     assert "subject and body verbatim" in email["turns"][0]["query"]
     image = case(suite, "discover_then_analyze_artifact")
@@ -399,13 +406,18 @@ def test_supplied_context_clocks_normalize_consistently_and_reject_naive_values(
             formatter(*args, now=clock.replace(tzinfo=None))
 
 
-@pytest.mark.parametrize("constant", ["_CHAT_ONLY_SYSTEM_POLICY", "_BACKGROUND_RECEIPT_SYSTEM_POLICY"])
-def test_policy_text_drift_fails_offline_validation(monkeypatch, constant):
+@pytest.mark.parametrize("constant,contract", [
+    ("_CHAT_ONLY_SYSTEM_POLICY", "chat_only_policy_text"),
+    ("_BACKGROUND_RECEIPT_SYSTEM_POLICY", "background_policy_text"),
+])
+def test_current_policy_text_changes_update_actual_contracts(monkeypatch, constant, contract):
     import router_v2
 
+    previous = bm.load_suite()
     monkeypatch.setattr(router_v2, constant, getattr(router_v2, constant) + " Changed.")
-    with pytest.raises(ValueError, match="production context drift"):
-        bm.load_suite()
+    current = bm.load_suite()
+    assert current["production_contract_sha256"][contract] != previous["production_contract_sha256"][contract]
+    assert current["fixture_sha256"] == previous["fixture_sha256"]
 
 
 def test_shared_policies_keep_inherited_prompts_and_effective_search_boundaries(suite):

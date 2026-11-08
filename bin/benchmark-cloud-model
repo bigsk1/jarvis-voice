@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare cloud models on a frozen synthetic Jarvis workload."""
+"""Compare cloud models on synthetic Jarvis tasks using current tool contracts."""
 
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT / "orchestrator"))
 from cloud_model_benchmark import (  # noqa: E402
     CATEGORY_WEIGHTS,
     CloudBenchmarkRunner,
+    content_hash,
     grade_explanation,
     load_suite,
     success_rates_summary,
@@ -63,7 +64,7 @@ def parser() -> argparse.ArgumentParser:
     ))
     result.add_argument("--provider", choices=("ollama", "openai", "anthropic", "xai"))
     result.add_argument("--model", help="Exact provider model ID; no automatic model fallback.")
-    result.add_argument("--suite", choices=("v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9"), default="v9", help="Frozen suite version (default: v9).")
+    result.add_argument("--suite", choices=("current", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9"), default="current", help="Current workload/contracts (default), or an archived frozen suite.")
     result.add_argument("--rounds", type=positive_int, default=3)
     result.add_argument("--thinking", choices=("auto", "off", "minimal", "low", "medium", "high", "max", "xhigh"), default="auto")
     result.add_argument("--timeout", type=nonnegative_seconds, default=300, help="Per-request timeout in seconds.")
@@ -92,7 +93,7 @@ def compare_reports(paths: list[Path]) -> int:
             raise ValueError("not a supported Jarvis cloud benchmark report")
         groups.setdefault(report["comparison_key"], []).append(report)
     if len(groups) > 1:
-        print("Different fixtures, settings, repetitions, or runtime versions: shown in separate comparison groups.")
+        print("Different workloads, contracts, settings, repetitions, or runtime versions: shown in separate comparison groups.")
     for key, rows in groups.items():
         print(f"\nComparison {key[:16]}")
         print("Provider / model | Thinking | Grade | Quality | Strict pass | Request p50 ms | Cost USD")
@@ -133,6 +134,9 @@ def main(argv: list[str] | None = None) -> int:
             "dry_run": not args.run, "provider": args.provider, "model": args.model,
             "repo_environment": Path(sys.prefix).resolve() == (ROOT / ".venv").resolve(),
             "fixture": suite["fixture_id"], "fixture_sha256": suite["fixture_sha256"],
+            "contract_mode": suite["contract_mode"],
+            "tool_contract_sha256": content_hash(suite["tool_schema_sha256"]),
+            "context_contract_sha256": content_hash(suite["production_contract_sha256"]),
             "prompt_version": suite["prompt_version"], "rounds": args.rounds, "thinking": args.thinking,
             "cases": [{"case_id": c["case_id"], "category": c["category"],
                        "turns": len(c["turns"]), "tool_call_budget": c["call_budget"]} for c in cases],
@@ -153,6 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.run:
             print("Offline validation passed. Add --run to use the selected provider's API/quota.")
             return 0
+        stage = "run setup"
         from datetime import datetime, timezone
 
         args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -193,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, OSError, ImportError) as exc:
         # Provider construction errors can include endpoint/credential details.
         # Fixture-only failures are safe to explain before any provider is built.
-        if not args.run or args.compare:
+        if not args.run or args.compare or stage == "offline validation":
             print(f"Cloud benchmark: {exc}", file=sys.stderr)
         else:
             print(f"Cloud benchmark stopped during {stage} ({type(exc).__name__}). "

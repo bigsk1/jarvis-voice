@@ -323,11 +323,14 @@ Record the mode, provider/model, command or UI action, and relevant log file whe
    call `python3`. Use argument arrays and bounded subprocess timeouts. Shell
    tests must not accidentally find an unrelated system Python or launch a
    production service.
-7. **Separate historical benchmarks from generic unit tests.** Frozen replay
-   prompts/schema hashes protect report comparability. Test runner lifecycle
-   with a coherent synthetic prompt/replay pair, and test mismatched snapshot
-   refusal explicitly. Do not rewrite an immutable snapshot or remove a drift
-   guard merely to make an unrelated control-flow test pass.
+7. **Separate historical benchmarks from generic unit tests.** Cloud model
+   simulator tests use test-owned schemas and a synthetic prompt through
+   `prepare_suite`; current-contract integration tests use the current workload
+   without historical hash assertions. Test explicit archived replay drift
+   separately. Frozen replay prompts/schema hashes protect historical
+   comparability: do not repin an archive or remove its guard to make an unrelated
+   control-flow test pass. Actual argument incompatibilities still need corrected
+   examples or simulator behavior; descriptions alone require no fixture bump.
 8. **Use temporary data and mocked external services.** Never rewrite private
    mode files or use, delete, rename, back up, or restore active databases to
    make a test pass. A live provider call, tool mutation, persistent session,

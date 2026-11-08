@@ -1,6 +1,8 @@
 """Exercise the benchmark world, adversarial grading and offline/live boundary."""
 
+import ast
 import copy
+import hashlib
 import importlib.util
 import json
 import sys
@@ -18,42 +20,60 @@ import cloud_model_benchmark as bm  # noqa: E402
 from config_loader import config_scope, get_config_value  # noqa: E402
 from model_prompt_overrides import ModelPromptOverride  # noqa: E402
 
+SIMULATOR_TOOLS_PATH = ROOT / "tests/fixtures/cloud-benchmark-simulator-tools.json"
+SIMULATOR_BASE_PROMPT = "You are a synthetic assistant exercising a deterministic tool simulator."
 
-@pytest.fixture(scope="module")
-def legacy_fixture_path(tmp_path_factory):
-    """Exercise the v1 runner with reviewed schemas, never rewrite its archive.
 
-    Reviewed tool pins come from the checked-in v9 fixture, not live hashes.
-    The original catalog stays intact; v1 does not declare convert_file.
-    Future unreviewed manifest changes must still fail production drift checks.
-    """
+def legacy_simulator_suite():
     payload = json.loads(bm.LEGACY_FIXTURE_PATH.read_text())
-    current = json.loads(bm.FIXTURE_PATH.read_text())
-    for name in ("pdf_create", "generate_image", "analyze_image", "create_reminder"):
-        if name in payload["tool_schema_sha256"]:
-            payload["tool_schema_sha256"][name] = current["tool_schema_sha256"][name]
-    path = tmp_path_factory.mktemp("cloud-benchmark-v1-synthetic") / "v1-reviewed-tool-schemas.json"
-    path.write_text(json.dumps(payload), encoding="utf-8")
-    return path
+    tools = json.loads(SIMULATOR_TOOLS_PATH.read_text())["tools"]
+    return bm.prepare_suite(
+        payload, tools, SIMULATOR_BASE_PROMPT, prompt_version="simulator-v1",
+        contract_mode="simulator",
+    )
 
 
 @pytest.fixture
-def suite(legacy_fixture_path):
-    return bm.load_suite(legacy_fixture_path)
+def suite():
+    return legacy_simulator_suite()
 
 
-def test_legacy_test_copy_changes_only_reviewed_current_tool_pins(legacy_fixture_path):
-    archived = json.loads(bm.LEGACY_FIXTURE_PATH.read_text())
-    synthetic = json.loads(legacy_fixture_path.read_text())
-    current = json.loads(bm.FIXTURE_PATH.read_text())
-    changes = {name for name, digest in archived["tool_schema_sha256"].items()
-               if synthetic["tool_schema_sha256"][name] != digest}
-    assert synthetic["tool_schema_sha256"].keys() == archived["tool_schema_sha256"].keys()
-    assert changes == {"pdf_create", "generate_image", "analyze_image", "create_reminder"}
-    for name in changes:
-        assert synthetic["tool_schema_sha256"][name] == current["tool_schema_sha256"][name]
-        synthetic["tool_schema_sha256"][name] = archived["tool_schema_sha256"][name]
-    assert synthetic == archived
+def test_legacy_simulator_uses_test_owned_schemas_without_live_acquisition(monkeypatch):
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("ordinary simulator tests acquired production contracts")
+
+    monkeypatch.setattr(bm, "load_skill_tool", forbidden)
+    monkeypatch.setattr(bm, "load_router_prompt", forbidden)
+    archived_bytes = bm.LEGACY_FIXTURE_PATH.read_bytes()
+    synthetic = legacy_simulator_suite()
+    archived = json.loads(archived_bytes)
+    assert synthetic["cases"] == archived["cases"]
+    assert synthetic["base_prompt"] == SIMULATOR_BASE_PROMPT
+    assert set(synthetic["tools"]) == set(archived["tool_schema_sha256"])
+    assert all(tool["description"].startswith("Synthetic simulator tool:")
+               for tool in synthetic["tools"].values())
+    assert bm.LEGACY_FIXTURE_PATH.read_bytes() == archived_bytes
+
+
+@pytest.fixture
+def compatible_archive_path(tmp_path):
+    """Acquire current pins only for tests of the strict replay boundary."""
+    payload = json.loads(bm.FIXTURE_PATH.with_name("cloud-model-v9.json").read_text())
+    current = bm.load_suite()
+    payload["prompt"] = copy.deepcopy(current["prompt"])
+    payload["tool_schema_sha256"] = copy.deepcopy(current["tool_schema_sha256"])
+    payload["production_contract_sha256"] = copy.deepcopy(current["production_contract_sha256"])
+    source = ast.parse((ROOT / "orchestrator/router_v2.py").read_text())
+    greetings = [node.value.value for node in ast.walk(source)
+                 if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
+                 and isinstance(node.value.value, str)
+                 and any(isinstance(target, ast.Name) and target.id == "greeting_hint"
+                         for target in node.targets)]
+    assert len(greetings) == 1
+    payload["runtime_hints"]["greeting_hint"] = greetings[0]
+    path = tmp_path / "compatible-archive.json"
+    path.write_text(json.dumps(payload))
+    return path
 
 
 class OracleProvider:
@@ -330,17 +350,108 @@ def test_scope_is_restored_after_benchmark(suite):
         assert get_config_value("DISABLE_SERVER_SIDE_TOOLS") == "false"
 
 
-def test_fixture_pins_prompt_schema_and_greeting_source_before_any_inference(suite, monkeypatch, tmp_path):
-    payload = json.loads(bm.FIXTURE_PATH.read_text())
+def test_explicit_archive_replay_accepts_compatible_contracts(compatible_archive_path):
+    archived = bm.load_suite(compatible_archive_path)
+    assert archived["fixture_id"] == "jarvis-cloud-model-v9"
+    assert archived["contract_mode"] == "frozen"
+
+
+def test_explicit_archive_rejects_changed_prompt_before_inference(compatible_archive_path, tmp_path):
+    payload = json.loads(compatible_archive_path.read_text())
     path = tmp_path / "fixture.json"
     payload["prompt"]["sha256"] = "wrong"
     path.write_text(json.dumps(payload))
     with pytest.raises(ValueError, match="prompt drift"):
         bm.load_suite(path)
+
+
+def test_explicit_archive_rejects_changed_schema(compatible_archive_path, monkeypatch):
     original = bm.load_skill_tool
     monkeypatch.setattr(bm, "load_skill_tool", lambda name: {**original(name), "description": "changed"})
     with pytest.raises(ValueError, match="schema drift"):
-        bm.load_suite()
+        bm.load_suite(compatible_archive_path)
+
+
+def test_explicit_archive_rejects_changed_context(compatible_archive_path, monkeypatch):
+    import router_v2
+
+    monkeypatch.setattr(router_v2, "_CHAT_ONLY_SYSTEM_POLICY", "Synthetic changed chat-only policy.")
+    with pytest.raises(ValueError, match="production context drift"):
+        bm.load_suite(compatible_archive_path)
+
+
+def test_explicit_archive_rejects_changed_greeting(compatible_archive_path):
+    payload = json.loads(compatible_archive_path.read_text())
+    payload["runtime_hints"]["greeting_hint"] = "Changed historical greeting contract."
+    compatible_archive_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="greeting hint drift"):
+        bm.load_suite(compatible_archive_path)
+
+
+def test_current_workload_has_no_expected_production_hashes():
+    payload = json.loads(bm.FIXTURE_PATH.read_text())
+    assert payload["fixture_id"] == "jarvis-cloud-model-current"
+    assert payload["tool_names"]
+    assert "tool_schema_sha256" not in payload
+    assert "production_contract_sha256" not in payload
+    assert "sha256" not in payload["prompt"]
+    assert "runtime_hints" not in payload
+
+
+def test_current_description_and_optional_argument_changes_are_captured(monkeypatch):
+    fixture_bytes = bm.FIXTURE_PATH.read_bytes()
+    previous = bm.load_suite()
+    original = bm.load_skill_tool
+
+    def changed_tool(name):
+        tool = copy.deepcopy(original(name))
+        if name == "weather":
+            tool["description"] = "Current weather description changed without a task-fixture edit."
+            tool["input_schema"]["properties"]["synthetic_optional"] = {"type": "string"}
+        return tool
+
+    monkeypatch.setattr(bm, "load_skill_tool", changed_tool)
+    current = bm.load_suite()
+    assert current["contract_mode"] == "current"
+    assert current["tools"]["weather"]["description"] != previous["tools"]["weather"]["description"]
+    assert "synthetic_optional" in current["tools"]["weather"]["input_schema"]["properties"]
+    assert current["tool_schema_sha256"]["weather"] != previous["tool_schema_sha256"]["weather"]
+    assert current["fixture_sha256"] == previous["fixture_sha256"]
+    assert bm.FIXTURE_PATH.read_bytes() == fixture_bytes
+
+
+def test_current_prompt_changes_are_captured_without_task_fixture_edits(monkeypatch):
+    previous = bm.load_suite()
+    original = bm.load_router_prompt
+
+    def changed_prompt(version):
+        resolved, prompt = original(version)
+        return resolved, prompt + "\nSynthetic changed production prompt instruction."
+
+    monkeypatch.setattr(bm, "load_router_prompt", changed_prompt)
+    current = bm.load_suite()
+    assert current["base_prompt"] != previous["base_prompt"]
+    assert current["prompt"]["sha256"] == hashlib.sha256(current["base_prompt"].encode()).hexdigest()
+    assert current["prompt"]["sha256"] != previous["prompt"]["sha256"]
+    assert current["fixture_sha256"] == previous["fixture_sha256"]
+
+
+def test_current_greeting_and_prompt_assembly_changes_are_captured(monkeypatch):
+    import router_v2
+    from cloud_benchmark_context import BenchmarkContext
+
+    previous = bm.load_suite()
+    original = router_v2.LLMRouter.build_system_prompt
+
+    def changed_prompt(self, **kwargs):
+        return original(self, **kwargs) + "\nSynthetic changed greeting policy."
+
+    monkeypatch.setattr(router_v2.LLMRouter, "build_system_prompt", changed_prompt)
+    current = bm.load_suite()
+    assert current["production_contract_sha256"]["system_prompt"] != previous["production_contract_sha256"]["system_prompt"]
+    assert current["fixture_sha256"] == previous["fixture_sha256"]
+    context = BenchmarkContext(current, "ollama", "synthetic", "baseline")
+    assert "Synthetic changed greeting policy." in context.system_prompt(["weather"])
 
 
 def test_configured_profile_applies_only_routing_sections_and_is_labeled(suite, monkeypatch):
@@ -439,10 +550,12 @@ def test_cli_checkpoints_retain_answers_and_scores_when_final_report_write_fails
     assert cli.main(["--provider", "ollama", "--model", "synthetic", "--run", "--rounds", "1",
         "--case", "draft_is_not_send", "--skip-style-probes", "--output-dir", str(tmp_path)]) == 2
     events = [json.loads(line) for line in next(tmp_path.glob("*-checkpoint.jsonl")).read_text().splitlines()]
-    assert [e["event"] for e in events] == ["plan", "runtime", "response", "case_complete", "report"]
+    assert [e["event"] for e in events] == ["plan", "runtime", "request", "response", "case_complete", "report"]
     assert events[-2]["result"]["passed"] and events[-2]["result"]["score"] == 100
     assert events[-1]["report"]["quality_score"] == 100
-    assert json.loads(events[2]["text"])["sent"] is False
+    assert json.loads(events[3]["text"])["sent"] is False
+    assert events[2]["system_prompt"]
+    assert events[2]["tools"]
     captured = capsys.readouterr()
     assert "Response checkpoints:" in captured.out
     assert "final report writing" in captured.err
@@ -454,31 +567,41 @@ def test_cli_default_is_offline_and_missing_case_fails_without_provider(monkeypa
     assert cli.main(["--provider", "ollama", "--model", "synthetic"]) == 0
     output = capsys.readouterr().out
     assert '"dry_run": true' in output
-    assert '"fixture": "jarvis-cloud-model-v9"' in output
+    assert '"fixture": "jarvis-cloud-model-current"' in output
     with pytest.raises(SystemExit):
         cli.main(["--provider", "ollama", "--model", "synthetic", "--case", "missing"])
 
 
-@pytest.mark.parametrize("version", ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"])
+@pytest.mark.parametrize("version", ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9"])
 def test_archived_suite_drift_stops_cli_before_provider_or_reports(version, monkeypatch, tmp_path):
     cli = cli_module()
+    original = bm.load_skill_tool
+    monkeypatch.setattr(bm, "load_skill_tool", lambda name: {**original(name), "description": "changed"})
     monkeypatch.setattr(cli, "CloudBenchmarkRunner", lambda *_args, **_kwargs: pytest.fail("archived schema drift built a provider"))
     assert cli.main(["--provider", "ollama", "--model", "synthetic", "--suite", version,
                      "--run", "--output-dir", str(tmp_path)]) == 2
     assert not list(tmp_path.iterdir())
 
 
-@pytest.mark.parametrize("name", ["convert_file", "pdf_create", "generate_image", "analyze_image", "create_reminder"])
-def test_new_tool_drift_still_stops_before_provider(name, monkeypatch, tmp_path):
+def test_incompatible_required_argument_stops_current_run_before_provider(monkeypatch, tmp_path, capsys):
     cli = cli_module()
     original = bm.load_skill_tool
-    monkeypatch.setattr(bm, "load_skill_tool", lambda tool: {
-        **original(tool), **({"description": "unreviewed change"} if tool == name else {}),
-    })
-    monkeypatch.setattr(cli, "CloudBenchmarkRunner", lambda *_args, **_kwargs: pytest.fail("unreviewed schema drift built a provider"))
-    assert cli.main(["--provider", "ollama", "--model", "synthetic", "--suite", "v9",
+
+    def changed_tool(name):
+        tool = copy.deepcopy(original(name))
+        if name == "create_reminder":
+            tool["input_schema"]["properties"]["synthetic_required"] = {"type": "string"}
+            tool["input_schema"].setdefault("required", []).append("synthetic_required")
+        return tool
+
+    monkeypatch.setattr(bm, "load_skill_tool", changed_tool)
+    monkeypatch.setattr(cli, "CloudBenchmarkRunner", lambda *_args, **_kwargs: pytest.fail("incompatible fixture built a provider"))
+    assert cli.main(["--provider", "ollama", "--model", "synthetic", "--suite", "current",
                      "--run", "--output-dir", str(tmp_path)]) == 2
     assert not list(tmp_path.iterdir())
+    error = capsys.readouterr().err
+    assert "create_reminder_then_list" in error
+    assert "example" in error.lower()
 
 
 def test_production_factory_pins_model_timeout_and_no_host_fallback(monkeypatch):

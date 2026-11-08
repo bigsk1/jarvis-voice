@@ -25,17 +25,15 @@ Guiding principles:
 
 ### Cloud model benchmark maintenance
 
-**Status:** Deferred follow-up, requested November 7, 2026.
+**Status:** Implemented November 7, 2026.
 
-Occasional model comparisons should not require a new frozen fixture version
-whenever a production tool description or schema changes. Separate ordinary
-simulator tests from historical production-schema hash checks. Explicit benchmark
-runs should load the current tool contracts and capture their actual schemas,
-prompts and fingerprints with the results. Contract changes can then create a
-different comparison identity automatically. Preserve archived fixtures/reports
-for optional historical replay. Real argument or simulator behavior changes may
-still require updated examples; removing hash checks alone does not solve that.
-This is a proposal, not an implemented change to benchmark validation.
+The default cloud benchmark uses current tool contracts with stable synthetic
+tasks, records actual schemas/prompts/fingerprints with results, and separates
+comparison groups automatically when contracts change. Ordinary simulator tests
+no longer depend on historical production hashes. Archived V1–V9 fixtures and
+reports remain available for explicit replay/comparison. Real argument or
+simulator behavior changes can still require updated examples. See the
+[cloud model benchmark guide](CLOUD_MODEL_BENCHMARK.md).
 
 ### 1) Action-Level Permission and Preflight Policies (Optional)
 **Priority:** Deferred / narrow high-risk use only

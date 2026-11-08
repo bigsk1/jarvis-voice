@@ -143,6 +143,7 @@ class BenchmarkContext:
         runtime = self.suite["runtime"]
         overrides = {
             "LLM_PROVIDER": self.provider,
+            "JARVIS_TIMEZONE": runtime["timezone"],
             "JARVIS_RESPONSE_STYLE": "casual" if casual else "detailed",
             "JARVIS_DEFAULT_LOCATION": runtime["location"],
             "JARVIS_DEFAULT_POSTAL_CODE": runtime["postal_code"],
