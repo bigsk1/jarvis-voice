@@ -58,6 +58,7 @@ STRICT_IMAGE_MAX_PIXELS = 40_000_000
 STRICT_IMAGE_MAX_OUTPUT_SIZE = 4 * 1024 * 1024
 STRICT_RASTER_FORMATS = {'JPEG', 'PNG', 'WEBP'}
 STRICT_GIF_MAX_FRAMES = 256
+GIF_VALIDATION_POLICY_VERSION = 1
 
 # Allowed MIME types for downloads
 ALLOWED_MIME_TYPES = [
@@ -274,6 +275,93 @@ def safe_download(url: str, max_size: int = None) -> tuple[bytes, str, str]:
     return data, content_type, current_url
 
 
+def _inspect_gif_container(data: bytes, *, max_frames: int, max_pixels: int) -> tuple[int, int]:
+    """Require complete GIF blocks, including the trailer, before raster decoding.
+
+    Pillow's frame seek may report EOF for a truncated later frame. Walk the
+    bounded container first so that EOF cannot silently shorten the animation.
+    Block layout: https://www.w3.org/Graphics/GIF/spec-gif89a.txt
+    Bytes after a complete trailer are preserved, not certified or stripped.
+    """
+    position = 0
+
+    def advance(count: int) -> int:
+        nonlocal position
+        start = position
+        position += count
+        if position > len(data):
+            raise SecurityError("Content is not a valid complete GIF image (truncated block)")
+        return start
+
+    def sub_blocks() -> None:
+        while True:
+            size = data[advance(1)]
+            if size == 0:
+                return
+            advance(size)
+
+    if bytes(data[:6]) not in {b'GIF87a', b'GIF89a'}:
+        raise SecurityError("Content is not a GIF image")
+    advance(6)
+    screen = advance(7)
+    canvas_width = int.from_bytes(data[screen:screen + 2], 'little')
+    canvas_height = int.from_bytes(data[screen + 2:screen + 4], 'little')
+    if not canvas_width or not canvas_height:
+        raise SecurityError("Content is not a valid GIF image (empty canvas)")
+    if canvas_width * canvas_height > max_pixels:
+        raise SecurityError(f"GIF exceeds the {max_pixels:,}-pixel decoded-frame safety limit")
+    packed = data[screen + 4]
+    if packed & 0x80:
+        advance(3 * (2 ** ((packed & 7) + 1)))
+
+    frames = 0
+    decoded_pixels = 0
+    while True:
+        marker = data[advance(1)]
+        if marker == 0x3B:
+            if not frames:
+                raise SecurityError("Content is not a valid GIF image (no image frames)")
+            return frames, len(data) - position
+        if marker == 0x21:
+            extension = data[advance(1)]
+            if extension == 0xF9:
+                if data[advance(1)] != 4:
+                    raise SecurityError("Content is not a valid GIF graphic control block")
+                advance(4)
+                if data[advance(1)] != 0:
+                    raise SecurityError("Content is not a valid GIF block terminator")
+            else:
+                if extension in {0x01, 0xFF}:
+                    size = data[advance(1)]
+                    if size != (12 if extension == 0x01 else 11):
+                        raise SecurityError("Content is not a valid GIF extension header")
+                    advance(size)
+                sub_blocks()
+            continue
+        if marker != 0x2C:
+            raise SecurityError("Content is not a valid GIF block sequence")
+        image = advance(9)
+        left = int.from_bytes(data[image:image + 2], 'little')
+        top = int.from_bytes(data[image + 2:image + 4], 'little')
+        width = int.from_bytes(data[image + 4:image + 6], 'little')
+        height = int.from_bytes(data[image + 6:image + 8], 'little')
+        if not width or not height:
+            raise SecurityError("Content is not a valid GIF image (empty frame)")
+        frames += 1
+        if frames > max_frames:
+            raise SecurityError(f"GIF exceeds the {max_frames}-frame safety limit")
+        canvas_width, canvas_height = max(canvas_width, left + width), max(canvas_height, top + height)
+        decoded_pixels += canvas_width * canvas_height
+        if decoded_pixels > max_pixels:
+            raise SecurityError(f"GIF exceeds the {max_pixels:,}-pixel decoded-frame safety limit")
+        packed = data[image + 8]
+        if packed & 0x80:
+            advance(3 * (2 ** ((packed & 7) + 1)))
+        if not 2 <= data[advance(1)] <= 8:
+            raise SecurityError("Content is not a valid GIF LZW code size")
+        sub_blocks()
+
+
 def inspect_gif_image(
     data: bytes,
     *,
@@ -284,6 +372,9 @@ def inspect_gif_image(
     """Decode every GIF frame within bounded work without changing its bytes."""
     if len(data) > max_size:
         raise SecurityError(f"GIF exceeds the {max_size}-byte safety limit")
+    container_frames, trailing_bytes = _inspect_gif_container(
+        data, max_frames=max_frames, max_pixels=max_pixels,
+    )
     try:
         from PIL import Image, UnidentifiedImageError
     except ImportError as exc:
@@ -320,8 +411,11 @@ def inspect_gif_image(
         raise
     except (Image.DecompressionBombWarning, Image.DecompressionBombError) as exc:
         raise SecurityError("GIF exceeds Pillow's decompression safety limit") from exc
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
+    except (UnidentifiedImageError, OSError, ValueError, EOFError, IndexError) as exc:
         raise SecurityError("Content is not a valid GIF image") from exc
+
+    if len(durations) != container_frames:
+        raise SecurityError("Content is not a valid complete GIF animation")
 
     metadata = {
         'format': 'gif',
@@ -334,9 +428,64 @@ def inspect_gif_image(
         'decoded_pixels': decoded_pixels,
         'width': width,
         'height': height,
+        'trailing_bytes': trailing_bytes,
     }
     if len(set(durations)) == 1:
         metadata['frame_duration_ms'] = durations[0]
+    return metadata
+
+
+def _gif_claim(name: str, mime_type: str | None) -> bool:
+    return (
+        Path(name).suffix.lower().strip() == '.gif'
+        or str(mime_type or '').split(';', 1)[0].strip().lower() in {'image/gif', 'image/x-gif'}
+    )
+
+
+def validate_gif_declarations(name: str, mime_type: str | None) -> str:
+    """Check whether a filename and MIME declaration are compatible with GIF."""
+    declared_mime = str(mime_type or '').split(';', 1)[0].strip().lower()
+    if declared_mime not in {
+        '', 'image/gif', 'image/x-gif', 'application/octet-stream',
+        'binary/octet-stream', 'application/binary',
+    }:
+        raise SecurityError(f"GIF content does not match declared MIME type: {declared_mime}")
+    suffix = Path(name).suffix.lower().strip()
+    if suffix not in {'', '.gif', '.bin', '.dat', '.tmp'}:
+        raise SecurityError(f"GIF content does not match filename extension: {suffix}")
+    return declared_mime
+
+
+def validate_gif_artifact(data: bytes, *, name: str, mime_type: str | None,
+                          sniff_signature: bool = True) -> dict[str, Any] | None:
+    """Validate detected or claimed GIFs, preserving their original bytes.
+
+    Authored text/JSON can disable signature sniffing; explicit GIF filename or
+    MIME claims still require validation. Binary and downloaded content always
+    uses the default sniffing policy.
+    """
+    detected_gif = bytes(data[:6]) in {b'GIF87a', b'GIF89a'}
+    stored_name = sanitize_filename(name)
+    claimed_gif = _gif_claim(name, mime_type) or _gif_claim(stored_name, mime_type)
+    if not claimed_gif and not (sniff_signature and detected_gif):
+        return None
+    if not detected_gif:
+        raise SecurityError("Content does not match the GIF filename or MIME type")
+    declared_mime = validate_gif_declarations(name, mime_type)
+    validate_gif_declarations(stored_name, mime_type)
+    metadata = inspect_gif_image(
+        data, max_size=GIF_MAX_FILE_SIZE,
+        max_frames=STRICT_GIF_MAX_FRAMES, max_pixels=STRICT_IMAGE_MAX_PIXELS,
+    )
+    metadata['gif_validation'] = {
+        'policy_version': GIF_VALIDATION_POLICY_VERSION,
+        'decoded_all_frames': True,
+        'max_size_bytes': GIF_MAX_FILE_SIZE,
+        'max_frames': STRICT_GIF_MAX_FRAMES,
+        'max_decoded_pixels': STRICT_IMAGE_MAX_PIXELS,
+        'declared_mime_type': declared_mime,
+        'declared_filename': name,
+    }
     return metadata
 
 
@@ -883,13 +1032,17 @@ class StashFile:
                   tags: list[str] = None, tool_origin: str = None) -> dict:
         """Save text content to a file."""
         data = content.encode('utf-8')
-        return self._save_data(data, name, 'text/plain', on_conflict, tags, tool_origin)
+        return self._save_data(
+            data, name, 'text/plain', on_conflict, tags, tool_origin, sniff_gif_signature=False,
+        )
     
     def save_json(self, content: Any, name: str, on_conflict: str = 'error',
                   tags: list[str] = None, tool_origin: str = None) -> dict:
         """Save JSON content to a file."""
         data = json.dumps(content, indent=2).encode('utf-8')
-        return self._save_data(data, name, 'application/json', on_conflict, tags, tool_origin)
+        return self._save_data(
+            data, name, 'application/json', on_conflict, tags, tool_origin, sniff_gif_signature=False,
+        )
     
     def save_binary(self, data: bytes, name: str, mime_type: str = None,
                     on_conflict: str = 'error', tags: list[str] = None,
@@ -899,6 +1052,42 @@ class StashFile:
             mime_type, _ = mimetypes.guess_type(name)
             mime_type = mime_type or 'application/octet-stream'
         return self._save_data(data, name, mime_type, on_conflict, tags, tool_origin)
+
+    @_stash_transaction
+    def validate_gif(self, *, name: str | None = None, mime_type: str | None = None,
+                     expected_sha256: str | None = None) -> dict[str, Any] | None:
+        """Revalidate a saved GIF before reuse and upgrade its durable metadata."""
+        self._file_meta = None  # Read the manifest refreshed by the transaction.
+        file_meta = self.meta
+        file_path = self.path
+        if not file_meta or not file_path:
+            raise ValueError("Stash file not found for GIF validation")
+        declared_name = name if name is not None else file_meta.get('name', '')
+        declared_mime = mime_type if mime_type is not None else file_meta.get('mime_type')
+        with file_path.open('rb') as stream:
+            prefix = stream.read(6)
+            candidate = (
+                prefix in {b'GIF87a', b'GIF89a'}
+                or _gif_claim(declared_name, declared_mime)
+                or _gif_claim(file_meta.get('name', ''), file_meta.get('mime_type'))
+                or _gif_claim(file_meta.get('stored_name', ''), file_meta.get('mime_type'))
+            )
+            if not candidate:
+                return None
+            if os.fstat(stream.fileno()).st_size > GIF_MAX_FILE_SIZE:
+                raise SecurityError(f"GIF exceeds the {GIF_MAX_FILE_SIZE}-byte safety limit")
+            data = prefix + stream.read(GIF_MAX_FILE_SIZE + 1 - len(prefix))
+        metadata = validate_gif_artifact(data, name=declared_name, mime_type=declared_mime)
+        if metadata is None:
+            raise SecurityError("Saved file does not match its GIF metadata")
+        validate_gif_declarations(file_meta.get('name', ''), file_meta.get('mime_type'))
+        validate_gif_declarations(file_meta.get('stored_name', ''), file_meta.get('mime_type'))
+        expected_hash = expected_sha256 or file_meta.get('hash_sha256')
+        if expected_hash and compute_hash(data) != expected_hash:
+            raise SecurityError("Saved GIF bytes do not match the expected SHA-256")
+        file_meta.update(metadata)
+        self.space.touch()
+        return metadata
     
     def save_from_url(self, url: str, name: str = None, on_conflict: str = 'error',
                       tags: list[str] = None, tool_origin: str = None) -> dict:
@@ -996,8 +1185,14 @@ class StashFile:
     
     @_stash_transaction
     def _save_data(self, data: bytes, name: str, mime_type: str,
-                   on_conflict: str, tags: list[str], tool_origin: str) -> dict:
+                   on_conflict: str, tags: list[str], tool_origin: str,
+                   *, sniff_gif_signature: bool = True) -> dict:
         """Internal method to save data."""
+        gif_metadata = validate_gif_artifact(
+            data, name=name, mime_type=mime_type, sniff_signature=sniff_gif_signature,
+        )
+        if gif_metadata:
+            mime_type = gif_metadata['mime_type']
         sanitized_name = sanitize_filename(name)
         effective_name = name
         
@@ -1046,6 +1241,8 @@ class StashFile:
             'tool_origin': tool_origin,
             'created_at': now
         }
+        if gif_metadata:
+            file_meta.update(gif_metadata)
         
         # Update space metadata
         if existing and on_conflict == 'overwrite':
@@ -1069,7 +1266,8 @@ class StashFile:
             'path': str(file_path),
             'mime_type': mime_type,
             'size_bytes': len(data),
-            'hash_sha256': file_hash
+            'hash_sha256': file_hash,
+            **(gif_metadata or {}),
         }
     
     def read(self, mode: str = 'auto') -> dict:

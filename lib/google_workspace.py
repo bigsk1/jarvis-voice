@@ -810,7 +810,13 @@ def stash_workspace_download(client, result: dict, space_id=None) -> dict:
     from pathlib import Path
 
     from mcp_client import _check_remote_call_budget
-    from stash_helper import StashFile, open_space
+    from stash_helper import (
+        SecurityError,
+        StashFile,
+        open_space,
+        validate_gif_artifact,
+        validate_gif_declarations,
+    )
 
     if not result.get("ok"):
         return result
@@ -822,6 +828,13 @@ def stash_workspace_download(client, result: dict, space_id=None) -> dict:
         downloaded = download_workspace_file(client, result)
         data["download_ok"] = data["google_ok"] = True
         body, name, mime = downloaded["body"], downloaded["name"], downloaded["mime_type"]
+        declared_mime = mime
+        # Authenticated origin and transfer completeness do not establish that
+        # an animation is safe to decode. Validate before either save or reuse.
+        gif_metadata = validate_gif_artifact(body, name=name, mime_type=mime)
+        if gif_metadata is not None:
+            mime = gif_metadata["mime_type"]
+        _check_remote_call_budget()
         import time
         budget = _check_remote_call_budget()
         lock_timeout = min(5, max(0, budget.deadline - time.monotonic())) if budget else 5
@@ -831,15 +844,36 @@ def stash_workspace_download(client, result: dict, space_id=None) -> dict:
             digest = hashlib.sha256(body).hexdigest()
             saved = None
             for item in space.meta.get("files", []):
-                if item.get("hash_sha256") == digest and item.get("mime_type") == mime:
+                if item.get("hash_sha256") == digest and (
+                    item.get("mime_type") == mime or gif_metadata is not None
+                ):
+                    if gif_metadata is not None:
+                        try:
+                            validate_gif_declarations(item.get("name", ""), item.get("mime_type"))
+                            validate_gif_declarations(item.get("stored_name", ""), item.get("mime_type"))
+                        except SecurityError:
+                            # An incompatible old row is not a cache candidate.
+                            # Continue to a compatible row or a new checked save.
+                            continue
                     entry = StashFile(space, file_id=item["file_id"])
                     if entry.path and Path(entry.path).is_file():
-                        saved = {**item, "ref": f"stash://{space.space_id}/{item['file_id']}"}
+                        if gif_metadata is not None:
+                            # Legacy metadata may predate validation or no longer
+                            # describe the file on disk. Never trust its hash alone.
+                            entry.validate_gif(
+                                name=name, mime_type=declared_mime, expected_sha256=digest,
+                            )
+                            _check_remote_call_budget()
+                        saved = {**entry.meta, "ref": f"stash://{space.space_id}/{item['file_id']}"}
                         break
             if saved is None:
-                saved = StashFile(space).save_binary(bytes(body), name=name, mime_type=mime,
+                saved = StashFile(space).save_binary(bytes(body), name=name, mime_type=declared_mime,
                     on_conflict="version", tags=["google_workspace"], tool_origin=PREFIX + data["tool"])
+            _check_remote_call_budget()
         artifact = {key: saved[key] for key in ("ref", "file_id", "name", "mime_type", "size_bytes")}
+        for key in ("gif_validation", "animated", "frame_count", "duration_ms", "width", "height"):
+            if key in saved:
+                artifact[key] = saved[key]
         artifact["space_id"] = space.space_id
         from config_loader import get_active_config_mode
         artifact["mode"] = get_active_config_mode()

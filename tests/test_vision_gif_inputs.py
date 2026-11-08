@@ -75,12 +75,17 @@ def test_gif_vision_normalization_keeps_still_images_unchanged():
     assert normalize_vision_gif_images(['jpeg', 'png']) == (['jpeg', 'png'], [])
 
 
-def test_gif_vision_rejects_invalid_animation_before_provider_call(monkeypatch):
+@pytest.mark.parametrize('payload,error', [
+    # The junk descriptor declares an oversized canvas; reject before decoding.
+    (b'GIF89a broken', 'decoded-frame safety limit'),
+    (b'GIF89a' + b'\x00' * 7, 'valid GIF'),
+])
+def test_gif_vision_rejects_invalid_animation_before_provider_call(monkeypatch, payload, error):
     called = []
     monkeypatch.setattr(vision_provider, '_ollama_vision', lambda *_args: called.append(True))
-    with pytest.raises(SecurityError, match='valid GIF'):
+    with pytest.raises(SecurityError, match=error):
         vision_provider.analyze_images(
-            [base64.b64encode(b'GIF89a broken').decode('ascii')],
+            [base64.b64encode(payload).decode('ascii')],
             'Describe this GIF.', mode='local',
         )
     assert called == []

@@ -698,7 +698,7 @@ class EmailInbox:
 
     @staticmethod
     def _verify_attachment(ref, spec):
-        from stash_helper import safe_resolve_file
+        from stash_helper import StashFile, get_space, parse_stash_ref, safe_resolve_file
 
         if not isinstance(ref, str) or not ref.startswith("stash://"):
             raise ValueError("Attachment download did not return a Stash reference")
@@ -714,6 +714,17 @@ class EmailInbox:
                 digest.update(block)
         if digest.hexdigest() != spec["sha256"]:
             raise ValueError("Downloaded attachment bytes do not match the authenticated email")
+        # Resumed attachments can predate the current save policy. Verify their
+        # original authenticated bytes first, then apply today's GIF checks and
+        # persist validation metadata without replacing or re-encoding the file.
+        space_id, file_id = parse_stash_ref(ref)
+        space = get_space(space_id)
+        attachment = StashFile(space, file_id=file_id)
+        if not attachment.exists:
+            attachment = StashFile(space, name=file_id)
+        attachment.validate_gif(
+            name=spec["name"], mime_type=spec["mime_type"], expected_sha256=spec["sha256"],
+        )
 
     def _search_page(self, query, cursor=""):
         params = {"query": query, "page_size": 25, "include_headers": False}

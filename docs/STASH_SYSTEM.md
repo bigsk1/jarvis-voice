@@ -2,7 +2,7 @@
 
 > **Status**: ✅ Implemented (v2.14)
 > **Purpose**: Generic artifact storage layer for the Jarvis ecosystem
-> **Updated**: 2026-07-11 - Documented configurable `STASH_DIR` storage root across Web, API, and Canvas
+> **Updated**: 2026-11-08 - Shared GIF validation for downloads and email ingestion
 
 ---
 
@@ -58,11 +58,21 @@ Images Gallery copy and provider/model/animation metadata, so Stash expiration
 does not remove the gallery file.
 
 The normal strict `kind="image_url"` import remains a JPEG/PNG/WebP-to-JPEG
-normalizer. GIF-aware generation explicitly opts into the shared downloader's
+normalizer and rejects GIFs. To save a GIF found in image search, use
+`stash(action="save", kind="url", url=gif_url, name="animation.gif")`.
+To inspect it, pass the URL directly to `analyze_image(image=gif_url)`;
+`stash_after=true` also saves the original animation. The image search tool's
+own `stash_after` option uses the strict still-image path and rejects GIFs.
+GIF-aware generation explicitly opts into the shared downloader's
 `allow_gif=True` path, which preserves GIF bytes after decoding every frame.
 GIF references and Web uploads share a 30 MiB limit, 256 frames, and 40 million
 cumulative decoded frame pixels. Choosing a reference frame for
 image editing leaves these stored originals intact.
+Generic URL downloads and binary saves now apply the same GIF limits before
+writing a file. Workspace downloads and email ingestion also revalidate reused
+GIFs, including legacy attachments resumed from the inbox ledger. Successful
+validation preserves the original bytes and SHA-256; see the
+[file type policy](#42-file-type-validation) for detection and rejection rules.
 `analyze_image` also retains GIF bytes for URL, local-file, and Stash sources;
 its default analysis samples a bounded timeline, with an optional single-frame
 selection. The analysis records its frame indices and timestamps, while Stash
@@ -825,31 +835,48 @@ link filtering itself does not perform DNS resolution.
 
 ### 4.2 File Type Validation
 
-**Additional checks:**
+The generic downloader checks its MIME allowlist and, when `python-magic` is
+available, the detected content type. GIF validation is an additional mandatory
+save-time check in `StashFile._save_data`; it does not depend on `python-magic`.
 
-```python
-import magic  # python-magic library
+- Binary saves and downloads inspect GIF87a/GIF89a signatures regardless of the
+  declared type. Authored `save_text`/`save_json` output does not use signature
+  sniffing, so a plain-text note starting with `GIF89a` remains plain text.
+  A `.gif` filename or `image/gif` / `image/x-gif` declaration with non-GIF bytes
+  is rejected. Both the supplied and sanitized stored filename are checked.
+- Actual GIFs may have no extension or `.gif`, `.bin`, `.dat`, or `.tmp`.
+  Missing MIME types, GIF MIME aliases, and generic binary MIME labels are
+  accepted and normalized to `image/gif`. Contradictory specific MIME types or
+  filename extensions are rejected, with no unchecked-storage fallback.
+- Validation requires complete container blocks and a trailer, then uses Pillow
+  to decode every frame. This prevents a truncated later frame from being
+  mistaken for a normal end of animation. The block layout follows the
+  [GIF specification](https://www.w3.org/Graphics/GIF/spec-gif89a.txt).
+- Limits are 30 MiB of original bytes, 256 frames, and 40 million cumulative
+  decoded frame pixels. Malformed data, limit violations, or unavailable Pillow
+  fail before a new file or overwrite is written.
+- The file record and save result include dimensions, frame count, durations,
+  transparency, decoded pixels, trailing byte count, and `gif_validation`.
+  That nested record includes policy version `1`, `decoded_all_frames`, the
+  applied limits, and original filename/MIME declarations.
 
-def validate_file_content(data: bytes, claimed_mime: str) -> bool:
-    """Validate actual file content matches claimed type."""
-    detected = magic.from_buffer(data, mime=True)
+Workspace validates downloads before saving or reusing a matching Stash item;
+reuse checks the actual bytes and SHA-256 rather than trusting a cached manifest.
+An older same-hash item with incompatible MIME or filename declarations is
+skipped; a later compatible item may be reused, or the incoming validated bytes
+are saved as a new file. A compatible item's malformed or changed bytes still
+fail validation rather than falling through to a new save.
+The email inbox retains authenticated-message size/SHA-256 verification and
+revalidates saved attachments before running the request, including retries that
+resume already downloaded files. Legacy valid GIF records gain validation
+metadata when reused. This is not a bulk migration of old Stash files.
 
-    # If Content-Type was missing/generic, but magic detects unsupported type → reject
-    if claimed_mime in ['application/octet-stream', '']:
-        if detected not in ALLOWED_MIME_TYPES:
-            raise SecurityError(f"Detected unsupported type: {detected}")
-
-    # Allow some flexibility (jpeg vs jpg)
-    if detected != claimed_mime:
-        safe_mismatches = {
-            ('image/jpeg', 'image/jpg'),
-            ('text/plain', 'application/octet-stream'),
-        }
-        if (detected, claimed_mime) not in safe_mismatches:
-            raise SecurityError(f"Content mismatch: claimed {claimed_mime}, detected {detected}")
-
-    return True
-```
+GIF validation preserves the complete original file, including loop settings,
+transparency, metadata, and any bytes after the trailer. It is not re-encoding,
+malware scanning, isolated decoding, or a guarantee against decoder bugs or
+instructions depicted in an image. Isolated decoding and a separately stored
+rebuilt animation remain future hardening work. The strict `kind="image_url"`
+still-image importer continues to accept JPEG/PNG/WebP only.
 
 ### 4.3 Archive/Decompression Bombs
 

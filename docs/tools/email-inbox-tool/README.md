@@ -178,6 +178,17 @@ host**. The model receives exact `stash://` references, names, types and sizes,
 not binary/Base64 data. The temporary complete EML is not saved to Jarvis Stash
 or the ledger. Workspace retains its normal temporary export cache.
 
+GIF attachments also pass the shared [Stash GIF validation policy](../../STASH_SYSTEM.md#42-file-type-validation):
+complete container blocks, decoding of every frame, and limits of 30 MiB,
+256 frames, and 40 million cumulative decoded frame pixels. Spoofed GIF
+declarations, contradictory specific types/extensions, malformed animations,
+and limit violations stop attachment processing before the model runs. These
+checks apply to fresh downloads, Workspace cache reuse, and saved attachments
+resumed from the inbox ledger. Original size/SHA-256 checks still apply.
+Valid GIFs retain their original bytes, timing, loops, and transparency; Stash
+records animation details and validation policy version. Decoding does not
+sanitize metadata or trailing bytes and is not a malware scan.
+
 ### Inline files and attached emails
 
 Thunderbird/Gmail can display a file inline while still transmitting it as a

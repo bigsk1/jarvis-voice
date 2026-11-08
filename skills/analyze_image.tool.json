@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "analyze_image",
-  "description": "👁️ Analyze images using AI vision. Understands photos, screenshots, documents, artwork, and GIFs. GIF analysis uses a bounded chronological contact sheet of sampled frames; optional gif_frame selects one frame. Accepts URLs, local files, and stash references. Supports up to 6 cloud / 2 local source images. Use for identifying objects, reading text, describing scenes, comparing images or sampled GIF states. Can optionally save web images to stash for future tool access.",
+  "description": "👁️ Analyze images using AI vision. Understands photos, screenshots, documents, artwork, and GIFs. GIF analysis uses a bounded chronological contact sheet of sampled frames; optional gif_frame selects one frame. Accepts URLs, local files, and stash references. Pass a GIF URL directly; no prior Stash download is needed. Supports up to 6 cloud / 2 local source images. Use for identifying objects, reading text, describing scenes, comparing images or sampled GIF states. Set stash_after=true to also save a URL-sourced GIF's original animation to Stash. For saving a GIF without analysis, use stash action=save kind=url, not kind=image_url.",
   "complementary_tools": [
     "canvas",
     "stash",
@@ -13,7 +13,7 @@
     "properties": {
       "image": {
         "type": "string",
-        "description": "Single image source - URL (https://example.com/pic.jpg), local path (/home/user/photo.png, ~/images/pic.jpg), or stash reference (stash://space_id/file_id). Use `images` instead when analyzing multiple images together."
+        "description": "Single image source - URL (including a direct GIF URL such as https://example.com/animation.gif), local path (/home/user/photo.png, ~/images/pic.jpg), or stash reference (stash://space_id/file_id). Use `images` instead when analyzing multiple images together."
       },
       "images": {
         "type": "array",
@@ -26,7 +26,7 @@
       },
       "stash_after": {
         "type": "boolean",
-        "description": "If true and image is from URL, download and save to stash for future access by other tools (email, print, canvas). Default: false"
+        "description": "If true and the source is a URL, also save it to Stash for future tool access. GIFs retain their original animation bytes. Default false."
       },
       "gif_frame": {
         "type": "integer",
