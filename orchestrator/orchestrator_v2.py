@@ -59,6 +59,7 @@ from lib.reminder_request import (
     reminder_request_rejection,
     reminder_request_timezone,
 )
+from lib.tool_failure_policy import has_only_empty_search_results, is_recoverable_empty_search
 
 
 SINGLE_CALL_TOOLS = frozenset({
@@ -2061,7 +2062,7 @@ Mode: {self.mode}
                     message=f"Using {tool_name}..." if turn_num == 0 else f"Turn {turn_num + 1}: using {tool_name}..."
                 )
                 
-                # Detect exact repeats of successful or accepted calls in this request.
+                # Detect exact repeats of successful, accepted, or empty search calls.
                 current_call = (tool_name, json.dumps(arguments, sort_keys=True))
                 is_exact_duplicate = current_call in state.seen_tool_calls
                 is_fresh_same_target_recall = self._is_fresh_same_target_recall(
@@ -2188,18 +2189,36 @@ Mode: {self.mode}
                         state.conversation_context,
                         coverage_warning=self._reminder_coverage_warning(original_query, state),
                     )
-                    final_speech = reminder_speech or self._synthesize_duplicate_prevented_response(
-                        transcript, state.tools_used, state.accumulated_data, state.conversation_context
-                    )
+                    empty_search_exhausted = has_only_empty_search_results(state.conversation_context)
+                    if reminder_speech:
+                        final_speech = reminder_speech
+                    elif empty_search_exhausted:
+                        final_speech = (
+                            "The searches returned no matches. I stopped an identical repeated "
+                            "lookup and couldn't complete the research."
+                        )
+                    else:
+                        final_speech = self._synthesize_duplicate_prevented_response(
+                            transcript, state.tools_used, state.accumulated_data, state.conversation_context
+                        )
 
                     coverage_warning = state.accumulated_data.get('_reminder_request_coverage_warning')
                     completed_any_tool = bool(state.tools_used)
+                    successful = completed_any_tool and not bool(coverage_warning or empty_search_exhausted)
+                    if coverage_warning:
+                        stop_error = {'error_code': 'incomplete_reminder_request', 'error': coverage_warning}
+                    elif empty_search_exhausted:
+                        stop_error = {'error_code': 'empty_results', 'error': final_speech}
+                    elif not completed_any_tool:
+                        stop_error = {'error': 'No tool completed before duplicate prevention stopped the request.'}
+                    else:
+                        stop_error = {}
 
                     self._log_conversation(
                         conversation_query,
                         final_speech,
                         state.tools_used,
-                        success=completed_any_tool and not coverage_warning,
+                        success=successful,
                     )
 
                     # Mark status updates complete
@@ -2207,22 +2226,16 @@ Mode: {self.mode}
 
                     return {
                         "speech": final_speech,
-                        "ok": completed_any_tool and not coverage_warning,
+                        "ok": successful,
                         "tools_used": state.tools_used,
                         "data": state.accumulated_data,
+                        "tool_trace": state.tool_trace,
                         "duplicate_prevented": True,
-                        **({'error_code': 'incomplete_reminder_request', 'error': coverage_warning}
-                           if coverage_warning else {}),
+                        **stop_error,
                         **({
                             "raw_llm_response": final_speech,
-                            "tool_trace": state.tool_trace,
                         } if any(ctx.get("tool") == "create_reminder"
                                  for ctx in state.conversation_context) else {}),
-                        **(
-                            {}
-                            if completed_any_tool
-                            else {"error": "No tool completed before duplicate prevention stopped the request."}
-                        ),
                         "usage": state.total_usage if self._has_usage_data(state.total_usage) else None,
                         "server_side_tools": state.total_usage.get("server_side_tools", {})
                     }
@@ -2603,7 +2616,11 @@ Mode: {self.mode}
                     if (tool_name == 'send_webhook' and isinstance(result.get('data'), dict)
                             and result['data'].get('retry_safe') is False):
                         is_single_call_failure = True
-                    if not is_single_call_failure:
+                    empty_search_failure = (
+                        not is_single_call_failure
+                        and is_recoverable_empty_search(tool_name, result)
+                    )
+                    if not is_single_call_failure and not empty_search_failure:
                         self.status_updater.update_error(
                             error_type='server' if is_server_error else 'retry',
                             error_message=error,
@@ -2633,6 +2650,17 @@ Mode: {self.mode}
                     if openai_cont:
                         failed_context_item["openai_provider_continuation"] = openai_cont
                     state.conversation_context.append(failed_context_item)
+
+                    if empty_search_failure:
+                        # Preserve the red card and failed evidence, but spend only
+                        # this normal tool turn. An identical paid lookup must not
+                        # be repeated; a broader/different call remains available.
+                        failed_context_item["meta"]["failure_reason"] = "empty_results"
+                        state.seen_tool_calls.add(current_call)
+                        self._emit_progress(
+                            'routing', message="That query returned no results; considering another approach."
+                        )
+                        continue
 
                     # Expensive or side-effecting tools are intentionally limited to
                     # one attempt. Do not invite an LLM retry that the single-call cap
@@ -2968,8 +2996,16 @@ Mode: {self.mode}
             state.conversation_context,
             coverage_warning=self._reminder_coverage_warning(original_query, state),
         )
+        empty_search_exhausted = has_only_empty_search_results(state.conversation_context)
         if reminder_speech:
             final_speech = reminder_speech
+        elif empty_search_exhausted:
+            # The usual formatter receives successful data only. Avoid an extra
+            # model call with no evidence of these misses when every lookup failed.
+            final_speech = (
+                "The searches returned no matches before I reached the tool-turn limit. "
+                "I couldn't complete the research within that limit."
+            )
         elif response_style == 'casual' or response_style == 'auto':
             # Casual and auto both format max turns summary
             final_speech = self._format_max_turns_summary(transcript, state.tools_used, state.accumulated_data, max_turns)
@@ -2981,20 +3017,23 @@ Mode: {self.mode}
             print(f"⚠️  Max turns ({max_turns}) reached")
         
         coverage_warning = state.accumulated_data.get('_reminder_request_coverage_warning')
-        self._log_conversation(conversation_query, final_speech, state.tools_used, success=not bool(coverage_warning))
+        successful = not bool(coverage_warning or empty_search_exhausted)
+        self._log_conversation(conversation_query, final_speech, state.tools_used, success=successful)
         
         # Mark status updates complete
         self.status_updater.mark_complete()
         
         result = {
             "speech": final_speech,
-            "ok": not bool(coverage_warning),
+            "ok": successful,
             "tools_used": state.tools_used,
             "data": state.accumulated_data,
             "tool_trace": state.tool_trace,
             "max_turns_reached": True,
             **({'error_code': 'incomplete_reminder_request', 'error': coverage_warning}
-               if coverage_warning else {}),
+               if coverage_warning else
+               {'error_code': 'empty_results', 'error': final_speech}
+               if empty_search_exhausted else {}),
             "available_tools": state.available_tools,
             "web_search_hint_tools": sorted(state.web_search_hint_tools),
             "usage": state.total_usage if self._has_usage_data(state.total_usage) else None,

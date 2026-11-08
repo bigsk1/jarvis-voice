@@ -16,6 +16,7 @@ from model_prompt_overrides import load_model_prompt_override
 
 
 def contract_fingerprints():
+    import tool_failure_policy
     from context_assembler import ContextAssembler
     from intelligence_hooks import format_insights_for_prompt
     from router_v2 import (
@@ -56,6 +57,12 @@ def contract_fingerprints():
             "library_projection": project_library_result,
         }.items()
     }
+    # This shared dependency owns both the recovery text and its reviewed
+    # classification rules. Future helper-only edits must split current runs
+    # without repinning a fixture or changing the benchmark workload.
+    fingerprints["empty_search_policy"] = hashlib.sha256(
+        inspect.getsource(tool_failure_policy).encode()
+    ).hexdigest()
     for name, text in {
         "background_policy_text": _BACKGROUND_RECEIPT_SYSTEM_POLICY,
         "chat_only_policy_text": _CHAT_ONLY_SYSTEM_POLICY,

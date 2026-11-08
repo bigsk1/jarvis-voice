@@ -19,6 +19,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 try:
+    from tool_failure_policy import EMPTY_SEARCH_RECOVERY_HINT, is_recoverable_empty_search
+except ModuleNotFoundError as exc:
+    if exc.name != "tool_failure_policy":
+        raise
+    from lib.tool_failure_policy import EMPTY_SEARCH_RECOVERY_HINT, is_recoverable_empty_search
+
+try:
     from rss_feeds.context import project_rss_feed_data
 except ModuleNotFoundError as exc:
     if exc.name not in {"rss_feeds", "rss_feeds.context"}:
@@ -772,6 +779,8 @@ class ContextAssembler:
             context_parts.append(result_note)
             result_label = "Result Preview" if result_truncated else "Result"
             context_parts.append(f"   {result_label}: {result_summary}")
+            if is_recoverable_empty_search(tool_name, result):
+                context_parts.append(f"   Search recovery: {EMPTY_SEARCH_RECOVERY_HINT}")
             if tool_name == "create_reminder" and result.get("ok"):
                 context_parts.append(f"   {self._REMINDER_COMPLETION_HINT}")
             if tool_name == "tool_search":
@@ -876,7 +885,12 @@ class ContextAssembler:
             if tool_name == "create_reminder" and result.get("ok") else ""
         )
         external_hint = self._EXTERNAL_RESULT_HINT if is_external_result(result) else ""
-        result_hint = "\n".join(hint for hint in (reminder_hint, external_hint) if hint)
+        empty_search_hint = (
+            EMPTY_SEARCH_RECOVERY_HINT if is_recoverable_empty_search(tool_name, result) else ""
+        )
+        result_hint = "\n".join(
+            hint for hint in (reminder_hint, external_hint, empty_search_hint) if hint
+        )
         arguments_budget = max(120, min(1200, max_chars // 4))
         if result_hint:
             # Preserve guidance at the smallest continuation budget by shortening
@@ -917,7 +931,8 @@ class ContextAssembler:
         if duration_ms is not None:
             header.append(f"Duration: {duration_ms} ms")
         compact_external = bool(external_hint) and max_chars < 1800
-        if compact_external:
+        compact_empty_search = bool(empty_search_hint) and max_chars < 1800
+        if compact_external or compact_empty_search:
             # Preserve the status and saved handles at the smallest continuation
             # budget by shortening diagnostics, not by cutting provider identity.
             header = [
@@ -927,6 +942,8 @@ class ContextAssembler:
                 f"Tool: {tool_name}",
                 f"Arguments preview: {args_preview}",
             ]
+            if compact_empty_search:
+                header.append("Status: error")
         if result_hint:
             # Both native continuation providers use this bounded result message.
             # Reserve the hint before choosing a result preview, including tiny budgets.
@@ -934,7 +951,7 @@ class ContextAssembler:
 
         def result_prefix(*, truncated: bool, shown: int) -> str:
             result_header = f"Result Meta: result_truncated={truncated}"
-            if truncated and not compact_external:
+            if truncated and not (compact_external or compact_empty_search):
                 result_header += f", result_chars_shown={shown}, result_chars_total={metadata['result_chars_total']}"
             return "\n".join([*header, result_header, "Result:"]) + "\n"
 

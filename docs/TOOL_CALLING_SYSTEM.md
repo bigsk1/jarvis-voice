@@ -454,6 +454,30 @@ Use normal cloud startup (`./jarvis`). Jarvis requires a recognized `*:cloud`
 or `*-cloud` model tag in cloud mode and does not append localhost to the cloud
 host list. See [ollama/README.md](ollama/README.md).
 
+## Empty search results and recovery
+
+The normal orchestrator tool loop recognizes reviewed read-only empty searches
+and continues within the same `MAX_TOOL_TURNS` budget. The initial exception is
+the known Google Events provider no-results error. Jarvis can broaden the query,
+choose another source or answer from evidence already gathered without spending
+the request's hard-failure retry allowance. Identical empty calls are blocked.
+
+The canonical result stays `ok: false`, the tool card remains failed, and the
+miss is excluded from successful tool data and grounding. Both text context and
+native provider continuations explain the recovery options. If every search
+misses before the turn limit, the final response discloses that no matches were
+found and the research limit was reached. This exhausted request returns
+`ok: false` and is logged as unsuccessful. An empty-search duplicate stop also
+returns `ok: false`. Both use `error_code: empty_results` and keep `error` equal
+to the no-matches `speech`, so callers display a consistent explanation.
+
+The policy is an explicit allowlist in `lib/tool_failure_policy.py`, not a
+generic match for "no results". Active provider incidents, authentication,
+rate limits, invalid arguments, cancellations, uncertain outcomes and
+side-effecting tools retain their existing handling. Direct tool calls and
+deterministic workflows still receive the original failure envelope; this
+continuation policy belongs to the conversational tool loop.
+
 ## Troubleshooting
 
 **"Tool not found"**

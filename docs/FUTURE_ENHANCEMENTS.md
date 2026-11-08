@@ -69,15 +69,13 @@ Concrete improvements:
 
 #### Soft Empty-Result Tool Failures Should Continue In-Loop
 **Priority:** Medium reliability / token control
-**Status:** Shared recovery policy still proposed; Yelp's empty-result handling is already fixed
+**Status:** Implemented November 7, 2026; initial reviewed failure form is Google Events
 
-Some live-data tools can return a technically failed result for a normal
-research miss. `serpapi_google_events`, for example, can still turn SerpApi's
-"Google hasn't returned any results for this query" response into `ok: false`.
-These failures can enter the recursive tool-failure retry path. That preserves
-trace context, but after the single
-retry budget is spent, a later soft miss can end an otherwise useful
-multi-tool research run.
+The conversational tool loop recognizes Google Events' known SerpApi no-results
+error and continues in the current loop without consuming a hard-error retry.
+The model can broaden its query, choose another source or answer from existing
+evidence. Each miss spends a normal tool turn within `MAX_TOOL_TURNS`; an
+identical call is blocked rather than repeated.
 
 **Already fixed:** `serpapi_yelp_search` accepts its known empty-result response
 and returns a successful empty search. The shared recovery policy remains
@@ -85,37 +83,29 @@ separate from that tool-specific fix and the request-wide `MAX_TOOL_TURNS`
 accounting fix. Preserve provider-incident classification; an outage is not
 an ordinary empty search.
 
-**Goal:** Treat recognized empty-result misses as in-loop context rather than
-terminal error recovery. The model should see the failed result, spend one
-normal tool turn, and continue choosing a broader query, alternate local-search
-tool, fetch/search source, or final answer from gathered evidence.
+**Implemented boundaries:**
+- A narrow read-only tool/error allowlist in `lib/tool_failure_policy.py`;
+  arbitrary "no results" text or a tool-supplied label cannot opt in.
+- Original `ok: false`, red tool card, ordered trace and
+  `freshness: failed_tool_call` context are preserved. Misses are excluded
+  from successful tool data and grounding.
+- Text replay and native provider continuations both receive bounded recovery
+  guidance. If every lookup misses before the turn limit, Jarvis returns a
+  truthful no-matches/limit response with `ok: false` and logs an unsuccessful
+  request. Empty-search duplicate stops also return `ok: false`; both stop
+  paths use `error_code: empty_results` and the same text in `error` and `speech`.
+- Active incidents, auth/rate-limit/schema errors, cancellations, uncertain
+  outcomes and single-call tools retain their existing failure handling.
+- Direct tool calls and deterministic workflows retain the original failed
+  envelope; automatic continuation is scoped to the conversational tool loop.
 
-**Possible design:**
-- Add a small failure taxonomy at the orchestrator/tool-result boundary:
-  `empty_results`, `invalid_args`, `auth_error`, `rate_limit`,
-  `transient_service_error`, and `terminal_tool_error`.
-- For `empty_results`, append the failed tool result to `conversation_context`
-  with `freshness: failed_tool_call`, emit the red tool card, and continue the
-  existing `for turn_num in range(...)` loop instead of recursively calling
-  `process()`.
-- Preserve the same request-wide `MAX_TOOL_TURNS` budget. Empty-result misses
-  should consume a turn, not reset or extend the budget.
-- Keep true failures on the existing guarded retry/terminal path: auth errors,
-  missing required args, schema errors, rate limits, and side-effecting
-  single-call tools should not be silently treated as harmless misses.
-- Include explicit prompt context such as: "That query returned no results;
-  broaden the query, use a different search source, or answer from results
-  already gathered."
+**Regression coverage:** Consecutive misses, broader/alternate searches,
+hard-error retry followed by misses, duplicate blocking, request-wide limits,
+failed evidence/card ordering, incident/error exclusions, and bounded text/native
+context. See [tool recovery](TOOL_CALLING_SYSTEM.md#empty-search-results-and-recovery).
 
-**Regression coverage to add:**
-- Google Events empty result followed by a broader search stays within
-  `MAX_TOOL_TURNS`.
-- A second empty-result miss does not abort the whole run before remaining
-  turns are exhausted.
-- Auth/rate-limit/schema errors still use the existing retry or terminal
-  failure path.
-- Failed tool cards remain ordered by `_tool_trace` and do not count as
-  successful grounding in Completion Guard / follow-up evidence.
+**Possible follow-up:** Add other read-only tools only after reviewing their
+specific empty-result contracts. A general failure taxonomy remains optional.
 
 #### Ghost-Tool Description and Schema Compression
 **Priority:** Medium–High token efficiency / measure after router-prompt A/B testing
@@ -1212,7 +1202,6 @@ These are broad priority buckets, not a dated delivery schedule.
 - Production Tool RAG retrieval/routing evaluation beyond existing model benchmarks
 - Persistent remote sessions/artifact transfers beyond existing SSH execution, if needed
 - Tool set hygiene + diagnostics (reduce loops)
-- Recognized empty-result recovery within the existing tool-turn budget
 
 **Medium Priority (Candidates):**
 - Shared resumable session/task identity beyond existing short-lived auto-context
@@ -1229,9 +1218,10 @@ These are broad priority buckets, not a dated delivery schedule.
 
 **Already shipped; removed from pending work:** recent-context fallback,
 hybrid retrieval/fusion, model-routing benchmarks, Memory browser/editor,
-per-provider media model pickers, static credential-aware availability, and
-native-tool background jobs/notification foundations. Broader action-level
-approval/preflight policies remain optional and deferred as described in section 1.
+per-provider media model pickers, static credential-aware availability,
+native-tool background jobs/notification foundations, and reviewed Google Events
+empty-result recovery. Broader action-level approval/preflight policies remain
+optional and deferred as described in section 1.
 
 **Low Priority (Future):**
 - Smart home integration (optional)
@@ -1885,4 +1875,4 @@ edited or run by the check. Source: `jarvis-memory/client/js/app.js` and
 ---
 
 **Last Updated:** November 7, 2026
-**Version:** 2.18 (verified shipped/partial status notes and remaining-work summary)
+**Version:** 2.19 (reviewed empty-search recovery implemented)

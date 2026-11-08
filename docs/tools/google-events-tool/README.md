@@ -75,7 +75,21 @@ descriptions and linked content are marked as untrusted external content.
 
 ## Standalone and chained use
 
-Examples:
+### Empty searches
+
+SerpApi can report an ordinary zero-match query through its error field. The
+Events tool preserves that failed envelope. When no active provider incident
+or other conflicting failure state is attached, Jarvis's conversational tool
+loop recognizes the exact no-results form and can broaden the query or switch
+sources without consuming a hard-error retry. The failed call remains visible
+and does not count as successful research evidence. Repeating its identical
+arguments is blocked; a different query remains eligible within the turn limit.
+
+Authentication, rate-limit, argument and provider-incident failures retain
+their normal recovery handling. Direct tool calls and deterministic workflows
+still see `ok: false`; the in-loop continuation is an orchestrator policy.
+
+### Examples
 
 ```text
 Find live music this week near me.
