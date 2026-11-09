@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
+from ..request_mode import get_request_mode, validate_request_mode
+
 # Add parent paths
 JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
@@ -14,12 +16,12 @@ from reflection_review import ReflectionBusy  # noqa: E402
 from ..services.intelligence_service import IntelligenceService
 
 stats_bp = Blueprint('stats', __name__, url_prefix='/api/stats')
+stats_bp.before_request(validate_request_mode)
 
 
 def get_service():
     """Get service instance with current mode"""
-    mode = request.args.get('mode', 'cloud')
-    return IntelligenceService(mode)
+    return IntelligenceService(get_request_mode())
 
 
 @stats_bp.route('', methods=['GET'])
@@ -37,17 +39,11 @@ def get_stats():
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
-def _reflection_service():
-    if request.args.get('mode', 'cloud') not in {'cloud', 'local'}:
-        raise ValueError('mode must be cloud or local')
-    return get_service()
-
-
 @stats_bp.route('/reflection-queue', methods=['GET'])
 def get_reflection_queue():
     """Search clean original requests; global next-batch preview ignores search/pagination."""
     try:
-        service = _reflection_service()
+        service = get_service()
         limit = int(request.args.get('limit', '50'))
         offset = int(request.args.get('offset', '0'))
         if not 1 <= limit <= 100 or offset < 0:
@@ -64,7 +60,7 @@ def get_reflection_queue():
 def get_reflection_review(reflection_id):
     """Lazy review of redacted persisted evidence, including processed rows still present."""
     try:
-        result = _reflection_service().get_reflection_review(reflection_id)
+        result = get_service().get_reflection_review(reflection_id)
         if result is None:
             return jsonify({'ok': False, 'error': 'Reflection not found'}), 404
         return jsonify({'ok': True, **result})
@@ -78,7 +74,7 @@ def get_reflection_review(reflection_id):
 def delete_reflection(reflection_id):
     """Discard a pending queue item; retain its source experience and learned insights."""
     try:
-        service = _reflection_service()
+        service = get_service()
         success = service.delete_reflection(reflection_id)
         if success:
             return jsonify({'ok': True, 'message': f'Reflection {reflection_id} cancelled'})
@@ -97,7 +93,7 @@ def delete_reflection(reflection_id):
 def delete_all_reflections():
     """Discard all pending queue items for the selected mode only."""
     try:
-        deleted_count = _reflection_service().delete_all_pending_reflections()
+        deleted_count = get_service().delete_all_pending_reflections()
         return jsonify({'ok': True, 'deleted': deleted_count,
                         'message': f'Cancelled {deleted_count} pending reflections'})
     except ReflectionBusy as e:
@@ -125,4 +121,3 @@ def get_meta_knowledge():
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
-

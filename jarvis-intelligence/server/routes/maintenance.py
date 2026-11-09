@@ -8,11 +8,14 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
+from ..request_mode import get_request_mode, validate_request_mode
+
 # Add parent paths
 JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
 maintenance_bp = Blueprint('maintenance', __name__, url_prefix='/api/maintenance')
+maintenance_bp.before_request(validate_request_mode)
 
 
 @maintenance_bp.route('/reflect', methods=['POST'])
@@ -21,9 +24,7 @@ def trigger_reflection():
     from reflection_review import ReflectionBusy
 
     try:
-        mode = request.args.get('mode', 'cloud')
-        if mode not in {'cloud', 'local'}:
-            raise ValueError('mode must be cloud or local')
+        mode = get_request_mode()
         batch_size = int(request.args.get('batch_size', '5'))
         if not 1 <= batch_size <= 20:
             raise ValueError('batch_size must be between 1 and 20')
@@ -74,7 +75,7 @@ def trigger_reflection():
 def run_decay_job():
     """Run confidence decay job"""
     try:
-        mode = request.args.get('mode', 'cloud')
+        mode = get_request_mode()
         force = request.args.get('force', 'false').lower() in ('true', '1', 'yes', 'on')
         dry_run = request.args.get('dry_run', 'false').lower() in ('true', '1', 'yes', 'on')
         
@@ -103,7 +104,7 @@ def run_decay_job():
 def run_anomaly_detection():
     """Run anomaly detection"""
     try:
-        mode = request.args.get('mode', 'cloud')
+        mode = get_request_mode()
         
         from config_loader import config_scope
         from intelligence import get_intelligence_layer
@@ -130,7 +131,7 @@ def run_anomaly_detection():
 def run_meta_cognition():
     """Run meta-cognition analysis"""
     try:
-        mode = request.args.get('mode', 'cloud')
+        mode = get_request_mode()
         
         from config_loader import config_scope
         from intelligence import get_intelligence_layer
@@ -157,7 +158,7 @@ def run_meta_cognition():
 def run_all_maintenance():
     """Run all maintenance jobs"""
     try:
-        mode = request.args.get('mode', 'cloud')
+        mode = get_request_mode()
         force = request.args.get('force', 'false').lower() in ('true', '1', 'yes', 'on')
         dry_run = request.args.get('dry_run', 'false').lower() in ('true', '1', 'yes', 'on')
         
@@ -186,7 +187,7 @@ def run_all_maintenance():
 def check_health():
     """Check intelligence layer health"""
     try:
-        mode = request.args.get('mode', 'cloud')
+        mode = get_request_mode()
         
         # Run the health check script
         script_path = JARVIS_ROOT / 'bin' / 'check-intelligence-health.py'

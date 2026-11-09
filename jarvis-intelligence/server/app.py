@@ -23,8 +23,6 @@ from flask_error_logger import setup_error_logging
 from ui_navigation import register_ui_navigation
 from config_loader import load_config
 
-_startup_mode = 'cloud'
-
 
 def _get_jarvis_version():
     """Read Jarvis version from central VERSION file."""
@@ -59,6 +57,7 @@ else:
 app = Flask(__name__,
             static_folder=str(CLIENT_PATH),
             static_url_path='')
+app.config['JARVIS_STARTUP_MODE'] = 'cloud'
 
 # Configure CORS
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -142,7 +141,7 @@ def get_status():
         'ok': True,
         'status': 'running',
         'version': _get_jarvis_version(),
-        'startup_mode': _startup_mode,
+        'startup_mode': app.config['JARVIS_STARTUP_MODE'],
         'databases': {
             'cloud': str(DATA_PATH / 'jarvis_intelligence.db'),
             'local': str(DATA_PATH / 'jarvis_intelligence_local.db')
@@ -174,8 +173,7 @@ def server_error(e):
 
 def run_server(host: str = '0.0.0.0', port: int = 5003, mode: str = 'cloud', debug: bool = False):
     """Run the web server"""
-    global _startup_mode
-    _startup_mode = mode
+    app.config['JARVIS_STARTUP_MODE'] = mode
     load_config(mode)
     if __package__:
         from .services.intelligence_service import IntelligenceService

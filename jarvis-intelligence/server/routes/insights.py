@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
+from ..request_mode import get_request_mode, validate_request_mode
+
 # Add parent paths
 JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
@@ -13,12 +15,12 @@ sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 from ..services.intelligence_service import IntelligenceService
 
 insights_bp = Blueprint('insights', __name__, url_prefix='/api/insights')
+insights_bp.before_request(validate_request_mode)
 
 
 def get_service():
     """Get service instance with current mode"""
-    mode = request.args.get('mode', 'cloud')
-    return IntelligenceService(mode)
+    return IntelligenceService(get_request_mode())
 
 
 @insights_bp.route('', methods=['GET'])
@@ -152,7 +154,7 @@ def delete_insight(insight_id):
 def reembed_insight(insight_id):
     """Re-embed an insight after editing"""
     try:
-        mode = request.args.get('mode', 'cloud')
+        mode = get_request_mode()
         
         # Run the re-embed script
         script_path = JARVIS_ROOT / 'bin' / 're-embed-insight'

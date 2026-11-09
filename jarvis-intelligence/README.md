@@ -151,6 +151,12 @@ The URL `?mode=`, saved browser preference, and then `startup_mode` determine
 the initial data selector. A pristine selected-mode DB is initialized through
 the canonical Intelligence schema owner before serving requests.
 
+Experience, insight, statistics, reflection, maintenance, and re-embedding
+requests use the server's startup mode when `?mode=` is omitted. An explicit
+`?mode=cloud` or `?mode=local` selects that database; other values return HTTP 400
+before any work runs. Feedback's mode filter remains optional: omitting it
+includes feedback from both modes.
+
 ### Experiences
 | Method | Endpoint | Description |
 |--------|----------|-------------|

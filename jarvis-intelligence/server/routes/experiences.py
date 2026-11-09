@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
+from ..request_mode import get_request_mode, validate_request_mode
+
 # Add parent paths
 JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
@@ -13,12 +15,12 @@ sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 from ..services.intelligence_service import IntelligenceService
 
 experiences_bp = Blueprint('experiences', __name__, url_prefix='/api/experiences')
+experiences_bp.before_request(validate_request_mode)
 
 
 def get_service():
     """Get service instance with current mode"""
-    mode = request.args.get('mode', 'cloud')
-    return IntelligenceService(mode)
+    return IntelligenceService(get_request_mode())
 
 
 @experiences_bp.route('', methods=['GET'])
@@ -143,8 +145,6 @@ def delete_experience(experience_id):
     from reflection_review import ReflectionBusy
 
     try:
-        if request.args.get('mode', 'cloud') not in {'cloud', 'local'}:
-            return jsonify({'ok': False, 'error': 'mode must be cloud or local'}), 400
         service = get_service()
         success = service.delete_experience(experience_id)
         
@@ -162,7 +162,7 @@ def delete_experience(experience_id):
 def reembed_experience(experience_id):
     """Re-embed an experience after editing"""
     try:
-        mode = request.args.get('mode', 'cloud')
+        mode = get_request_mode()
         
         # Run the re-embed script
         script_path = JARVIS_ROOT / 'bin' / 're-embed-experience'
