@@ -23,6 +23,38 @@ const late={schema_version:1,conversation_id:'thread',generation:0,job_id:'job-1
 )
 
 
+def test_google_apps_script_background_choice_preserves_saved_intent_across_readiness_changes():
+    run_browser(BACKGROUND + r"""
+manager.control=new Element();
+manager.enabledInput=new Element('input');
+manager.choices=new Element('fieldset');
+manager.note=new Element('p');
+const name='mcp_google_workspace_run_script_function';
+const status={settings:{background_enabled:true,background_tools:[name]},tools:[name],
+  configured_tools:[name],worker_ready:true,
+  tool_details:{[name]:{label:'Google Apps Script',worker_ready:true,remote_work:true}}};
+sandbox.Utils.auth={fetch:async()=>({ok:true,json:async()=>status})};
+await manager.refresh();
+let option=manager.choices.children[0];
+assert.equal(option.children[1].textContent,'Google Apps Script');
+assert.equal(option.children[0].checked,true);
+assert.equal(option.children[0].disabled,false);
+assert.match(option.children[1].children[0].textContent,/does not cancel provider work/);
+status.tools=[];
+await manager.refresh();
+option=manager.choices.children[0];
+assert.equal(option.children[0].checked,true);
+assert.equal(option.children[0].disabled,false);
+assert.match(option.children[1].children[0].textContent,/Unavailable in this mode/);
+status.settings.background_tools=[];
+await manager.refresh();
+assert.equal(manager.choices.children[0].children[0].disabled,true);
+status.tools=[name];status.tool_details[name].worker_ready=false;
+await manager.refresh();
+assert.match(manager.choices.children[0].children[1].children[0].textContent,/worker.*started or restarted/);
+""")
+
+
 def test_private_callback_hash_mismatch_explains_review_before_repinning():
     run_browser(BACKGROUND + r"""
 manager.control=new Element();
@@ -156,6 +188,12 @@ manager.renderCards(message,{'job-1':{...receipt,tool:'browser_use',mode:'cloud'
   result:{ok:false,speech:'Partial research',data:{browser_research:{stash_ref:'stash://space/report'}}}}});
 assert.equal(message.children[0].children[2].textContent,'Open saved research');
     assert.equal(message.children[0].children[2].href,'/stash/view/space/report?mode=cloud');
+manager.renderCards(message,{'job-1':{...receipt,tool:'mcp_google_workspace_run_script_function',
+  state:'queued',can_cancel:true,revision:10}});
+await message.children[0].children[2].click({preventDefault(){},stopPropagation(){}});
+assert.deepEqual(JSON.parse(requests[1].options.body),{action:'cancel',revision:10});
+assert.match(notices.at(-1)[0],/task card will show the final state/);
+assert.doesNotMatch(notices.at(-1)[0],/browser/);
 """)
 
 

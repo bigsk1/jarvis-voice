@@ -2,7 +2,9 @@ name: jarvis-google-workspace
 
 services:
   google-workspace:
-    build: .
+    build:
+      context: ..
+      dockerfile: google-workspace/Dockerfile
     image: jarvis-google-workspace:2.3.0
     restart: unless-stopped
     init: true

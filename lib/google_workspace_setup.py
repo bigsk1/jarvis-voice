@@ -108,7 +108,8 @@ def client() -> MCPRemoteClient:
     server = json.loads((ROOT / "config/mcp-servers.json").read_text())["mcpServers"]["google_workspace"]
     return MCPRemoteClient("google_workspace", URL, "http",
                            {"Authorization": f"Bearer {token}"}, proxy_policy="off",
-                           tool_call_timeout_seconds=server.get("tool_call_timeout_seconds"))
+                           tool_call_timeout_seconds=server.get("tool_call_timeout_seconds"),
+                           tool_call_timeout_overrides=server.get("tool_call_timeout_overrides"))
 
 
 def stored_grant_status(config: dict[str, str]) -> dict:

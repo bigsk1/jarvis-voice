@@ -385,6 +385,158 @@ def test_workspace_projection_retains_distinct_structured_evidence():
     assert project_workspace_data(result)['structured_result'] == result['data']['structured_result']
 
 
+@pytest.fixture
+def apps_script_source_result():
+    prefix = 'File: Code (SERVER_JS)\n\n// '
+    tail = '\nfunction fixtureReadyCheck() { return "fixture"; }\n'
+    text = prefix + 'x' * (4445 - len(prefix) - len(tail)) + tail
+    return normalize_workspace_result('get_script_project', {
+        'content': [{'type': 'text', 'text': text}], 'structuredContent': {'result': text},
+    }, {'action': 'get', 'script_id': 'fixture-project', 'file_name': 'Code'})
+
+
+def test_apps_script_source_tail_survives_projection_and_saved_followup(apps_script_source_result):
+    result = apps_script_source_result
+    before = deepcopy(result)
+    text = result['data']['response_text']
+    assert len(text) == 4445
+    tool = 'mcp_google_workspace_get_script_project'
+    bounded = project_workspace_data(result, max_chars=6000)
+    assert bounded['response_excerpt'] == text
+    assert not bounded['context_truncated']
+    assert len(json.dumps(bounded, ensure_ascii=True)) <= 6000
+    saved = followup.extract_followup_data({tool: result})[tool]
+    assert saved['response_excerpt'] == text
+    assert not saved['context_truncated']
+    assert len(json.dumps(saved, ensure_ascii=True)) <= 7500
+    assert result == before
+
+
+@pytest.mark.parametrize('wrapped', [False, True])
+def test_saved_script_source_reuses_short_overview_budget(apps_script_source_result, wrapped):
+    tool = 'mcp_google_workspace_get_script_project'
+    overview = normalize_workspace_result('get_script_project', {'content': [{'type': 'text', 'text': (
+        'Project: Fixture (ID: fixture-project)\nCreator: dedicated@example.test\n\nFiles:\n'
+        '1. Code (SERVER_JS)\n   // ' + 'x' * 200 + '...\n'
+    )}]}, {'action': 'get', 'script_id': 'fixture-project'})
+    runs = [overview, apps_script_source_result]
+    if not wrapped:
+        runs = [run['data'] for run in runs]
+    before = deepcopy(runs)
+
+    saved = followup.extract_followup_data({tool: runs})[tool]
+
+    assert saved['runs_count'] == 2
+    assert not saved['results_truncated']
+    assert saved['results'][0]['response_excerpt'] == overview['data']['response_text']
+    assert saved['results'][1]['response_excerpt'] == apps_script_source_result['data']['response_text']
+    assert all(not run['context_truncated'] for run in saved['results'])
+    assert len(json.dumps(saved, ensure_ascii=True)) <= 7500
+    assert runs == before
+
+
+def test_saved_script_source_runs_keep_order_and_shared_serialized_bound(apps_script_source_result):
+    tool = 'mcp_google_workspace_get_script_project'
+    runs = []
+    for file_name in ('First', 'Second', 'Third', 'Fourth'):
+        run = deepcopy(apps_script_source_result['data'])
+        run['request']['file_name'] = file_name
+        run['response_text'] = f'File: {file_name}\n' + 'const label = "界\\n";\n' * 1500
+        run.pop('structured_result', None)
+        runs.append(run)
+    before = deepcopy(runs)
+
+    saved = followup.extract_followup_data({tool: runs})[tool]
+
+    assert saved['runs_count'] == 4
+    assert saved['results_truncated']
+    assert [run['request']['file_name'] for run in saved['results']] == ['Second', 'Third', 'Fourth']
+    assert all(run['response_excerpt'] and run['context_truncated'] for run in saved['results'])
+    assert len(json.dumps(saved, ensure_ascii=True)) <= 7500
+    assert runs == before
+
+
+def test_saved_script_source_wrapper_budget_with_only_one_valid_run(apps_script_source_result):
+    tool = 'mcp_google_workspace_get_script_project'
+    source = apps_script_source_result['data']
+    source['response_text'] = 'const label = "界\\n";\n' * 1500
+    source.pop('structured_result', None)
+    runs = [None, source, 'invalid saved row']
+    before = deepcopy(runs)
+
+    saved = followup.extract_followup_data({tool: runs})[tool]
+
+    assert saved['runs_count'] == 3
+    assert saved['results_truncated']
+    assert len(saved['results']) == 1
+    assert saved['results'][0]['request']['file_name'] == 'Code'
+    assert saved['results'][0]['response_excerpt']
+    assert saved['results'][0]['context_truncated']
+    assert len(json.dumps(saved, ensure_ascii=True)) <= 7500
+    assert runs == before
+
+
+def test_ordinary_google_followup_keeps_existing_equal_allocation():
+    runs = [_result()['data'], _result('Another sheet', 'second-sheet')['data']]
+    expected = [project_workspace_data(run, max_chars=3750) for run in runs]
+
+    saved = followup.extract_followup_data({TOOL: runs})[TOOL]
+
+    assert saved == {'runs_count': 2, 'results': expected, 'results_truncated': False}
+
+
+def test_apps_script_source_tail_survives_provider_continuation(apps_script_source_result):
+    result = apps_script_source_result
+    before = deepcopy(result)
+    text = result['data']['response_text']
+    tool = 'mcp_google_workspace_get_script_project'
+
+    message, metadata = _assembler().build_provider_tool_result_message(
+        tool_name=tool, arguments=result['data']['request'], result=result,
+    )
+    projected = json.loads(message.split('\nResult:\n', 1)[1])['result']['data']
+    assert projected['response_excerpt'] == text
+    assert not projected['context_truncated']
+    assert not metadata['result_truncated']
+    assert len(message) <= 6000
+    assert result == before
+
+
+@pytest.mark.parametrize('budget', [128, 512, 1800, 4500, 7500])
+def test_long_apps_script_source_respects_serialized_budget(apps_script_source_result, budget):
+    result = apps_script_source_result
+    result['data']['response_text'] = 'const label = "界\\n";\n' * 1500
+    result['data'].pop('structured_result', None)
+    before = deepcopy(result)
+
+    projected = project_workspace_data(result, max_chars=budget)
+
+    assert len(json.dumps(projected, ensure_ascii=True)) <= budget
+    assert projected['context_truncated']
+    if budget >= 1800:
+        assert projected['response_excerpt']
+        assert result['data']['response_text'].startswith(projected['response_excerpt'])
+    assert result == before
+
+
+@pytest.mark.parametrize('tool_name, arguments', [
+    ('get_script_project', {'action': 'list', 'file_name': 'Code'}),
+    ('get_script_project', {'action': 'get', 'script_id': 'fixture-project'}),
+    ('get_script_project', {'action': 'get', 'file_name': ''}),
+    ('get_script_project', {'action': 'get', 'file_name': '   '}),
+    ('get_drive_file_content', {'action': 'get', 'file_name': 'Code'}),
+])
+def test_other_google_results_keep_existing_excerpt_limit(apps_script_source_result, tool_name, arguments):
+    result = apps_script_source_result
+    result['data']['tool'] = tool_name
+    result['data']['request'] = arguments
+
+    projected = project_workspace_data(result, max_chars=7500)
+
+    assert projected['response_excerpt'] == result['data']['response_text'][:2200]
+    assert projected['context_truncated']
+
+
 def test_saved_stash_receipt_uses_browser_link_in_all_model_contexts():
     download_tool = 'mcp_google_workspace_get_drive_file_download_url'
     private_url = 'http://localhost:8765/attachments/12345678-1234-1234-1234-123456789abc'

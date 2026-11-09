@@ -10,6 +10,7 @@ Every background tool uses the same admission, saved job, card, late-answer, all
 | --- | --- | --- |
 | `local_skill_v1` | The task worker starts a reviewed local skill and supervises its process group until it exits. | `convert_file` |
 | `remote_skill_v1` | The worker runs the same kind of skill, but that skill calls an external API and waits or polls for a result. The worker is still the observer; stopping its process does not prove the provider stopped. | `generate_image`, `generate_video`, `generate_music`, `create_social_clip`, [Browser Use Cloud](BROWSER-USE-CLOUD.md), [Craft editing tools](../jarvis-craft-tools/README.md), [Docling](tools/docling-tool/README.md) |
+| `mcp_tool_v1` | The worker opens an isolated client for one reviewed MCP server and waits for its ordinary tool response under the admitted deadline. | Google Workspace `run_script_function` |
 | `apify_actor_v1` | The worker submits one ordinary Actor, durably saves its native run ID, and polls that same run. A replacement worker can resume observation without submitting again. | Optional [Apify Actors](mcp/APIFY.md) |
 | `http_callback_v1` | The worker submits once and stops waiting. A separate service keeps the job identity and later POSTs an authenticated progress or final event to Jarvis. | Local Browser Use; optionally, an owner-installed remote agent over HTTPS |
 
@@ -392,6 +393,74 @@ The outcome contract is deliberately conservative:
 - Queued cancellation prevents dispatch. Running remote jobs have no Cancel action/API permission because process-group termination only proves the local observer stopped. Operator reconciliation requires evidence that the provider operation has settled; stopping Jarvis alone is insufficient.
 
 The shared remote skill policy does not resume remote job IDs, implement provider cancellation, or receive callbacks. Those require a separately reviewed completion/recovery contract; [Apify](mcp/APIFY.md) has one under `apify_actor_v1`, without changing these remote skill bindings. `transcribe_audio`, `document_ocr`, `analyze_video`, and `analyze_image` have no background bindings.
+
+## Reviewed MCP tools
+
+In **Settings → Tools → Background tasks**, enable **Google Apps Script** to run
+`mcp_google_workspace_run_script_function` through `mcp_tool_v1`. The master
+switch and tool selection remain off by default. This first registration covers
+the optional Google Workspace service's HTTP transport; other MCP tools keep
+their foreground behavior. A server's own metadata cannot register another tool
+for background execution.
+
+The existing task worker owns a fresh client for each job and waits for the
+ordinary MCP response. No incoming callback endpoint is needed. Concurrent jobs
+use the existing global and per-adapter capacity limits. The original task card
+and conversation receive the result and follow-up answer; another Web text turn
+can run while the MCP operation is in progress. Reloading or reconnecting reads
+the saved job and never submits the function again.
+
+Admission and dispatch preserve the effective profile, server enable/allowlist,
+Web blocks, originating mode, and dedicated Google account. The saved policy
+fingerprints the reviewed implementation, transformed tool schema, selected
+profile, and resolved server/account/credential configuration without persisting
+credentials. A changed policy fails before submission. The worker connects only
+to the registered server, rechecks its current tool schema, and supplies the same
+dedicated account automatically. This retains the configured account's autonomous
+use; it adds no per-function confirmation gate.
+
+The reviewed job budget is **420 seconds**, including queueing and connection
+setup. The remaining deadline follows that one MCP call through its HTTP
+transport and into the Google service's isolated execution transport. Foreground
+Apps Script calls use a **390-second** foreground budget, including CLI use;
+other Google calls retain their existing 90-second budget. Google limits script
+execution to six minutes; background observation does not extend that limit.
+Update/restart the Google service, Web, and task worker together when installing
+this capability, so they agree on the scoped execution and completion contract.
+The saved Web background setting does not change CLI behavior: CLI waits for
+the foreground result. Explicit caller deadlines, such as scheduled-task
+timeouts, still apply.
+
+An API-executable deployment must use the OAuth client's **same standard Cloud
+project**, and the grant must cover the script's scopes. Use an owned deployment
+and its exact script/function/deployment identifiers. The optional service's
+[setup guide](../google-workspace/README.md) explains the account and OAuth
+boundary; [Google's execution guide](https://developers.google.com/apps-script/api/how-tos/execute)
+documents these provider requirements. A default Apps Script Cloud project is
+not sufficient for the execution API.
+
+The service returns job-bound evidence distinguishing an actual terminal Google
+response from a lost observer. A script exception is a failed, completed job
+with its error delivered normally. A transport error, missing completion
+evidence, timeout, stopped worker, or lost lease remains **needs attention** and
+is never automatically replayed. This includes a server that has not been
+upgraded to the reviewed completion contract. Queued jobs can be cancelled;
+running MCP jobs cannot claim remote cancellation merely because Jarvis stops
+waiting. Use the existing inspector/reconciliation controls to record evidence
+about the original operation.
+
+A failed or interrupted discovery request, or a worker stop during preparation,
+also remains **needs attention**; its notice records that no function call was
+submitted. Only a valid, complete tool catalog response can confirm that the
+server no longer offers the function.
+For completed or explicitly rejected MCP responses, completion evidence takes
+precedence over words such as "timeout" in the script's error; the original
+failure remains available in the delivered conversation.
+
+Google Workspace's existing result normalization, optional Stash saving, and
+artifact references are reused. Stash is not required for a script's ordinary
+structured response. The card reports that Jarvis is waiting for the MCP
+response; it does not invent progress phases inside the script.
 
 ## Concurrent artifacts and operator revisions
 

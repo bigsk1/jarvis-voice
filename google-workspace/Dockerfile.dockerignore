@@ -1,0 +1,10 @@
+# Build from the shared repository root, exposing only reviewed service inputs.
+*
+!lib/
+lib/*
+!lib/http_observation.py
+!google-workspace/
+google-workspace/*
+!google-workspace/Dockerfile
+!google-workspace/entrypoint.py
+!google-workspace/security-requirements.txt

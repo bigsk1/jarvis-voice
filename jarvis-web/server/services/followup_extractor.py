@@ -3103,6 +3103,35 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             projected = [project_workspace_data(
                 run, max_chars=7500 // max(1, len(selected)),
             ) for run in selected]
+            if key == 'mcp_google_workspace_get_script_project' and len(runs) > 1:
+                source_indices = []
+                for index, run in enumerate(selected):
+                    payload = run.get('data', run)
+                    request = payload.get('request') if isinstance(payload, dict) else None
+                    if (isinstance(payload, dict) and payload.get('tool') == 'get_script_project'
+                            and isinstance(request, dict)
+                            and isinstance(request.get('action'), str)
+                            and request['action'].strip().lower() == 'get'
+                            and isinstance(request.get('file_name'), str)
+                            and request['file_name'].strip()):
+                        source_indices.append(index)
+                if source_indices:
+                    # Keep each selected run's fair share and original order.
+                    # A short overview leaves room for a later full source read;
+                    # account for the wrapper before redistributing that room.
+                    wrapper = {'runs_count': len(runs), 'results': [],
+                               'results_truncated': len(selected) < len(runs)}
+                    available = 7500 - len(json.dumps(wrapper)) - 2 * (len(selected) - 1)
+                    projected = [project_workspace_data(
+                        run, max_chars=available // len(selected),
+                    ) for run in selected]
+                    spare = available - sum(len(json.dumps(run)) for run in projected)
+                    for index in reversed(source_indices):
+                        previous_size = len(json.dumps(projected[index]))
+                        projected[index] = project_workspace_data(
+                            selected[index], max_chars=previous_size + spare,
+                        )
+                        spare += previous_size - len(json.dumps(projected[index]))
             if projected:
                 followup[key] = projected[0] if len(runs) == 1 else {
                     'runs_count': len(runs), 'results': projected,

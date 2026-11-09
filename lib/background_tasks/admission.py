@@ -354,6 +354,18 @@ class BackgroundAdmissionService:
         from .local_contract import SKILL_ADAPTERS
 
         timeout = 900
+        from ..mcp_background_contract import ADAPTER as MCP_ADAPTER
+        if self.adapters[tool] == MCP_ADAPTER:
+            from ..mcp_background_contract import REGISTRATIONS as MCP_REGISTRATIONS
+            from .mcp_tool import validate_arguments as validate_mcp_arguments
+
+            registration = MCP_REGISTRATIONS.get(tool)
+            policy = payload.get('tool_policies', {}).get(tool, {})
+            if (registration is None or policy.get('adapter') != MCP_ADAPTER
+                    or policy.get('timeout_seconds') != registration.timeout_seconds):
+                raise AdmissionDenied('Missing reviewed MCP background policy')
+            validate_mcp_arguments(schema, args)
+            timeout = registration.timeout_seconds
         if self.adapters[tool] == 'apify_actor_v1':
             from jsonschema import ValidationError
             from referencing.exceptions import Unresolvable

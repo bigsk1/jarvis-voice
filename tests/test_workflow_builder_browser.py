@@ -242,6 +242,13 @@ async function evaluate(expression) {
 }
 const ready = (expression, label) => until(() => evaluate(`Boolean(${expression})`), label);
 const click = selector => evaluate(`(() => {const target = document.querySelector(${JSON.stringify(selector)}); if (!target) throw new Error('Missing control'); target.click(); return true;})()`);
+const closeReview = selector => evaluate(`new Promise(resolve => {
+  const dialog = document.getElementById('reviewDialog'), target = document.querySelector(${JSON.stringify(selector)});
+  if (!dialog?.open || !target) throw new Error('Missing open review or close control');
+  // A closed property alone does not mean the queued native close event ran.
+  // Finish that event before another review installs its cancellation listener.
+  dialog.addEventListener('close', () => resolve(true), {once:true}); target.click();
+})`);
 const set = (selector, value) => evaluate(`(() => {const target = document.querySelector(${JSON.stringify(selector)}); target.value = ${JSON.stringify(value)}; target.dispatchEvent(new Event('change', {bubbles:true})); return true;})()`);
 const getJSON = () => evaluate('JSON.parse(document.getElementById("recipeJSON").value)');
 const testState = () => evaluate('fetch("/api/test-state").then(response => response.json())');
@@ -309,9 +316,16 @@ async function screenshot(name) {
   fs.writeFileSync(path.join(directory, `${kind}-${name}.png`), Buffer.from(captured.data, 'base64'));
 }
 async function reload() {
+  // CDP acknowledges Page.reload before navigation replaces the old document.
+  // Its already-restored draft must not satisfy the new page's readiness check.
+  const previousDocument = `workflow-journey-${nextId++}`;
+  await evaluate(`document.documentElement.dataset.workflowJourneyDocument = ${JSON.stringify(previousDocument)}`);
   if (kind === 'firefox') await send('browsingContext.reload', {context, wait: 'complete'});
   else await send('Page.reload');
-  await ready('document.getElementById("recipeTitle")?.textContent === "Browser Example" && document.querySelector("#stepLane [data-index]")', 'restored draft');
+  await ready(`document.documentElement?.dataset.workflowJourneyDocument !== ${JSON.stringify(previousDocument)}
+    && document.getElementById("recipeJSON")
+    && document.getElementById("recipeTitle")?.textContent === "Browser Example"
+    && document.querySelector("#stepLane [data-index]")`, 'new document with restored draft');
 }
 (async () => {
   let endpoint;
@@ -450,9 +464,8 @@ async function reload() {
   await click('#runButton');
   await ready('document.getElementById("reviewDialog").open && document.getElementById("reviewTitle").textContent === "Review live run"', 'effects confirmation');
   assert.equal((await testState()).starts, 0);
-  await click('#reviewCancel');
+  await closeReview('#reviewCancel');
   await ready('!document.getElementById("reviewDialog").open', 'cancelled effects review');
-  await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
   assert.equal((await testState()).starts, 0);
   await click('#runButton');
   await ready('document.getElementById("reviewDialog").open', 'second effects confirmation');
@@ -470,7 +483,7 @@ async function reload() {
   await click('#historyButton');
   await ready('document.querySelector("#reviewBody .recipe-item")', 'saved history');
   assert.match(await evaluate('document.getElementById("reviewBody").textContent'), /browser_example.*completed/);
-  await click('#reviewDialog [data-close]');
+  await closeReview('#reviewDialog [data-close]');
   await click('#stepLane [data-index="0"]');
   await evaluate('Array.from(document.querySelectorAll("#inspectorBody button")).find(button => button.textContent === "Run through this step").click()');
   await ready('document.getElementById("reviewDialog").open && document.getElementById("reviewTitle").textContent === "Review partial live run"', 'partial execution review');
@@ -523,7 +536,7 @@ async function reload() {
   await click('#publishButton');
   await ready('document.getElementById("reviewDialog").open', 'trusted recipe republication review');
   assert.equal(await evaluate('document.getElementById("trustUnattended").checked'), false, 'Publishing an edit never silently preserves trust');
-  await click('#reviewCancel');
+  await closeReview('#reviewCancel');
   await ready('!document.getElementById("reviewDialog").open', 'cancel edited publication');
   const navigation = await evaluate('fetch("/ui-navigation.js").then(response => response.text())');
   const navigationClient = navigation.slice(navigation.indexOf('\n') + 1);

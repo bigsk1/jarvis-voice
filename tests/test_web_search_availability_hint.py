@@ -13,10 +13,11 @@ sys.path.insert(0, str(ROOT / "lib"))
 sys.path.insert(0, str(ROOT / "orchestrator"))
 
 from config_loader import config_scope  # noqa: E402
-from lib.background_tasks.admission import WebTaskContext  # noqa: E402
 from router_prompts import get_router_system_prompt  # noqa: E402
 from router_v2 import LLMRouter, ProviderRouteInput, _web_search_availability_hint  # noqa: E402
 from tool_schema import ToolSchema  # noqa: E402
+
+from lib.background_tasks.admission import WebTaskContext  # noqa: E402
 
 
 def _tool(name, *, web_search=False, enabled=True):
@@ -175,6 +176,8 @@ def test_background_receipt_policy_is_system_only_for_every_prompt_version(versi
 
     assert call["messages"] == [{"role": "user", "content": query}]
     assert call["system_prompt"].count("A background acceptance receipt") == 1
+    assert "Say Jarvis queued the work" in call["system_prompt"]
+    assert "do not claim the remote provider accepted or started it without provider evidence" in call["system_prompt"]
     assert "job_id identifies the Jarvis queue entry, not a provider task" in call["system_prompt"]
     assert "Do not repeat the accepted call" in call["system_prompt"]
 

@@ -100,6 +100,7 @@ _CHAT_ONLY_SYSTEM_POLICY = (
 )
 _BACKGROUND_RECEIPT_SYSTEM_POLICY = (
     "A background acceptance receipt confirms admission, not completion. "
+    "Say Jarvis queued the work; do not claim the remote provider accepted or started it without provider evidence. "
     "Its job_id identifies the Jarvis queue entry, not a provider task. "
     "Do not pass it to a remote tool for job, status or collect. "
     "Provider task IDs and output references arrive separately. "

@@ -102,10 +102,10 @@ class BackgroundTasks {
         input.disabled = this.saving === true || Boolean(status.coordinator_unavailable_reason)
           || (!available && !input.checked);
         input.addEventListener('change', () => { void this.savePreferences(); });
-        const text = document.createElement('span');
-        text.textContent = name.replaceAll('_', ' ').replace(/^./, ch => ch.toUpperCase());
-        const description = document.createElement('small');
         const details = status.tool_details?.[name];
+        const text = document.createElement('span');
+        text.textContent = details?.label || name.replaceAll('_', ' ').replace(/^./, ch => ch.toUpperCase());
+        const description = document.createElement('small');
         const browser = details?.browser_use;
         const privateCallback = details?.private_callback;
         if (name === 'browser_use' && browser && (!browser.operational || browser.deployment_supported === false)
@@ -326,7 +326,7 @@ class BackgroundTasks {
             });
             const value = await response.json();
             if (!response.ok) throw new Error(value.error || 'Cancellation could not be requested');
-            Utils.toast('Cancellation requested. Jarvis will confirm when this browser job has stopped.', 'info');
+            Utils.toast('Cancellation requested. The task card will show the final state.', 'info');
           } catch (error) {
             Utils.toast(error.message, 'warning'); cancel.disabled = false;
           }

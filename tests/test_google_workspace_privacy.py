@@ -4,6 +4,7 @@ import subprocess
 import tarfile
 from pathlib import Path
 
+import yaml
 from docker.utils.build import tar
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +13,8 @@ PRIVATE = ['client_secret.json', 'client_secret_123.apps.googleusercontent.com.j
            'google-workspace/.env', 'google-workspace/client_secret_789.apps.googleusercontent.com.json',
            'google-workspace/data/credentials/dedicated@gmail.com.json', 'google-workspace/data/attachments/private.pdf']
 PUBLIC = ['lib/google_workspace.py', 'config/mcp-servers.json', 'config/cloud.env.example']
+SERVICE_INPUTS = {'google-workspace/Dockerfile', 'google-workspace/entrypoint.py',
+                  'google-workspace/security-requirements.txt', 'lib/http_observation.py'}
 
 
 def test_git_ignore_covers_google_console_download_names():
@@ -22,7 +25,7 @@ def test_git_ignore_covers_google_console_download_names():
 
 def test_google_service_is_excluded_from_app_archive_and_private_files_from_service_archive(tmp_path):
     service_files = ['google-workspace/Dockerfile', 'google-workspace/entrypoint.py', 'google-workspace/README.md']
-    for name in PRIVATE + PUBLIC + service_files:
+    for name in set(PRIVATE + PUBLIC + service_files) | SERVICE_INPUTS:
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('Synthetic secret/context fixture')
@@ -32,6 +35,17 @@ def test_google_service_is_excluded_from_app_archive_and_private_files_from_serv
             names = set(bundle.getnames())
     assert not names.intersection(PRIVATE + service_files)
     assert set(PUBLIC) <= names
-    with tar(str(tmp_path / 'google-workspace'), exclude=(ROOT / 'google-workspace/.dockerignore').read_text().splitlines()) as archive:
+    service_excludes = (ROOT / 'google-workspace/Dockerfile.dockerignore').read_text().splitlines()
+    with tar(str(tmp_path), exclude=service_excludes) as archive:
         with tarfile.open(fileobj=archive) as bundle:
-            assert set(bundle.getnames()) == {'Dockerfile', 'entrypoint.py'}
+            assert {entry.name for entry in bundle.getmembers() if entry.isfile()} == SERVICE_INPUTS
+
+
+def test_google_build_uses_root_context_and_specific_service_allowlist():
+    compose = yaml.safe_load((ROOT / 'google-workspace/compose.yaml').read_text())
+    build = compose['services']['google-workspace']['build']
+    assert build['context'] == '..'
+    assert build['dockerfile'] == 'google-workspace/Dockerfile'
+    assert (ROOT / 'google-workspace' / build['context']).resolve() == ROOT
+    dockerfile = (ROOT / build['dockerfile']).read_text()
+    assert 'COPY --chown=app:app lib/http_observation.py /app/jarvis_http_observation.py' in dockerfile

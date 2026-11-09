@@ -352,7 +352,7 @@ def test_remote_receipt_confusion_settles_source_and_releases_one_job(web_tasks,
     h.background.adapters['fixture'] = 'remote_skill_v1'
     h.tasks.touch_worker('remote-fixture', {'remote_skill_v1'})
     monkeypatch.setattr(production, 'authorize_tools',
-                        lambda names: {name: {'timeout_seconds': 900} for name in names})
+                        lambda names, **_: {name: {'timeout_seconds': 900} for name in names})
     original_factory = orchestrator_v2.Orchestrator
 
     def factory(*args, **kwargs):
@@ -1027,6 +1027,7 @@ def test_browser_setup_returns_202_and_second_click_joins_the_same_pull(web_task
 def test_docker_browser_setup_is_explained_and_rejected_before_pull(web_tasks, monkeypatch):
     import browser_agent
     from jarvis_bundle_chat_test.routes import background_tasks as routes
+
     from lib.webhook_integrations import browser
 
     h = web_tasks

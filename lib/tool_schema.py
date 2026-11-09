@@ -763,6 +763,70 @@ class ToolRegistry:
             if verbose:
                 print(f"✗ MCP discovery failed: {str(e)[:80]}")
     
+    @staticmethod
+    def schema_from_mcp_tool(server_name, client, server_config, tool_info) -> ToolSchema:
+        """Build the same schema for discovery and isolated reviewed MCP workers."""
+        from mcp_background_contract import execution_for_tool
+
+        tool_name = f"mcp_{server_name}_{tool_info['name']}"
+        tool_metadata = server_config.get("tool_metadata", {})
+        if not isinstance(tool_metadata, dict):
+            tool_metadata = {}
+        metadata = tool_metadata.get(tool_info['name'], {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        # A configured single-account default need not be supplied
+        # by the model; the remote client supplies it on every call.
+        parameters = json.loads(json.dumps(tool_info.get('inputSchema', {})))
+        defaults = getattr(client, "tool_defaults", {})
+        description = tool_info.get('description', '')
+        for parameter, default in defaults.items():
+            if parameter in parameters.get("properties", {}):
+                if server_name == "google_workspace" and parameter == "user_google_email":
+                    parameters["properties"].pop(parameter)
+                    description = (
+                        f"Uses Jarvis's dedicated Google account {default}. "
+                        "Jarvis supplies the authenticated account automatically; "
+                        "do not ask for or guess its login email. "
+                        "Recipient and sharing-target addresses are separate tool parameters.\n\n"
+                        + re.sub(r"(?m)^\s*user_google_email\s*\([^\n]*\n?", "", description)
+                    )
+                else:
+                    parameters["properties"][parameter]["default"] = default
+                parameters["required"] = [
+                    key for key in parameters.get("required", []) if key != parameter
+                ]
+        if server_name == "google_workspace":
+            from google_workspace import extend_workspace_schema
+            description = extend_workspace_schema(tool_info["name"], parameters, description)
+        prefix = metadata.get("description_prefix")
+        if isinstance(prefix, str) and prefix.strip():
+            description = prefix.strip() + "\n\n" + description
+        annotations = tool_info.get("annotations") or {}
+        side_effect = server_name == "google_workspace" and (
+            annotations.get("readOnlyHint") is False or annotations.get("destructiveHint") is True
+        )
+        # The operator explicitly chose autonomous use of this dedicated
+        # account. Classify effects honestly without introducing a gate.
+        # Convert MCP tool to our ToolSchema format
+        return ToolSchema(
+            name=tool_name,
+            description=description,
+            parameters=parameters,
+            script_path=f"__mcp__{server_name}__{tool_info['name']}",
+            permissions={
+                "dangerous": side_effect,
+                "bash": False,
+                "network": True,
+                "filesystem": server_name == "google_workspace" and bool({"stash", "stash_ref"} & parameters.get("properties", {}).keys()),
+                "auto_approve": True
+            },
+            proxy_policy=getattr(client, "proxy_policy", "inherit"),
+            execution=execution_for_tool(tool_name, server_name, tool_info["name"]),
+            web_search=metadata.get("web_search") is True,
+            prerequisite_tools=metadata.get("prerequisite_tools"),
+        )
+
     def _register_mcp_tools(self, server_name, client, server_config, tools) -> int:
         """Use the same allowlist, account binding and profile for every discovery."""
         # A server-level allowlist survives profile changes and
@@ -776,9 +840,6 @@ class ToolRegistry:
             ):
                 raise ValueError("allowed_tools must be a list of nonempty tool names")
             allowed_tools = set(configured_tools)
-        tool_metadata = server_config.get("tool_metadata", {})
-        if not isinstance(tool_metadata, dict):
-            tool_metadata = {}
         # Store client for later use
         self.mcp_clients = {**self.mcp_clients, server_name: client}
         pending = {}
@@ -788,63 +849,8 @@ class ToolRegistry:
         for tool_info in tools:
             if allowed_tools is not None and tool_info['name'] not in allowed_tools:
                 continue
-            # Use underscores for compatibility with all LLM providers
-            # (Anthropic doesn't allow dots in tool names)
-            tool_name = f"mcp_{server_name}_{tool_info['name']}"
-            metadata = tool_metadata.get(tool_info['name'], {})
-            if not isinstance(metadata, dict):
-                metadata = {}
-
-            # A configured single-account default need not be supplied
-            # by the model; the remote client supplies it on every call.
-            parameters = json.loads(json.dumps(tool_info.get('inputSchema', {})))
-            defaults = getattr(client, "tool_defaults", {})
-            description = tool_info.get('description', '')
-            for parameter, default in defaults.items():
-                if parameter in parameters.get("properties", {}):
-                    if server_name == "google_workspace" and parameter == "user_google_email":
-                        parameters["properties"].pop(parameter)
-                        description = (
-                            f"Uses Jarvis's dedicated Google account {default}. "
-                            "Jarvis supplies the authenticated account automatically; "
-                            "do not ask for or guess its login email. "
-                            "Recipient and sharing-target addresses are separate tool parameters.\n\n"
-                            + re.sub(r"(?m)^\s*user_google_email\s*\([^\n]*\n?", "", description)
-                        )
-                    else:
-                        parameters["properties"][parameter]["default"] = default
-                    parameters["required"] = [
-                        key for key in parameters.get("required", []) if key != parameter
-                    ]
-            if server_name == "google_workspace":
-                from google_workspace import extend_workspace_schema
-                description = extend_workspace_schema(tool_info["name"], parameters, description)
-            prefix = metadata.get("description_prefix")
-            if isinstance(prefix, str) and prefix.strip():
-                description = prefix.strip() + "\n\n" + description
-            annotations = tool_info.get("annotations") or {}
-            side_effect = server_name == "google_workspace" and (
-                annotations.get("readOnlyHint") is False or annotations.get("destructiveHint") is True
-            )
-            # The operator explicitly chose autonomous use of this dedicated
-            # account. Classify effects honestly without introducing a gate.
-            # Convert MCP tool to our ToolSchema format
-            schema = ToolSchema(
-                name=tool_name,
-                description=description,
-                parameters=parameters,
-                script_path=f"__mcp__{server_name}__{tool_info['name']}",
-                permissions={
-                    "dangerous": side_effect,
-                    "bash": False,
-                    "network": True,
-                    "filesystem": server_name == "google_workspace" and bool({"stash", "stash_ref"} & parameters.get("properties", {}).keys()),
-                    "auto_approve": True
-                },
-                proxy_policy=getattr(client, "proxy_policy", "inherit"),
-                web_search=metadata.get("web_search") is True,
-                prerequisite_tools=metadata.get("prerequisite_tools"),
-            )
+            schema = self.schema_from_mcp_tool(server_name, client, server_config, tool_info)
+            tool_name = schema.name
 
             if self._profile_overrides.get(tool_name) is not False:
                 pending[tool_name] = schema

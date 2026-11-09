@@ -493,8 +493,21 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
         # unconfirmed receipt, but never upgrade a persisted tool failure.
         projected["ok"] = bool(payload.get("ok", result.get("ok", True))) and complete
     text = page_body if page is not None else _workspace_display_text(original_text, download_url)
-    projected["response_excerpt"] = text[:2200]
-    trimmed = trimmed or len(text) > 2200
+    request = projected.get("request")
+    script_source = (
+        payload.get("tool") == "get_script_project"
+        and isinstance(request, dict)
+        and isinstance(request.get("action"), str)
+        and request["action"].strip().lower() == "get"
+        and isinstance(request.get("file_name"), str)
+        and bool(request["file_name"].strip())
+    )
+    # A function can appear after the ordinary receipt excerpt. Let explicit
+    # source reads use the caller's budget; the serialized bound below still
+    # accounts for metadata, escaped source characters and smaller contexts.
+    excerpt_limit = max_chars if script_source else 2200
+    projected["response_excerpt"] = text[:excerpt_limit]
+    trimmed = trimmed or len(text) > excerpt_limit
     if page is not None:
         projected["pagination"] = _page_delivery(page, projected["response_excerpt"])
         trimmed = trimmed or not projected["pagination"]["content_delivered"]
@@ -521,19 +534,21 @@ def project_workspace_data(result: dict, *, max_chars: int = 4500) -> dict:
         projected.pop("structured_result")
         trimmed = True
     if size() > max_chars and projected.get("response_excerpt"):
-        if page is not None:
+        if page is not None or script_source:
             excerpt = projected["response_excerpt"]
             low, high = 0, len(excerpt)
             while low < high:
                 middle = (low + high + 1) // 2
                 projected["response_excerpt"] = excerpt[:middle]
-                projected["pagination"] = _page_delivery(page, projected["response_excerpt"])
+                if page is not None:
+                    projected["pagination"] = _page_delivery(page, projected["response_excerpt"])
                 if size() <= max_chars:
                     low = middle
                 else:
                     high = middle - 1
             projected["response_excerpt"] = excerpt[:low]
-            projected["pagination"] = _page_delivery(page, projected["response_excerpt"])
+            if page is not None:
+                projected["pagination"] = _page_delivery(page, projected["response_excerpt"])
         else:
             projected["response_excerpt"] = ""
         trimmed = True

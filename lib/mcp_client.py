@@ -31,6 +31,7 @@ from http_client import (
     select_reachable_proxy_url,
     standard_proxy_environment,
 )
+from http_observation import SocketBudget
 from mcp_docker import owner_labels, reap_orphans
 
 
@@ -47,6 +48,26 @@ def _validate_remote_tool_timeout(value: Any) -> float | None:
     if not math.isfinite(timeout) or timeout <= 0 or timeout > TIMEOUT_MAX - 5:
         raise ValueError("tool_call_timeout_seconds must be positive, finite, and within the supported timeout range")
     return timeout
+
+
+def _validate_remote_tool_timeout_overrides(value: Any) -> dict[str, float]:
+    """Copy exact upstream tool budgets without accepting invalid overrides."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("tool_call_timeout_overrides must map tool names to positive finite numbers")
+    overrides = {}
+    for name, seconds in value.items():
+        if not isinstance(name, str) or not name or name != name.strip():
+            raise ValueError("tool_call_timeout_overrides requires nonempty exact tool names")
+        try:
+            timeout = _validate_remote_tool_timeout(seconds)
+        except ValueError as exc:
+            raise ValueError("tool_call_timeout_overrides requires positive finite timeouts") from exc
+        if timeout is None:
+            raise ValueError("tool_call_timeout_overrides cannot contain null timeouts")
+        overrides[name] = timeout
+    return overrides
 
 
 def server_configuration_status(server_config: dict) -> tuple[bool, str]:
@@ -66,6 +87,10 @@ def server_configuration_status(server_config: dict) -> tuple[bool, str]:
             _validate_remote_tool_timeout(server_config.get("tool_call_timeout_seconds"))
         except ValueError:
             return False, "invalid tool_call_timeout_seconds"
+        try:
+            _validate_remote_tool_timeout_overrides(server_config.get("tool_call_timeout_overrides"))
+        except ValueError:
+            return False, "invalid tool_call_timeout_overrides"
     missing = [key for key in required if not get_config_value(key, None)]
     if missing:
         return False, "missing configuration: " + ", ".join(missing)
@@ -77,6 +102,51 @@ class _RemoteCallBudget:
     deadline: float
     cancelled: Event = field(default_factory=Event)
     route: dict[str, Any] = field(default_factory=dict)
+    tool_timeout: float | None = None
+    execution_metadata: dict[str, Any] | None = None
+    submission_started: bool = False
+    completion: str = "unknown"
+    managed_http: bool = False
+    http_observer: SocketBudget | None = field(default=None, repr=False)
+
+    def cancel(self):
+        self.cancelled.set()
+        if self.http_observer is not None:
+            self.http_observer.cancel()
+
+    def close(self):
+        if self.http_observer is not None:
+            self.http_observer.close()
+
+
+BACKGROUND_EXECUTION_META = "jarvis/background_execution"
+
+
+def _background_execution_metadata(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Validate server-made task identity without accepting model arguments as policy."""
+    if value is None:
+        return None
+    job_id = value.get("job_id") if isinstance(value, dict) else None
+    deadline = value.get("deadline_unix") if isinstance(value, dict) else None
+    if not isinstance(job_id, str) or not job_id.strip() or len(job_id) > 256:
+        raise ValueError("Background MCP execution requires a bounded job_id")
+    if (isinstance(deadline, bool) or not isinstance(deadline, (int, float))
+            or not math.isfinite(deadline) or deadline <= 0):
+        raise ValueError("Background MCP execution requires a finite deadline_unix")
+    return {"version": 1, "job_id": job_id, "deadline_unix": deadline}
+
+
+def _background_result_completion(raw: Any, budget: _RemoteCallBudget) -> str:
+    """A tool's success envelope alone cannot settle an uncertain script execution."""
+    if not isinstance(raw, dict) or budget.execution_metadata is None:
+        return "unknown"
+    metadata = raw.get("_meta")
+    evidence = metadata.get(BACKGROUND_EXECUTION_META) if isinstance(metadata, dict) else None
+    if (not isinstance(evidence, dict) or evidence.get("version") != 1
+            or evidence.get("job_id") != budget.execution_metadata["job_id"]):
+        return "unknown"
+    completion = evidence.get("completion")
+    return completion if completion in {"completed", "rejected", "unknown"} else "unknown"
 
 
 _remote_call_budget: ContextVar[_RemoteCallBudget | None] = ContextVar(
@@ -106,10 +176,34 @@ def _check_remote_call_budget():
     return budget
 
 
+class MCPDiscoveryError(RuntimeError):
+    """Discovery ended without a complete, successful remote tool catalog."""
 
-def probe_remote_tools(client, timeout_seconds: float = 3) -> list[dict]:
-    """Bound discovery even if a remote response trickles without finishing."""
-    budget = _RemoteCallBudget(time.monotonic() + timeout_seconds)
+
+def probe_remote_tools(
+    client, timeout_seconds: float = 3, *, deadline: float | None = None,
+    cancel_event: Event | None = None, raise_on_error: bool = False,
+) -> list[dict]:
+    """Bound discovery; strict callers distinguish failure from an empty catalog."""
+    timeout_seconds = _validate_remote_tool_timeout(timeout_seconds)
+    if timeout_seconds is None:
+        raise ValueError("Discovery requires a finite timeout")
+    if deadline is not None and (
+        isinstance(deadline, bool) or not isinstance(deadline, (int, float))
+        or not math.isfinite(deadline)
+    ):
+        raise ValueError("Discovery deadline must be a finite monotonic timestamp")
+    call_deadline = time.monotonic() + timeout_seconds
+    if deadline is not None:
+        call_deadline = min(call_deadline, deadline)
+    budget = _RemoteCallBudget(
+        call_deadline, cancelled=cancel_event if cancel_event is not None else Event(),
+        managed_http=True,
+    )
+    if budget.cancelled.is_set() or call_deadline <= time.monotonic():
+        if raise_on_error:
+            raise MCPDiscoveryError("MCP tool discovery could not be completed")
+        return []
     holder = {}
     budgets = getattr(client, "_call_budgets", None)
     if isinstance(budgets, dict):
@@ -118,25 +212,39 @@ def probe_remote_tools(client, timeout_seconds: float = 3) -> list[dict]:
         token = _remote_call_budget.set(budget)
         try:
             client.start()
-            tools = client.list_tools()
+            tools = client.list_tools(raise_on_error=True) if raise_on_error else client.list_tools()
             _check_remote_call_budget()
             holder["tools"] = tools
         except Exception:
-            pass
+            holder["failed"] = True
         finally:
+            budget.close()
             _remote_call_budget.reset(token)
             if isinstance(budgets, dict):
                 budgets.pop(id(budget), None)
     worker = Thread(target=copy_context().run, args=(runner,), daemon=True)
     worker.start()
-    worker.join(timeout=timeout_seconds)
+    if cancel_event is None:
+        worker.join(timeout=(timeout_seconds if deadline is None
+                             else max(0, call_deadline - time.monotonic())))
+    else:
+        while worker.is_alive() and not budget.cancelled.is_set():
+            remaining = call_deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            worker.join(timeout=min(0.1, remaining))
     if worker.is_alive():
-        budget.cancelled.set()
+        budget.cancel()
         try:
             client._force_restart("discovery deadline exceeded")
         except AttributeError:
             client.stop()
+        if raise_on_error:
+            raise MCPDiscoveryError("MCP tool discovery could not be completed")
         return []
+    if raise_on_error and (holder.get("failed") or "tools" not in holder
+                           or budget.cancelled.is_set() or time.monotonic() >= call_deadline):
+        raise MCPDiscoveryError("MCP tool discovery could not be completed")
     return holder.get("tools", [])
 
 
@@ -941,7 +1049,8 @@ class MCPRemoteClient:
     
     def __init__(self, name: str, url: str, transport_type: str, headers: dict[str, str] | None = None,
                  proxy_policy: str = "inherit", result_contract: str | None = None,
-                 tool_call_timeout_seconds: float | None = None):
+                 tool_call_timeout_seconds: float | None = None, *,
+                 tool_call_timeout_overrides: dict[str, float] | None = None, http_requester=None):
         """
         Initialize remote MCP client.
         
@@ -953,6 +1062,7 @@ class MCPRemoteClient:
                      SECURITY: Only these explicit headers are sent - no os.environ leakage
             proxy_policy: Per-server routing; inherit preserves existing behavior.
             tool_call_timeout_seconds: Optional budget for tool execution only.
+            tool_call_timeout_overrides: Optional budgets keyed by exact upstream tool name.
         """
         self.name = name
         self.url = url.rstrip('/')
@@ -961,6 +1071,10 @@ class MCPRemoteClient:
         self.proxy_policy = normalize_proxy_policy(proxy_policy)
         self.result_contract = result_contract
         self.tool_call_timeout_seconds = _validate_remote_tool_timeout(tool_call_timeout_seconds)
+        self.tool_call_timeout_overrides = _validate_remote_tool_timeout_overrides(tool_call_timeout_overrides)
+        # Explicit injection for independently owned transports and offline
+        # protocol fixtures. Production managed calls use tracked sessions.
+        self.http_requester = http_requester
         self._proxy_route: dict[str, Any] = {}
         self._call_budgets: dict[int, _RemoteCallBudget] = {}
         # SSE initialization and reconnect both re-enter _send_request() while
@@ -982,15 +1096,77 @@ class MCPRemoteClient:
         self._sse_stop_event = Event()
         self._sse_connected = Event()
 
+    def get_tool_call_timeout_seconds(self, tool_name: str) -> float | None:
+        """Resolve the same configured tool budget for transport and executor."""
+        return self.tool_call_timeout_overrides.get(tool_name, self.tool_call_timeout_seconds)
+
     def _request_timeout(self, method: str) -> float | tuple[float, float]:
         """Extend opted-in tool reads while retaining bounded connection setup."""
-        if method == "tools/call" and self.tool_call_timeout_seconds is not None:
-            return (min(30, self.tool_call_timeout_seconds), self.tool_call_timeout_seconds)
+        budget = _remote_call_budget.get()
+        timeout = (budget.tool_timeout if budget is not None and budget.tool_timeout is not None
+                   else self.tool_call_timeout_seconds)
+        if method == "tools/call" and timeout is not None:
+            return (min(30, timeout), timeout)
         return 30
 
     def _http_request(self, method: str, url: str, **kwargs):
         """Apply this server's policy without changing process-wide settings."""
         budget = _check_remote_call_budget()
+        if budget is not None and budget.managed_http:
+            requester = self.http_requester
+            if requester is None:
+                if budget.http_observer is None:
+                    budget.http_observer = SocketBudget(budget.deadline, budget.cancelled,
+                                                        clock=time.monotonic)
+                requester = budget.http_observer.request
+            protocol_method = (kwargs['json'].get('method')
+                if method.upper() == 'POST' and isinstance(kwargs.get('json'), dict) else None)
+            if (protocol_method in {'initialize', 'notifications/initialized', 'tools/list'}
+                    and self.proxy_policy != 'inherit'):
+                # Discovery keeps the ordinary proxy chain while each route's
+                # sockets remain owned by this one absolute observation budget.
+                return http_request(
+                    method, url, proxy_policy=self.proxy_policy, route_metadata=budget.route,
+                    proxy_timeout=(3, 5), deadline=budget.deadline,
+                    cancel_event=budget.cancelled, requester=requester, **kwargs,
+                )
+            # Ordinary proxy fallback may repeat a POST after a lost response.
+            # Select one route with side-effect-free TCP probes, then send once.
+            is_submission = protocol_method == 'tools/call'
+            if is_submission:
+                budget.submission_started = False
+            route = budget.route
+            route.update({"policy": self.proxy_policy, "used": None, "basis": "http_request"})
+            if self.proxy_policy in {"prefer", "require"}:
+                urls = get_proxy_url_chain(respect_policy=False)
+                remaining = budget.deadline - time.monotonic()
+                selected = select_reachable_proxy_url(
+                    urls, timeout=min(0.75, max(0.001, remaining / max(1, len(urls)))),
+                )
+                _check_remote_call_budget()
+                if selected:
+                    proxy_url, slot = selected
+                    slot = next((key for key in ("LOCAL_PROXY", "LOCAL_PROXY2")
+                                 if get_config_value(key, "") == proxy_url), slot)
+                    kwargs["proxies"] = {"http": proxy_url, "https": proxy_url}
+                    route.update({"used": True, "slot": slot})
+                elif self.proxy_policy == "require":
+                    raise requests.exceptions.ProxyError("Required MCP proxy is unavailable; request was not sent")
+                else:
+                    kwargs["proxies"] = {"http": None, "https": None, "all": None}
+                    route.update({"used": False, "direct_reason": "no_reachable_proxy"})
+            elif self.proxy_policy == "off":
+                kwargs["proxies"] = {"http": None, "https": None, "all": None}
+                route.update({"used": False, "direct_reason": "policy_off"})
+            if is_submission:
+                kwargs["allow_redirects"] = False
+            kwargs["timeout"] = _bounded_request_timeout(
+                kwargs.get("timeout", 30), deadline=budget.deadline,
+                cancel_event=budget.cancelled,
+            )
+            if is_submission:
+                budget.submission_started = True
+            return requester(method, url, **kwargs)
         if self.proxy_policy == "inherit":
             # Preserve existing remote MCP behavior unless explicitly opted in.
             if budget is not None:
@@ -1075,8 +1251,12 @@ class MCPRemoteClient:
                 **self.headers
             }
             
+            stream_timeout = self._request_timeout("tools/call")
+            if self.tool_call_timeout_overrides:
+                connect, read = stream_timeout if isinstance(stream_timeout, tuple) else (stream_timeout, stream_timeout)
+                stream_timeout = (connect, max(read, *self.tool_call_timeout_overrides.values()))
             response = self._http_request("GET", self.url, headers=headers, stream=True,
-                                          timeout=self._request_timeout("tools/call"))
+                                          timeout=stream_timeout)
             response.raise_for_status()
             
             event_type = None
@@ -1272,6 +1452,9 @@ class MCPRemoteClient:
         }
         
         try:
+            budget = _check_remote_call_budget()
+            if budget is not None and request["method"] == "tools/call":
+                budget.submission_started = True
             response = self._http_request(
                 "POST", self._sse_endpoint,
                 json=request,
@@ -1312,9 +1495,11 @@ class MCPRemoteClient:
     
     def _wait_for_sse_response(self, request: dict) -> Any:
         """Wait for response from SSE stream after sending a request."""
-        timeout = self.tool_call_timeout_seconds if request["method"] == "tools/call" and self.tool_call_timeout_seconds is not None else 30
-        deadline = time.monotonic() + timeout
         budget = _check_remote_call_budget()
+        tool_timeout = (budget.tool_timeout if budget is not None and budget.tool_timeout is not None
+                        else self.tool_call_timeout_seconds)
+        timeout = tool_timeout if request["method"] == "tools/call" and tool_timeout is not None else 30
+        deadline = time.monotonic() + timeout
         if budget is not None:
             deadline = min(deadline, budget.deadline)
         while True:
@@ -1360,6 +1545,9 @@ class MCPRemoteClient:
             print(f"[MCP DEBUG] HTTP Request: {json.dumps(request)}", file=sys.stderr)
             print(f"[MCP DEBUG] Session ID: {self._session_id}", file=sys.stderr)
         
+        budget = _check_remote_call_budget()
+        if budget is not None and request["method"] == "tools/call":
+            budget.submission_started = True
         response = self._http_request(
             "POST", self.url,
             json=request,
@@ -1375,6 +1563,8 @@ class MCPRemoteClient:
             finally:
                 response.close()
             if stale:
+                if budget is not None and request["method"] == "tools/call":
+                    budget.submission_started = False
                 _check_remote_call_budget()
                 self._initialized = False
                 self._session_id = None
@@ -1478,7 +1668,7 @@ class MCPRemoteClient:
     def stop(self):
         """Stop the remote MCP connection."""
         for budget in list(self._call_budgets.values()):
-            budget.cancelled.set()
+            budget.cancel()
         self._sse_stop_event.set()
         if self._sse_thread and self._sse_thread.is_alive():
             self._sse_thread.join(timeout=2)
@@ -1488,9 +1678,11 @@ class MCPRemoteClient:
         self._sse_connected.clear()
         self._tools_cache = None
     
-    def list_tools(self) -> list[dict[str, Any]]:
+    def list_tools(self, *, raise_on_error: bool = False) -> list[dict[str, Any]]:
         """List available tools from remote MCP server."""
-        if self._tools_cache:
+        # A graceful discovery may have filtered malformed rows. Strict
+        # revalidation must examine the complete response, not that cache.
+        if self._tools_cache and not raise_on_error:
             return self._tools_cache
         
         try:
@@ -1499,8 +1691,12 @@ class MCPRemoteClient:
             seen = set()
             for _page in range(100):
                 result = self._send_request("tools/list", {"cursor": cursor} if cursor else None)
+                if raise_on_error and (not isinstance(result, dict) or not isinstance(result.get("tools"), list)):
+                    raise ValueError("Invalid tools/list response")
                 tools.extend(result.get("tools", []) if result else [])
                 cursor = result.get("nextCursor") if result else None
+                if raise_on_error and cursor is not None and not isinstance(cursor, str):
+                    raise ValueError("Invalid tools/list cursor")
                 if not cursor:
                     break
                 if not isinstance(cursor, str) or cursor in seen:
@@ -1512,18 +1708,30 @@ class MCPRemoteClient:
             properties = {}
             for tool in tools:
                 if not isinstance(tool, dict) or not isinstance(tool.get("name"), str) or not tool["name"]:
+                    if raise_on_error:
+                        raise ValueError("Invalid tools/list tool name")
                     continue
                 schema = tool.get("inputSchema", {})
                 if not isinstance(schema, dict) or not isinstance(schema.get("properties", {}), dict):
+                    if raise_on_error:
+                        raise ValueError("Invalid tools/list tool schema")
                     continue
                 if any(not isinstance(value, dict) for value in schema.get("properties", {}).values()):
+                    if raise_on_error:
+                        raise ValueError("Invalid tools/list parameter schema")
                     continue
                 if not isinstance(tool.get("description", ""), str) or not isinstance(tool.get("annotations") or {}, dict):
+                    if raise_on_error:
+                        raise ValueError("Invalid tools/list tool metadata")
                     continue
                 required = schema.get("required", [])
                 if not isinstance(required, list) or any(not isinstance(key, str) for key in required):
+                    if raise_on_error:
+                        raise ValueError("Invalid tools/list required parameters")
                     continue
                 if tool["name"] in properties:
+                    if raise_on_error:
+                        raise ValueError("Duplicate tools/list tool name")
                     continue
                 valid_tools.append(tool)
                 properties[tool["name"]] = set(schema.get("properties", {}))
@@ -1532,11 +1740,30 @@ class MCPRemoteClient:
             self._tools_cache = valid_tools
             return valid_tools
         except Exception as e:
+            if raise_on_error:
+                raise MCPDiscoveryError("MCP tool discovery could not be completed") from None
             print(f"Error listing tools from remote MCP server {self.name}: {e}", file=sys.stderr)
             return []
     
-    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Call a tool on the remote MCP server."""
+    def call_tool(
+        self, tool_name: str, arguments: dict[str, Any], *,
+        timeout_seconds: float | None = None, deadline: float | None = None,
+        cancel_event: Event | None = None,
+        execution_metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Call once with an optional request-scoped observation budget.
+
+        ``deadline`` uses the monotonic clock; durable callers include time already
+        queued when converting their stored wall-clock deadline. Background metadata
+        is supplied by a trusted worker, outside the model-facing argument schema.
+        """
+        timeout_override = _validate_remote_tool_timeout(timeout_seconds)
+        metadata = _background_execution_metadata(execution_metadata)
+        if deadline is not None and (
+            isinstance(deadline, bool) or not isinstance(deadline, (int, float))
+            or not math.isfinite(deadline)
+        ):
+            raise ValueError("MCP call deadline must be a finite monotonic timestamp")
         arguments = dict(arguments)
         for key, default in getattr(self, "tool_defaults", {}).items():
             if self.name == "google_workspace" and key == "user_google_email":
@@ -1559,11 +1786,26 @@ class MCPRemoteClient:
             # Strict provider schemas may send null for an optional property.
             if arguments.get(key) is None:
                 arguments[key] = default
-        timeout_seconds = self.tool_call_timeout_seconds
+        configured_timeout = self.get_tool_call_timeout_seconds(tool_name)
+        timeout_seconds = timeout_override or configured_timeout
         if timeout_seconds is None:
             timeout_seconds = int(os.environ.get("MCP_TOOL_CALL_TIMEOUT_SECONDS", "35"))
         response_holder: dict[str, Any] = {}
-        budget = _RemoteCallBudget(time.monotonic() + timeout_seconds)
+        call_deadline = time.monotonic() + timeout_seconds
+        if deadline is not None:
+            call_deadline = min(call_deadline, deadline)
+        budget = _RemoteCallBudget(
+            call_deadline, cancelled=cancel_event if cancel_event is not None else Event(),
+            tool_timeout=timeout_override or configured_timeout, execution_metadata=metadata,
+            managed_http=(metadata is not None or timeout_override is not None or cancel_event is not None
+                          or tool_name in self.tool_call_timeout_overrides),
+        )
+        if budget.cancelled.is_set() or call_deadline <= time.monotonic():
+            result = {"ok": False, "speech": f"MCP tool {tool_name} was not started",
+                      "error": "MCP call deadline expired or observation was cancelled before dispatch"}
+            if metadata is not None:
+                result["completion"] = "rejected"
+            return result
         self._call_budgets[id(budget)] = budget
         self._proxy_route = budget.route
 
@@ -1605,7 +1847,12 @@ class MCPRemoteClient:
                     )
                     resolved_arguments = resolve_workspace_recipients(tool_name, arguments)
                     upstream, stash, space_id, staged_id = prepare_workspace_transfer(self, tool_name, resolved_arguments)
-                raw = self._send_request("tools/call", {"name": tool_name, "arguments": upstream})
+                params = {"name": tool_name, "arguments": upstream}
+                if metadata is not None:
+                    params["_meta"] = {BACKGROUND_EXECUTION_META: metadata}
+                raw = self._send_request("tools/call", params)
+                if metadata is not None:
+                    budget.completion = _background_result_completion(raw, budget)
                 normalized = _normalize_call_tool_result(
                     tool_name, raw, server_name=self.name, arguments=resolved_arguments,
                     result_contract=self.result_contract,
@@ -1620,6 +1867,8 @@ class MCPRemoteClient:
                 if self.name == "google_workspace" and raw:
                     from google_workspace_images import stash_workspace_images
                     normalized = stash_workspace_images(raw, normalized)
+                if metadata is not None:
+                    normalized["completion"] = budget.completion
                 response_holder["result"] = normalized
             except Exception as e:
                 response_holder["error"] = e
@@ -1627,21 +1876,34 @@ class MCPRemoteClient:
                 if staged_id:
                     from google_workspace import cleanup_workspace_transfer
                     cleanup_workspace_transfer(self, staged_id)
+                budget.close()
                 _remote_call_budget.reset(token)
                 self._call_budgets.pop(id(budget), None)
 
         worker = Thread(target=copy_context().run, args=(_runner,), daemon=True)
         worker.start()
-        worker.join(timeout=timeout_seconds)
+        if cancel_event is None:
+            wait_timeout = (timeout_seconds if deadline is None and timeout_override is None
+                            else max(0, call_deadline - time.monotonic()))
+            worker.join(timeout=wait_timeout)
+        else:
+            while worker.is_alive() and not budget.cancelled.is_set():
+                remaining = call_deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                worker.join(timeout=min(0.1, remaining))
 
         if worker.is_alive():
-            budget.cancelled.set()
+            budget.cancel()
             self._force_restart(f"remote tools/call timeout ({timeout_seconds}s)")
-            return {
+            result = {
                 "ok": False,
                 "speech": f"MCP tool {tool_name} timed out",
                 "error": f"Remote MCP tools/call timed out after {timeout_seconds}s; client restarted"
             }
+            if metadata is not None:
+                result["completion"] = "unknown" if budget.submission_started else "rejected"
+            return result
 
         try:
             if "error" in response_holder:
@@ -1657,11 +1919,15 @@ class MCPRemoteClient:
             import traceback
             if os.environ.get("MCP_DEBUG", "").lower() == "true":
                 print(f"MCP remote tool error: {traceback.format_exc()}", file=sys.stderr)
-            return {
+            result = {
                 "ok": False,
                 "speech": f"MCP tool {tool_name} failed",
                 "error": str(e)
             }
+            if metadata is not None:
+                result["completion"] = (budget.completion if budget.submission_started
+                                        else "rejected")
+            return result
     
     def __enter__(self):
         """Context manager entry."""
@@ -1758,6 +2024,7 @@ class MCPManager:
                     proxy_policy=server_config.get("proxy_policy", "inherit"),
                     result_contract=server_config.get("result_contract"),
                     tool_call_timeout_seconds=server_config.get("tool_call_timeout_seconds"),
+                    tool_call_timeout_overrides=server_config.get("tool_call_timeout_overrides"),
                 )
                 self.servers[name].tool_defaults = self._substitute_env_vars(
                     server_config.get("tool_defaults", {})

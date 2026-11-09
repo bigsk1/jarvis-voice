@@ -890,7 +890,9 @@ class ToolExecutor:
                 }
 
             # Strict outer timeout guard: prevents WebUI "thinking forever"
-            server_timeout = getattr(mcp_client, "tool_call_timeout_seconds", None)
+            timeout_resolver = getattr(mcp_client, "get_tool_call_timeout_seconds", None)
+            server_timeout = (timeout_resolver(mcp_tool_name) if callable(timeout_resolver)
+                              else getattr(mcp_client, "tool_call_timeout_seconds", None))
             if isinstance(server_timeout, (int, float)) and not isinstance(server_timeout, bool):
                 # Explicit remote budgets must fit inside this guard, including
                 # a short allowance for cancellation and client cleanup.

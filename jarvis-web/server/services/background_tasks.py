@@ -12,6 +12,7 @@ from filelock import FileLock, Timeout
 from lib.background_tasks import AdmissionDenied, LostLease
 from lib.background_tasks.admission import BackgroundAdmissionService, WebTaskContext
 from lib.background_tasks.models import recovery_details
+from lib.mcp_background_contract import ADAPTER as MCP_ADAPTER
 from lib.webhook_integrations.contracts import ADAPTER as CALLBACK_ADAPTER
 
 from .conversation_store import ConversationBusyError
@@ -305,7 +306,7 @@ class WebBackgroundTasks:
                     "source": "web", "operator": "installation",
                     "conversation_id": conversation_id, "generation": conversation["generation"],
                     "request_id": request_id, "mode": mode, "selected": [name],
-                    "tool_policies": authorize_tools([name]),
+                    "tool_policies": authorize_tools([name], registry=registry),
                     "provider": provider, "model": model, "tool_policy": "auto",
                     "blocked": get_web_setting("tools.blocked", []),
                 }, registry, defer_readiness=True,
@@ -399,7 +400,7 @@ class WebBackgroundTasks:
             "delivery_state": job.get("delivery_state"),
             "delivery_error": job.get("delivery_error"),
             "mode": job['mode'],
-            "remote_work": job['adapter'] in {REMOTE_ADAPTER, 'apify_actor_v1'},
+            "remote_work": job['adapter'] in {REMOTE_ADAPTER, MCP_ADAPTER, 'apify_actor_v1'},
             "archived_at": job.get('archived_at'),
             "created_at": job['created_at'],
             "updated_at": job['updated_at'],
@@ -611,20 +612,32 @@ class WebBackgroundTasks:
                 },
             }
         diagnostic = str(result.get('error') or '').lower()
-        timed_out = any(phrase in diagnostic for phrase in
+        # The reviewed MCP adapter records trusted completion evidence. A
+        # terminal script error can itself mention a timeout; its wording must
+        # not replace that result with an observer's waiting-limit notice.
+        mcp_response_received = (job.get('adapter') == MCP_ADAPTER
+                                 and result.get('completion') in {'completed', 'rejected'})
+        timed_out = not mcp_response_received and any(phrase in diagnostic for phrase in
                         ('timeout', 'timed out', 'observation budget ended', 'observation deadline', 'waiting limit'))
         if job.get('state') == 'needs_attention' or (job.get('state') == 'failed' and timed_out):
             uncertain = job['state'] == 'needs_attention'
-            text = (f"Jarvis stopped waiting for the background task `{job['admission']['tool']}`. "
+            mcp_not_submitted = (job.get('adapter') == MCP_ADAPTER
+                                 and result.get('error_code') in {'mcp_discovery_incomplete', 'mcp_preparation_incomplete'}
+                                 and result.get('submission_started') is False)
+            phase = 'discovery' if result.get('error_code') == 'mcp_discovery_incomplete' else 'preparation'
+            text = (f"Jarvis could not complete MCP tool {phase} for the background task `{job['admission']['tool']}`. "
+                    'No function call was submitted. '
+                    if mcp_not_submitted else
+                    f"Jarvis stopped waiting for the background task `{job['admission']['tool']}`. "
                     if timed_out else
                     f"Jarvis could not confirm the outcome of the background task `{job['admission']['tool']}`. ")
             if timed_out:
                 text += 'The tool\'s waiting limit was reached. '
-            if uncertain:
+            if uncertain and not mcp_not_submitted:
                 text += ('Remote work may still be running; this is not a confirmed operation failure. '
-                         if job['adapter'] in {'remote_skill_v1', 'apify_actor_v1', CALLBACK_ADAPTER} else
+                         if job['adapter'] in {'remote_skill_v1', MCP_ADAPTER, 'apify_actor_v1', CALLBACK_ADAPTER} else
                          'The operation may already have taken effect; its outcome needs checking. ')
-            else:
+            elif not uncertain:
                 text += 'The task ended without a successful result. '
             text += 'No automatic retry was started. You can ask for the existing task\'s status; do not submit it again just to check.'
             recovery = recovery_details(result.get('data'))

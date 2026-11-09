@@ -1139,6 +1139,11 @@ class ContextAssembler:
 
     def tool_context_max_chars(self, tool_name: str) -> int:
         lowered = (tool_name or "").lower()
+        if lowered == "mcp_google_workspace_get_script_project":
+            # A named source read must retain function definitions beyond a
+            # short receipt excerpt. The Google projector still bounds the
+            # serialized source and keeps ordinary list/overview excerpts short.
+            return 6000
         if lowered == 'send_webhook':
             return 6000  # Registry contracts and retry guidance need intact JSON.
         if lowered == "rss_feed":

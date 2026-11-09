@@ -10,11 +10,10 @@ from test_web_background_tasks import eventually
 from test_web_background_tasks import journey as journey
 from test_web_background_tasks import web_tasks as web_tasks
 
-from lib.background_tasks import production
+from lib.background_tasks import AdmissionDenied, production
 from lib.background_tasks.local_contract import ADAPTER, REMOTE_ADAPTER
 from lib.background_tasks.local_skill import LocalSkillRunner
 from lib.background_tasks.worker import TaskWorker
-from lib.background_tasks import AdmissionDenied
 
 ROOT = Path(__file__).resolve().parents[1]
 MEDIA = ('generate_image', 'generate_video', 'generate_music', 'create_social_clip')
@@ -141,9 +140,19 @@ def test_old_local_worker_does_not_claim_remote_readiness(web_tasks):
     public_bindings = dict(production.TRUSTED_BINDINGS)
     h.background.adapters = public_bindings
     from tool_schema import ToolSchema
+
+    from lib.mcp_background_contract import REGISTRATIONS, execution_for_tool
+
+    def get_schema(name):
+        if name in REGISTRATIONS:
+            registration = REGISTRATIONS[name]
+            return ToolSchema(name, 'Discovered MCP fixture', {'type': 'object'},
+                f'__mcp__{registration.server}__{registration.tool}',
+                execution=execution_for_tool(name, registration.server, registration.tool))
+        return ToolSchema.from_json_file(str(ROOT / 'skills' / (name + '.tool.json')))
+
     h.background.registry.list_tools = lambda: list(public_bindings)
-    h.background.registry.get_tool = lambda name: ToolSchema.from_json_file(
-        str(ROOT / 'skills' / (name + '.tool.json')))
+    h.background.registry.get_tool = get_schema
     h.tasks.touch_worker('old-local-worker', {ADAPTER})
     headers = {'Authorization': 'Bearer operator-test', 'Origin': 'http://localhost'}
     status = h.app.test_client().get('/api/background-tasks', headers=headers).json
@@ -151,17 +160,20 @@ def test_old_local_worker_does_not_claim_remote_readiness(web_tasks):
     assert status['tool_details']['convert_file']['worker_ready'] is True
     for name in MEDIA:
         assert status['tool_details'][name]['worker_ready'] is False
+    for name in REGISTRATIONS:
+        assert status['tool_details'][name]['worker_ready'] is False
 
 
 @pytest.mark.parametrize('mode', ['cloud', 'local'])
 @pytest.mark.parametrize('gate', ['available', 'manifest', 'profile', 'environment', 'web_block'])
 def test_social_clip_options_and_admission_follow_mode_policy(web_tasks, monkeypatch, mode, gate):
     import config_loader
+    import tool_profiles
     from config_loader import config_scope, get_active_config_mode
     from jarvis_bundle_chat_test import config as web_config
-    from lib.background_tasks.admission import BackgroundAdmissionService
     from tool_schema import ToolRegistry
-    import tool_profiles
+
+    from lib.background_tasks.admission import BackgroundAdmissionService
 
     h = web_tasks
     name = 'create_social_clip'

@@ -3,6 +3,8 @@
 import sys
 from pathlib import Path
 
+from ..mcp_background_contract import ADAPTER as MCP_ADAPTER
+from ..mcp_background_contract import REGISTRATIONS as MCP_REGISTRATIONS
 from .local_contract import ADAPTER, LOCAL_ADAPTERS, REMOTE_ADAPTER, SKILL_ADAPTERS
 from .local_skill import LocalSkillRunner
 
@@ -31,6 +33,7 @@ TRUSTED_BINDINGS = {
     'phone_call': REMOTE_ADAPTER,
     'browser_use': 'http_callback_v1',
     'apify_run_actor': 'apify_actor_v1',
+    **dict.fromkeys(MCP_REGISTRATIONS, MCP_ADAPTER),
 }
 
 # Named exceptions bind every permission value to a reviewed tool/adapter pair;
@@ -168,7 +171,7 @@ def runner():
     )
 
 
-def authorize_tools(selected):
+def authorize_tools(selected, *, registry=None):
     result = runner().authorize_tools(selected)
     if 'browser_use' in selected and 'browser_use' in bindings():
         from lib.webhook_integrations.browser import policy
@@ -181,6 +184,9 @@ def authorize_tools(selected):
     if 'apify_run_actor' in selected and 'apify_run_actor' in bindings():
         from .apify import policy as apify_policy
         result['apify_run_actor'] = apify_policy()[1]
+    from .mcp_tool import MCPToolRunner
+    result.update(MCPToolRunner(ROOT).authorize_tools(
+        set(selected) & bindings().keys(), registry=registry))
     return result
 
 
@@ -205,6 +211,9 @@ def worker_adapters(store=None):
     if bindings().get('apify_run_actor') == 'apify_actor_v1':
         from .apify import worker_adapter
         adapters['apify_actor_v1'] = worker_adapter()
+    if any(adapter == MCP_ADAPTER for adapter in bindings().values()):
+        from .mcp_tool import MCPToolRunner
+        adapters[MCP_ADAPTER] = MCPToolRunner(ROOT)
     if adapters and store is not None:
         import json
 

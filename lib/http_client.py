@@ -27,6 +27,7 @@ import os
 import socket
 import sys
 import time
+from collections.abc import Callable
 from threading import Event
 from urllib.parse import urlsplit
 
@@ -331,6 +332,7 @@ def http_request(
     proxy_timeout: tuple[float, float] | None = None,
     deadline: float | None = None,
     cancel_event: Event | None = None,
+    requester: Callable[..., requests.Response] | None = None,
     **kwargs
 ) -> requests.Response:
     """
@@ -347,6 +349,7 @@ def http_request(
         proxy_timeout: Optional shorter socket timeouts for proxy attempts.
         deadline: Optional monotonic deadline shared by all route attempts.
         cancel_event: Stop launching attempts when the owning call times out.
+        requester: Optional owned transport; default is requests.request.
         **kwargs: Additional arguments passed to requests (params, headers, json, data, etc.)
     
     Returns:
@@ -355,6 +358,7 @@ def http_request(
     Raises:
         requests.RequestException: If request fails (after fallback if enabled)
     """
+    request = requests.request if requester is None else requester
     kwargs.setdefault('timeout', timeout)
     direct_timeout = kwargs['timeout']
     
@@ -399,7 +403,7 @@ def http_request(
             route_metadata.update({"used": True, "slot": slot})
         try:
             kwargs['proxies'] = proxies
-            response = requests.request(method, url, **kwargs)
+            response = request(method, url, **kwargs)
 
             # CONNECT failures often surface as 502/503/504 (or 407 auth) without raising.
             if response.status_code in _PROXY_TUNNEL_RETRY_STATUSES:
@@ -458,7 +462,7 @@ def http_request(
                 "fallback_after_proxy_failed" if chain else "no_proxy_config"
             ),
         })
-    response = requests.request(method, url, **kwargs)
+    response = request(method, url, **kwargs)
 
     if not chain:
         if log_direct:

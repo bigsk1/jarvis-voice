@@ -270,13 +270,129 @@ Local `tool_metadata.<upstream_tool_name>.description_prefix` supplements an
 upstream description with practical wording and example requests. The original
 upstream description and schema are retained. Change these local prefixes and
 sync Tool RAG to tune discovery without modifying the upstream Docker image.
-Gmail, Drive, Docs and Sheets tools have these supplements.
+Gmail, Drive, Docs, Sheets and Apps Script tools have these supplements.
 
 `prerequisite_tools` in the same metadata declares companion schemas needed to
 resolve required inputs. The Drive download tool includes Drive search so a
 request naming a file can obtain its ID. Existing router bounds, active-profile
 filtering and exclusions still apply; this does not force a search call when a
 valid file ID is already available.
+
+Apps Script execution includes `get_script_project` as a companion schema.
+Listing projects returns names and IDs together, with pagination when needed;
+it does not discover callable functions. When a function or its arguments are
+unknown, inspect the project and read the relevant named source file before
+execution. Known functions can run directly. Source reads show current saved
+code; ordinary execution selects a deployed version unless the user requests
+latest-code execution with `dev_mode=true`.
+
+Named Apps Script source reads have a bounded 6,000-character model-context
+budget, including receipt metadata and JSON escaping. Saved Web follow-ups share
+7,500 characters across up to three recent results from this tool and reuse spare
+space from short receipts for source. A file that fits is retained completely;
+longer files remain explicitly marked as truncated. Ordinary Google result
+excerpts keep their existing limits. A partial source excerpt does not establish
+a callable function or its arguments.
+
+### Apps Script workflows and scheduled tasks
+
+A deterministic recipe can read the time, run a known function, then save its
+actual execution receipt to Canvas without LLM parameter filling or a summary.
+Save an adapted recipe under `data/workflows/personal/`; replace the script ID and verified
+function name, and adjust positional `parameters` to that function's signature
+(`[]` for no arguments). Keep a short natural-language description so normal
+`workflow` discovery can find it, for example: "run the Apps Script readiness
+report workflow". The explicit command and Scheduled Tasks remain available too.
+
+```json
+{
+  "id": "apps_script_report",
+  "name": "Apps Script report",
+  "description": "Get the time, run the configured Apps Script readiness check, and save its result to Canvas.",
+  "enabled": true,
+  "allow_workflow_tool": true,
+  "triggers": {"explicit": ["/apps_script_report"]},
+  "variables": {
+    "report_timezone": {"from": "env", "key": "JARVIS_TIMEZONE", "default": "UTC"}
+  },
+  "steps": [
+    {
+      "step": 1, "tool": "get_time", "required": true,
+      "params": {"timezone": "${report_timezone}"}, "output_var": "clock"
+    },
+    {
+      "step": 2, "tool": "mcp_google_workspace_run_script_function", "required": true,
+      "params": {
+        "script_id": "REPLACE_WITH_SCRIPT_ID",
+        "function_name": "REPLACE_WITH_VERIFIED_FUNCTION",
+        "parameters": ["${clock.date}", "${clock.time}"]
+      },
+      "output_var": "script_run"
+    },
+    {
+      "step": 3, "tool": "canvas", "action": "create", "required": true,
+      "params": {
+        "title": "Apps Script report ${filename_timestamp}",
+        "content": "# Apps Script report\n\nStarted: ${clock.date} ${clock.time} ${clock.timezone}\n\nReceipt truncated: ${script_run.response_truncated}\n\n```text\n${script_run.response_text}\n```"
+      }
+    }
+  ],
+  "success_speech": "Apps Script finished and its receipt was saved to Canvas."
+}
+```
+
+The time step uses the existing configured `JARVIS_TIMEZONE`, falling back to
+UTC; an empty `get_time` request would use the host's local time. Parameter
+binding uses canonical tool data, without the general Google chat preview's
+2,200-character cap. `response_text` retains at most 16,000 characters;
+`response_truncated=true` means the receipt was shortened. The report saves that
+receipt and flag directly, rather than a queued-job receipt or an LLM summary.
+
+The workflow waits for the foreground Apps Script call before creating Canvas.
+Scheduled Tasks uses this same path, independently of Web's optional background
+feature. The tool budget is 390 seconds and its executor guard is 395 seconds;
+a scheduled task's default **300-second whole-run timeout** can cut it short.
+For this basic flow, select workflow `apps_script_report` and set the task's
+`timeout_seconds` to **600**, allowing time for startup and the other steps.
+
+Saving a workflow installs no recurring schedule. To test through Scheduled
+Tasks, create a disabled task and choose **Run Now**: that queues one execution
+while keeping the task disabled afterward. No new service or environment
+setting is required. If Google execution becomes uncertain after a timeout or
+lost response, inspect that execution before rerunning the workflow.
+
+### Practical Apps Script examples
+
+Apps Script is useful for repeatable work across several Google apps in one
+function. These are ideas for scripts to build or adapt and deploy, rather than
+additional preinstalled Jarvis tools. Once connected to a workflow, requests can
+look like these:
+
+| Services | Useful automation | Example chat request after setup |
+| --- | --- | --- |
+| Drive | Sort new uploads into client/project folders and record their links in a Sheet. | "Run my Drive filing workflow and show what was organized." |
+| Docs + Sheets | Fill a proposal, contract, or weekly-report template from spreadsheet rows; save the finished documents. | "Generate this week's client reports from the reporting sheet." |
+| Sheets | Clean imported rows, remove duplicates, update formulas and charts, and calculate a weekly summary. | "Refresh my sales dashboard and save the totals to Canvas." |
+| Gmail + Sheets | Personalize a mail merge from a Gmail draft and mark successfully sent rows. | "Run the approved customer follow-up mail merge." |
+| Forms + Drive + Gmail | Process registration responses, organize uploaded files, and send confirmation emails. | "Process the new event registrations and report the count." |
+| Slides + Sheets | Populate a presentation template with current metrics and spreadsheet charts. | "Build this month's performance deck from the metrics sheet." |
+| Calendar + Sheets | Create events from approved spreadsheet rows and write event IDs back for later updates. | "Sync the approved training sessions to my calendar." |
+| Sheets + Drive + Gmail | Generate invoice PDFs, save them in Drive, send them to the intended customers, and record delivery. | "Generate and send this month's invoices, then publish a Canvas summary." |
+
+For example, a scheduled workflow could run **get time → refresh sales data and
+build a Slides deck → Canvas report with totals and document links**. Return
+created file IDs, URLs, counts, and per-item outcomes from the script so Jarvis
+can report what actually happened. For repeatable sends or creates, keep a
+processed-row marker or existing resource ID so later runs resume correctly.
+
+Google provides starting points for [mail merge](https://developers.google.com/apps-script/samples/automations/mail-merge),
+[invoice PDFs and email](https://developers.google.com/apps-script/samples/automations/generate-pdfs),
+[Forms uploads organized in Drive](https://developers.google.com/apps-script/samples/automations/upload-files),
+and [Sheets charts in Slides](https://developers.google.com/codelabs/apps-script-fundamentals-5),
+plus a broader [sample catalog](https://developers.google.com/apps-script/samples).
+Adapt menu- or trigger-driven samples into callable functions with explicit
+file IDs and positional arguments for Jarvis execution; they should not depend
+on an open spreadsheet, editor dialog, or a form-submit event being present.
 
 ### Formatted documents, sheets and Gmail
 
@@ -658,12 +774,39 @@ trying again. Jarvis's HTTP transport also avoids replaying ambiguous failures.
 The corrected destructive annotation on `send_gmail_message` does not change
 this setup's configured autonomous approval policy.
 
-The upstream Google API socket timeout remains 60 seconds. Jarvis configures a
-90-second per-call Google MCP budget through
-`tool_call_timeout_seconds` in `config/mcp-servers.json`; its executor allows
-95 seconds, including the cleanup margin. Other MCP servers keep their existing
-timeouts. Tools making several Google requests can still exceed the overall
-budget; a timeout is not proof a write failed.
+Ordinary Google tools retain the upstream 60-second Google API socket timeout
+and Jarvis's 90-second MCP budget, with a five-second executor cleanup margin.
+In `config/mcp-servers.json`, `tool_call_timeout_seconds` supplies that default;
+`tool_call_timeout_overrides` gives only `run_script_function` a **390-second**
+foreground budget. Its executor guard is 395 seconds. This applies to CLI and
+ordinary foreground Web calls in either configured mode. Explicit scheduled-task
+or workflow deadlines still apply. Other MCP servers keep their existing limits.
+
+The opt-in background binding for `run_script_function` uses an isolated MCP
+client and carries its remaining job budget in MCP request metadata. The service
+wrapper applies that deadline to this call's Google HTTP requests using separate
+transports. Foreground `run_script_function` uses the same isolated transport
+with a 390-second deadline and no background job metadata; other foreground
+Google tools and the shared connection pool retain their existing limits.
+Google still limits script execution to six minutes. Queue time counts toward
+the existing 420-second background job deadline.
+
+Credential refresh is part of that same deadline: scoped Apps Script OAuth requests use
+one owned, socket-bounded transport and disable token-endpoint retries. Cancelling
+or reaching the deadline interrupts its active socket, including response headers
+and slowly arriving bodies; it cannot start another refresh afterward. Other Google
+tools retain their existing authentication timeout and retry behavior. The Google image
+copies the shared HTTP observer from `lib/http_observation.py`; its Dockerfile-specific
+allowlist exposes only that helper and the three existing service build inputs.
+
+The wrapper records actual `scripts.run` responses in job-bound completion
+metadata. A script exception is a settled failure even though upstream renders
+it as ordinary text. A socket timeout, lost response, or observer cancellation
+does not prove that a script stopped and remains uncertain. Background execution
+disables Google request and credential-refresh retries; Jarvis never replays an
+uncertain script invocation. This requires rebuilding/recreating the optional
+Google Workspace service to load the updated entrypoint. An older service
+without completion metadata cannot prove a background execution settled.
 
 Attachment storage stays local; GCS storage, Valkey and OpenTelemetry
 identity attribution are optional and are not enabled by this Compose setup.
@@ -721,7 +864,7 @@ must return 403, and authorized discovery must succeed.
 The downloaded `client_secret*.json` filenames are ignored by Git and excluded
 from application build archives. The entire standalone `google-workspace/`
 folder is excluded from the Jarvis application image; its own image uses the
-allowlist containing only Dockerfile, entrypoint.py and the public
+allowlist containing only the Dockerfile, entrypoint, public shared HTTP observer and
 security-requirements.txt overlay.
 
 ### Email inbox attachments

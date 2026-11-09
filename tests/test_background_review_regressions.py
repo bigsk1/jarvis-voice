@@ -7,10 +7,14 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
-from test_background_local_skill import NAME, probe as probe
+from test_background_local_skill import NAME
+from test_background_local_skill import probe as probe
 from test_background_tasks import admission, ready, receipt
-from test_background_tasks import config_root as config_root, store as store
-from test_web_background_tasks import eventually, journey as journey, web_tasks as web_tasks
+from test_background_tasks import config_root as config_root
+from test_background_tasks import store as store
+from test_web_background_tasks import eventually
+from test_web_background_tasks import journey as journey
+from test_web_background_tasks import web_tasks as web_tasks
 
 from lib.background_tasks import AdmissionDenied, LostLease, TaskError, TaskStore
 from lib.background_tasks import store as store_module
@@ -168,7 +172,7 @@ def test_large_unrelated_web_turn_never_authorizes_any_background_tool(web_tasks
 
     h = web_tasks
     monkeypatch.setattr(production, 'authorize_tools',
-                        lambda names: pytest.fail('Unrelated chat must not validate background manifests'))
+                        lambda names, **_: pytest.fail('Unrelated chat must not validate background manifests'))
     (h.root / 'foreground_finish').touch()
     h.client.emit('chat:send', {'message': 'What time is it?\n' + 'large paste ' * 10000, 'mode': 'cloud'})
     events = []

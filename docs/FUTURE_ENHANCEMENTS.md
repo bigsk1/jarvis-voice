@@ -458,7 +458,12 @@ Remaining ideas:
 **Current status:** Reviewed native tools already use the Web background-task
 framework: durable admission, a supervised worker, task cards, and a follow-up
 answer in the originating conversation. See [Background tasks](BACKGROUND-TASKS.md).
-MCP tools do not currently have a background adapter binding.
+The reviewed HTTP Google Workspace `run_script_function` binding now uses that
+framework through `mcp_tool_v1`, with background admission still opt-in.
+Successful long Apps Script execution through Web has been verified, including
+concurrent chat, reconnect, one final reply and independent artifact readback.
+Other MCP tools still need their own reviewed bindings before they can run in
+the background.
 
 #### Quiet Notifications: Foundation Complete, Optional Rules Deferred
 
@@ -556,36 +561,36 @@ channels, mode switching, and native/Docker execution. Add new channel adapters
 and optional semantic scoring as separate increments after the deterministic
 rules prove useful.
 
-#### Planned: Opt-In Background Execution for MCP Tools
+#### Implemented Foundation: Opt-In Background Execution for MCP Tools
 
 **Why:** A long MCP call should be able to release the foreground Web chat and
 finish through the existing task machinery. Start with selected tools, then
 reuse the adapter across other MCP servers where their completion behavior fits.
 
-Proposed approach:
+The reviewed `mcp_tool_v1` adapter now supports the first explicit binding,
+`mcp_google_workspace_run_script_function`. It uses the existing opt-in Web
+settings, durable jobs, task cards and follow-up delivery. See
+[reviewed MCP tools](BACKGROUND-TASKS.md#reviewed-mcp-tools) for setup and limits.
 
-- Add a reviewed MCP worker adapter and explicit per-tool registrations alongside
-  the trusted bindings in `lib/background_tasks/production.py`. Expose registered
-  tools in the existing background settings; preserve profile, server allowlist,
-  mode, account, and credential boundaries. Keep this optional for fresh clones.
-- Let the worker own an isolated MCP client and wait for the ordinary tool response
-  under the configured concurrency limits. Save the bounded result, update the
-  original task card, and deliver the existing follow-up answer. Reuse artifact
-  and Stash handling where supported, with Stash remaining optional.
-- Carry a finite job deadline through the MCP client, HTTP transport, and service
-  execution timeout. Queue time counts toward the deadline. Scope longer budgets
-  to the selected call; avoid changing global foreground timeouts or process-wide
-  environment variables while other calls are running.
-- Preserve uncertain remote outcomes after timeout, cancellation, or restart.
-  Stopping the observer does not prove a remote operation stopped; require
-  reconciliation rather than automatically replaying a possible write.
-- Use [task callbacks](TASK-CALLBACKS.md) only when a service implements authenticated
-  submit/receipt and completion events. An ordinary MCP response needs no incoming
-  callback endpoint. Show progress only when the service actually provides it.
+Implemented behavior:
 
-**First experiment: Google Apps Script.** Register
-`mcp_google_workspace_run_script_function` for the optional
-[Google Workspace service](../google-workspace/README.md). Use an owned test
+- Explicit registrations preserve the effective profile, server allowlist, mode,
+  account and credential policy. Background admission remains optional and off
+  by default; missing Google configuration does not affect ordinary chat.
+- Each worker call owns an isolated HTTP MCP client, a bounded result and the
+  originating conversation's delivery fences. Existing artifact references are
+  preserved; Stash is optional.
+- The finite deadline includes queue time and follows the selected call through
+  the client, HTTP transport and service without changing foreground budgets or
+  process-wide settings.
+- Job-bound service evidence distinguishes completed work and rejected requests
+  from unknown outcomes. Timeout, observer shutdown and restart never authorize
+  automatic resubmission of a possible write. Only queued jobs can be cancelled.
+- Ordinary MCP responses require no incoming callback endpoint. The task card
+  reports waiting for the response; it does not invent remote progress.
+
+**First binding: Google Apps Script.** The optional
+[Google Workspace service](../google-workspace/README.md) supports an owned
 script deployed as an API executable, sharing the OAuth client's standard Cloud
 project and authorized scopes. A multi-step Drive/Sheets/Docs function can exercise
 a call longer than the current foreground budget. Google's
@@ -593,11 +598,20 @@ a call longer than the current foreground budget. Google's
 waits for the result and allows up to six minutes of script execution; background
 execution cannot extend that provider limit.
 
+**Further registrations:** Review each tool's transport, completion evidence,
+deadline, authentication and replay behavior before adding it. A server's own
+capability metadata cannot grant background authority. Use
+[task callbacks](TASK-CALLBACKS.md) for services with an authenticated
+submit/receipt and completion-event contract.
+
 **Acceptance checks:** Confirm the chat remains usable, the result or script error
 reaches the correct card and conversation once, and reconnect, concurrent jobs,
 deadline expiry, cancellation, and worker/container restarts do not duplicate
 remote work. Prove isolated mode credentials and optional Stash behavior before
 registering additional MCP tools. Keep the dedicated account's autonomous use.
+Deterministic Web/HTTP tests cover these lifecycle cases. A successful long
+Google automation remains a separate live acceptance check requiring the
+account's completed API-executable and Cloud-project setup.
 
 ### F) Generic Tool-Result References and Automatic Payload Hydration
 **Priority:** Medium context efficiency / safer multi-tool handoffs
@@ -1213,7 +1227,8 @@ These are broad priority buckets, not a dated delivery schedule.
 **Medium Priority (Candidates):**
 - Shared resumable session/task identity beyond existing short-lived auto-context
 - Behavior bundles beyond existing tool-availability profiles (not multi-user)
-- Opt-in MCP background execution and explicit notification rules (foundations shipped)
+- Additional reviewed MCP background bindings and explicit notification rules
+  (first Google binding implemented and verified live)
 - Observability extensions: shared correlation, unified budgets and decision summaries
 - Generic tool-result references and automatic payload hydration, after a
   measured opaque-token pilot

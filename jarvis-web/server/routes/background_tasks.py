@@ -17,6 +17,7 @@ from filelock import FileLock, Timeout
 from flask import Blueprint, current_app, jsonify, request
 
 from lib.background_tasks import TaskError
+from lib.mcp_background_contract import ADAPTER as MCP_ADAPTER
 
 from ..services.conversation_store import ConversationBusyError
 
@@ -231,9 +232,11 @@ def status():
     workers = tasks.store.healthy_workers()
     healthy_adapters = {name for worker in workers for name in worker["adapters"]}
     from lib.background_tasks.local_contract import REMOTE_ADAPTER
-    tool_details = {name: {"remote_work": adapter == REMOTE_ADAPTER,
+    tool_details = {name: {"remote_work": adapter in {REMOTE_ADAPTER, MCP_ADAPTER, 'apify_actor_v1'},
                           "worker_ready": adapter in healthy_adapters}
                     for name, adapter in tasks.adapters.items()}
+    if 'mcp_google_workspace_run_script_function' in tool_details:
+        tool_details['mcp_google_workspace_run_script_function']['label'] = 'Google Apps Script'
     if 'browser_use' in tool_details:
         tool_details['browser_use']['browser_use'] = browser_details(tasks)
     from lib.webhook_integrations.private_bindings import bindings as private_bindings

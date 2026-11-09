@@ -80,6 +80,39 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertIn('result_truncated=True', context)
         self.assertIn('result_chars_total=', context)
 
+    def test_apps_script_source_reaches_the_next_model_turn(self):
+        from google_workspace import normalize_workspace_result
+
+        self.orch.timezone = ZoneInfo('UTC')
+        tool = 'mcp_google_workspace_get_script_project'
+        tail = '\nfunction readinessCheck(marker) { return {marker, ready: true}; }'
+        source = '// ' + 'x' * 4400 + tail
+        result = normalize_workspace_result('get_script_project', {
+            'content': [{'type': 'text', 'text': source}],
+            'structuredContent': {'result': source},
+        }, {'action': 'get', 'script_id': 'fixture-project', 'file_name': 'Code'})
+
+        preview, _, shown, truncated = self.orch._build_llm_result_context_preview(tool, result)
+        self.assertEqual(json.loads(preview)['data']['response_excerpt'], source)
+        self.assertFalse(truncated)
+        self.assertLessEqual(shown, 6000)
+        context = self.orch._build_turn_context('Run its readiness check', [{
+            'tool': tool, 'arguments': result['data']['request'], 'result': result,
+        }])
+        self.assertIn('function readinessCheck(marker)', context)
+
+        # A large source remains bounded and visibly incomplete; ordinary
+        # Google tools keep their existing preview budget.
+        result['data']['response_text'] = source * 5
+        result['data'].pop('structured_result', None)
+        preview, _, shown, truncated = self.orch._build_llm_result_context_preview(tool, result)
+        projected = json.loads(preview)['data']
+        self.assertTrue(truncated)
+        self.assertTrue(projected['response_excerpt'])
+        self.assertTrue(result['data']['response_text'].startswith(projected['response_excerpt']))
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(self.orch._tool_context_max_chars('mcp_google_workspace_get_doc_content'), 2500)
+
     def test_url_field_allows_long_querystrings(self):
         """Regression: generic strings used to cap at 240 chars, truncating URLs."""
         long = "https://example.com/path?" + "q=" + "a" * 400

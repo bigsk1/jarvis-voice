@@ -79,6 +79,31 @@ Jarvis now supports three MCP transport types:
   permits a longer tool-response read. Initialization and discovery keep their
   existing limits. The executor allows the configured budget plus five seconds
   for cleanup; servers without this setting retain their existing timeouts.
+- `tool_call_timeout_overrides` (optional): A map from exact upstream tool names
+  to positive, finite timeout values. An entry overrides the server's default
+  for that tool's response read and executor wait. Other tools keep the server
+  default. For example, Google Workspace uses `tool_call_timeout_seconds: 90`
+  with `tool_call_timeout_overrides: {"run_script_function": 390}`. These are
+  operator settings, not model-callable arguments. Invalid maps fail server
+  discovery. Legacy SSE streams allow the longest configured tool read, while
+  each call retains its own budget.
+
+Reviewed background bindings can supply a per-call timeout, absolute deadline,
+and cancellation event to their isolated client. The override applies only to
+that tool call and its response read, while queue time and connection setup
+remain inside the job deadline. It changes no global environment variables,
+shared client settings, or ordinary foreground budgets. A lost response can
+leave remote work running; observer cancellation does not authorize replay.
+Explicit per-call budgets and earlier caller deadlines take precedence over
+configured tool overrides. Foreground Apps Script works through CLI, Web and
+other ordinary tool callers; opting it into Web background execution does not
+disable foreground CLI use. Explicit scheduled-task or workflow deadlines can
+still be shorter than the tool's budget.
+
+Managed discovery and opted-in calls own their TCP/TLS sockets, so cancellation
+or deadline expiry interrupts header and body reads. The operating system's DNS
+lookup can outlive the local wait; an expired result is rejected before HTTP
+submission. This does not prove that previously submitted remote work stopped.
 
 ## Streamable HTTP Protocol
 

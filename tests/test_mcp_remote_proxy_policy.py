@@ -6,9 +6,10 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import http_client
+import mcp_client
 import pytest
 import requests
-from mcp_client import MCPManager, MCPRemoteClient
+from mcp_client import MCPManager, MCPRemoteClient, probe_remote_tools
 
 
 def configure(monkeypatch, values):
@@ -48,6 +49,116 @@ def test_remote_prefer_uses_secondary_proxy_for_every_http_message(monkeypatch):
         "policy": "prefer", "used": True, "basis": "http_request", "slot": "LOCAL_PROXY2",
     }
     assert http_client.get_proxy_policy() == "off"
+
+
+@pytest.mark.parametrize('policy', ['prefer', 'require'])
+@pytest.mark.parametrize('failure', ['exception', 407, 502, 503, 504])
+def test_managed_discovery_preserves_fallback_after_a_reachable_proxy_fails(
+    monkeypatch, policy, failure,
+):
+    configure(monkeypatch, {
+        'LOCAL_PROXY': 'http://primary.test:8001',
+        'LOCAL_PROXY2': 'http://secondary.test:8002',
+    })
+    attempts = []
+
+    def request(method, url, **kwargs):
+        proxy = kwargs['proxies']['https']
+        attempts.append((kwargs['json']['method'], proxy, kwargs['timeout']))
+        if proxy == 'http://primary.test:8001':
+            if failure == 'exception':
+                raise requests.exceptions.ProxyError('TCP listener accepts but tunnel fails')
+            response = Mock(status_code=failure, reason='Proxy failure')
+            response.raise_for_status.side_effect = requests.exceptions.HTTPError('Proxy failure')
+            return response
+        response = Mock(status_code=200, headers={'Content-Type': 'application/json'})
+        response.iter_lines.return_value = []
+        response.json.return_value = {'result': {'tools': [{'name': 'lookup'}]}}
+        return response
+
+    monkeypatch.setattr('mcp_client.select_reachable_proxy_url',
+                        lambda *args, **kwargs: ('http://primary.test:8001', 'LOCAL_PROXY'))
+    client = MCPRemoteClient('fixture', 'https://mcp.fixture.invalid/mcp', 'http',
+                             proxy_policy=policy, http_requester=request)
+    try:
+        assert probe_remote_tools(client, timeout_seconds=3) == [{'name': 'lookup'}]
+        assert [(name, proxy) for name, proxy, _ in attempts] == [
+            (name, proxy)
+            for name in ('initialize', 'notifications/initialized', 'tools/list')
+            for proxy in ('http://primary.test:8001', 'http://secondary.test:8002')
+        ]
+        assert all(0 < connect <= 3 and 0 < read <= 3 for _, _, (connect, read) in attempts)
+        assert client._call_budgets == {}
+    finally:
+        client.stop()
+
+
+@pytest.mark.parametrize('policy', ['prefer', 'require'])
+def test_managed_discovery_only_uses_direct_fallback_when_policy_allows(monkeypatch, policy):
+    configure(monkeypatch, {'LOCAL_PROXY': 'http://primary.test:8001'})
+    attempts = []
+
+    def request(method, url, **kwargs):
+        proxy = kwargs['proxies']['https']
+        attempts.append((kwargs['json']['method'], proxy))
+        if proxy:
+            raise requests.exceptions.ProxyError('Proxy refuses the tunnel')
+        response = Mock(status_code=200, headers={'Content-Type': 'application/json'})
+        response.iter_lines.return_value = []
+        response.json.return_value = {'result': {'tools': [{'name': 'lookup'}]}}
+        return response
+
+    monkeypatch.setattr('mcp_client.select_reachable_proxy_url',
+                        lambda *args, **kwargs: ('http://primary.test:8001', 'LOCAL_PROXY'))
+    client = MCPRemoteClient('fixture', 'https://mcp.fixture.invalid/mcp', 'http',
+                             proxy_policy=policy, http_requester=request)
+    try:
+        assert probe_remote_tools(client, timeout_seconds=3) == (
+            [{'name': 'lookup'}] if policy == 'prefer' else []
+        )
+        if policy == 'prefer':
+            assert attempts == [
+                (name, proxy)
+                for name in ('initialize', 'notifications/initialized', 'tools/list')
+                for proxy in ('http://primary.test:8001', None)
+            ]
+        else:
+            assert attempts == [('initialize', 'http://primary.test:8001')]
+    finally:
+        client.stop()
+
+
+@pytest.mark.parametrize('stop', ['cancel', 'deadline'])
+def test_managed_discovery_fallback_shares_the_original_observation_budget(monkeypatch, stop):
+    configure(monkeypatch, {
+        'LOCAL_PROXY': 'http://primary.test:8001',
+        'LOCAL_PROXY2': 'http://secondary.test:8002',
+    })
+    elapsed = [100.0]
+    monkeypatch.setattr(mcp_client.time, 'monotonic', lambda: elapsed[0])
+    budget = mcp_client._RemoteCallBudget(deadline=103, managed_http=True)
+    attempts = []
+
+    def request(method, url, **kwargs):
+        attempts.append(kwargs['proxies']['https'])
+        assert kwargs['timeout'] == (3, 3)
+        if stop == 'cancel':
+            budget.cancelled.set()
+        else:
+            elapsed[0] = 103
+        raise requests.exceptions.ProxyError('First route failed after owner stopped')
+
+    client = MCPRemoteClient('fixture', 'https://mcp.fixture.invalid/mcp', 'http',
+                             proxy_policy='prefer', http_requester=request)
+    token = mcp_client._remote_call_budget.set(budget)
+    try:
+        with pytest.raises(requests.exceptions.Timeout, match='cancelled|deadline'):
+            client._http_request('POST', client.url, json={'method': 'tools/list'}, timeout=30)
+        assert attempts == ['http://primary.test:8001']
+    finally:
+        budget.close()
+        mcp_client._remote_call_budget.reset(token)
+        client.stop()
 
 
 def test_remote_prefer_can_fall_back_direct_and_logs_that_route(monkeypatch):

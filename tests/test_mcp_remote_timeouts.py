@@ -37,9 +37,12 @@ def clock(monkeypatch):
     return elapsed
 
 
-def remote(timeout=None, transport='http'):
+def remote(timeout=None, transport='http', *, overrides=None):
     client = MCPRemoteClient('fixture', 'https://mcp.example.test/mcp', transport,
-                             tool_call_timeout_seconds=timeout)
+                             tool_call_timeout_seconds=timeout,
+                             tool_call_timeout_overrides=overrides,
+                             http_requester=lambda method, url, **kwargs:
+                                 getattr(requests, method.lower())(url, **kwargs))
     client._initialized = True
     client._session_id = 'fixture-session'
     client._sse_endpoint = 'https://mcp.example.test/messages'
@@ -195,17 +198,154 @@ def test_positive_finite_budgets_are_preserved(value):
     assert remote(value).tool_call_timeout_seconds == value
 
 
+@pytest.mark.parametrize('sse', [False, True])
+def test_script_timeout_override_covers_a_long_result_and_preserves_other_google_calls(clock, monkeypatch, sse):
+    client = remote(90, overrides={'run_script_function': 390})
+    observed = []
+
+    def post(url, **kwargs):
+        budget = mcp_client._remote_call_budget.get()
+        name = kwargs['json']['params']['name']
+        observed.append((name, kwargs['timeout'], budget.deadline, budget.managed_http))
+        if name == 'run_script_function':
+            clock[0] += 135
+        return reply({'id': 1, 'result': {'content': [{'type': 'text', 'text': 'done'}]}}, sse=sse)
+
+    monkeypatch.setattr(mcp_client.requests, 'post', post)
+    assert client.call_tool('run_script_function', {})['ok']
+    assert client.call_tool('get_doc_content', {})['ok']
+    assert observed == [('run_script_function', (30, 390), 390, True),
+                        ('get_doc_content', (30, 90), 225, False)]
+    assert ImmediateThread.joins == [390, 90]
+    assert client.tool_call_timeout_seconds == 90
+    assert client.tool_call_timeout_overrides == {'run_script_function': 390}
+
+
+def test_explicit_call_budget_and_deadline_win_over_configured_script_override(clock, monkeypatch):
+    client = remote(90, overrides={'run_script_function': 390})
+    observed = []
+
+    def post(url, **kwargs):
+        observed.append((kwargs['timeout'], mcp_client._remote_call_budget.get().deadline))
+        return reply({'id': 1, 'result': {'content': []}})
+
+    monkeypatch.setattr(mcp_client.requests, 'post', post)
+    assert client.call_tool('run_script_function', {}, timeout_seconds=45, deadline=20)['ok']
+    assert observed == [((20, 20), 20)]
+    assert client.get_tool_call_timeout_seconds('run_script_function') == 390
+
+
+@pytest.mark.parametrize('status', [307, 308])
+def test_foreground_script_override_does_not_replay_a_redirect(clock, monkeypatch, status):
+    client = remote(90, overrides={'run_script_function': 390})
+    response = reply({}, status=status)
+    response.headers['Location'] = 'https://another.test/mcp'
+    post = Mock(return_value=response)
+    monkeypatch.setattr(mcp_client.requests, 'post', post)
+    result = client.call_tool('run_script_function', {})
+    assert not result['ok']
+    assert 'completion' not in result
+    post.assert_called_once()
+    assert post.call_args.kwargs['allow_redirects'] is False
+
+
+def test_script_override_keeps_initialization_and_discovery_limits(clock, monkeypatch):
+    client = remote(90, overrides={'run_script_function': 390})
+    client._initialized = False
+    observed = []
+
+    def post(url, **kwargs):
+        observed.append((kwargs['json']['method'], kwargs['timeout']))
+        return reply({'result': {'tools': []}})
+
+    monkeypatch.setattr(mcp_client.requests, 'post', post)
+    client.start()
+    client.list_tools()
+    assert observed == [('initialize', 30), ('notifications/initialized', 10), ('tools/list', 30)]
+
+
+def test_legacy_sse_stream_can_carry_the_long_script_without_extending_other_call_waits(clock, monkeypatch):
+    client = remote(90, 'sse', overrides={'run_script_function': 390})
+    stream = Mock(return_value=reply(None))
+    with monkeypatch.context() as listener_patch:
+        listener_patch.setattr(client, '_http_request', stream)
+        client._sse_listener()
+    assert stream.call_args.kwargs['timeout'] == (30, 390)
+    observed = []
+
+    class DelayedQueue:
+        def empty(self):
+            return True
+
+        def get(self, timeout):
+            observed.append(timeout)
+            clock[0] += 135 if len(observed) == 1 else 1
+            return {'id': len(observed), 'result': {'content': []}}
+
+    client._sse_response_queue = DelayedQueue()
+    post = Mock(return_value=reply(None, status=202))
+    monkeypatch.setattr(mcp_client.requests, 'post', post)
+    assert client.call_tool('run_script_function', {})['ok']
+    assert client.call_tool('get_doc_content', {})['ok']
+    assert observed == [390, 90]
+
+
+@pytest.mark.parametrize('value', [True, [], '390', {'': 390}, {' script': 390}, {1: 390},
+                                   {'run': None}, {'run': True}, {'run': 0}, {'run': -1},
+                                   {'run': '390'}, {'run': float('nan')},
+                                   {'run': float('inf')}, {'run': TIMEOUT_MAX}, {'run': 10**1000}])
+def test_invalid_tool_timeout_overrides_are_rejected_before_dispatch(value):
+    with pytest.raises(ValueError, match='tool_call_timeout_overrides'):
+        remote(90, overrides=value)
+
+
+def test_google_config_extends_only_exact_script_execution():
+    from pathlib import Path
+
+    config = json.loads((Path(__file__).resolve().parents[1] / 'config/mcp-servers.json').read_text())
+    google = config['mcpServers']['google_workspace']
+    client = remote(google['tool_call_timeout_seconds'], overrides=google['tool_call_timeout_overrides'])
+    assert client.get_tool_call_timeout_seconds('run_script_function') == 390
+    for tool in ('get_doc_content', 'manage_deployment', 'send_gmail_message', 'run_script_function_extra'):
+        assert client.get_tool_call_timeout_seconds(tool) == 90
+
+
 def test_manager_forwards_override_and_keeps_unconfigured_siblings_independent(tmp_path):
     path = tmp_path / 'mcp.json'
     path.write_text(json.dumps({'mcpServers': {
-        'configured': {'type': 'http', 'url': 'https://one.test/mcp', 'tool_call_timeout_seconds': 90},
+        'configured': {'type': 'http', 'url': 'https://one.test/mcp', 'tool_call_timeout_seconds': 90,
+                       'tool_call_timeout_overrides': {'run_script_function': 390}},
         'default': {'type': 'http', 'url': 'https://two.test/mcp'},
         'invalid': {'type': 'sse', 'url': 'https://three.test/sse', 'tool_call_timeout_seconds': -3},
+        'invalid_override': {'type': 'http', 'url': 'https://four.test/mcp',
+                             'tool_call_timeout_overrides': {'run_script_function': False}},
     }}))
     manager = MCPManager(str(path))
     assert manager.servers['configured'].tool_call_timeout_seconds == 90
+    assert manager.servers['configured'].get_tool_call_timeout_seconds('run_script_function') == 390
+    assert manager.servers['configured'].get_tool_call_timeout_seconds('other_tool') == 90
     assert manager.servers['default'].tool_call_timeout_seconds is None
     assert 'invalid' not in manager.servers
+    assert 'invalid_override' not in manager.servers
+
+
+@pytest.mark.parametrize('tool,expected', [('run_script_function', 395), ('get_doc_content', 95)])
+def test_executor_uses_the_same_tool_override_as_the_remote_call(monkeypatch, tool, expected):
+    from orchestrator.executor import ToolExecutor
+
+    client = remote(90, overrides={'run_script_function': 390})
+    executor = ToolExecutor.__new__(ToolExecutor)
+    executor.mode = 'cloud'
+    executor.registry = SimpleNamespace(mcp_clients={'remote': client},
+                                       get_mcp_info=lambda name: ('remote', tool))
+    executor.logger = Mock()
+    future = Mock()
+    future.result.return_value = {'ok': True}
+    pool = Mock()
+    pool.submit.return_value = future
+    monkeypatch.setattr('orchestrator.executor.ThreadPoolExecutor', Mock(return_value=pool))
+    assert executor._execute_mcp_tool('mcp_remote_' + tool, {})['ok']
+    future.result.assert_called_once_with(timeout=expected)
 
 
 @pytest.mark.parametrize('configured,environment,expected', [(90, None, 95), (90, '2', 95), (None, None, 45), (None, '17', 17)])
