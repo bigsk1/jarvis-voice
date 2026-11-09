@@ -504,7 +504,8 @@ def test_incident_records_validated_policy_id_and_attachment_source(tmp_path, mo
         args={}, result={"ok": True}, source_type="attachment",
     )
     assert receipt.evidence_saved
-    record = json.loads((tmp_path / "logs/prompt-guard/incidents/cloud" / f"{receipt.incident_id}.json").read_text())
+    path, = (tmp_path / "logs/prompt-guard/incidents/cloud").glob(f"*-{receipt.incident_id}.json")
+    record = json.loads(path.read_text())
     assert record["source_type"] == "attachment"
     assert record["scan"]["policy_id"] == "ai_status_crawl"
     assert record["evidence"]["representation"] == "scanned_untrusted_text"

@@ -237,6 +237,9 @@ def _write_record(base: Path, directory: Path, incident_id: str, record: dict) -
         )
     finally:
         os.close(base_fd)
+    # Reuse the record's UTC day so publication across midnight cannot give the
+    # filename and its evidence timestamp different dates. Receipt IDs stay stable.
+    filename = f"{record['created_at'][:10]}-{incident_id}.json"
     temporary_name = f".{incident_id}.{uuid.uuid4()}.tmp"
     try:
         if os.fstat(directory_fd).st_uid != os.getuid():
@@ -256,7 +259,7 @@ def _write_record(base: Path, directory: Path, incident_id: str, record: dict) -
             # link publishes complete bytes atomically and fails if an existing
             # incident (including a symlink) occupies the UUID destination.
             os.link(
-                temporary_name, f"{incident_id}.json", src_dir_fd=directory_fd,
+                temporary_name, filename, src_dir_fd=directory_fd,
                 dst_dir_fd=directory_fd, follow_symlinks=False,
             )
         finally:

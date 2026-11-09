@@ -564,7 +564,7 @@ def test_full_boundary_saves_only_private_diagnostics_and_keeps_detection(
     assert original["speech"] == TEXT and len(calls) == 1
     exposed = json.dumps(result)
     assert TEXT not in exposed and TOKEN not in exposed and "diagnostics" not in exposed
-    report = json.loads(next((tmp_path / "cloud").glob("pg-*.json")).read_text())
+    report = json.loads(next((tmp_path / "cloud").glob("????-??-??-pg-*.json")).read_text())
     assert report["evidence"]["text"] == text
     assert ("diagnostics" in report["scan"]) is valid_diagnostics
     if valid_diagnostics:

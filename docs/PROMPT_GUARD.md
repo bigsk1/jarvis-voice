@@ -49,6 +49,7 @@ PROMPT_GUARD_ALERT_THRESHOLD=0.95
 PROMPT_GUARD_ALERT_COOLDOWN_SECONDS=3600
 # Optional base directory; Jarvis appends cloud/ or local/.
 # PROMPT_GUARD_INCIDENT_DIR=logs/prompt-guard/incidents
+PROMPT_GUARD_INCIDENT_RETENTION_DAYS=90
 ```
 
 Set `PROMPT_GUARD_ENABLED=true` when ready to send selected result text to the
@@ -151,12 +152,15 @@ this feature does not change their environment policy.
 Incident evidence has dedicated, mode-separated subfolders:
 
 ```text
-logs/prompt-guard/incidents/cloud/pg-<uuid>.json
-logs/prompt-guard/incidents/local/pg-<uuid>.json
+logs/prompt-guard/incidents/cloud/2026-11-09-pg-<uuid>.json
+logs/prompt-guard/incidents/local/2026-11-09-pg-<uuid>.json
 ```
 
 Each incident is a separate JSON file, published atomically without overwriting
-an existing record. Incident directories have owner-only access (0700), and files
+an existing record. The filename starts with the record's UTC creation date for
+chronological sorting; the internal `pg-<uuid>` ID used by receipts and alerts
+is unchanged. Older `pg-<uuid>.json` reports remain valid. Incident directories
+have owner-only access (0700), and files
 have owner-only read/write access (0600). The default log tree is gitignored and
 excluded from Docker image builds. JSON quarantine files are not exposed by the
 Web Log Explorer, enrolled in Stash, or injected into ordinary model context.
@@ -202,10 +206,26 @@ tool and incident; investigate that report explicitly with Codex or another
 trusted operator rather than automatically rerunning the source tool.
 
 If saving evidence fails after a confirmed detection, the content stays withheld
-and the notice says the evidence could not be saved. No incident cleanup job is
-installed; retain or remove reviewed reports deliberately. A custom incident
-base directory remains private configuration and should also stay out of Git
-and public file serving.
+and the notice says the evidence could not be saved. The existing weekly
+`cleanup-all` job expires incident JSON after 90 days by default. Set
+`PROMPT_GUARD_INCIDENT_RETENTION_DAYS` to a positive number of days in each mode's
+ENV file to change this. Cleanup checks each configured mode independently,
+including its `PROMPT_GUARD_INCIDENT_DIR`, even when screening is disabled or the
+scanner is offline. It uses the file's modification time, so both dated and
+legacy incident names expire consistently. It does not read evidence text,
+follow symlinks, or clean benchmark and archive directories.
+
+Preview incident cleanup independently, or supply a one-off retention override:
+
+```bash
+./bin/cleanup-retention prompt-guard --dry-run
+./bin/cleanup-retention prompt-guard --days 60 --dry-run
+```
+
+Remove `--dry-run` to apply it. An invalid retention setting stops incident
+cleanup before any incident is removed. Dry runs do not create directories or
+change permissions. A custom incident base directory remains private
+configuration and should also stay out of Git and public file serving.
 
 ## Initial coverage
 

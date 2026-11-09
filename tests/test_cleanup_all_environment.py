@@ -122,6 +122,7 @@ def test_cleanup_selects_production_python_and_preserves_arguments(tmp_path, dep
         ("cleanup-web-conversations", ["--days", "90"]),
         ("cleanup-retention", ["uploads", "--days", "60"]),
         ("cleanup-retention", ["stash"]),
+        ("cleanup-retention", ["prompt-guard"]),
     ]
     assert [(record["helper"], record["args"]) for record in records] == [
         (helper, [*arguments, *args]) for helper, arguments in expected

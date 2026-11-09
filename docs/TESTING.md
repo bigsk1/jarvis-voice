@@ -114,6 +114,12 @@ their real values and ownership rules. Recognized inherited application settings
 cleared before collection, and environment and request config scopes are
 restored after each test.
 
+The shared fixture also redirects Prompt Guard's default incident storage into
+each test's temporary directory. The real incident writer remains active, so
+mocked detections exercise persistence without adding synthetic reports to the
+operator's `logs/prompt-guard/incidents/`. Tests using an explicit incident
+directory must still choose a temporary path.
+
 This fixture is not a filesystem sandbox. Direct `open()`, shell `source`, and
 child processes can still read the operator's real files. Tests exercising those
 paths must use copied temporary checkout/config fixtures. Every test must still

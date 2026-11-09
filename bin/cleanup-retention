@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply conversation-aware upload and policy-aware stash retention."""
+"""Apply upload, Stash, and private Prompt Guard incident retention."""
 
 import argparse
 import os
@@ -12,6 +12,7 @@ sys.path.insert(0, str(PROJECT_ROOT / 'lib'))
 
 from config_loader import load_config
 from retention_cleanup import (
+    cleanup_prompt_guard_incidents,
     cleanup_web_uploads,
     collect_conversation_asset_references,
 )
@@ -28,18 +29,28 @@ def _human_size(size: int) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument('target', choices=('uploads', 'stash'))
+    parser.add_argument('target', choices=('uploads', 'stash', 'prompt-guard'))
     parser.add_argument('--dry-run', action='store_true')
-    parser.add_argument('--days', type=int, default=60)
+    parser.add_argument('--days', type=int, help='Override retention (uploads: 60; incidents: mode config or 90)')
     args = parser.parse_args()
+    if args.days is not None and args.days < 1:
+        parser.error('--days must be a positive integer')
 
-    load_config(os.environ.get('JARVIS_MODE', 'cloud'))
+    if args.target != 'prompt-guard':
+        load_config(os.environ.get('JARVIS_MODE', 'cloud'))
     conversations_dir = PROJECT_ROOT / 'data' / 'web_conversations'
-    if args.target == 'uploads':
+    if args.target == 'prompt-guard':
+        result = cleanup_prompt_guard_incidents(retention_days=args.days, dry_run=args.dry_run)
+        action = 'Would delete' if args.dry_run else 'Deleted'
+        count = len(result['candidates']) if args.dry_run else result['deleted_files']
+        print(f"{action} {count} expired Prompt Guard incident(s), {_human_size(result['freed_bytes'])}")
+        for mode, details in result['modes'].items():
+            print(f"  {mode}: {details['retention_days']} days")
+    elif args.target == 'uploads':
         result = cleanup_web_uploads(
             PROJECT_ROOT / 'jarvis-web' / 'data' / 'uploads',
             conversations_dir,
-            retention_days=args.days,
+            retention_days=60 if args.days is None else args.days,
             dry_run=args.dry_run,
         )
         action = 'Would delete' if args.dry_run else 'Deleted'

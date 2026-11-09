@@ -45,7 +45,8 @@ def save(**changes):
 
 
 def load(root, receipt, mode="cloud"):
-    path = root / "logs" / "prompt-guard" / "incidents" / mode / f"{receipt.incident_id}.json"
+    directory = root / "logs" / "prompt-guard" / "incidents" / mode
+    path, = directory.glob(f"????-??-??-{receipt.incident_id}.json")
     return path, json.loads(path.read_text())
 
 
@@ -60,6 +61,7 @@ def test_exact_scanned_representation_and_metadata_stay_in_private_evidence(stor
     assert uuid.UUID(receipt.incident_id[3:]).hex == receipt.incident_id[3:]
     assert record["incident_id"] == receipt.incident_id
     assert datetime.fromisoformat(record["created_at"]).utcoffset().total_seconds() == 0
+    assert path.name == f"{record['created_at'][:10]}-{receipt.incident_id}.json"
     assert record["mode"] == "cloud" and record["tool_name"] == "crawl_url"
     assert record["decision"] == "flagged_content_withheld"
     assert record["evidence"] == {
@@ -310,8 +312,8 @@ def test_configured_directory_and_modes_are_separate_private_roots(storage):
     config["PROMPT_GUARD_INCIDENT_DIR"] = str(root / "custom-evidence")
     cloud, local = save(), save(mode="local")
     assert cloud.evidence_saved and local.evidence_saved
-    assert (root / "custom-evidence" / "cloud" / f"{cloud.incident_id}.json").is_file()
-    assert (root / "custom-evidence" / "local" / f"{local.incident_id}.json").is_file()
+    assert len(list((root / "custom-evidence" / "cloud").glob(f"*-{cloud.incident_id}.json"))) == 1
+    assert len(list((root / "custom-evidence" / "local").glob(f"*-{local.incident_id}.json"))) == 1
     assert not (root / "logs").exists()
 
 
@@ -319,7 +321,7 @@ def test_relative_directory_is_based_on_project_root_and_traversal_is_rejected(s
     root, config = storage
     config["PROMPT_GUARD_INCIDENT_DIR"] = "private-evidence"
     receipt = save()
-    assert (root / "private-evidence" / "cloud" / f"{receipt.incident_id}.json").is_file()
+    assert len(list((root / "private-evidence" / "cloud").glob(f"*-{receipt.incident_id}.json"))) == 1
     config["PROMPT_GUARD_INCIDENT_DIR"] = "../outside"
     receipt = save()
     assert not receipt.evidence_saved and receipt.failure_code == "invalid_evidence"

@@ -17,6 +17,7 @@ config/contacts.json
 data/email-inbox/
 config/ntfy.json
 config/ntfy.json.lock
+config/prompt_guard_policy.json
 # Interrupted atomic notification-settings writes contain private credentials.
 config/.ntfy-*
 config/webhook_registry.json

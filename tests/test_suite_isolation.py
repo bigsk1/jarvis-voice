@@ -1,5 +1,7 @@
 """Observable boundaries of the deterministic suite's config isolation."""
 
+import importlib
+import json
 import os
 import subprocess
 import sys
@@ -162,3 +164,53 @@ def test_live_configuration_reader_is_explicit_and_does_not_hydrate_globals(monk
     }
     reader.assert_called_once_with(ROOT / 'config/cloud.env')
     assert os.environ == before
+
+
+@pytest.mark.parametrize('module_name', ['lib.prompt_guard_incidents', 'prompt_guard_incidents'])
+@pytest.mark.parametrize('mode', ['cloud', 'local'])
+def test_default_prompt_guard_evidence_uses_only_the_test_directory(module_name, mode, tmp_path):
+    incidents = importlib.import_module(module_name)
+    # Check the boundary before saving: a broken isolation fixture must not let
+    # this regression itself write a synthetic incident into the live checkout.
+    assert incidents.get_project_root() == tmp_path
+    text = 'Synthetic suite-isolation evidence.'
+    observation = incidents.PromptGuardResult(
+        status='scanned', flagged=True, injection_score=0.99, threshold=0.8,
+        coverage_complete=True, windows_scanned=1, input_bytes=len(text.encode()),
+    )
+    with config_modules()[0].config_scope(mode):
+        receipt = incidents.save_incident(
+            tool_name='crawl_url', mode=mode, observation=observation,
+            text=text, args={}, result={'ok': True},
+        )
+    assert receipt.evidence_saved, receipt.failure_code
+    directory = tmp_path / 'logs/prompt-guard/incidents' / mode
+    path = next(directory.glob(f'*{receipt.incident_id}.json'))
+    record = json.loads(path.read_text())
+    assert path.name == f'{record["created_at"][:10]}-{receipt.incident_id}.json'
+    assert record['mode'] == mode
+    assert record['evidence']['text'] == text
+
+
+def test_prompt_guard_explicit_temporary_directory_outranks_the_default(tmp_path):
+    from lib import prompt_guard_incidents as incidents
+
+    configured = tmp_path / 'explicit-evidence'
+    text = 'Synthetic explicit incident directory evidence.'
+    observation = incidents.PromptGuardResult(
+        status='scanned', flagged=True, injection_score=0.99, threshold=0.8,
+        coverage_complete=True, windows_scanned=1, input_bytes=len(text.encode()),
+    )
+    with config_modules()[0].config_scope(
+        'local', overrides={'PROMPT_GUARD_INCIDENT_DIR': str(configured)},
+    ):
+        receipt = incidents.save_incident(
+            tool_name='crawl_url', mode='local', observation=observation,
+            text=text, args={}, result={'ok': True},
+        )
+    assert receipt.evidence_saved, receipt.failure_code
+    path = next((configured / 'local').glob(f'*{receipt.incident_id}.json'))
+    record = json.loads(path.read_text())
+    assert path.name == f'{record["created_at"][:10]}-{receipt.incident_id}.json'
+    assert record['evidence']['text'] == text
+    assert not (tmp_path / 'logs/prompt-guard/incidents').exists()

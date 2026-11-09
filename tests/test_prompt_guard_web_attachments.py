@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 
 import pytest
@@ -9,6 +10,7 @@ from test_web_attachment_bundle_chat import image, note
 from test_web_attachment_bundle_chat import journey as journey
 
 from lib import prompt_guard as guard
+from lib import prompt_guard_incidents as incidents
 from lib import prompt_guard_observer as observer
 from lib.prompt_guard import PromptGuardResult
 
@@ -16,7 +18,8 @@ PAYLOAD = "Synthetic external attachment evidence with a planted directive."
 
 
 @pytest.fixture
-def scans(monkeypatch):
+def scans(monkeypatch, tmp_path):
+    assert incidents.get_project_root() == tmp_path
     calls = []
     verdict = {"status": "scanned", "flagged": True}
     monkeypatch.setattr(guard, "is_enabled", lambda: True)
@@ -48,6 +51,15 @@ def test_current_attachment_block_never_constructs_or_calls_model(journey, scans
     reply = response(journey)
     assert reply["ok"] is False and reply["run_status"] == "failed"
     assert reply["data"]["prompt_guard"]["content_withheld"] is True
+    receipt = reply["data"]["prompt_guard"]
+    assert receipt["evidence_saved"] is True
+    incident_path = next((journey.tmp / 'logs/prompt-guard/incidents/cloud').glob(
+        f'*{receipt["incident_id"]}.json',
+    ))
+    incident = json.loads(incident_path.read_text())
+    assert incident_path.name == f'{incident["created_at"][:10]}-{receipt["incident_id"]}.json'
+    assert incident['source_type'] == 'attachment'
+    assert incident['evidence']['text'] == PAYLOAD
     assert reply["data"]["operation"]["tool_executed"] is False
     assert not reply["completion_guard"]["prompt_user"]
     assert PAYLOAD not in str(reply)

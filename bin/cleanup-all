@@ -10,6 +10,7 @@
 #   - Web conversations: 90 days, pinned conversations preserved
 #   - Web uploads: 60 days when unreferenced; saved-conversation assets are preserved
 #   - Stash spaces: Uses built-in TTL (via Python)
+#   - Prompt Guard incidents: 90 days by default, mode-configurable
 #
 # Not cleaned here:
 #   - Generated music/audio gallery: data/generated_music/
@@ -25,6 +26,7 @@
 #   ./bin/cleanup-audio [--days N] [--generated-days N] [--dry-run]
 #   ./bin/cleanup-generated-images [--days N] [--dry-run]
 #   ./bin/cleanup-web-conversations [--days N] [--dry-run]
+#   ./bin/cleanup-retention prompt-guard [--days N] [--dry-run]
 
 set -e
 
@@ -127,7 +129,7 @@ echo "╔═══════════════════════�
 echo "║             Jarvis Master Cleanup                            ║"
 echo "║                                                              ║"
 echo "║ Logs: 60d | TTS/STT audio: 30d | Images: 120d | Chats: 90d*  ║"
-echo "║ Speech: 60d | Uploads: 60d* | Stash TTL                       ║"
+echo "║ Speech: 60d | Uploads: 60d* | Stash TTL | Guard: 90d default  ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -178,6 +180,12 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "📦 Stash Spaces Cleanup (TTL-based)"
 "$CLEANUP_PYTHON" "$SCRIPT_DIR/cleanup-retention" stash $DRY_RUN
 
+# 7. Cleanup private Prompt Guard incidents (each configured mode's policy)
+CLEANUP_STAGE="Prompt Guard incidents"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+"$CLEANUP_PYTHON" "$SCRIPT_DIR/cleanup-retention" prompt-guard $DRY_RUN
+
 # Disk usage is informational; a failed summary must not invalidate cleanup.
 CLEANUP_STAGE="Disk usage summary"
 echo ""
@@ -212,7 +220,7 @@ from pathlib import Path
 payload = {
     "title": "Jarvis cleanup completed",
     "message": "Cleanup completed successfully. Logs, runtime audio, generated speech, generated images, "
-               "Web conversations, uploads and expired Stash were checked. "
+               "Web conversations, uploads, expired Stash and Prompt Guard incidents were checked. "
                "See logs/cleanup.log or command output for details.",
     "source": "cleanup_all",
     "channels": ["ntfy"],

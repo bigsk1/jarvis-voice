@@ -1,5 +1,7 @@
 """Pytest collection boundaries for the core Jarvis project suite."""
 
+import importlib
+
 import pytest
 from suite_isolation import install_default_isolation, isolated_test_state
 
@@ -14,6 +16,11 @@ collect_ignore = [
 
 
 @pytest.fixture(autouse=True)
-def restore_test_application_state():
-    with isolated_test_state():
+def restore_test_application_state(tmp_path):
+    with isolated_test_state(), pytest.MonkeyPatch.context() as patch:
+        # Keep the real incident writer active, but put its unconfigured fallback
+        # under this test's temporary root. Explicit configured directories and
+        # fixtures that replace the writer root still take precedence normally.
+        for name in ('lib.prompt_guard_incidents', 'prompt_guard_incidents'):
+            patch.setattr(importlib.import_module(name), 'get_project_root', lambda: tmp_path)
         yield

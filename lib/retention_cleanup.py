@@ -1,10 +1,144 @@
 """Retention helpers shared by cleanup jobs and Web attachment recovery."""
 
 import json
+import os
+import re
+import stat
+import time
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+
+_PROMPT_GUARD_INCIDENT_NAME = re.compile(r"(?:\d{4}-\d{2}-\d{2}-)?pg-[0-9a-f]{32}\.json\Z")
+
+
+def _open_existing_incident_directory(path: Path) -> int:
+    """Open an existing absolute path without following any directory symlink."""
+    if not path.is_absolute() or ".." in path.parts:
+        raise ValueError("invalid_directory")
+    descriptor = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in path.parts[1:]:
+            child = os.open(
+                part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor,
+            )
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def cleanup_prompt_guard_incidents(
+    *, retention_days: int | None = None, dry_run: bool = False,
+) -> dict:
+    """Expire private incident files for each configured mode, without reading evidence.
+
+    Validate every mode before deleting anything. Directory handles pin the
+    preflighted locations, and no cleanup step creates paths or changes modes.
+    """
+    try:
+        from config_loader import config_scope, get_config_value, get_project_root
+    except ModuleNotFoundError as exc:
+        if exc.name != "config_loader":
+            raise
+        from lib.config_loader import config_scope, get_config_value, get_project_root
+
+    result = {
+        'deleted_files': 0, 'freed_bytes': 0, 'candidates': [], 'modes': {}, 'errors': [],
+    }
+    root = get_project_root()
+    plans: list[tuple[str, Path, int]] = []
+    for mode in ('cloud', 'local'):
+        if not (root / 'config' / f'{mode}.env').is_file():
+            continue
+        with config_scope(mode):
+            raw_days = (
+                retention_days if retention_days is not None else
+                get_config_value('PROMPT_GUARD_INCIDENT_RETENTION_DAYS', '90')
+            )
+            try:
+                days = int(raw_days) if isinstance(raw_days, str) else raw_days
+                if type(days) is not int or days < 1:
+                    raise ValueError
+            except (ValueError, TypeError):
+                result['errors'].append({'mode': mode, 'error': 'invalid_retention_days'})
+                continue
+            configured = str(get_config_value('PROMPT_GUARD_INCIDENT_DIR', '') or '').strip()
+            base = Path(configured).expanduser() if configured else (
+                root / 'logs' / 'prompt-guard' / 'incidents'
+            )
+            if not base.is_absolute():
+                base = root / base
+            if '..' in base.parts:
+                result['errors'].append({'mode': mode, 'error': 'invalid_directory'})
+                continue
+            plans.append((mode, base, days))
+    if result['errors']:
+        return result
+
+    now = int(time.time())
+    with ExitStack() as handles:
+        opened: list[tuple[str, int, int]] = []
+        for mode, base, days in plans:
+            result['modes'][mode] = {'retention_days': days, 'candidates': 0, 'deleted_files': 0}
+            try:
+                base_fd = _open_existing_incident_directory(base)
+                handles.callback(os.close, base_fd)
+                if os.fstat(base_fd).st_uid != os.getuid():
+                    raise PermissionError
+                directory_fd = os.open(
+                    mode, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=base_fd,
+                )
+                handles.callback(os.close, directory_fd)
+                if os.fstat(directory_fd).st_uid != os.getuid():
+                    raise PermissionError
+            except FileNotFoundError:
+                continue
+            except (OSError, ValueError):
+                result['errors'].append({'mode': mode, 'error': 'unsafe_or_unreadable_directory'})
+                continue
+            opened.append((mode, directory_fd, now - days * 86400))
+        if result['errors']:
+            return result
+
+        for mode, directory_fd, cutoff in opened:
+            try:
+                names = os.listdir(directory_fd)
+            except OSError:
+                result['errors'].append({'mode': mode, 'error': 'directory_listing_failed'})
+                continue
+            for name in names:
+                if not _PROMPT_GUARD_INCIDENT_NAME.fullmatch(name):
+                    continue
+                try:
+                    before = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+                    if not stat.S_ISREG(before.st_mode) or before.st_mtime >= cutoff:
+                        continue
+                    current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+                    if (
+                        current.st_dev, current.st_ino, current.st_mtime_ns, current.st_ctime_ns,
+                        current.st_size, current.st_mode,
+                    ) != (
+                        before.st_dev, before.st_ino, before.st_mtime_ns, before.st_ctime_ns,
+                        before.st_size, before.st_mode,
+                    ):
+                        continue
+                    result['candidates'].append(f'{mode}/{name}')
+                    result['modes'][mode]['candidates'] += 1
+                    if not dry_run:
+                        os.unlink(name, dir_fd=directory_fd)
+                        result['deleted_files'] += 1
+                        result['modes'][mode]['deleted_files'] += 1
+                    result['freed_bytes'] += current.st_size
+                except FileNotFoundError:
+                    continue
+                except OSError:
+                    result['errors'].append({'mode': mode, 'file': name, 'error': 'cleanup_failed'})
+    return result
 
 
 @dataclass(frozen=True)
