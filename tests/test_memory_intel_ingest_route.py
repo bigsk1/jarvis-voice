@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib
 import io
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -83,6 +84,10 @@ class MemoryIntelIngestRouteTests(unittest.TestCase):
 
     def test_ingest_route_surfaces_timeout_as_504(self) -> None:
         fake_result = {"ingested": False, "error": "Ingest timeout (300s per mode)"}
+        logger = importlib.import_module("flask_error_logger")
+        # A broken fixture must fail before this deliberately rejected request
+        # can write another synthetic timeout into the operator's error logs.
+        self.assertNotEqual(logger.LOGS_DIR, PROJECT_ROOT / "logs")
 
         with patch.object(self.intel_route, "auto_ingest", return_value=fake_result):
             with self.app.test_client() as client:
@@ -92,6 +97,11 @@ class MemoryIntelIngestRouteTests(unittest.TestCase):
         payload = response.get_json()
         self.assertFalse(payload["ok"])
         self.assertIn("timeout", payload["error"].lower())
+        log_file, = (logger.LOGS_DIR / "memory-ui").glob("errors-*.jsonl")
+        entry = json.loads(log_file.read_text())
+        self.assertEqual(entry["path"], "/api/intel/ingest")
+        self.assertEqual(entry["status"], 504)
+        self.assertIn(fake_result["error"], entry["response_body"])
 
     def test_create_requires_lowercase_kebab_case(self) -> None:
         with TemporaryDirectory() as tmpdir:

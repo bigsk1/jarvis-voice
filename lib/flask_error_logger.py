@@ -15,15 +15,15 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, request, g
 
+from flask import Flask, g, request
 
 # Project root
 JARVIS_ROOT = Path(__file__).parent.parent
 LOGS_DIR = JARVIS_ROOT / "logs"
 
 
-def setup_error_logging(app: Flask, service_name: str, log_dir: Path = None):
+def setup_error_logging(app: Flask, service_name: str, log_dir: Path | None = None) -> None:
     """
     Add error logging to a Flask app.
     
@@ -34,9 +34,6 @@ def setup_error_logging(app: Flask, service_name: str, log_dir: Path = None):
         service_name: Name for log subfolder (e.g. 'web-ui', 'memory-ui')
         log_dir: Override log directory (default: logs/{service_name})
     """
-    service_log_dir = log_dir or (LOGS_DIR / service_name)
-    service_log_dir.mkdir(parents=True, exist_ok=True)
-    
     # Skip logging for health check and static paths
     skip_paths = {"/api/health", "/api/status", "/metrics"}
     skip_extensions = {".css", ".js", ".ico", ".png", ".jpg", ".svg", ".woff", ".woff2", ".mp4", ".webm"}
@@ -44,6 +41,11 @@ def setup_error_logging(app: Flask, service_name: str, log_dir: Path = None):
     def _write_log(entry: dict):
         """Write a JSONL log entry."""
         try:
+            # Apps can register hooks before test fixtures run. Resolve the
+            # default root for each write so those fixtures can still isolate
+            # requests, while an explicit log directory remains authoritative.
+            service_log_dir = log_dir or (LOGS_DIR / service_name)
+            service_log_dir.mkdir(parents=True, exist_ok=True)
             date_str = datetime.now().strftime("%Y-%m-%d")
             log_file = service_log_dir / f"errors-{date_str}.jsonl"
             with open(log_file, "a") as f:
@@ -83,7 +85,7 @@ def setup_error_logging(app: Flask, service_name: str, log_dir: Path = None):
                 try:
                     body = response.get_data(as_text=True)[:500]
                     entry["response_body"] = body
-                except:
+                except Exception:
                     pass
             
             _write_log(entry)
@@ -100,4 +102,4 @@ def setup_error_logging(app: Flask, service_name: str, log_dir: Path = None):
     # catches those 500 responses and logs them. Tracebacks for unhandled
     # exceptions still appear in the tmux session stderr (Flask's default).
     
-    print(f"📋 [{service_name}] Error logging → {service_log_dir}/errors-*.jsonl")
+    print(f"📋 [{service_name}] Error logging → {log_dir or (LOGS_DIR / service_name)}/errors-*.jsonl")

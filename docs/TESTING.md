@@ -118,7 +118,12 @@ The shared fixture also redirects Prompt Guard's default incident storage into
 each test's temporary directory. The real incident writer remains active, so
 mocked detections exercise persistence without adding synthetic reports to the
 operator's `logs/prompt-guard/incidents/`. Tests using an explicit incident
-directory must still choose a temporary path.
+directory must still choose a temporary path. Shared Flask HTTP error logs are
+also redirected into each test's temporary `logs/` directory, including apps
+whose hooks were registered before that test began. Their real logging remains
+covered; intentional 400/500 responses do not enter the operator's UI error logs.
+An explicit `setup_error_logging(..., log_dir=...)` override must use temporary
+storage in tests.
 
 This fixture is not a filesystem sandbox. Direct `open()`, shell `source`, and
 child processes can still read the operator's real files. Tests exercising those

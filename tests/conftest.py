@@ -23,4 +23,8 @@ def restore_test_application_state(tmp_path):
         # fixtures that replace the writer root still take precedence normally.
         for name in ('lib.prompt_guard_incidents', 'prompt_guard_incidents'):
             patch.setattr(importlib.import_module(name), 'get_project_root', lambda: tmp_path)
+        # Reused Flask apps may have registered logging hooks during collection
+        # or class setup. Their default destination is resolved at write time.
+        for name in ('lib.flask_error_logger', 'flask_error_logger'):
+            patch.setattr(importlib.import_module(name), 'LOGS_DIR', tmp_path / 'logs')
         yield
