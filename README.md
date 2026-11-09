@@ -1,5 +1,61 @@
 ![jarvis-social](https://imagedelivery.net/WfhVb8dSNAAvdXUdMfBuPQ/gallery/2026-06-19/generated/professional_wide_github_repository_soci_20260619__da8ee89d/public)
 
+<p align="center">
+  <strong>Your self-hosted AI assistant for voice, chat, automation, memory, and coding.</strong><br />
+  Local Ollama or cloud models &middot; Web UI, voice, CLI, and TUI
+</p>
+
+<p align="center">
+  <a href="docs/ollama/README.md" title="Ollama — local and cloud chat, embeddings"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://unpkg.com/@lobehub/icons-static-png@2.6.0/dark/ollama.png" />
+    <img src="https://unpkg.com/@lobehub/icons-static-png@2.6.0/light/ollama.png" alt="Ollama" width="32" height="32" />
+  </picture></a>
+  <a href="docs/OPENAI_PROVIDER.md" title="OpenAI — cloud chat and tools"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://unpkg.com/@lobehub/icons-static-png@2.6.0/dark/openai.png" />
+    <img src="https://unpkg.com/@lobehub/icons-static-png@2.6.0/light/openai.png" alt="OpenAI" width="32" height="32" />
+  </picture></a>
+  <a href="config/README.md#cloudenv-cloud-mode" title="Anthropic Claude — cloud chat and tools"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://unpkg.com/@lobehub/icons-static-png@2.6.0/dark/claude-color.png" />
+    <img src="https://unpkg.com/@lobehub/icons-static-png@2.6.0/light/claude-color.png" alt="Anthropic Claude" width="32" height="32" />
+  </picture></a>
+  <a href="docs/XAI_PROVIDER.md" title="xAI Grok — chat, search, speech, and media"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://unpkg.com/@lobehub/icons-static-png@2.6.0/dark/xai.png" />
+    <img src="https://unpkg.com/@lobehub/icons-static-png@2.6.0/light/xai.png" alt="xAI Grok" width="32" height="32" />
+  </picture></a>
+  <a href="docs/api/GENERATED_IMAGES.md" title="Google Gemini — image, video, and music generation"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://unpkg.com/@lobehub/icons-static-png@2.6.0/dark/gemini-color.png" />
+    <img src="https://unpkg.com/@lobehub/icons-static-png@2.6.0/light/gemini-color.png" alt="Google Gemini" width="32" height="32" />
+  </picture></a>
+  <a href="#tts-providers" title="ElevenLabs — speech and music"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://unpkg.com/@lobehub/icons-static-png@2.6.0/dark/elevenlabs.png" />
+    <img src="https://unpkg.com/@lobehub/icons-static-png@2.6.0/light/elevenlabs.png" alt="ElevenLabs" width="32" height="32" />
+  </picture></a>
+  <a href="docs/opencode/OPENCODE.md" title="OpenCode — autonomous coding workspace"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://unpkg.com/@lobehub/icons-static-png@2.6.0/dark/opencode.png" />
+    <img src="https://unpkg.com/@lobehub/icons-static-png@2.6.0/light/opencode.png" alt="OpenCode" width="32" height="32" />
+  </picture></a>
+  <a href="docs/mcp/README.md" title="Model Context Protocol — extensible tools and integrations"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://unpkg.com/@lobehub/icons-static-png@2.6.0/dark/mcp.png" />
+    <img src="https://unpkg.com/@lobehub/icons-static-png@2.6.0/light/mcp.png" alt="Model Context Protocol" width="32" height="32" />
+  </picture></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/bigsk1/jarvis-voice/actions/workflows/python-check.yml"><img src="https://github.com/bigsk1/jarvis-voice/actions/workflows/python-check.yml/badge.svg?branch=main" alt="Python syntax checks on main" /></a>
+  <a href="https://github.com/bigsk1/jarvis-voice/actions/workflows/production-install.yml"><img src="https://github.com/bigsk1/jarvis-voice/actions/workflows/production-install.yml/badge.svg?branch=main" alt="Production installation checks on main" /></a>
+  <a href="docs/INSTALL_GUIDE.md"><img src="https://img.shields.io/badge/python-3.12%2B-3776ab?logo=python&amp;logoColor=white" alt="Python 3.12 or newer" /></a>
+  <a href="LICENSE" title="Source-available license — non-commercial use; see full terms"><img src="https://img.shields.io/badge/license-source--available-8b5cf6" alt="License: source-available" /></a>
+</p>
+
+<p align="center">
+  <a href="docs/INSTALL_GUIDE.md"><strong>Get started</strong></a> &middot;
+  <a href="docs/docker/README.md">Docker</a> &middot;
+  <a href="docs/README.md">Documentation</a> &middot;
+  <a href="data/workflows/README.md">Workflows</a> &middot;
+  <a href="docs/api/API_OVERVIEW.md">API</a> &middot;
+  <a href="https://github.com/bigsk1/jarvis-voice/releases">Releases</a>
+</p>
+
 ## What is Jarvis?
 
 Jarvis is a self-hosted AI assistant for voice, chat, automation, memory, and coding. It can answer questions, call tools, run repeatable workflows, manage local knowledge, create and organize artifacts, control external services, and hand larger software tasks to an autonomous coding workspace.
