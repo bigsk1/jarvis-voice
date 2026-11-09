@@ -178,6 +178,8 @@ def serve_video_thumbnail(filename):
     Serve a thumbnail image for a video (first frame).
     Thumbnails are cached to avoid regenerating on every request.
     """
+    from video_thumbnail import get_video_thumbnail
+
     # Security: prevent path traversal
     if '..' in filename or '/' in filename:
         abort(400, "Invalid filename")
@@ -186,42 +188,22 @@ def serve_video_thumbnail(filename):
     if not video_path.exists():
         abort(404, "Video not found")
     
-    # Create thumbnail cache directory if needed
-    THUMBNAIL_CACHE_DIR.mkdir(exist_ok=True)
-    
     # Thumbnail filename: video name + .jpg
     thumb_name = Path(filename).stem + ".jpg"
     thumb_path = THUMBNAIL_CACHE_DIR / thumb_name
     
-    # Check if thumbnail exists and is newer than video
-    if thumb_path.exists():
-        if thumb_path.stat().st_mtime >= video_path.stat().st_mtime:
-            return send_file(thumb_path, mimetype='image/jpeg')
-    
-    # Generate thumbnail using ffmpeg (extract first frame)
     try:
-        result = subprocess.run(
-            [
-                'ffmpeg', '-y',           # Overwrite output
-                '-i', str(video_path),    # Input video
-                '-vframes', '1',          # Extract 1 frame
-                '-vf', 'scale=480:-1',    # Scale to 480px width, maintain aspect
-                '-q:v', '3',              # JPEG quality (2-5 is good)
-                str(thumb_path)           # Output thumbnail
-            ],
-            capture_output=True,
-            timeout=10
+        get_video_thumbnail(video_path, thumb_path)
+        return send_file(thumb_path, mimetype='image/jpeg')
+    except subprocess.TimeoutExpired as e:
+        stderr = e.stderr or ''
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode(errors='replace')
+        print(
+            f"⚠️  Thumbnail generation timed out for {filename} after {e.timeout}s: "
+            f"{stderr or 'no captured stderr'}"
         )
-        
-        if result.returncode == 0 and thumb_path.exists():
-            return send_file(thumb_path, mimetype='image/jpeg')
-        else:
-            # ffmpeg failed - return a placeholder or 404
-            print(f"⚠️  Failed to generate thumbnail for {filename}: {result.stderr.decode()[:200]}")
-            abort(500, "Failed to generate thumbnail")
-            
-    except subprocess.TimeoutExpired:
         abort(500, "Thumbnail generation timed out")
     except Exception as e:
         print(f"⚠️  Thumbnail error for {filename}: {e}")
-        abort(500, str(e))
+        abort(500, "Failed to generate video thumbnail")

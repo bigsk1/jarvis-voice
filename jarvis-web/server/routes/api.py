@@ -3193,6 +3193,8 @@ def serve_video_thumbnail(filename):
     """Serve a cached first-frame poster for generated chat videos."""
     import subprocess
 
+    from video_thumbnail import VideoThumbnailError, get_video_thumbnail
+
     if '..' in filename or '/' in filename:
         abort(404)
 
@@ -3205,29 +3207,13 @@ def serve_video_thumbnail(filename):
         abort(404)
 
     thumbnail_dir = VIDEOS_PATH / '.thumbnails'
-    thumbnail_dir.mkdir(parents=True, exist_ok=True)
     thumbnail_path = thumbnail_dir / f'{Path(filename).stem}.jpg'
 
-    if (
-        not thumbnail_path.is_file()
-        or thumbnail_path.stat().st_mtime < video_path.stat().st_mtime
-    ):
-        result = subprocess.run(
-            [
-                'ffmpeg', '-y',
-                '-i', str(video_path),
-                '-vframes', '1',
-                '-vf', 'scale=480:-1',
-                '-q:v', '3',
-                str(thumbnail_path),
-            ],
-            capture_output=True,
-            timeout=10,
-        )
-        if result.returncode != 0 or not thumbnail_path.is_file():
-            error = result.stderr.decode(errors='replace')[:200] if result.stderr else 'unknown ffmpeg error'
-            print(f'[VIDEO] Failed to generate thumbnail for {filename}: {error}', file=sys.stderr)
-            abort(500, 'Failed to generate video thumbnail')
+    try:
+        get_video_thumbnail(video_path, thumbnail_path)
+    except (VideoThumbnailError, subprocess.TimeoutExpired) as error:
+        print(f'[VIDEO] Failed to generate thumbnail for {filename}: {error}', file=sys.stderr)
+        abort(500, 'Failed to generate video thumbnail')
 
     return send_file(thumbnail_path, mimetype='image/jpeg')
 

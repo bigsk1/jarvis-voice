@@ -287,6 +287,11 @@ Images are served from: `data/generated_images/`
 ### Source Directory
 Videos are served from: `data/generated_videos/`
 
+Web chat and Canvas share cached first-frame thumbnails. A thumbnail is published
+only after generation succeeds and the JPEG is validated. Failed attempts leave
+the cache available for a later retry, and damaged cached JPEGs are regenerated
+on the next request.
+
 ### API Endpoints
 
 ```bash
