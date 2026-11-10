@@ -15,11 +15,12 @@ leave a fresh clone usable. Preserve the pinned container digest, explicit
 environment allowlist, private storage, localhost binding and Bearer wrapper.
 Keep complete-tier/full-access tools unless the user requests different access.
 Consumer accounts cannot use Workspace Chat or domain-wide delegation.
-Retain the hash-locked container security baseline when rebuilding. Its pypdf
-6.21.4 override patches the v2.3.0 base's 6.21.3; FastMCP and OpenTelemetry pins
-still match the base. Do not restore older overlay pins and downgrade them.
-Recheck the installed container packages rather than assuming the upstream tag
-is advisory-free.
+The digest-pinned v2.4.0 base includes all 14 previously overlaid package versions
+and their locked artifacts, so the redundant dependency override is removed.
+Keep the runtime entrypoint: upstream legacy HTTP still has no machine auth,
+and the staging, OAuth-log and Apps Script execution protections are still needed.
+Recheck actual image packages on later upgrades rather than assuming a tag is
+advisory-free or restoring obsolete overlay pins.
 
 Check credentials by presence only. Use an existing authorized OAuth client if
 available; account/app passwords cannot replace it. If Google Cloud administration
@@ -158,3 +159,30 @@ the actual A1 range before writing. Do not assume the first result is sheet row 
 Calendar `get_events(detailed=true)`
 shows custom reminders, non-default visibility and transparent events. Drive
 downloads can export Google Drawings to PNG by default or PDF/JPEG/SVG explicitly.
+
+Since v2.4.0, use `manage_calendar(action="create", summary=...)` instead of the
+removed `create_calendar`. Sharing actions are `list_sharing`, `share`,
+`update_sharing` and `unshare`; inspect actual ACL rules and retain `rule_id`
+for changes. Select the intended user/group/domain scope explicitly; `default`
+scope means public access. Sharing notifications default on, so account for
+the user's intended recipients and notification behavior. Do not change the
+owner's rule. Calendar creation and event creation are different operations.
+
+Docs `get_doc_content` and `get_doc_as_markdown` can read a unique `heading`,
+optionally narrowed by `heading_level`, including its subsections until the
+next equal/shallower heading. Inspect `tab_id` for multi-tab documents. A section
+read is partial-document evidence; plain-text section offsets need the reported
+document start index before indexed edits, and `preserve_context` annotations
+are not edit offsets. Markdown comments remain document-wide. Use native Google
+Docs for heading selection with `get_doc_content`.
+
+Use `create_sheet` with the real source tab and `destination_spreadsheet_id`
+for a cross-spreadsheet tab copy; this copies formatting and formulas, not just
+cell values. `create_drive_file(shortcut_target_id=...)` creates a shortcut
+rather than copying its target. Preserve both source and destination/target IDs
+in follow-ups and inspect existing results before retrying an uncertain write.
+
+Optional HTTP `X-MCP-Toolsets` and `X-MCP-Tools` headers narrow the loaded tool
+catalog; when both are supplied their filters are combined as a union. Leave
+them unset for this complete-tier connection. They do not replace Bearer auth,
+the configured services/tier, account binding, or authorization.

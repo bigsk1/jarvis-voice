@@ -7,4 +7,3 @@ lib/*
 google-workspace/*
 !google-workspace/Dockerfile
 !google-workspace/entrypoint.py
-!google-workspace/security-requirements.txt

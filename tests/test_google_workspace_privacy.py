@@ -14,7 +14,7 @@ PRIVATE = ['client_secret.json', 'client_secret_123.apps.googleusercontent.com.j
            'google-workspace/data/credentials/dedicated@gmail.com.json', 'google-workspace/data/attachments/private.pdf']
 PUBLIC = ['lib/google_workspace.py', 'config/mcp-servers.json', 'config/cloud.env.example']
 SERVICE_INPUTS = {'google-workspace/Dockerfile', 'google-workspace/entrypoint.py',
-                  'google-workspace/security-requirements.txt', 'lib/http_observation.py'}
+                  'lib/http_observation.py'}
 
 
 def test_git_ignore_covers_google_console_download_names():

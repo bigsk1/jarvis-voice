@@ -5,7 +5,7 @@ services:
     build:
       context: ..
       dockerfile: google-workspace/Dockerfile
-    image: jarvis-google-workspace:2.3.0
+    image: jarvis-google-workspace:2.4.0
     restart: unless-stopped
     init: true
     user: "${GOOGLE_WORKSPACE_UID:-1000}:${GOOGLE_WORKSPACE_GID:-1000}"

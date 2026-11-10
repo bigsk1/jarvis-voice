@@ -2,7 +2,7 @@
 
 Jarvis can use a dedicated **consumer Gmail account** through
 [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp).
-The pinned v2.3.0 container exposes 111 tools in its complete tier for Gmail,
+The pinned v2.4.0 container exposes 111 tools in its complete tier for Gmail,
 Drive, Calendar, Docs, Sheets, Slides, Forms, Tasks, Contacts and Apps Script.
 This standalone Compose project is optional. A fresh clone has the MCP ENV
 gate off and never connects to or starts this service.
@@ -542,14 +542,94 @@ stored vector below the dense threshold does not gain this exception. `BLOCKED_T
 excluded. Changing enablement, credentials or profiles still needs the normal
 registry reload; temporary downtime no longer requires restarting Jarvis.
 
-## Upgrading to 2.3.0
+## Upgrading to 2.4.0
+
+The [v2.4.0 release](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.4.0)
+retains 111 tools in this configuration, with one breaking rename:
+`create_calendar` is removed. Use `manage_calendar(action="create", summary=...)`
+with the same creation parameters. Calendar creation remains separate from
+creating an event with `manage_event`. Refresh Tool RAG and each enabled mode's
+registry so the removed name is no longer offered.
+
+The Dockerfile pins the multi-platform image digest and reviewed source
+`53c392dc426ca8795e27dcf0301f92b5abe85688`. Existing Google grants, the private
+service token, localhost binding and `data/` storage are reused; this upgrade
+does not require fresh consent, Jarvis dependency changes or a database migration.
+
+Useful additions through existing tools:
+
+- **Calendar sharing:** `manage_calendar` supports `list_sharing`, `share`,
+  `update_sharing` and `unshare`. Read current ACLs and use the returned `rule_id`
+  for a change. Select the intended user/group/domain scope explicitly;
+  `scope_type="default"` is public access. Sharing notifications default on;
+  account for the requested recipients and notification behavior. Upstream
+  explicitly protects the authenticated account's primary-calendar owner rule;
+  preserve owner access on other calendars too. Jarvis retains the Calendar and
+  ACL rule IDs in saved follow-ups and uses upstream side-effect annotations with the existing
+  dedicated-account approval policy.
+- **Docs section reads:** `get_doc_content` and `get_doc_as_markdown` accept
+  `heading` and optional `heading_level`, matching a unique heading and including
+  its subsections through the next equal/shallower heading. Use the intended
+  `tab_id` for multi-tab documents. `get_doc_content` section selection is for
+  native Google Docs. Treat the result as a section, not a full-document read;
+  add the reported section start index to section-relative text offsets before
+  indexed edits. `preserve_context` annotations are not edit offsets. Markdown
+  comments remain document-wide even when body content is filtered by heading.
+- **Copy a tab across spreadsheets:** `create_sheet` accepts the source tab
+  and `destination_spreadsheet_id`, preserving formatting and formulas before
+  renaming/positioning the copy. A failed rename attempts to remove the new copy;
+  inspect the destination if cleanup fails. Keep source and destination IDs
+  distinct and inspect the destination before retrying
+  after an uncertain response.
+- **Drive shortcuts:** `create_drive_file(shortcut_target_id=...)` creates a
+  shortcut to an existing file or folder without copying the target. Preserve
+  the shortcut's returned ID separately from `shortcut_target_id`.
+
+Streamable HTTP clients can optionally narrow tools per request with
+`X-MCP-Toolsets` and `X-MCP-Tools`. Both headers together form a union of their
+filters, and can only narrow the services/tier/permissions already loaded.
+Excluded calls are rejected too. Jarvis leaves these headers unset to retain
+its configured complete catalog. This feature does not replace Bearer auth,
+account binding or the Host boundary. Chat pagination does not enable Chat for
+this dedicated consumer account; Chat remains excluded. Multi-account refresh,
+case-insensitive single-account credential lookup and fast-restart port fixes
+are inherited from upstream without new Jarvis patches.
+
+The pinned upstream image now contains all 14 packages from the former security
+overlay at the same versions and with the same locked artifact hashes:
+FastMCP/slim 4.1.4, openapi-pydantic 0.6.0, OpenTelemetry 1.45.1/0.66b1 and
+pypdf 6.21.4. The redundant `security-requirements.txt` and replacement-install
+layer are removed; the build still checks installed dependency compatibility.
+The runtime entrypoint remains necessary for machine Bearer authentication,
+authenticated staging, account-independent helper handling, OAuth access-log
+suppression and Apps Script deadlines/completion evidence. Upstream legacy
+HTTP still has no machine authentication. Recheck actual pinned image packages
+on later upgrades instead of restoring old overlay versions or running `uv sync`
+inside the built container.
+
+```bash
+bin/jarvis-google start
+bin/jarvis-google check --live
+source "$HOME/jarvis-venv/bin/activate"
+./bin/sync-tools.py cloud
+# Sync local too when enabled, then reload the affected Jarvis registries.
+```
+
+Keep the previous image available until dependency, HTTP authentication/Host,
+discovery and Google read checks pass. Use the existing stack overlay for Docker
+Jarvis installations; rebuilding preserves OAuth storage. Validate writes with
+owned disposable artifacts, inspect returned IDs, test saved follow-ups and Web
+cards, and clean up only those test artifacts. Do not send mail or sharing
+notifications as an incidental upgrade test.
+
+### Earlier 2.3.0 migration notes
 
 The [v2.3.0 release](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.3.0)
-keeps the same 111 tool names, OAuth scopes, transport and command-line options.
-The Dockerfile pins the multi-platform image digest and reviewed source
-`395d881d246fc9ef3f8f8c299b08e7d9f1359b89`. Existing grants, the private service
-token and the `data/` bind mount are reused. Jarvis's Python environments,
-databases and optional-service enablement are unchanged.
+kept the same 111 tool names, OAuth scopes, transport and command-line options.
+That upgrade pinned the multi-platform image digest and reviewed source
+`395d881d246fc9ef3f8f8c299b08e7d9f1359b89`. It reused existing grants, the private
+service token and the `data/` bind mount without changing Jarvis's Python
+environments, databases or optional-service enablement.
 
 Two output changes need attention:
 
@@ -595,15 +675,15 @@ The new arguments arrive through upstream schema discovery; this does not add
 new tools, consent requirements or approval screens. Returned documents and
 messages remain untrusted content, including their excerpts and links.
 
-The container includes Authlib 1.9.1 and dnspython 2.9.0 on its Python 3.13
-runtime. The hash-locked security baseline retains FastMCP 4.1.4 and
-OpenTelemetry 1.45.1 and upgrades the base's pypdf 6.21.3 to
+That base included Authlib 1.9.1 and dnspython 2.9.0 on Python 3.13.
+At that upgrade, the hash-locked security overlay retained FastMCP 4.1.4 and
+OpenTelemetry 1.45.1 and upgraded the base's pypdf 6.21.3 to
 [6.21.4](https://github.com/py-pdf/pypdf/releases/tag/6.21.4) for xref EOF loops,
 page-tree expansion and dictionary-cloning cycles. The new page-dictionary
 budget can reject unusually expansive PDFs; failed extraction retains the
-existing download guidance. The image build checks dependency compatibility.
-Do not run upstream `uv sync` inside the built container, which would restore
-its older lockfile versions.
+existing download guidance. The current 2.4.0 base includes these fixes directly,
+so the overlay has been removed. Do not run upstream `uv sync` inside the built
+container.
 
 ```bash
 bin/jarvis-google start
@@ -622,11 +702,10 @@ authorized discovery and read checks pass; rebuilding preserves OAuth storage.
 The [v2.2.1 release](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.2.1)
 keeps the existing 111 tool names, transport, OAuth scopes and command-line
 options. Reuse the current grants, private service token and `data/` bind mount.
-The image and reviewed source `0801afb3e58f51754f5a40161c07675f50565448` are
-pinned in the Dockerfile. Python 3.13 is now the upstream container default;
-Jarvis's own Python environments are unaffected. Keep the hash-locked security
-overlay: this upstream release still does not include all of its patched
-package versions. Do not run upstream `uv sync` inside the built container.
+That release used source `0801afb3e58f51754f5a40161c07675f50565448` and Python
+3.13, without changing Jarvis's Python environments. It still needed a security
+overlay; the current pin and its replacement of that overlay are documented in
+the 2.4.0 section above. Do not run upstream `uv sync` inside the built container.
 
 Useful changes through existing tools:
 
@@ -699,15 +778,13 @@ retains this setup's transport, OAuth scopes, CLI flags and 111-tool count.
 Existing OAuth grants and the private service token can be reused. Rebuilding
 keeps the existing `data/` bind mount. Its reviewed source was
 `b5cf07e6078ae10a596710d77569e9430e01ebd4`; the current Dockerfile pin is listed
-in the 2.3.0 section above.
+in the 2.4.0 section above.
 Upstream updates `certifi` to 2026.10.19 but still includes packages with newer
-published advisories. The container-only `security-requirements.txt` overlay
-pins artifact hashes for `pypdf` 6.21.2, FastMCP 4.1.2 and OpenTelemetry 1.45.1,
-plus their required matching packages. The Docker build installs those exact
-replacements without resolving unrelated dependencies, then checks installed
-requirements for compatibility. These changes remain isolated from Jarvis's
-own Python environments; do not re-run upstream `uv sync` inside the built
-container, which would restore its older lockfile versions.
+published advisories. At that upgrade, a container-only overlay pinned artifact
+hashes for `pypdf` 6.21.2, FastMCP 4.1.2 and OpenTelemetry 1.45.1 plus matching
+packages, without changing Jarvis's Python environments. The current 2.4.0 base
+includes the later patched versions directly; the obsolete overlay is removed.
+Do not re-run upstream `uv sync` inside the built container.
 
 The breaking tool rename is `get_page_thumbnail` → `render_page_to_image`.
 Replace `thumbnail_size` with `size` and remove `inline`; the server now attempts
@@ -797,7 +874,7 @@ or reaching the deadline interrupts its active socket, including response header
 and slowly arriving bodies; it cannot start another refresh afterward. Other Google
 tools retain their existing authentication timeout and retry behavior. The Google image
 copies the shared HTTP observer from `lib/http_observation.py`; its Dockerfile-specific
-allowlist exposes only that helper and the three existing service build inputs.
+allowlist exposes only the Dockerfile, entrypoint and that helper.
 
 The wrapper records actual `scripts.run` responses in job-bound completion
 metadata. A script exception is a settled failure even though upstream renders
@@ -864,8 +941,7 @@ must return 403, and authorized discovery must succeed.
 The downloaded `client_secret*.json` filenames are ignored by Git and excluded
 from application build archives. The entire standalone `google-workspace/`
 folder is excluded from the Jarvis application image; its own image uses the
-allowlist containing only the Dockerfile, entrypoint, public shared HTTP observer and
-security-requirements.txt overlay.
+allowlist containing only the Dockerfile, entrypoint and public shared HTTP observer.
 
 ### Email inbox attachments
 

@@ -1,4 +1,4 @@
-"""Workspace feature discovery and v2.3.0 argument contracts without Google calls."""
+"""Workspace feature discovery and v2.4.0 argument contracts without Google calls."""
 
 import json
 import sys
@@ -86,6 +86,40 @@ FEATURE_PARAMETERS = {
         "tab_id": _nullable("string"),
         "include_colors": {"type": "boolean", "default": False},
         "suggestions_view_mode": {"type": "string", "default": "DEFAULT_FOR_CURRENT_ACCESS"},
+        "heading": _nullable("string"),
+        "heading_level": _nullable("integer"),
+    },
+    "get_doc_content": {
+        "document_id": {"type": "string"},
+        "tab_id": _nullable("string"),
+        "preserve_context": {"type": "boolean", "default": False},
+        "suggestions_view_mode": {"type": "string", "default": "DEFAULT_FOR_CURRENT_ACCESS"},
+        "heading": _nullable("string"),
+        "heading_level": _nullable("integer"),
+    },
+    "manage_calendar": {
+        "action": {"type": "string"},
+        **{name: _nullable("string") for name in (
+            "summary", "description", "timezone", "role", "scope_value", "rule_id", "page_token",
+        )},
+        "calendar_id": {"type": "string", "default": "primary"},
+        "scope_type": {"type": "string", "default": "user"},
+        "send_notifications": {"type": "boolean", "default": True},
+    },
+    "create_sheet": {
+        "spreadsheet_id": {"type": "string"},
+        "sheet_name": _nullable("string"),
+        "source_sheet_name": _nullable("string"),
+        "insert_sheet_index": _nullable("integer"),
+        "destination_spreadsheet_id": _nullable("string"),
+    },
+    "create_drive_file": {
+        "file_name": {"type": "string"},
+        "folder_id": {"type": "string", "default": "root"},
+        "content": _nullable("string"),
+        "mime_type": _nullable("string"),
+        "fileUrl": _nullable("string"),
+        "shortcut_target_id": _nullable("string"),
     },
     "list_contacts": {
         "page_size": {"type": "integer", "default": 100},
@@ -204,7 +238,13 @@ def _tools() -> list[dict]:
                 "user_google_email": {"type": "string"},
                 **deepcopy(FEATURE_PARAMETERS.get(name, {})),
             },
-            "required": ["user_google_email"],
+            "required": ["user_google_email", *{
+                "manage_calendar": ["action"],
+                "get_doc_content": ["document_id"],
+                "get_doc_as_markdown": ["document_id"],
+                "create_sheet": ["spreadsheet_id"],
+                "create_drive_file": ["file_name"],
+            }.get(name, [])],
         },
     } for name in names]
 
@@ -234,7 +274,10 @@ def test_feature_metadata_preserves_provider_schemas_and_account_binding(tool_na
     assert schema.description.endswith(f"Upstream {tool_name} contract.")
     expected = FEATURE_PARAMETERS[tool_name]
     properties = schema.parameters["properties"]
-    bridge_fields = {"stash", "stash_space_id"} if tool_name == "get_gmail_message_content" else set()
+    bridge_fields = {
+        "get_gmail_message_content": {"stash", "stash_space_id"},
+        "create_drive_file": {"stash_ref"},
+    }.get(tool_name, set())
     assert properties.keys() == expected.keys() | bridge_fields
     for name, contract in expected.items():
         assert {key: properties[name][key] for key in contract} == contract
@@ -245,6 +288,8 @@ def test_feature_metadata_preserves_provider_schemas_and_account_binding(tool_na
     for parameters in projections:
         assert expected.keys() <= parameters["properties"].keys()
         assert "user_google_email" not in parameters["properties"]
+        if tool_name == "manage_calendar":
+            assert parameters["required"] == ["action"]
     if "direction" in expected:
         assert projections[0]["properties"]["direction"]["enum"] == ["auto", "ltr", "rtl"]
     assert schema.permissions["dangerous"] is True
@@ -334,9 +379,46 @@ def test_feature_metadata_preserves_provider_schemas_and_account_binding(tool_na
         "document_id": "doc-123", "heading": "Results", "heading_level": 2,
         "tab_id": "t.1", "text": "**Additional result**", "end_of_segment": True,
     }),
+    ("modify_doc_text", {
+        "document_id": "doc-123", "heading": "Results", "text": "New line only",
+        "end_of_segment": True,
+    }),
     ("get_doc_as_markdown", {
         "document_id": "doc-123", "tab_id": "t.1", "include_colors": True,
         "suggestions_view_mode": "PREVIEW_WITHOUT_SUGGESTIONS",
+    }),
+    *[(tool_name, {
+        "document_id": "doc-123", "tab_id": "t.1", "heading": "Results", "heading_level": 2,
+    }) for tool_name in ("get_doc_content", "get_doc_as_markdown")],
+    ("get_doc_content", {
+        "document_id": "doc-123", "tab_id": "t.1", "heading": "Results", "preserve_context": True,
+    }),
+    ("manage_calendar", {
+        "action": "create", "summary": "Project calendar", "description": "Fixture",
+        "timezone": "America/Los_Angeles",
+    }),
+    ("manage_calendar", {
+        "action": "list_sharing", "calendar_id": "calendar-123", "page_token": "next-page",
+    }),
+    ("manage_calendar", {
+        "action": "share", "calendar_id": "calendar-123", "role": "reader",
+        "scope_type": "user", "scope_value": "reader@example.test", "send_notifications": False,
+    }),
+    ("manage_calendar", {
+        "action": "update_sharing", "calendar_id": "calendar-123",
+        "rule_id": "user:reader@example.test", "role": "writerWithoutPrivateAccess",
+        "send_notifications": False,
+    }),
+    ("manage_calendar", {
+        "action": "unshare", "calendar_id": "calendar-123", "rule_id": "user:reader@example.test",
+    }),
+    ("create_sheet", {
+        "spreadsheet_id": "source-123", "source_sheet_name": "Budget",
+        "destination_spreadsheet_id": "destination-456", "sheet_name": "Copied Budget",
+        "insert_sheet_index": 0,
+    }),
+    ("create_drive_file", {
+        "file_name": "Report shortcut", "folder_id": "folder-123", "shortcut_target_id": "report-456",
     }),
     ("list_contacts", {"request_sync_token": True, "page_size": 50, "page_token": "next-page"}),
     ("list_contacts", {"sync_token": "sync-token", "page_size": 50}),
@@ -435,13 +517,18 @@ def test_image_guidance_uses_stash_analysis_instead_of_claiming_automatic_vision
     assert "do not share" in metadata["render_page_to_image"]["description_prefix"]
 
 
-def test_v230_catalog_keeps_v220_slide_rename_without_growing_the_tool_set():
+def test_v240_catalog_replaces_calendar_tool_and_keeps_slide_rename_without_growing_the_tool_set():
     fixture = json.loads((ROOT / "tests/fixtures/google_workspace_tool_names.json").read_text())
-    assert fixture['image'].endswith(':2.3.0')
-    assert fixture['upstream_commit'] == '395d881d246fc9ef3f8f8c299b08e7d9f1359b89'
+    assert fixture['image'].endswith(':2.4.0')
+    assert fixture['upstream_commit'] == '53c392dc426ca8795e27dcf0301f92b5abe85688'
     assert len(fixture['tools']) == len(set(fixture['tools'])) == 111
     assert 'render_page_to_image' in fixture['tools']
     assert 'get_page_thumbnail' not in fixture['tools']
+    assert 'manage_calendar' in fixture['tools']
+    assert 'create_calendar' not in fixture['tools']
+    registry = _registry()
+    assert registry.get_tool(PREFIX + 'create_calendar') is None
+    assert registry.get_tool(PREFIX + 'manage_calendar').requires_confirmation() is False
 
 
 def test_v221_guidance_uses_optin_links_and_retains_headerless_message_identity():
