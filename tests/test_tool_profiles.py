@@ -217,13 +217,15 @@ class TestToolProfiles(unittest.TestCase):
             script_path = skills_dir / script_name
             if (
                 script_path.is_file()
-                and "request_serpapi(" in script_path.read_text(encoding="utf-8")
+                and ("request_serpapi(" in script_path.read_text(encoding="utf-8")
+                     or "SERP_API_KEY" in manifest.get("availability", {}).get("all_of_env", []))
             ):
                 serpapi_tools.add(manifest["name"])
 
         self.assertIn("serpapi_tripadvisor", serpapi_tools)
         self.assertIn("serpapi_travel_explore", serpapi_tools)
         self.assertIn("serpapi_search_index", serpapi_tools)
+        self.assertIn("serpapi_google_search", serpapi_tools)
 
         # Most examples remove the whole SerpApi family. The research pipeline
         # retains only Search Index source discovery; Amazon remains shopping-only.

@@ -43,7 +43,7 @@ PROMPT_GUARD_TIMEOUT_SECONDS=2
 PROMPT_GUARD_MAX_INPUT_BYTES=8192
 # Optional; requires a scanner supporting the return_windows request field.
 PROMPT_GUARD_RETURN_WINDOWS=false
-PROMPT_GUARD_TOOLS=crawl_url,brave_llm_context,rss_feed,browser_use,browser_use_cloud,stash,source_library
+PROMPT_GUARD_TOOLS=crawl_url,brave_llm_context,rss_feed,browser_use,browser_use_cloud,stash,source_library,serpapi_google_search
 PROMPT_GUARD_ALERTS_ENABLED=false
 PROMPT_GUARD_ALERT_THRESHOLD=0.95
 PROMPT_GUARD_ALERT_COOLDOWN_SECONDS=3600
@@ -247,6 +247,13 @@ Stash's URL, MIME, and filesystem checks remain separate from prompt screening.
 Storing an artifact is not a clean verdict, and screening never automatically
 resolves references in other tool results.
 
+The Google Search tool uses the same boundary. Add `serpapi_google_search` to
+an existing `PROMPT_GUARD_TOOLS` list to screen its returned search previews
+and saved `read_result` excerpts. Both starter settings include this name.
+The tool can save the complete provider JSON before the returned preview is
+screened; the scan does not open that saved archive or certify its omitted
+sections. Local tools and MCP tools both require their exact selected names.
+
 Web chat screens the text evidence it inserts from current attachments,
 historical attachment excerpts, and legacy text context before orchestration or
 upload vision starts. It does not screen the user's task instructions as source
@@ -300,8 +307,10 @@ deduplication; quarantine is not their only storage location. Progress updates,
 browser agents' internal observations, provider-hosted search, and APIs bypassing
 these shared boundaries remain outside this integration. Tools that fetch and
 summarize internally need a separate hook before their own model call.
-In particular, `stash.remember` and internal summarizers are not covered merely
-by selecting `stash.read`. Direct artifact HTTP downloads remain downloads, not
+In particular, `stash.remember` and `text_summarizer`'s internal Stash-to-model
+read are not covered merely by selecting `stash.read`. Selecting
+`text_summarizer` itself would screen its returned summary, not its internal
+model input. Direct artifact HTTP downloads remain downloads, not
 model consumption. PDFs, OCR/transcription/vision output, provider-hosted search,
 and external agents' internal observations need their own reviewed text-ingestion
 hooks or selected result tools. This integration does not classify raw binaries

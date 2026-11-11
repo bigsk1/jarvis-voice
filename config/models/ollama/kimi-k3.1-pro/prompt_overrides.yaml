@@ -1,0 +1,15 @@
+enabled: true
+description: "kimi-k3.1-pro thinking support"
+
+tool_calling_prepend: |
+  Do not call the same tool over and over again with slightly different parameters Unless there is a real legitimate reason to do so. Tool search and exploration is fine, but calling the same Paid tool multiple times just to squeeze out a little different details or a little more information is not allowed.
+
+thinking:
+  supported: true
+  disable_supported: true
+  levels:
+    - low
+    - high
+    - max
+  default_level: low
+  disabled_fallback_level: low

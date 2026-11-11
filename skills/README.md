@@ -510,6 +510,7 @@ one source is not evidence that a recipient is unavailable in another.
 | `searxng_search` | Search a configured SearXNG JSON instance for current sources with optional reverse-proxy auth |
 | `serpapi_amazon_search` | Amazon listing discovery and focused ASIN/product details through SerpApi |
 | `serpapi_search_index` | Structured indexed-web source discovery with standard/deep recall, snippets, exact URLs, and workflow-ready pagination |
+| [`serpapi_google_search`](../docs/tools/google-search-tool/README.md) | General Google search panels and web sources, complete Stash retention, and local JSON section reads without another paid search |
 | `serpapi_google_images_light` | Existing web-image discovery with full-size URLs, thumbnails, source pages, dimensions, filters, follow-up references, and optional strict top-result Stash download |
 | `serpapi_google_news_light` | Fast topic-specific Google News discovery with headlines, sources, snippets, grouped Top Stories, and exact article URLs |
 | `serpapi_google_immersive_product` | Rich exact-product specifications, review insights, media, variants, and expanded store offers using a Google Shopping Light handoff token |
@@ -540,7 +541,7 @@ one source is not evidence that a recipient is unavailable in another.
 | `opencode` | Autonomous coding agent |
 | `calculator` | Math, stats, unit conversions |
 
-All 23 `serpapi_*` tools require `SERP_API_KEY` in the active mode env and are
+The `serpapi_*` tools require `SERP_API_KEY` in the active mode env and are
 excluded from that mode's callable registry and Tool RAG sync when it is absent.
 `flight_search` can instead use its keyless fallback. See the full
 [SerpApi tools guide](../docs/tools/serp-api-tool/README.md).

@@ -951,6 +951,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `serpapi_google_immersive_product` - **SerpApi Google Immersive Product**: Rich product details, features, review insights, user reviews, media, variants, and expanded store offers using the exact token returned by Google Shopping Light
 - `serpapi_google_sports` - **SerpApi Google Sports**: Current schedules, scores, game details, standings, players, brackets, league statistics, and rankings with query-to-KGMID resolution or direct deterministic IDs
 - `serpapi_search_index` - **SerpApi Search Index**: Structured indexed-web source discovery with exact URLs, snippets, standard/deep recall, and workflow-ready pagination for later fetch/crawl steps
+- [`serpapi_google_search`](docs/tools/google-search-tool/README.md) - **SerpApi Google Search**: General Google results with viewing options, flight status, knowledge panels and web sources; retains complete JSON in Stash for local section reads without another paid search
 - `serpapi_google_images_light` - **SerpApi Google Images Light**: Search existing web images with full-size URLs, thumbnails, source pages, dimensions, filters, workflow-ready references, and optional strict top-result Stash download
 - `serpapi_google_news_light` - **SerpApi Google News Light**: Fast topic-specific recent-news discovery with headlines, sources, snippets, grouped Top Stories, and exact article URLs
 - `serpapi_google_trends` - **SerpApi Google Trends**: Analyze supplied topics over time, compare regional interest, and discover rising or top related queries/topics for monitoring and workflows
@@ -970,7 +971,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `serpapi_youtube_search` - **SerpApi YouTube search**: Keyword search with video-first results (title, channel, views, duration, thumbnails)
 - `serpapi_youtube` - **SerpApi YouTube details**: Video metadata and transcript by URL or `video_id` (useful when `youtube_video` / yt-dlp hits auth or cookie limits)
 
-The 23 `serpapi_*` tools require a nonblank key in the active mode's env file.
+The `serpapi_*` tools require a nonblank key in the active mode's env file.
 Without it they are not callable or included in that mode's Tool RAG sync. Jarvis
 Web shows the free Account API quota card only when Settings → System is opened
 and the selected mode has a valid key.

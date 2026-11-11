@@ -427,6 +427,7 @@ def test_shared_policies_keep_inherited_prompts_and_effective_search_boundaries(
         _CHAT_ONLY_SYSTEM_POLICY,
         _apply_request_system_policies,
         _apply_search_availability_policy,
+        _web_search_availability_hint,
     )
 
     assert _apply_request_system_policies(None, chat_only=False, background_selected=True) is None
@@ -438,7 +439,9 @@ def test_shared_policies_keep_inherited_prompts_and_effective_search_boundaries(
     context = BenchmarkContext(suite, "ollama", "synthetic", "baseline")
     prompt = context.system_prompt(["tool_search"], background=True, eligible_tools=registry.tools)
     assert prompt.startswith(_BACKGROUND_RECEIPT_SYSTEM_POLICY)
-    assert prompt.endswith("follow its description.")
+    assert prompt.endswith(_web_search_availability_hint(registry, set()))
+    assert "follow its description." in prompt
+    assert "use limit=6 to compare relevant options" in prompt
     assert "Local web search tools" in prompt
     prompt = context.system_prompt([], casual=True, background=True)
     assert _BACKGROUND_RECEIPT_SYSTEM_POLICY not in prompt

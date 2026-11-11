@@ -1,18 +1,18 @@
 {
   "enabled": true,
   "name": "tool_search",
-  "description": "Discover enabled tools via compact summaries. Omit full schemas by default (leave include_schema false) unless you truly need exact parameter shapes—schemas are token-heavy. Prefer limit 6 or fewer unless browsing many options. After matches return, call the surfaced tools by exact name; do not loop on tool_search alone.",
+  "description": "Discover enabled tools for the user's actual goal via compact summaries. Describe the needed capability and result fields, such as 'flight status arrival delay terminal gate' or 'movie streaming providers', rather than a generic 'web search'. Use limit=6 (the default) to compare relevant capabilities; limit=1 is for inspecting one already-known exact name with tool_names. Omit full schemas by default (leave include_schema false) unless you need exact parameter shapes. After matches return, call the surfaced tools by exact name; do not loop on tool_search alone.",
   "script": "tool_search.py",
   "parameters": {
     "type": "object",
     "properties": {
       "query": {
         "type": "string",
-        "description": "Semantic search query describing the capability or task you want to find. Leave empty to browse available tools."
+        "description": "Describe the actual goal, entity and required result fields, e.g. 'flight status arrival delay terminal gate' or 'movie streaming providers'. A generic query such as 'web search' can hide tools with richer results. Leave empty to browse; use tool_names to inspect an already-known exact tool."
       },
       "limit": {
         "type": "integer",
-        "description": "Maximum number of matching tools to return. Defaults to 6 (server cap 20). Prefer 4–6 unless you need broad browse."
+        "description": "Maximum number of matching tools to return. Use the default 6 for capability discovery so several suitable options can be compared (server cap 20). Use 1 only with tool_names to inspect one already-known exact tool."
       },
       "tool_names": {
         "type": "array",

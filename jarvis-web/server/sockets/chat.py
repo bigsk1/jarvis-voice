@@ -1200,6 +1200,11 @@ class ChatHandler:
     @staticmethod
     def _truncate_for_prompt(value, max_chars: int = 6000) -> str:
         """Serialize and truncate large values before feeding them back to the model."""
+        from serpapi_google_context import google_prompt_evidence
+
+        google_evidence = google_prompt_evidence(value, other_max_chars=max_chars)
+        if google_evidence is not None:
+            return google_evidence
         try:
             text = json.dumps(value, indent=2, ensure_ascii=False)
         except Exception:
@@ -1251,6 +1256,8 @@ class ChatHandler:
 
     def _evaluate_completion_guard_auto(self, record: dict) -> dict:
         """Evaluate whether the finished answer should auto-trigger a repair pass."""
+        from serpapi_google_context import google_prompt_evidence_parts
+
         record_mode = record.get('mode', 'cloud')
         tool_policy = self._sanitize_tool_policy(record.get('tool_policy'))
         provider_name, model_name, provider = self._create_completion_guard_eval_provider(
@@ -1305,6 +1312,23 @@ class ChatHandler:
             evidence_rules = """- Native provider tools listed above are REAL tool usage. Do not call this a zero-tool answer if native provider tools were used.
 - If native provider search returned sources/URLs, treat that as valid external evidence unless the answer still overclaims beyond what was returned.
 - If effective evidence is non-empty, treat supporting_tool_results as valid grounding for this answer even when tools_used is empty (e.g. refinements like "top 10" using prior tool results)."""
+
+        result_data = record.get('data') or {}
+        effective_evidence = result_data.get('_effective_evidence') or {}
+        (effective_evidence, result_data), google_evidence = google_prompt_evidence_parts(
+            [effective_evidence, result_data]
+        )
+        google_evidence_section = ''
+        if google_evidence is not None:
+            # The same archive can occur in both sections. Spend its Google
+            # budget once, separately from the unchanged 4.5K/7K other-tool caps.
+            google_json = json.dumps(
+                google_evidence, ensure_ascii=True, allow_nan=False, separators=(',', ':')
+            )
+            google_evidence_section = (
+                '\nRetained Google evidence (shared by the sections above):\n'
+                f'```json\n{google_json}\n```\n'
+            )
 
         prompt = f"""Audit whether this completed Jarvis answer is actually supported and complete.
 
@@ -1362,13 +1386,14 @@ Enabled local web search tools listed in the original system prompt:
 
 Effective evidence (structured grounding; may include prior turns; may be empty):
 ```json
-{self._truncate_for_prompt((record.get('data') or {}).get('_effective_evidence') or {}, max_chars=4500)}
+{self._truncate_for_prompt(effective_evidence, max_chars=4500)}
 ```
 
 Structured result data:
 ```json
-{self._truncate_for_prompt(record.get('data', {}), max_chars=7000)}
+{self._truncate_for_prompt(result_data, max_chars=7000)}
 ```
+{google_evidence_section}
 
 Important:
 {evidence_rules}

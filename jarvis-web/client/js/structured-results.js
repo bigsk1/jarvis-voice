@@ -16,6 +16,13 @@ class StructuredResultsRenderer {
         compactText: (...args) => this._compactText(...args),
         toDom: model => this._externalNodeDom(model),
       }) : null;
+    this._googleAdapter = typeof window.createGoogleSearchResultAdapter === 'function'
+      ? window.createGoogleSearchResultAdapter({
+        node: (...args) => this._externalNode(...args),
+        stashLinks: (...args) => this._externalStashLinks(...args),
+        compactText: (value, limit) => this._compactText(value, limit),
+        jsonTree: (...args) => this._externalJsonTree(...args),
+      }) : null;
     this._registerDefaultAdapters();
     this._bindScrollControls();
   }
@@ -606,6 +613,7 @@ class StructuredResultsRenderer {
     this._scrollControlsBound = true;
     document.addEventListener('error', event => {
       this._apifyAdapter?.handleImageError(event);
+      this._googleAdapter?.handleImageError?.(event);
       if (event.target?.matches?.('.structured-bookmark-icon img')) event.target.hidden = true;
     }, true);
     document.addEventListener('click', event => {
@@ -1521,6 +1529,8 @@ class StructuredResultsRenderer {
   }
 
   _externalCollectionBodyModel(payload, options = {}) {
+    const google = this._googleAdapter?.model(payload, options);
+    if (google) return google;
     const apify = this._apifyAdapter?.model(payload, options);
     if (apify) return apify;
     const node = (tag, text, className = '', children = []) => this._externalNode(

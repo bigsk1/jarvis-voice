@@ -41,6 +41,7 @@
     "serpapi_google_local_services": false,
     "serpapi_amazon_search": false,
     "serpapi_search_index": false,
+    "serpapi_google_search": false,
     "searxng_search": false,
     "project_nomad": false,
     "tavily_search": false,

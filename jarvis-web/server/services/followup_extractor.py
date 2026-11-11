@@ -47,6 +47,13 @@ except ModuleNotFoundError as exc:
         select_external_followup_results,
     )
 
+try:
+    from serpapi_google_context import google_runs_budget, project_google_runs
+except ModuleNotFoundError as exc:
+    if exc.name != "serpapi_google_context":
+        raise
+    from lib.serpapi_google_context import google_runs_budget, project_google_runs
+
 from .followup import local_travel as _local_travel_followup
 from .followup import media as _media_followup
 from .followup import search as _search_followup
@@ -3108,6 +3115,9 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             projected = project_rss_feed_data(value, max_items=max_candidates)
             if projected:
                 followup[key] = projected
+            continue
+        if key == 'serpapi_google_search' and google_runs_budget(value):
+            followup[key] = project_google_runs(value)
             continue
         external_runs = value if isinstance(value, list) else [value]
         if external_runs and all(is_external_result(run) for run in external_runs):

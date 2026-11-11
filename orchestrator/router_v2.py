@@ -134,7 +134,10 @@ def _web_search_availability_hint(
         f"Local web search tools (separate from provider-native search): {', '.join(names)}. "
         "Use only if relevant. "
         "For a name outside the current tool schemas, inspect it with tool_search; "
-        "follow its description."
+        "follow its description. "
+        "To discover a capability, describe the actual goal and needed result fields "
+        "in tool_search rather than a generic 'web search', and use limit=6 to compare "
+        "relevant options. Use tool_names for an already-known exact name."
     )
 
 

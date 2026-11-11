@@ -917,7 +917,9 @@ class Orchestrator:
             result=result,
             tool_call_id=tool_call_id,
             duration_ms=duration_ms,
-            max_chars=self._xai_provider_result_max_chars(),
+            max_chars=self._get_context_assembler().provider_result_max_chars(
+                result, self._xai_provider_result_max_chars(),
+            ),
         )
         return {
             "provider": "xai",
@@ -1062,7 +1064,9 @@ class Orchestrator:
             result=result,
             tool_call_id=tool_call_id,
             duration_ms=duration_ms,
-            max_chars=self._openai_provider_result_max_chars(),
+            max_chars=self._get_context_assembler().provider_result_max_chars(
+                result, self._openai_provider_result_max_chars(),
+            ),
         )
         return {
             "provider": "openai",

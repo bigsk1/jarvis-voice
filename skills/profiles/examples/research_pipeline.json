@@ -25,6 +25,7 @@
     "send_email": false,
     "send_webhook": false,
     "serpapi_amazon_search": false,
+    "serpapi_google_search": false,
     "serpapi_ebay_product": false,
     "serpapi_ebay_search": false,
     "serpapi_home_depot": false,

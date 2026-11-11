@@ -85,6 +85,19 @@ class _QueryAwareFakeDB(_FakeDB):
 
 
 class ToolSearchRuntimeTests(unittest.TestCase):
+    def test_effective_discovery_schema_teaches_goal_queries_and_exact_lookup(self):
+        tool = ToolSchema.from_json_file(os.path.join(ROOT, "skills", "tool_search.tool.json"))
+        schema = tool.to_openai_format()["function"]
+        properties = schema["parameters"]["properties"]
+
+        self.assertIn("user's actual goal", schema["description"])
+        self.assertIn("flight status arrival delay terminal gate", properties["query"]["description"])
+        self.assertIn("movie streaming providers", properties["query"]["description"])
+        self.assertIn("default 6 for capability discovery", properties["limit"]["description"])
+        self.assertIn("1 only with tool_names", properties["limit"]["description"])
+        self.assertIn("exact tool names", properties["tool_names"]["description"])
+        self.assertIn("Defaults to false", properties["include_schema"]["description"])
+
     def setUp(self):
         self.weather = ToolSchema(
             name="weather",
@@ -654,6 +667,22 @@ class ToolSearchRuntimeTests(unittest.TestCase):
         self.assertEqual(match["name"], "search_memory")
         self.assertIn("parameters_schema", match)
         self.assertEqual(match["required_parameters"], ["query"])
+
+    def test_explicit_single_exact_lookup_preserves_hints_without_semantic_search(self):
+        with patch("tool_search_runtime.get_memory_db") as get_db:
+            result = search_tools_runtime(
+                registry=self.registry,
+                query="unrelated capability",
+                tool_names=["tool_search", "missing_tool", "send_email", "weather", "search_memory"],
+                excluded_tools={"send_email"},
+                limit=1,
+            )
+
+        get_db.assert_not_called()
+        self.assertEqual(result["data"]["search_mode"], "exact")
+        self.assertEqual(result["data"]["selected_tool_hints"], ["weather"])
+        self.assertEqual([match["name"] for match in result["data"]["matches"]], ["weather"])
+        self.assertNotIn("parameters_schema", result["data"]["matches"][0])
 
     def test_invalid_limit_falls_back_to_default_range(self):
         db = _FakeDB([{"name": "weather", "similarity": 0.88}])

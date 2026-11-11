@@ -1,6 +1,6 @@
 # SerpApi Tools
 
-Jarvis provides a family of focused SerpApi tools for shopping, indexed-web
+Jarvis provides a family of focused SerpApi tools for Google Search, shopping, indexed-web
 source discovery, existing-image discovery, news, trend analysis, events, local
 places and restaurant reviews, sports, travel, and YouTube. Each tool has its own schema and normalized result shape so
 Tool RAG can select a narrow capability instead of routing every request through
@@ -8,13 +8,15 @@ one ambiguous search tool.
 
 `serpapi_amazon_search` is the renamed Amazon tool. Despite its former generic
 name, its implemented product experience was Amazon-focused. It now accepts
-only the `amazon` and `amazon_product` engines. Use `serpapi_search_index` to
-discover general public webpages and source URLs.
+only the `amazon` and `amazon_product` engines. Use `serpapi_google_search` for
+Google's general search results and panels, or `serpapi_search_index` for
+SerpApi's own index of public webpages and source URLs.
 
 ## Tool catalog
 
 | Tool | Provider engine(s) | Best use |
 |---|---|---|
+| `serpapi_google_search` | `google` | General Google results and provider-native panels, with retained JSON and local panel reads; see the [Google Search guide](../google-search-tool/README.md) |
 | `serpapi_amazon_search` | `amazon`, `amazon_product` | Amazon listing discovery, ASIN details, prices, ratings, Prime, delivery, stock, and product comparison |
 | `serpapi_google_shopping_light` | `google_shopping_light` | Fast multi-retailer product discovery and price comparison with merchant, delivery, rating, sale, thumbnail, offer links, and Immersive Product handoff tokens |
 | `serpapi_google_immersive_product` | `google_immersive_product` | Rich detail for one selected product: specifications, review insights, user reviews, media, variants, and expanded store offers |
@@ -40,9 +42,12 @@ discover general public webpages and source URLs.
 | `serpapi_youtube` | `youtube_video`, `youtube_video_transcript` | Video details and optional transcript fallback by URL or video ID |
 | `flight_search` | `google_flights` or keyless `fast-flights` | Future airfare and itinerary options; see the [flight search guide](../flight-search-tool/README.md) |
 
-There is no catch-all SerpApi live-web tool in this family. Search Index is for
-source discovery; MCP Fetch or `crawl_url` is the normal follow-up when Jarvis
-needs the contents of a returned page.
+The Google Search tool fixes its engine to `google`; it does not dispatch to
+the other SerpApi verticals. Search Index remains a separate source-discovery
+engine. MCP Fetch or `crawl_url` is the normal follow-up when Jarvis needs a
+returned website's contents. To inspect another panel from the same Google
+response, use `serpapi_google_search` with `action: "read_result"` and its
+retained `raw_ref`; that reads local JSON without another provider request.
 
 ## Shared architecture
 
@@ -67,10 +72,13 @@ The family uses these common layers:
   Tripadvisor, Google Events, Google
   Local, Google Local Services, Google News Light, Google Shopping Light,
   Google Immersive Product, Google Trends, Trending Now,
-  Google Sports, Search Index, eBay, OpenTable Reviews, Yelp, Maps, and YouTube cards.
+  Google Sports, Google Search, Search Index, eBay, OpenTable Reviews, Yelp, Maps, and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
-option. Normal conversational and workflow calls should leave it off.
+option for the older focused tools. Normal conversational and workflow calls
+should leave it off. Google Search instead saves the provider response to
+Stash and returns a bounded panel preview plus `raw_ref`; use local
+`read_result` calls to inspect selected paths or more retained rows.
 `serpapi_open_table_reviews` and `serpapi_google_immersive_product` additionally
 support explicit HTML and Markdown provider output; both remain labeled and
 handled as untrusted external content.
@@ -86,10 +94,10 @@ SERP_API_KEY=your-key
 
 Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
 `JARVIS_DEFAULT_LOCATION` and `JARVIS_DEFAULT_POSTAL_CODE` can localize Google
-Shopping Light when no location is supplied. The postal code also localizes
+Search and Shopping Light when no location is supplied. The postal code also localizes
 Amazon delivery and Home Depot availability where supported.
 
-The twenty-three `serpapi_*` manifests declare:
+The `serpapi_*` manifests declare:
 
 ```json
 "availability": {
@@ -136,7 +144,7 @@ SerpApi tools that do not fit the profile's purpose. In particular:
   SerpApi family plus `flight_search` where public-network access is unwanted;
   and
 - `research_pipeline` retains `serpapi_search_index` for source discovery but
-  disables Amazon and the vertical tools.
+  disables the separate Google Search tool, Amazon and the vertical tools.
 
 Example profiles are templates. An already copied ignored runtime profile does
 not automatically inherit later example changes, so merge or recopy it when

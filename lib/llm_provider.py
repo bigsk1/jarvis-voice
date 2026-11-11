@@ -1999,6 +1999,13 @@ class OllamaProvider(LLMProvider):
 
         cleaned = text
 
+        # Kimi can leak its native channel transition into ordinary content,
+        # even when thinking was disabled. The complete delimiter marks where
+        # the user-facing response begins; ordinary prose is not a delimiter.
+        channel_boundary = '<|close|>think<|sep|><|open|>response<|sep|>'
+        if channel_boundary in cleaned:
+            cleaned = cleaned.partition(channel_boundary)[2]
+
         # Closed XML-style think / reasoning tags.
         cleaned = re.sub(r'<think>.*?</think>\s*', '', cleaned, flags=re.IGNORECASE | re.DOTALL)
         cleaned = re.sub(r'<reasoning>.*?</reasoning>\s*', '', cleaned, flags=re.IGNORECASE | re.DOTALL)
@@ -2028,7 +2035,9 @@ class OllamaProvider(LLMProvider):
             flags=re.IGNORECASE | re.DOTALL
         )
 
-        return cleaned.strip()
+        # Kimi may expose its complete response terminator after the answer.
+        # Match only that terminal wrapper, preserving embedded/partial tokens.
+        return cleaned.strip().removesuffix('<|close|>response<|sep|>').rstrip()
 
     @staticmethod
     def _extract_json_object(text: str) -> str | None:

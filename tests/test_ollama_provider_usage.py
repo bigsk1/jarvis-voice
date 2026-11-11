@@ -19,6 +19,8 @@ GLM_ORPHAN_THINK_RESPONSE = (
     "call another tool.\n\nLet me respond directly with the information."
     "</think>**Solana (SOL) is currently at $77.89**, down 4.51%."
 )
+KIMI_RESPONSE_BOUNDARY = '<|close|>think<|sep|><|open|>response<|sep|>'
+KIMI_RESPONSE_END = '<|close|>response<|sep|>'
 
 
 class _ChatResponse:
@@ -246,6 +248,21 @@ def test_direct_cloud_canonical_model_omits_num_ctx_and_reports_cloud(monkeypatc
         ("internal plan</think>Final answer", "Final answer"),
         ("internal plan</reasoning>Final answer", "Final answer"),
         (GLM_ORPHAN_THINK_RESPONSE, "**Solana (SOL) is currently at $77.89**, down 4.51%."),
+        ("internal plan" + KIMI_RESPONSE_BOUNDARY + "Final answer", "Final answer"),
+        ("internal plan" + KIMI_RESPONSE_BOUNDARY + "\n\n## Answer\nVerified fact.",
+         "## Answer\nVerified fact."),
+        ("internal plan" + KIMI_RESPONSE_BOUNDARY + "Final answer" + KIMI_RESPONSE_END,
+         "Final answer"),
+        ("Final answer\n" + KIMI_RESPONSE_END + "\n\n", "Final answer"),
+        ("<think>internal plan</think>Final answer" + KIMI_RESPONSE_END, "Final answer"),
+        ("Quoted marker " + KIMI_RESPONSE_END + " remains in this sentence.",
+         "Quoted marker " + KIMI_RESPONSE_END + " remains in this sentence."),
+        ("Literal marker `" + KIMI_RESPONSE_END + "`", "Literal marker `" + KIMI_RESPONSE_END + "`"),
+        ("Answer<|close|>response<|sep", "Answer<|close|>response<|sep"),
+        ("Answer<|close|>tool<|sep|>", "Answer<|close|>tool<|sep|>"),
+        ("I think the response is ready.", "I think the response is ready."),
+        ("Literal tokens: <|close|> and <|open|>.", "Literal tokens: <|close|> and <|open|>."),
+        ("Incomplete <|close|>think<|sep|> marker", "Incomplete <|close|>think<|sep|> marker"),
         ("Ordinary answer", "Ordinary answer"),
     ],
 )
@@ -269,6 +286,53 @@ def test_native_tool_q_and_a_path_strips_glm_orphan_reasoning(monkeypatch):
     assert usage["total_tokens"] == 15
     assert usage["reasoning_effort_sent"] is False
     assert thinking is None
+
+
+@pytest.mark.parametrize("path", ["simple", "native", "structured"])
+@pytest.mark.parametrize("ending", ["", KIMI_RESPONSE_END, "\n" + KIMI_RESPONSE_END + "\n\n"])
+def test_kimi_channel_boundary_hides_prefix_in_each_response_path(monkeypatch, path, ending):
+    provider = _provider("kimi-k3.1-pro", monkeypatch, mode="cloud")
+    answer = "## Viewing options\nDisney+ is listed as a subscription option."
+    response = _ChatResponse("private plan" + KIMI_RESPONSE_BOUNDARY + answer + ending)
+
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")):
+        if path == "simple":
+            assert provider.chat("Where can I watch it?") == answer
+            return
+        call = provider.chat_with_tools if path == "native" else provider._chat_with_tools_structured
+        text, tool_call, usage, thinking = call(
+            messages=[{"role": "user", "content": "Where can I watch it?"}], tools=[],
+        )
+
+    assert text == answer and tool_call is None
+    assert usage["total_tokens"] == 15
+    assert usage["reasoning_effort_sent"] is False
+    assert thinking is None
+
+
+@pytest.mark.parametrize("path", ["native", "structured"])
+@pytest.mark.parametrize("ending", ["", KIMI_RESPONSE_END])
+def test_kimi_channel_boundary_preserves_tool_calls_and_usage(monkeypatch, path, ending):
+    provider = _provider("kimi-k3.1-pro", monkeypatch, mode="cloud")
+    response = _ChatResponse("private plan" + KIMI_RESPONSE_BOUNDARY + (
+        '{"tool":"serpapi_google_search","arguments":{"action":"read_result",'
+        '"raw_ref":"stash://fixture/search","path":"/available_on"}}'
+    ) + ending)
+    expected = {"name": "serpapi_google_search", "arguments": {
+        "action": "read_result", "raw_ref": "stash://fixture/search", "path": "/available_on",
+    }}
+    if path == "native":
+        payload = response.json()
+        payload["message"]["tool_calls"] = [{"function": expected}]
+        monkeypatch.setattr(response, "json", lambda: payload)
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")):
+        call = provider.chat_with_tools if path == "native" else provider._chat_with_tools_structured
+        text, tool_call, usage, thinking = call(
+            messages=[{"role": "user", "content": "Read the saved providers."}], tools=[],
+        )
+    assert text is None
+    assert tool_call == expected
+    assert usage["total_tokens"] == 15 and thinking is None
 
 
 @pytest.mark.parametrize("model", ["glm-5.3:cloud", "glm-5.3-flash:cloud"])

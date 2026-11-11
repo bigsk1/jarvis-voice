@@ -29,6 +29,17 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "serpapi_google_search": _case({
+        "contract": "external_result_v1",
+        "source": {"provider": "serpapi", "tool": "serpapi_google_search", "mode": "cloud"},
+        "execution": {"status": "SUCCEEDED", "search_id": "google-fixture"},
+        "result": {"kind": "google_search", "query": "fixture Google query", "panels": [
+            {"key": "knowledge_graph", "path": "/knowledge_graph", "type": "object", "count": 1,
+             "preview": {"title": "Fixture entity"}, "preview_count": 1, "truncated": False},
+        ]},
+        "artifacts": [], "raw_ref": "stash://google-fixture/full-search",
+        "limits": {"truncated": False, "context_max_chars": 20000},
+    }, {"action": "search", "query": "fixture Google query"}),
     "rss_feed": _case({
         "action": "read", "profile": "daily_tech", "batch_id": "a" * 32,
         "checked_at": "2026-10-27T16:00:00Z", "candidate_count": 1, "has_items": True,

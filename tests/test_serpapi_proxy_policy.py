@@ -6,13 +6,11 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-
 ROOT = Path(__file__).parent.parent.resolve()
 SKILLS = ROOT / "skills"
 sys.path.insert(0, str(SKILLS))
 
 import serpapi_home_depot  # noqa: E402
-
 
 EXPECTED_SERPAPI_TOOLS = {
     "flight_search",
@@ -21,6 +19,7 @@ EXPECTED_SERPAPI_TOOLS = {
     "serpapi_home_depot",
     "serpapi_hotel_search",
     "serpapi_google_events",
+    "serpapi_google_search",
     "serpapi_google_local",
     "serpapi_google_local_services",
     "serpapi_google_images_light",
@@ -53,7 +52,8 @@ def test_every_serpapi_backed_manifest_explicitly_defaults_proxy_off():
         if not script_path.is_file():
             continue
         source = script_path.read_text(encoding="utf-8")
-        if "request_serpapi(" in source:
+        if ("request_serpapi(" in source
+                or "SERP_API_KEY" in manifest.get("availability", {}).get("all_of_env", [])):
             discovered[manifest["name"]] = manifest
 
     assert set(discovered) == EXPECTED_SERPAPI_TOOLS

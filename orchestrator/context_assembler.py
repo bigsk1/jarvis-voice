@@ -46,6 +46,27 @@ except ModuleNotFoundError as exc:
         raise
     from lib.external_results import is_external_result, project_external_result
 
+try:
+    from serpapi_google_context import (
+        google_runs_budget,
+        google_workflow_receipt,
+        project_google_runs,
+    )
+    from serpapi_google_result import DEFAULT_CONTEXT_CHARS, google_context_budget, is_google_result
+except ModuleNotFoundError as exc:
+    if exc.name not in {"serpapi_google_context", "serpapi_google_result"}:
+        raise
+    from lib.serpapi_google_context import (
+        google_runs_budget,
+        google_workflow_receipt,
+        project_google_runs,
+    )
+    from lib.serpapi_google_result import (
+        DEFAULT_CONTEXT_CHARS,
+        google_context_budget,
+        is_google_result,
+    )
+
 
 def _json_safe_followup_value(value):
     """Normalize legacy values so router follow-up blocks are always strict JSON."""
@@ -90,6 +111,12 @@ class ContextAssembler:
         "external_result_v1: ok=call success; execution.status=remote state. "
         "complete=provider coverage, not full preview. Read raw_ref/handles/pages for "
         "missing evidence; never repeat submissions to fetch output."
+    )
+    _GOOGLE_RESULT_HINT = (
+        "Selected tool hints: serpapi_google_search. Reuse the saved Google result: "
+        "action=read_result with raw_ref and a panel JSON pointer reads retained evidence "
+        "without another search. Use returned offsets for another local page. "
+        "A new search is only for new or refreshed Google results."
     )
 
     @staticmethod
@@ -210,6 +237,7 @@ class ContextAssembler:
         Handles arrays (repeated tool calls) and extracts titles, descriptions, key info.
         """
         extracted_parts = []
+        google_budget = google_runs_budget(accumulated_data.get("serpapi_google_search"))
         row_priority = (
             "title", "name", "price", "extracted_price", "url", "link",
             "asin", "status", "severity", "rating", "source", "id",
@@ -292,6 +320,10 @@ class ContextAssembler:
         for tool_name, data in accumulated_data.items():
             items = data if isinstance(data, list) else [data]
             tool_budget = 9500 // max(1, len(accumulated_data))
+            if tool_name == "serpapi_google_search" and google_runs_budget(data):
+                projected = project_google_runs(data)
+                extracted_parts.insert(0, (f"\n=== {tool_name} ===", [_followup_json(projected)]))
+                continue
             if tool_name == "rss_feed":
                 projected = project_rss_feed_data(data, max_chars=max(2, min(6000, tool_budget)), include_content=True)
                 extracted_parts.append((f"\n=== {tool_name} ===", [_followup_json(projected)]))
@@ -386,7 +418,7 @@ class ContextAssembler:
             for block in blocks:
                 part = (heading + "\n" if heading_needed else "") + block
                 cost = len(part) + bool(included)
-                if used + cost > 9900:
+                if used + cost > 9900 + google_budget:
                     omitted += 1
                     continue
                 included.append(part)
@@ -423,6 +455,10 @@ class ContextAssembler:
         if any(isinstance(message.get("tool_results"), dict)
                and self.has_external_results(message["tool_results"]) for message in recent):
             context_lines.append(self._EXTERNAL_RESULT_HINT)
+        if any(isinstance(message.get("tool_results"), dict)
+               and google_runs_budget(message["tool_results"].get("serpapi_google_search"))
+               for message in recent):
+            context_lines.append(self._GOOGLE_RESULT_HINT)
         if any(
             isinstance(message.get("tool_results"), dict)
             and any(
@@ -701,6 +737,8 @@ class ContextAssembler:
             context_parts.append(scope + "Do not repeat the same tool just to recover omitted tail content; answer from the available result or choose a different tool if genuinely needed.")
         if any(external):
             context_parts.append(self._EXTERNAL_RESULT_HINT)
+        if any(is_google_result(item["result"]) for item in conversation_context):
+            context_parts.append(self._GOOGLE_RESULT_HINT)
         now = now or datetime.now(self.timezone)
 
         for i, ctx in enumerate(conversation_context, 1):
@@ -873,9 +911,11 @@ class ContextAssembler:
         result: dict[str, Any],
         tool_call_id: str | None = None,
         duration_ms: int | None = None,
-        max_chars: int = 6000,
+        max_chars: int | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Build a bounded provider-facing tool result without mutating canonical state."""
+        if max_chars is None:
+            max_chars = self.provider_result_max_chars(result, 6000)
         max_chars = max(800, int(max_chars or 6000))
         result_summary, result_chars_total, result_chars_shown, result_truncated = (
             self.build_llm_result_context_preview(tool_name, result)
@@ -885,11 +925,12 @@ class ContextAssembler:
             if tool_name == "create_reminder" and result.get("ok") else ""
         )
         external_hint = self._EXTERNAL_RESULT_HINT if is_external_result(result) else ""
+        google_hint = self._GOOGLE_RESULT_HINT if is_google_result(result) and max_chars >= 1800 else ""
         empty_search_hint = (
             EMPTY_SEARCH_RECOVERY_HINT if is_recoverable_empty_search(tool_name, result) else ""
         )
         result_hint = "\n".join(
-            hint for hint in (reminder_hint, external_hint, empty_search_hint) if hint
+            hint for hint in (reminder_hint, external_hint, google_hint, empty_search_hint) if hint
         )
         arguments_budget = max(120, min(1200, max_chars // 4))
         if result_hint:
@@ -1122,6 +1163,13 @@ class ContextAssembler:
         )
         return finish(rendered, truncated=True)
 
+    @staticmethod
+    def provider_result_max_chars(result: dict, ordinary_budget: int) -> int:
+        """Reserve Google evidence plus message framing without widening other tools."""
+        if is_google_result(result):
+            return max(ordinary_budget, google_context_budget(result) + 2400)
+        return ordinary_budget
+
     def build_arguments_context_preview(
         self,
         arguments: dict[str, Any],
@@ -1139,6 +1187,8 @@ class ContextAssembler:
 
     def tool_context_max_chars(self, tool_name: str) -> int:
         lowered = (tool_name or "").lower()
+        if lowered == "serpapi_google_search":
+            return DEFAULT_CONTEXT_CHARS
         if lowered == "mcp_google_workspace_get_script_project":
             # A named source read must retain function definitions beyond a
             # short receipt excerpt. The Google projector still bounds the
@@ -3517,6 +3567,13 @@ class ContextAssembler:
                 else raw_step.get("outputs")
             )
             if component_payload not in (None, {}, []):
+                if raw_step.get("tool") == "serpapi_google_search" and google_runs_budget(component_payload):
+                    step_preview["result_preview"] = json.dumps(
+                        google_workflow_receipt(component_payload, max_chars=per_step_chars),
+                        separators=(",", ":"),
+                    )
+                    step_previews.append(step_preview)
+                    continue
                 if raw_step.get("tool") == "rss_feed":
                     rss_result = {"ok": raw_step.get("ok", True), "error": raw_step.get("error"),
                                   "data": component_payload} if isinstance(component_payload, dict) else component_payload
@@ -3636,7 +3693,8 @@ class ContextAssembler:
         if is_external_result(result):
             # Contract-driven: new providers share this path without named
             # branches. Keep metadata ahead of samples at every context seam.
-            data = project_external_result(result, max_chars=5920, sample_limit=5)
+            budget = google_context_budget(result) - 40 if is_google_result(result) else 5920
+            data = project_external_result(result, max_chars=budget, sample_limit=5)
             serialized = json.dumps(
                 {"ok": result.get("ok", True), "data": data},
                 allow_nan=False, separators=(",", ":"),

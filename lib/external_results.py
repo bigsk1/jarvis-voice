@@ -290,6 +290,17 @@ def project_external_result(
         {key: child for key, child in validated.items() if key in _ENVELOPE_FIELDS},
         integer_paths,
     )
+    try:
+        from serpapi_google_result import is_google_result, project_google_result
+    except ModuleNotFoundError:
+        from lib.serpapi_google_result import is_google_result, project_google_result
+    if is_google_result(original):
+        if integer_paths:
+            original.setdefault("limits", {}).update({
+                "integer_strings": True, "integer_string_paths": integer_paths[:8],
+                "integer_string_paths_count": len(integer_paths),
+            })
+        return project_google_result(original, max_chars=max_chars)
     projected = deepcopy(original)
     projected.setdefault("limits", {}).setdefault("truncated", False)
     if integer_paths:
@@ -450,6 +461,7 @@ def make_external_result_data(
     stash_space_id: str | None = None,
     schema: dict | None = None,
     mode: str | None = None,
+    max_chars: int = 48000,
 ) -> dict:
     """Build a tool's data envelope and retain one complete response in Stash.
 
@@ -513,7 +525,7 @@ def make_external_result_data(
             } | {"space_id": space.space_id, "mode": selected_mode, "role": "raw_response"})
         except (ImportError, OSError, ValueError, TimeoutError) as exc:
             data["limits"]["raw_retention_error"] = type(exc).__name__
-    return project_external_result(data, max_chars=48000, sample_limit=20)
+    return project_external_result(data, max_chars=max_chars, sample_limit=20)
 
 
 def external_result_from_mcp(

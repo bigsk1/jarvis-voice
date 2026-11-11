@@ -78,6 +78,9 @@ def test_hint_uses_only_callable_unblocked_search_tools():
     assert "Local web search tools" in hint
     assert "separate from provider-native search" in hint
     assert "Use only if relevant" in hint
+    assert "actual goal and needed result fields" in hint
+    assert "limit=6" in hint
+    assert "tool_names for an already-known exact name" in hint
     assert _web_search_availability_hint(registry, {"tool_search"}) == ""
 
 
@@ -108,6 +111,8 @@ def test_router_sends_hint_without_adding_search_schemas_or_chat_only_tools():
     ]
     call = router.provider.calls[0]
     assert "mcp_brave_search_brave_web_search" in call["system_prompt"]
+    assert "actual goal and needed result fields" in call["system_prompt"]
+    assert "limit=6" in call["system_prompt"]
     assert "mcp_brave_search_brave_web_search" not in [tool["function"]["name"] for tool in call["tools"]]
     assert "blocked_search" not in call["system_prompt"]
     assert chat_only["intent"] == "qa"

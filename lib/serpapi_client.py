@@ -23,6 +23,7 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_ebay_search": ("ebay",),
     "serpapi_hotel_search": ("google_hotels",),
     "serpapi_google_events": ("google_events",),
+    "serpapi_google_search": ("google",),
     "serpapi_google_local": ("google_local",),
     "serpapi_google_local_services": ("google_local_services",),
     "serpapi_maps_search": ("google_maps",),
@@ -202,6 +203,8 @@ def serpapi_engines_for_tool(tool_name: str, args: dict[str, Any] | None = None)
     """Return the SerpApi engines a failed Jarvis tool may have been calling."""
     options = args if isinstance(args, dict) else {}
 
+    if tool_name == "serpapi_google_search" and options.get("action") == "read_result":
+        return ()  # Retained JSON reads must not trigger a provider status lookup.
     if tool_name == "serpapi_amazon_search":
         engine = str(options.get("engine") or "").strip().lower()
         return (engine,) if engine else ()
