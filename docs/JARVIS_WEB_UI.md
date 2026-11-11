@@ -237,8 +237,17 @@ resolve the same pair, and evaluator calls disable provider-native search.
   into one workflow result surface in workflow step order. Each tool keeps its
   own heading, metadata, safe links, and layout inside that surface. A section
   containing one result uses a compact non-scrolling layout instead of an
-  otherwise empty rail. Standalone and ordinary multi-tool responses keep the
-  existing independent adapter cards.
+  otherwise empty rail. Ordinary multi-tool responses use a combined result
+  surface in execution order, with the same adapter cards inside each section.
+- Each tool section has a native disclosure toggle. Useful visual cards start
+  open. Generic external tables/JSON and Google Workspace Apps Script results
+  start closed, as do Apify run receipts; Apify property cards remain visual.
+  If the same exact tool executes more than three times in one response, all
+  its sections start closed, including when some executions failed. Other
+  tools keep their own defaults. These rules apply when loading saved chats and
+  late background results, without changing stored data or the assistant's
+  Markdown answer. Opening a section exposes its existing cards, reader, and
+  downloads. The defaults are per response, not cumulative across a chat.
 - Current adapters cover Amazon and Google Shopping, Home Depot, eBay search
   and product details, Google Hotels, Yelp, Google Flights, Google Maps,
   Tripadvisor, Google Local and Local Services, Search Index, Google News Light,
@@ -261,6 +270,8 @@ resolve the same pair, and evaluator calls disable provider-native search.
   `window.structuredResultsRenderer.register(toolName, adapter)`. Keep provider
   payload parsing inside the adapter and return only the small shared
   presentation model instead of adding another conditional block to `chat.js`.
+  An adapter may return `disclosure: 'technical'` for a diagnostic display that
+  should start closed; generic readable cards otherwise keep the visual default.
 
 ### Large Tool Result Context
 

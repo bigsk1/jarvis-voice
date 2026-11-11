@@ -49,7 +49,9 @@ class StructuredResultsRenderer {
       const html = orchestration.sections.length > 1
         ? this._renderOrchestration(orchestration)
         : (orchestration.sections[0]
-          ? this._renderCollection(orchestration.sections[0].collection)
+          ? this._renderCollection(orchestration.sections[0].collection, {
+            callCount: orchestration.sections[0].callCount,
+          })
           : '');
       if (html) this._scheduleScrollControlsRefresh();
       return html;
@@ -79,12 +81,16 @@ class StructuredResultsRenderer {
       : this._latestPayload(rawPayload);
     if (!payload) return null;
     try {
+      // A bare array of result rows is one tool response. _latestPayload wraps
+      // that shape as {results: rawPayload}; only repeated envelopes are calls.
+      const callCount = Array.isArray(rawPayload) && payload.results !== rawPayload
+        ? rawPayload.length : 1;
       if (payload.contract === 'external_result_v1') {
-        return {kind: 'external', external: payload};
+        return {kind: 'external', external: payload, callCount};
       }
       if (!adapter) return null;
       const collection = adapter(payload);
-      return collection?.items?.length ? collection : null;
+      return collection?.items?.length ? {...collection, callCount} : null;
     } catch (error) {
       console.warn(`[StructuredResults] Could not render ${toolName}:`, error);
       return null;
@@ -129,10 +135,12 @@ class StructuredResultsRenderer {
     const entries = this._directTraceEntries(toolResultsData, data, toolsUsed);
     if (!entries.length) return null;
 
+    const callTotals = new Map();
     const successTotals = new Map();
     for (const entry of entries) {
-      if (entry.ok === false) continue;
       const toolName = String(entry.tool || '').trim();
+      callTotals.set(toolName, (callTotals.get(toolName) || 0) + 1);
+      if (entry.ok === false) continue;
       successTotals.set(toolName, (successTotals.get(toolName) || 0) + 1);
     }
 
@@ -171,6 +179,7 @@ class StructuredResultsRenderer {
         toolName,
         call: callIndex + 1,
         occurrence: occurrenceIndex + 1,
+        callCount: callTotals.get(toolName),
         collection,
       });
     });
@@ -243,6 +252,13 @@ class StructuredResultsRenderer {
     const sections = [];
     const representedTools = new Set();
     const steps = Array.isArray(workflow?.results) ? workflow.results : [];
+    const callTotals = new Map();
+    for (const step of steps) {
+      const toolName = String(step?.tool || '').trim();
+      if (toolName && step.skipped !== true) {
+        callTotals.set(toolName, (callTotals.get(toolName) || 0) + 1);
+      }
+    }
 
     for (const step of steps) {
       const toolName = String(step?.tool || '').trim();
@@ -259,6 +275,7 @@ class StructuredResultsRenderer {
         sections.push({
           toolName,
           step: step.step,
+          callCount: callTotals.get(toolName),
           collection,
         });
       }
@@ -306,6 +323,7 @@ class StructuredResultsRenderer {
         embedded: true,
         toolName: section.toolName,
         step: section.step,
+        callCount: section.callCount,
       }
     )).join('');
 
@@ -340,6 +358,7 @@ class StructuredResultsRenderer {
         toolName: section.toolName,
         call: section.call,
         occurrence: section.occurrence,
+        callCount: section.callCount,
       }
     )).join('');
 
@@ -553,6 +572,7 @@ class StructuredResultsRenderer {
       + (payload.response_truncated ? ' Response excerpt; upstream output was truncated.' : '');
     return {
       kind: 'generic', layout: 'list', eyebrow: 'Google Workspace',
+      disclosure: String(payload.tool || '').includes('_script_') ? 'technical' : 'visual',
       heading: request.title || request.subject || title,
       subtitle: payload.authentication_required ? 'Browser authorization required'
         : payload.ok === false ? 'Request failed' : request.query || 'Google service response',
@@ -608,6 +628,11 @@ class StructuredResultsRenderer {
     document.addEventListener('scroll', event => {
       if (event.target?.classList?.contains('structured-results-track')) {
         this._refreshScrollControls(event.target);
+      }
+    }, true);
+    document.addEventListener('toggle', event => {
+      if (event.target?.matches?.('details.structured-results-preview') && event.target.open) {
+        this._scheduleScrollControlsRefresh();
       }
     }, true);
     window.addEventListener?.('resize', () => this._refreshAllScrollControls());
@@ -1397,20 +1422,31 @@ class StructuredResultsRenderer {
       && value.contract === 'external_result_v1'
       && value.source && typeof value.source === 'object'
       && value.result && typeof value.result === 'object';
-    const values = external(data) ? [data] : Object.entries(data || {})
-      .filter(([key]) => !key.startsWith('_')).slice(0, 100).map(([, value]) => value);
-    let panels = 0;
-    for (const value of values) {
+    const values = external(data) ? [[null, data]] : Object.entries(data || {})
+      .filter(([key]) => !key.startsWith('_')).slice(0, 100);
+    const candidates = [];
+    const callTotals = new Map();
+    for (const [key, value] of values) {
       for (const entry of (Array.isArray(value) ? value.slice(0, 20) : [value])) {
         const payload = external(entry?.data) ? entry.data : entry;
         if (!external(payload)) continue;
         const seen = handled.has(payload);
         if (entry && typeof entry === 'object') handled.add(entry);
         handled.add(payload);
-        if (seen || panels >= 8) continue;
-        parent.appendChild(this._externalNodeDom(this._externalCollectionModel(payload, {mode})));
-        panels += 1;
+        if (seen) continue;
+        const toolName = key || `${payload.source.provider}:${payload.source.tool}`;
+        callTotals.set(toolName, (callTotals.get(toolName) || 0) + 1);
+        candidates.push({payload, toolName});
       }
+    }
+    const tracedTotals = new Map();
+    for (const entry of this._directTraceEntries(data)) {
+      const toolName = String(entry.tool || '').trim();
+      tracedTotals.set(toolName, (tracedTotals.get(toolName) || 0) + 1);
+    }
+    for (const {payload, toolName} of candidates.slice(0, 8)) {
+      const callCount = tracedTotals.get(toolName) ?? callTotals.get(toolName) ?? 1;
+      parent.appendChild(this._externalNodeDom(this._externalCollectionModel(payload, {mode, callCount})));
     }
     return handled;
   }
@@ -1474,6 +1510,17 @@ class StructuredResultsRenderer {
   }
 
   _externalCollectionModel(payload, options = {}) {
+    const model = this._externalCollectionBodyModel(payload, options);
+    const attributes = {...model.attributes};
+    if (!this._shouldCollapseCollection({disclosure: model.disclosure || 'technical'}, options)) {
+      attributes.open = true;
+    }
+    return {...model, tag: 'details', attributes, children: model.children.map((child, index) => (
+      index === 0 ? {...child, tag: 'summary'} : child
+    ))};
+  }
+
+  _externalCollectionBodyModel(payload, options = {}) {
     const apify = this._apifyAdapter?.model(payload, options);
     if (apify) return apify;
     const node = (tag, text, className = '', children = []) => this._externalNode(
@@ -1583,7 +1630,9 @@ class StructuredResultsRenderer {
   }
 
   _renderCollection(collection, options = {}) {
-    if (collection.kind === 'external') return this._renderExternalCollection(collection.external, options);
+    if (collection.kind === 'external') return this._renderExternalCollection(collection.external, {
+      ...options, callCount: options.callCount ?? collection.callCount,
+    });
     const kind = ['product', 'hotel', 'local', 'flight', 'video', 'weather', 'image', 'sport', 'bookmark'].includes(collection.kind)
       ? collection.kind
       : 'generic';
@@ -1673,8 +1722,8 @@ class StructuredResultsRenderer {
       : '';
     const singleClass = single ? ' structured-results-single' : '';
     return `
-      <section class="structured-results-preview structured-results-${kind} structured-results-layout-${layout}${embeddedClass}${singleClass}"${surfaceTool}${surfacePosition}${occurrence} aria-label="${this._escape(collection.eyebrow || 'Structured results')}">
-        <div class="structured-results-header">
+      <details class="structured-results-preview structured-results-${kind} structured-results-layout-${layout}${embeddedClass}${singleClass}"${surfaceTool}${surfacePosition}${occurrence} aria-label="${this._escape(collection.eyebrow || 'Structured results')}"${this._shouldCollapseCollection(collection, options) ? '' : ' open'}>
+        <summary class="structured-results-header">
           <div>
             <div class="structured-results-eyebrow">${this._escape(collection.eyebrow || 'Results')}</div>
             <div class="structured-results-heading">${this._escape(collection.heading || 'Options')}</div>
@@ -1687,10 +1736,17 @@ class StructuredResultsRenderer {
             </div>
             ${collectionAction}
           </div>
-        </div>
+        </summary>
         <div class="structured-results-track">${cards}</div>
-      </section>
+      </details>
     `;
+  }
+
+  _shouldCollapseCollection(collection, options = {}) {
+    // Presentation only: preserve every result and its call order. Counts from
+    // the execution trace take precedence over legacy payload-array estimates.
+    return collection.disclosure === 'technical'
+      || Number(options.callCount ?? collection.callCount ?? 1) > 3;
   }
 }
 

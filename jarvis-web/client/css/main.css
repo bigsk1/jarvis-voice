@@ -2621,6 +2621,47 @@ button.tool-item:focus-visible {
   margin-bottom: 12px;
 }
 
+summary.structured-results-header {
+  position: relative;
+  padding-left: 20px;
+  list-style: none;
+  cursor: pointer;
+}
+
+summary.structured-results-header::-webkit-details-marker {
+  display: none;
+}
+
+summary.structured-results-header::before {
+  position: absolute;
+  top: 5px;
+  left: 2px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--text-secondary);
+  border-bottom: 2px solid var(--text-secondary);
+  content: '';
+  transform: rotate(-45deg);
+}
+
+.structured-results-preview[open] > summary.structured-results-header::before {
+  transform: rotate(45deg);
+}
+
+summary.structured-results-header:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--accent-primary, #8ec5ff);
+  outline-offset: 4px;
+}
+
+.structured-results-preview:not([open]) > .structured-results-header {
+  margin-bottom: 0;
+}
+
+.structured-results-preview:not([open]) > .structured-results-header .structured-results-scroll-controls {
+  display: none;
+}
+
 .structured-results-eyebrow {
   color: var(--text-secondary);
   font-size: 0.72rem;

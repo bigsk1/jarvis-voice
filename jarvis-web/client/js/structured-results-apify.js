@@ -221,7 +221,8 @@ window.createApifyResultAdapter = function createApifyResultAdapter({
     ].filter(Boolean).map(value => element('p', value, 'external-result-note'));
     if (provenance.length) children.push(element('details', null, 'external-result-details', [element('summary', 'Run details'), ...provenance]));
     children.push(element('div', null, 'external-result-downloads', stashLinks(payload, options.mode)));
-    return node('section', attributes, null, children);
+    return {...node('section', attributes, null, children),
+      disclosure: isListings ? 'visual' : 'technical'};
   }
 
   async function readArchive(response) {
