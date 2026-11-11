@@ -2,7 +2,7 @@
 
 Jarvis can use a dedicated **consumer Gmail account** through
 [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp).
-The pinned v2.4.0 container exposes 111 tools in its complete tier for Gmail,
+The pinned v2.4.1 container exposes 111 tools in its complete tier for Gmail,
 Drive, Calendar, Docs, Sheets, Slides, Forms, Tasks, Contacts and Apps Script.
 This standalone Compose project is optional. A fresh clone has the MCP ENV
 gate off and never connects to or starts this service.
@@ -542,7 +542,52 @@ stored vector below the dense threshold does not gain this exception. `BLOCKED_T
 excluded. Changing enablement, credentials or profiles still needs the normal
 registry reload; temporary downtime no longer requires restarting Jarvis.
 
-## Upgrading to 2.4.0
+## Upgrading to 2.4.1
+
+The [v2.4.1 release](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.4.1)
+keeps this configuration's 111 tool names, OAuth scopes and transport. The
+Dockerfile pins its multi-platform image digest and reviewed source
+`d94a6a7e693ce97c633f744b55249616b3806e9c`. Reuse existing grants, private service
+token and `data/` storage; no fresh consent or Jarvis dependency migration is
+needed. Upstream's dependency lock is unchanged from 2.4.0, so the obsolete
+dependency overlay stays removed. Keep the runtime security entrypoint.
+
+- **Sheets range copying:** `modify_sheet_values` now accepts `source_range`
+  and `paste_type`, using `range_name` as the destination, including just its
+  top-left cell. Both ranges belong to the same `spreadsheet_id`, but may use
+  different tabs. Use explicit sheet-qualified A1 ranges; unqualified ranges
+  resolve to the first visible sheet, and named ranges are not supported for
+  copies. `PASTE_NORMAL` retains formatting and formulas with relative references
+  shifted like the Sheets UI. Other modes include `PASTE_VALUES`, `PASTE_FORMULA`
+  and `PASTE_FORMAT`. Omit `values`, `chips` and `clear_values` when copying;
+  read the affected destination before overwriting it. Jarvis retains the source,
+  destination and paste mode in model context and saved follow-ups.
+- **Gmail:** message/thread web links select the owning account by email rather
+  than assuming browser account zero. Plain-text sends and drafts with attachments
+  now include an HTML alternative, preserving long lines and text direction.
+  These fixes do not change recipient authorization or send mail by themselves.
+- **Calendar and Contacts:** offset-free out-of-office/focus-time ranges now
+  honor the supplied `timezone`; unset or unknown zones fall back to UTC. Supply
+  the intended IANA zone explicitly. Contact URL matching preserves path/query
+  case instead of merging distinct addresses.
+- **Slides:** `replaceAllText` receipts report the actual replacement count,
+  including zero. A completed request with zero matches did not change the text.
+- **Attachment reuse and errors:** Drive uploads/imports can reuse this server's
+  own `/attachments/{id}` URLs from its cache without a localhost HTTP fetch.
+  Other origins retain SSRF validation. This does not replace authenticated
+  Stash staging, cache cleanup or Bearer protection on attachment downloads.
+  Normal API ERROR logs are scrubbed and duplicate middleware tracebacks are
+  removed. DEBUG still retains detailed tracebacks; client details depend on
+  FastMCP's `mask_error_details`. Keep WARNING logging and OAuth access-log
+  suppression rather than treating this as blanket error redaction.
+
+Chat search now includes canonical resource IDs, but Chat remains excluded for
+this dedicated consumer account. Use the normal `bin/jarvis-google start`,
+`bin/jarvis-google check --live`, selected-mode Tool RAG sync and registry reload
+procedure below. Validate range copying and saved follow-ups with disposable
+owned files, and retain the previous image until live checks pass.
+
+### Earlier 2.4.0 migration notes
 
 The [v2.4.0 release](https://github.com/taylorwilsdon/google_workspace_mcp/releases/tag/v2.4.0)
 retains 111 tools in this configuration, with one breaking rename:
@@ -551,10 +596,10 @@ with the same creation parameters. Calendar creation remains separate from
 creating an event with `manage_event`. Refresh Tool RAG and each enabled mode's
 registry so the removed name is no longer offered.
 
-The Dockerfile pins the multi-platform image digest and reviewed source
-`53c392dc426ca8795e27dcf0301f92b5abe85688`. Existing Google grants, the private
-service token, localhost binding and `data/` storage are reused; this upgrade
-does not require fresh consent, Jarvis dependency changes or a database migration.
+That upgrade pinned the multi-platform image digest and reviewed source
+`53c392dc426ca8795e27dcf0301f92b5abe85688`. It reused existing Google grants, the
+private service token, localhost binding and `data/` storage without fresh
+consent, Jarvis dependency changes or a database migration.
 
 Useful additions through existing tools:
 
@@ -681,7 +726,7 @@ OpenTelemetry 1.45.1 and upgraded the base's pypdf 6.21.3 to
 [6.21.4](https://github.com/py-pdf/pypdf/releases/tag/6.21.4) for xref EOF loops,
 page-tree expansion and dictionary-cloning cycles. The new page-dictionary
 budget can reject unusually expansive PDFs; failed extraction retains the
-existing download guidance. The current 2.4.0 base includes these fixes directly,
+existing download guidance. The current 2.4.1 base includes these fixes directly,
 so the overlay has been removed. Do not run upstream `uv sync` inside the built
 container.
 
@@ -705,7 +750,7 @@ options. Reuse the current grants, private service token and `data/` bind mount.
 That release used source `0801afb3e58f51754f5a40161c07675f50565448` and Python
 3.13, without changing Jarvis's Python environments. It still needed a security
 overlay; the current pin and its replacement of that overlay are documented in
-the 2.4.0 section above. Do not run upstream `uv sync` inside the built container.
+the 2.4.1 section above. Do not run upstream `uv sync` inside the built container.
 
 Useful changes through existing tools:
 
@@ -778,11 +823,11 @@ retains this setup's transport, OAuth scopes, CLI flags and 111-tool count.
 Existing OAuth grants and the private service token can be reused. Rebuilding
 keeps the existing `data/` bind mount. Its reviewed source was
 `b5cf07e6078ae10a596710d77569e9430e01ebd4`; the current Dockerfile pin is listed
-in the 2.4.0 section above.
+in the 2.4.1 section above.
 Upstream updates `certifi` to 2026.10.19 but still includes packages with newer
 published advisories. At that upgrade, a container-only overlay pinned artifact
 hashes for `pypdf` 6.21.2, FastMCP 4.1.2 and OpenTelemetry 1.45.1 plus matching
-packages, without changing Jarvis's Python environments. The current 2.4.0 base
+packages, without changing Jarvis's Python environments. The current 2.4.1 base
 includes the later patched versions directly; the obsolete overlay is removed.
 Do not re-run upstream `uv sync` inside the built container.
 

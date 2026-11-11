@@ -1,4 +1,4 @@
-"""Workspace feature discovery and v2.4.0 argument contracts without Google calls."""
+"""Workspace feature discovery and v2.4.1 argument contracts without Google calls."""
 
 import json
 import sys
@@ -70,6 +70,12 @@ FEATURE_PARAMETERS = {
         "thread_id": _nullable("string"),
         "reply_all": {"type": "boolean", "default": False},
         "direction": {"type": "string", "enum": ["auto", "ltr", "rtl"], "default": "auto"},
+    },
+    "modify_sheet_values": {
+        "spreadsheet_id": {"type": "string"},
+        "range_name": {"type": "string"},
+        "source_range": _nullable("string"),
+        "paste_type": {"type": "string", "default": "PASTE_NORMAL"},
     },
     "modify_doc_text": {
         "document_id": {"type": "string"},
@@ -244,6 +250,7 @@ def _tools() -> list[dict]:
                 "get_doc_as_markdown": ["document_id"],
                 "create_sheet": ["spreadsheet_id"],
                 "create_drive_file": ["file_name"],
+                "modify_sheet_values": ["spreadsheet_id", "range_name"],
             }.get(name, [])],
         },
     } for name in names]
@@ -378,6 +385,10 @@ def test_feature_metadata_preserves_provider_schemas_and_account_binding(tool_na
     ("modify_doc_text", {
         "document_id": "doc-123", "heading": "Results", "heading_level": 2,
         "tab_id": "t.1", "text": "**Additional result**", "end_of_segment": True,
+    }),
+    ("modify_sheet_values", {
+        "spreadsheet_id": "sheet-123", "source_range": "Budget!A2:C2",
+        "range_name": "'Budget copy'!A3", "paste_type": "PASTE_FORMULA",
     }),
     ("modify_doc_text", {
         "document_id": "doc-123", "heading": "Results", "text": "New line only",
@@ -517,10 +528,10 @@ def test_image_guidance_uses_stash_analysis_instead_of_claiming_automatic_vision
     assert "do not share" in metadata["render_page_to_image"]["description_prefix"]
 
 
-def test_v240_catalog_replaces_calendar_tool_and_keeps_slide_rename_without_growing_the_tool_set():
+def test_current_catalog_keeps_calendar_and_slide_renames_without_growing_the_tool_set():
     fixture = json.loads((ROOT / "tests/fixtures/google_workspace_tool_names.json").read_text())
-    assert fixture['image'].endswith(':2.4.0')
-    assert fixture['upstream_commit'] == '53c392dc426ca8795e27dcf0301f92b5abe85688'
+    assert fixture['image'].endswith(':2.4.1')
+    assert fixture['upstream_commit'] == 'd94a6a7e693ce97c633f744b55249616b3806e9c'
     assert len(fixture['tools']) == len(set(fixture['tools'])) == 111
     assert 'render_page_to_image' in fixture['tools']
     assert 'get_page_thumbnail' not in fixture['tools']

@@ -15,8 +15,8 @@ leave a fresh clone usable. Preserve the pinned container digest, explicit
 environment allowlist, private storage, localhost binding and Bearer wrapper.
 Keep complete-tier/full-access tools unless the user requests different access.
 Consumer accounts cannot use Workspace Chat or domain-wide delegation.
-The digest-pinned v2.4.0 base includes all 14 previously overlaid package versions
-and their locked artifacts, so the redundant dependency override is removed.
+The digest-pinned v2.4.1 base retains all 14 previously overlaid package versions
+and their locked artifacts, so the redundant dependency override stays removed.
 Keep the runtime entrypoint: upstream legacy HTTP still has no machine auth,
 and the staging, OAuth-log and Apps Script execution protections are still needed.
 Recheck actual image packages on later upgrades rather than assuming a tag is
@@ -186,3 +186,18 @@ Optional HTTP `X-MCP-Toolsets` and `X-MCP-Tools` headers narrow the loaded tool
 catalog; when both are supplied their filters are combined as a union. Leave
 them unset for this complete-tier connection. They do not replace Bearer auth,
 the configured services/tier, account binding, or authorization.
+
+Since v2.4.1, copy a cell range with `modify_sheet_values(source_range=...,
+range_name=..., paste_type="PASTE_NORMAL")`. Use sheet-qualified A1 ranges in the
+same spreadsheet; the destination may be just its top-left cell.
+Copies retain formatting and shift relative formula references. Use
+`PASTE_VALUES`, `PASTE_FORMULA` or `PASTE_FORMAT` for the requested subset. Omit
+`values`, `chips` and `clear_values` in copy mode, and inspect the destination
+before overwriting it. Cross-spreadsheet whole-tab copies still use `create_sheet`.
+
+Gmail web links now select the account by email. Offset-free out-of-office and
+focus-time ranges honor `timezone`; supply a valid IANA zone to avoid UTC fallback.
+Slides replacement counts can be zero even when the request completed. Own-origin
+attachment URLs can be reused from the cache, but host Stash files still require
+the authenticated staging and cleanup bridge. API error logging improvements do
+not replace the OAuth access-log suppression or mask every DEBUG/client detail.

@@ -1,6 +1,6 @@
 """Normalize Workspace MCP receipts and preserve bounded follow-up handles.
 
-Upstream v2.4.0 returns human-readable receipts, paged content and inline images.
+Upstream v2.4.1 returns human-readable receipts, paged content and inline images.
 Keep its actual response and explicitly labeled IDs; never invent an API receipt.
 """
 
@@ -30,7 +30,7 @@ _REQUEST_KEYS = frozenset({
     "offset", "full_content", "page_offset", "page_size", "expected_sha256",
     "summary", "timezone", "rule_id", "scope_type", "scope_value", "send_notifications",
     "source_sheet_name", "destination_spreadsheet_id", "insert_sheet_index", "shortcut_target_id",
-    "preserve_context",
+    "preserve_context", "source_range", "paste_type",
 })
 _REQUEST_ID_LISTS = frozenset({"message_ids", "thread_ids", "add_label_ids", "remove_label_ids", "recurrence"})
 _LINK = re.compile(r"https?://[^\s<>\"'\[\]]+")
