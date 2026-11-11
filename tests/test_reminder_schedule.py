@@ -132,6 +132,61 @@ def test_recurrence_retains_requested_clock_and_storage_contract(expression, exp
     assert parsed(expression) == (expected, rule)
 
 
+@pytest.mark.parametrize("weekday,day,index", [("Friday", 13, 4), ("Tuesday", 10, 1)])
+@pytest.mark.parametrize("clock,hour", [
+    ("11 a.m.", 11), ("11 p.m.", 23), ("12 a.m.", 0), ("12 p.m.", 12),
+])
+def test_dictated_on_every_weekday_and_dotted_meridiem_keep_weekly_recurrence(
+    weekday, day, index, clock, hour,
+):
+    expression = f"on Every {weekday} at {clock}"
+    expected = (datetime(2026, 11, day, hour, tzinfo=PACIFIC), f"WEEKLY:{index}")
+    assert parsed(expression) == expected
+    assert resolve_schedule(expression, now=SATURDAY, schedule={
+        "kind": "weekly", "weekday": index, "time": f"{hour:02d}:00",
+    }) == expected
+    with pytest.raises(ScheduleError):
+        resolve_schedule(expression, now=SATURDAY, schedule={
+            "kind": "weekly", "weekday": 1 if index == 4 else 4, "time": f"{hour:02d}:00",
+        })
+    with pytest.raises(ScheduleError):
+        resolve_schedule(expression, now=SATURDAY, schedule={
+            "kind": "weekday", "weekday": index, "time": f"{hour:02d}:00",
+        })
+
+
+@pytest.mark.parametrize("clock,hour", [
+    ("11a.m", 11), ("11a.m.", 11), ("11 a.m", 11), ("11 am.", 11),
+    ("11 AM", 11), ("11am", 11), ("11 a. m.", 11), ("11A.M.", 11),
+    ("11p.m", 23), ("11p.m.", 23), ("11 p.m", 23), ("11 pm.", 23),
+    ("11 PM", 23), ("11pm", 23), ("11 p. m.", 23), ("11P.M.", 23),
+    ("12a.m", 0), ("12A.M.", 0), ("12 a. m.", 0), ("12 am.", 0),
+    ("12p.m", 12), ("12P.M.", 12), ("12 p. m.", 12), ("12 pm.", 12),
+])
+def test_attached_spaced_dotted_and_uppercase_meridiems_preserve_actual_weekly_hour(clock, hour):
+    expression = f"every Friday at {clock}"
+    expected = (datetime(2026, 11, 13, hour, tzinfo=PACIFIC), "WEEKLY:4")
+    assert parsed(expression) == expected
+    assert resolve_schedule(expression, now=SATURDAY, schedule={
+        "kind": "weekly", "weekday": 4, "time": f"{hour:02d}:00",
+    }) == expected
+
+
+@pytest.mark.parametrize("clock,error", [
+    ("11", "AM or PM"), ("13A.M.", "12-hour"), ("13P.M.", "12-hour"),
+])
+def test_meridiem_normalization_does_not_guess_bare_hours_or_accept_invalid_12_hour_clocks(
+    clock, error,
+):
+    expression = f"every Friday at {clock}"
+    with pytest.raises(ScheduleError, match=error):
+        parsed(expression)
+    with pytest.raises(ScheduleError, match=error):
+        resolve_schedule(expression, now=SATURDAY, schedule={
+            "kind": "weekly", "weekday": 4, "time": "11:00",
+        })
+
+
 @pytest.mark.parametrize("expression,count,first_day", [
     ("next 5 days at 2pm", 5, 8),
     ("for the next five days at 2pm", 5, 8),

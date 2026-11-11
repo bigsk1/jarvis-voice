@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "create_reminder",
-  "description": "Create reminder notifications and optional Calendar events. Interpret the user's wording into schedule selectors; Jarvis computes and validates dates before saving. Keep when as the original notification schedule and prefer the structured schedule argument for varied phrasing. For Monday at 5pm use kind=weekday, weekday=0, time=17:00; do not compute a calendar date. Keep appointment/event times in title/description, not the notification schedule. Bounded daily spans use ONE call, not separate recurring and one-time reminders. Never approximate unclear times, unsupported recurrence, or missing information: ask for clarification. On success confirm the actual saved result; do not create a replacement to correct or verify it. An invalid_reminder_schedule rejection means nothing was saved; only retry a faithful equivalent interpretation, never discard constraints.",
+  "description": "Create reminder notifications and optional Calendar events. Interpret the user's wording into schedule selectors; Jarvis computes and validates dates before saving. Keep when as the original notification schedule and prefer the structured schedule argument for varied phrasing. For Monday at 5pm use kind=weekday, weekday=0, time=17:00; for every Friday at 11 a.m. use kind=weekly, weekday=4, time=11:00. Do not compute a calendar date. Keep appointment/event times in title/description, not the notification schedule. Bounded daily spans use ONE call, not separate recurring and one-time reminders. Never approximate unclear times, unsupported recurrence, or missing information: ask for clarification. On success confirm the actual saved result; do not create a replacement to correct or verify it. An invalid_reminder_schedule rejection means nothing was saved; only retry a faithful equivalent interpretation, never discard constraints.",
   "script": "create_reminder.py",
   "parameters": {
     "type": "object",
@@ -24,6 +24,7 @@
         "properties": {
           "kind": {
             "type": "string",
+            "description": "weekday selects one upcoming occurrence; weekly repeats every week. Use weekly for every/each Friday, Tuesday, or another weekday, including dotted a.m./p.m. wording.",
             "enum": [
               "relative",
               "date",

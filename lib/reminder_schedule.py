@@ -275,7 +275,7 @@ def _spoken_clock_minutes(text: str) -> str:
 
 def _normalize(expression: str) -> str:
     expression = expression.lower().strip()
-    expression = re.sub(r"\b([ap])\s*\.?\s*m\.?(?![a-z])", r"\1m", expression)
+    expression = re.sub(r"(?:\b|(?<=\d))([ap])\s*\.?\s*m\.?(?![a-z])", r"\1m", expression)
     expression = re.sub(r"\bmid-day\b", "midday", expression)
     expression = _spoken_clock_minutes(expression)
     expression = _number_words(expression)
@@ -740,10 +740,10 @@ def _parse_natural(expression: str, now: datetime, default_hour: int) -> Schedul
             _localize(now.date() + timedelta(days=offset + index), clock, zone)
             for index in range(count)
         ], None
+    date_text = re.sub(r"^on\s+", "", date_text)
     recurring = _recurring(date_text, now, clock)
     if recurring is not None:
         return recurring
-    date_text = re.sub(r"^on\s+", "", date_text)
     if not date_text and has_clock:
         day = now.date()
         if datetime.combine(day, clock) <= now.replace(tzinfo=None):

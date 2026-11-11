@@ -12,6 +12,11 @@ from lib.reminder_request import (
 )
 
 REFERENCE = datetime(2026, 11, 7, 5, 17, 34, 123456, tzinfo=ZoneInfo("America/Los_Angeles"))
+WINDOWS_SHARED_REPORT_QUERY = (
+    "Set a reminder Every Friday at 11 a.m. And a reminder on Every Tuesday At 11 a.m. "
+    "To check the updated Home watch report"
+)
+REPORT_TITLE = "Check the updated Home watch report"
 
 
 def check(query, when, *, title="Update firewall", schedule=None):
@@ -97,6 +102,76 @@ def test_distinct_reminder_clauses_are_matched_by_exact_subject():
     assert check(query, "5pm", title="Call plumber")
     assert check(query, "Monday at 5pm", title="Buy milk")
     assert "ambiguous" in check(query, "Tuesday at 6pm", title="Ambiguous summary")
+
+
+@pytest.mark.parametrize("meridiem,clock", [
+    ("11 a.m.", "11:00"), ("11 p.m.", "23:00"),
+    ("12 a.m.", "00:00"), ("12 p.m.", "12:00"),
+    ("11a.m", "11:00"), ("11a.m.", "11:00"), ("11 a.m", "11:00"),
+    ("11 am.", "11:00"), ("11 AM", "11:00"), ("11am", "11:00"),
+    ("11 a. m.", "11:00"), ("11A.M.", "11:00"),
+    ("11p.m", "23:00"), ("11p.m.", "23:00"), ("11 p.m", "23:00"),
+    ("11 pm.", "23:00"), ("11 PM", "23:00"), ("11pm", "23:00"),
+    ("11 p. m.", "23:00"), ("11P.M.", "23:00"),
+    ("12a.m", "00:00"), ("12A.M.", "00:00"),
+    ("12p.m", "12:00"), ("12P.M.", "12:00"),
+])
+def test_windows_dictation_preserves_both_weekly_schedules_and_shared_subject(meridiem, clock):
+    query = WINDOWS_SHARED_REPORT_QUERY.replace("11 a.m.", meridiem)
+    for day, weekday in (("Friday", 4), ("Tuesday", 1)):
+        when = f"every {day} at {clock}"
+        assert check(query, when, title=REPORT_TITLE) is None
+        assert check(query, when, title=REPORT_TITLE, schedule={
+            "kind": "weekly", "weekday": weekday, "time": clock,
+        }) is None
+
+
+@pytest.mark.parametrize("source_clock", ["11", "13A.M.", "13P.M."])
+def test_human_clock_must_be_unambiguous_and_valid_before_accepting_model_time(source_clock):
+    query = WINDOWS_SHARED_REPORT_QUERY.replace("11 a.m.", source_clock)
+    for day, weekday in (("Friday", 4), ("Tuesday", 1)):
+        rejection = check(query, f"every {day} at 11:00", title=REPORT_TITLE, schedule={
+            "kind": "weekly", "weekday": weekday, "time": "11:00",
+        })
+        assert rejection is not None
+        assert "clarification" in rejection
+
+
+@pytest.mark.parametrize("when,title", [
+    ("Friday at 11:00", REPORT_TITLE),
+    ("Tuesday at 11:00", REPORT_TITLE),
+    ("every Friday at 23:00", REPORT_TITLE),
+    ("every Tuesday at 10:00", REPORT_TITLE),
+    ("every Wednesday at 11:00", REPORT_TITLE),
+    ("every Friday at 11:00", "Check a different report"),
+])
+def test_windows_shared_subject_does_not_authorize_changed_schedules_or_content(when, title):
+    assert check(WINDOWS_SHARED_REPORT_QUERY, when, title=title)
+
+
+def test_identical_subjects_are_disambiguated_by_the_complete_notification_schedule():
+    query = (
+        "Set a reminder every Friday at 11 a.m. to check report "
+        "and a reminder on every Friday at 2 p.m. to check report"
+    )
+    assert check(query, "every Friday at 11:00", title="Check report") is None
+    assert check(query, "every Friday at 14:00", title="Check report") is None
+    assert check(query, "every Friday at 12:00", title="Check report")
+    assert check(query, "Friday at 14:00", title="Check report")
+
+
+def test_multiple_explicit_subjects_do_not_fill_an_unassociated_reminder():
+    query = (
+        "Set a reminder every Friday at 11 a.m. "
+        "and a reminder on every Tuesday at 12 p.m. to buy milk "
+        "and another reminder every Wednesday at 1 p.m. to call plumber"
+    )
+    assert check(query, "every Tuesday at 12:00", title="Buy milk") is None
+    assert check(query, "every Wednesday at 13:00", title="Call plumber") is None
+    for title in ("Buy milk", "Call plumber", "Unknown reminder"):
+        assert check(query, "every Friday at 11:00", title=title)
+    assert check(query, "every Tuesday at 12:00", title="Call plumber")
+    assert check(query, "every Wednesday at 13:00", title="Buy milk")
 
 
 @pytest.mark.parametrize("query", [
@@ -204,6 +279,47 @@ def test_coverage_identifies_only_missing_second_notification():
     assert "call plumber" not in warning
     second = _saved("Buy milk", "Tuesday at 6pm", trigger="2026-11-11T02:00:00Z")
     assert reminder_request_coverage_warning(query, [first, second], reference_time=REFERENCE) is None
+
+
+def test_windows_shared_subject_coverage_requires_both_successful_weekly_receipts():
+    first = _saved(REPORT_TITLE, "every Friday at 11:00")
+    warning = reminder_request_coverage_warning(
+        WINDOWS_SHARED_REPORT_QUERY, [first], reference_time=REFERENCE,
+    )
+    assert warning is not None
+    assert "tuesday" in warning.lower()
+    assert "friday" not in warning.lower()
+    second = _saved(REPORT_TITLE, "every Tuesday at 11:00")
+    assert reminder_request_coverage_warning(
+        WINDOWS_SHARED_REPORT_QUERY, [first, second], reference_time=REFERENCE,
+    ) is None
+    second["result"]["ok"] = False
+    assert "tuesday" in reminder_request_coverage_warning(
+        WINDOWS_SHARED_REPORT_QUERY, [first, second], reference_time=REFERENCE,
+    ).lower()
+
+
+@pytest.mark.parametrize("query", [
+    "Remind me to print the invoice and a reminder email tomorrow at 5pm",
+    "Remind me to bring medication and a reminder card tomorrow at 5pm",
+])
+def test_reminder_nouns_in_content_do_not_erase_the_notification_schedule(query):
+    assert check(query, "tomorrow at 5pm") is None
+    assert check(query, "every Friday at 11:00")
+
+
+def test_attached_dotted_clock_clause_keeps_the_shared_date_and_repetition():
+    query = ("Remind me every Friday at 11a.m. to call plumber "
+             "and at 11p.m. to buy milk")
+    assert check(query, "every Friday at 11am", title="Call plumber") is None
+    assert check(query, "every Friday at 11pm", title="Buy milk") is None
+    assert check(query, "11pm", title="Buy milk")
+
+
+def test_unfamiliar_action_with_attached_dotted_clock_still_requires_clarification():
+    query = ("Remind me Monday at 11a.m. to call plumber "
+             "and Tuesday at 11p.m. sanitize equipment")
+    assert "clarification" in check(query, "Monday at 11am", title="Call plumber")
 
 
 def test_coverage_survives_internal_recovery_guard_without_suppressing_missing_work():

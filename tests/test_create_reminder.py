@@ -231,6 +231,45 @@ class ReminderCreationIntegrationTests(unittest.TestCase):
         self.assertEqual(rows[0]["status"], "scheduled")
         self.post.assert_not_called()
 
+    def test_windows_dictation_validates_and_saves_both_weekly_reminders_once(self):
+        from lib.reminder_request import (
+            reminder_request_coverage_warning,
+            reminder_request_rejection,
+        )
+
+        query = ("Set a reminder Every Friday at 11 a.m. And a reminder on Every Tuesday "
+                 "At 11 a.m. To check the updated Home watch report")
+        contexts = []
+        for weekday, when in ((4, "Every Friday at 11 a.m."),
+                              (1, "on Every Tuesday At 11 a.m.")):
+            self.arguments = {
+                "title": "Check the updated Home watch report", "when": when,
+                "schedule": {"kind": "weekly", "weekday": weekday, "time": "11:00"},
+            }
+            self.assertIsNone(reminder_request_rejection(
+                query, self.arguments, reference_time=self.now,
+            ))
+            result = self.run_main()
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["data"]["recurrence_rule"], f"WEEKLY:{weekday}")
+            saved = datetime.fromisoformat(result["data"]["trigger_time"])
+            local = saved.replace(tzinfo=timezone.utc).astimezone(self.tz)
+            self.assertEqual((local.weekday(), local.hour, local.minute), (weekday, 11, 0))
+            contexts.append({"tool": "create_reminder", "arguments": self.arguments, "result": result})
+            if weekday == 4:
+                self.assertIn("tuesday", reminder_request_coverage_warning(
+                    query, contexts, reference_time=self.now,
+                ).lower())
+            repeated = self.run_main()
+            self.assertTrue(repeated["ok"])
+            self.assertTrue(repeated["data"]["duplicate_suppressed"])
+
+        self.assertEqual(len(self.saved_rows()), 2)
+        self.assertIsNone(reminder_request_coverage_warning(
+            query, contexts, reference_time=self.now,
+        ))
+        self.post.assert_not_called()
+
     def test_missing_timezone_refuses_before_database_or_calendar(self):
         for configured in (None, "", "   "):
             with self.subTest(configured=configured):

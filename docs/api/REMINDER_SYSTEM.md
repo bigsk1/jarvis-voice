@@ -59,6 +59,14 @@ package, or database migration. Existing callers can continue supplying only
 `when`; its parser must understand the complete expression rather than extract
 one matching clock and ignore the remaining words.
 
+`weekday` selects one upcoming occurrence; `weekly` preserves requests such as
+`every Friday at 11 a.m.` (`weekday: 4`, `time: "11:00"`). Dotted `a.m.`/`p.m.`
+from typed or externally dictated text mean the same as `AM`/`PM`, including
+attached forms such as `11a.m` and `11p.m.` and a missing final period. A request such
+as `Set a reminder every Friday at 11 a.m. and a reminder on every Tuesday at
+11 a.m. to check the report` retains two weekly schedules with the shared
+subject. Both saved receipts are required to confirm the whole request.
+
 Recognizable dates, weekdays, clocks and repetition constraints must agree with
 the structured interpretation. Ambiguous or unsupported schedules require
 clarification; the tool never intentionally approximates unsupported recurrence

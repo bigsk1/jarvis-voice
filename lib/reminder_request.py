@@ -10,7 +10,7 @@ This remains a bounded grammar, not a general natural-language interpreter.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone, tzinfo
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -20,6 +20,10 @@ from lib.reminder_schedule import ScheduleError, UnsupportedScheduleError, resol
 _INTRO = re.compile(
     r"\b(?:remind\s+me|(?:set|create|add)\s+(?:me\s+)?"
     r"(?:(?:a|one|two|three|\d+)\s+)?reminders?)\b\s*:?", re.IGNORECASE,
+)
+_CONJOINED_INTRO = re.compile(
+    r"\b(?:and(?:\s+then)?|then|also)\s+(?:(?:a|another)\s+)?reminder\b\s*:?",
+    re.IGNORECASE,
 )
 _CONTENT = re.compile(r"\b(?:to|about|that)\b", re.IGNORECASE)
 _JOIN = re.compile(r"\s*(?:,?\s+and(?:\s+then)?|,?\s+then|;|,?\s+also)\s+", re.IGNORECASE)
@@ -36,7 +40,7 @@ _CLOCK_ONLY = re.compile(
     r"\d{1,2}:\d{2}|noon|midnight|midday)$", re.IGNORECASE,
 )
 _CLOCK_START = re.compile(
-    r"^(?:at\s+)?(?:\d{1,2}(?::\d{2})?(?:\s*(?:am|pm)\b|\b)|"
+    r"^(?:at\s+)?(?:\d{1,2}(?::\d{2})?(?:\s*[ap]\.?\s*m\b|\b)|"
     r"noon\b|midnight\b|midday\b|half\b|quarter\b)", re.IGNORECASE,
 )
 _CONTENT_AMBIGUITY = re.compile(
@@ -48,7 +52,7 @@ _ACTION_START = re.compile(
     r"meet|bring|finish|start|stop|review|submit|leave|feed|walk|water)\b", re.IGNORECASE,
 )
 _CLOCK_EVIDENCE = re.compile(
-    r"\b(?:\d{1,2}(?::\d{2})?\s*(?:am|pm)|\d{1,2}:\d{2}|noon|midnight|midday)\b",
+    r"\b(?:\d{1,2}(?::\d{2})?\s*[ap]\.?\s*m|\d{1,2}:\d{2}|noon|midnight|midday)\b",
     re.IGNORECASE,
 )
 _TIMEZONE_REPLY = re.compile(
@@ -184,6 +188,9 @@ def _unresolved_additional_clause(segment: str, now: datetime) -> _Clause | None
 
 def _request_clauses(original_query: str, now: datetime) -> list[_Clause]:
     introductions = list(_INTRO.finditer(original_query))
+    introductions.extend(match for match in _CONJOINED_INTRO.finditer(original_query)
+                         if _looks_like_schedule(original_query[match.end():].lstrip()))
+    introductions.sort(key=lambda match: match.start())
     clauses = []
     for index, introduction in enumerate(introductions):
         end = introductions[index + 1].start() if index + 1 < len(introductions) else len(original_query)
@@ -213,6 +220,13 @@ def _request_clauses(original_query: str, now: datetime) -> list[_Clause]:
                 clause = _inherit_clock(previous, clause, now) if previous else clause
                 clauses.append(clause)
                 previous = clause
+    # A trailing subject can apply to several explicitly requested schedules:
+    # "Friday at 11am and a reminder Tuesday at 11am to check the report".
+    # Only share it when every earlier clause is a complete subjectless plan;
+    # independently stated subjects and unresolved schedules keep their guards.
+    if (len(clauses) > 1 and clauses[-1].subject and clauses[-1].resolved is not None
+            and all(not clause.subject and clause.resolved is not None for clause in clauses[:-1])):
+        clauses = [replace(clause, subject=clauses[-1].subject) for clause in clauses]
     return clauses
 
 
@@ -283,6 +297,11 @@ def reminder_request_rejection(
         associated = [clause for clause in clauses if title and _subject(clause.subject) == title]
         if len(associated) == 1:
             selected = associated[0]
+        elif associated:
+            temporal = [clause for clause in associated if _matches(clause, actual, reference_time)]
+            if len(temporal) != 1:
+                return "The original request contains multiple reminders with ambiguous schedule association; clarify each notification"
+            selected = temporal[0]
         elif not any(clause.subject for clause in clauses):
             temporal = [clause for clause in clauses if _matches(clause, actual, reference_time)]
             if len(temporal) != 1:
