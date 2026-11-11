@@ -42,6 +42,57 @@ You: "Save that code snippet to my canvas"
 
 Canvas pages support embedded images. Jarvis can now pass an explicit `image_url` (including normal `https://` URLs and `stash://` refs) when creating or updating a page, and the Canvas tool will insert the markdown image block automatically at the top of the page. If a tool or model only includes a plain text line such as `Image: https://...`, the Canvas tool will now recover that inline URL and convert it into a real embedded image block automatically.
 
+## Property listing reports
+
+For readable Zillow/Redfin snapshots, the Canvas tool accepts `property_sources`
+with the canonical Stash `raw_ref` and original mode of every fetched page:
+
+```json
+{
+  "action": "create",
+  "title": "Property search snapshot",
+  "property_sources": [{"ref": "stash://space_example/f_example", "mode": "cloud"}],
+  "property_criteria": "Requested single-family homes, $300,000–$600,000"
+}
+```
+
+The tool reads full retained pages rather than the model's shortened preview.
+It embeds normalized rows in a self-contained `property-listings` Markdown
+block. The viewer renders photo cards or a table, city counts, address/ZIP
+search, sorting and local pagination; backend IDs and JSON stay out of the main
+display. Browsing does not call a model, Apify or Stash again. Snapshots remain
+usable after the original Stash file expires.
+
+Native reviewed Apify pages and canonical `property_listings` pages are supported.
+Up to 20 pages, 2,000 fetched rows and a 4 MiB block fit one report. Exact
+source/listing IDs or URLs deduplicate overlapping pages; similar addresses with
+different native identities remain separate. Each source retains its cloud/local
+mode for file resolution. Criteria are labeled as requested, coverage describes
+fetched dataset pages rather than an exhaustive market search, and unknown prices
+or listing ages remain unknown. A successful scrape does not prove a new listing
+or a match to every requested filter.
+
+Mixed pages keep every recognized listing and explicitly count unsupported or
+error records; the original retained source keeps those records intact. Coverage
+separates native records fetched from recognized listings and deduplicated
+properties. Complete coverage means the source dataset positions were fetched,
+even when some records could not be presented as listings. Partial single-dataset
+reports display their real starting offset, explicitly counted from zero;
+combined datasets or unknown positions display no single starting offset.
+Unknown or lagging totals stay unknown.
+
+PDF exports include all report listings as readable sections with property links,
+coverage and explicit unknown values. Unsupported records produce a warning;
+malformed report blocks produce an omission notice instead of raw JSON. Already
+saved version 1 reports remain readable. OpenStreetMap geography credit appears
+only when the retained source records prove that its geocoder supplied bounds;
+raw-input and older runs receive no assumed attribution.
+
+`property_sources` works with create, append and update. `content` can add a short
+analysis; it is optional when these sources supply the report. Ordinary update
+replacement and shrink protections still apply. No scrape or scheduled task is
+created by this operation. See [Apify inputs and collection](mcp/APIFY.md).
+
 ## Architecture
 
 ```

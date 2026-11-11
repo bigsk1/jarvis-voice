@@ -33,11 +33,19 @@ except ModuleNotFoundError as exc:
     from lib.deepwiki_context import DEEPWIKI_TOOL_NAMES, project_deepwiki_data
 
 try:
-    from external_results import is_external_result, project_external_result
+    from external_results import (
+        is_external_result,
+        project_external_result,
+        select_external_followup_results,
+    )
 except ModuleNotFoundError as exc:
     if exc.name != "external_results":
         raise
-    from lib.external_results import is_external_result, project_external_result
+    from lib.external_results import (
+        is_external_result,
+        project_external_result,
+        select_external_followup_results,
+    )
 
 from .followup import local_travel as _local_travel_followup
 from .followup import media as _media_followup
@@ -2971,6 +2979,47 @@ def _extract_reminder_followup(data: dict, max_candidates: int, *, max_chars: in
     }
 
 
+def _restore_apify_trace_results(data: dict) -> dict:
+    """Interleave failed Apify evidence with successes using the native trace."""
+    trace = [row for row in data.get('_tool_trace') or [] if isinstance(row, dict)]
+    tools = set()
+    for row in trace:
+        payload = row.get('result_data')
+        if row.get('ok') is False and is_external_result(payload):
+            payload = payload.get('data', payload)
+            if payload['source'].get('provider') == 'apify' and isinstance(row.get('tool'), str):
+                tools.add(row['tool'])
+    if not tools:
+        return data
+    restored = dict(data)
+    for tool in tools:
+        canonical = data.get(tool, [])
+        canonical = list(canonical) if isinstance(canonical, list) else [canonical]
+        rows = [row for row in trace if row.get('tool') == tool]
+        matched = sum(row.get('ok') is True for row in rows) == len(canonical)
+        pending = iter(canonical if matched else [])
+        ordered = [] if matched else list(canonical)
+        for row in rows:
+            if row.get('ok') is True:
+                saved = next(pending, None)
+                if saved is not None:
+                    ordered.append(saved)
+            elif row.get('ok') is False and is_external_result(row.get('result_data')):
+                payload = row['result_data'].get('data', row['result_data'])
+                if payload['source'].get('provider') != 'apify':
+                    continue
+                # The orchestrator's trace sanitizer already bounds nested
+                # values. Its preview cannot prove page equivalence.
+                payload = {**payload, 'limits': {
+                    **payload.get('limits', {}), 'truncated': True, 'trace_compacted': True,
+                    **({'status_order_unknown': True} if not matched else {}),
+                }}
+                ordered.append(payload)
+        if ordered:
+            restored[tool] = ordered
+    return restored
+
+
 def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict | None:
     """
     Extract key data from tool results that enables follow-up actions.
@@ -2991,6 +3040,7 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
     """
     if max_candidates is None:
         max_candidates = FOLLOWUP_DEFAULT_MAX_CANDIDATES
+    data = _restore_apify_trace_results(data)
     followup: dict = {}
     coverage_warning = data.get('_reminder_request_coverage_warning')
     coverage_note = _truncate_followup_text(coverage_warning, 1200) if isinstance(coverage_warning, str) else ''
@@ -3061,13 +3111,19 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             continue
         external_runs = value if isinstance(value, list) else [value]
         if external_runs and all(is_external_result(run) for run in external_runs):
-            selected = external_runs[-3:]
+            selected = select_external_followup_results(external_runs)
+            wrapper = {
+                "runs_count": len(external_runs), "results": [],
+                "results_truncated": len(selected) < len(external_runs),
+            }
+            # Include the repeated-run wrapper and separators in the same
+            # bound; page manifests share this budget with their previews.
+            overhead = len(_strict_json_text(wrapper)) + len(selected) - 1 if len(external_runs) > 1 else 0
             projected = [project_external_result(
-                run, max_chars=6000 // len(selected), sample_limit=max_candidates,
+                run, max_chars=(6000 - overhead) // len(selected), sample_limit=max_candidates,
             ) for run in selected]
             followup[key] = projected[0] if len(external_runs) == 1 else {
-                "runs_count": len(external_runs), "results": projected,
-                "results_truncated": len(selected) < len(external_runs),
+                **wrapper, "results": projected,
             }
             continue
         if key == 'source_library':

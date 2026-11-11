@@ -256,6 +256,10 @@ class ApifyClient:
                 checkpoint[key] = value
         # Expected validated identities stay authoritative. Later reads verify
         # them, and a malformed optional receipt cannot erase a usable run ID.
+        if prepared.get("geography_attribution") == {"provider": "openstreetmap"}:
+            from lib.apify_actors.zillow_location import remember_run_geography
+
+            remember_run_geography(checkpoint["run_id"], checkpoint["actor_id"])
         return checkpoint
 
     def get_run(self, run_id: str, *, expected_actor: str | None = None) -> dict[str, Any]:
@@ -287,7 +291,6 @@ class ApifyClient:
             raise ApifyError("Dataset pages require offset >= 0 and limit between 1 and 100")
         if fields is not None and (not isinstance(fields, str) or len(fields) > 1000):
             raise ApifyError("Invalid dataset fields")
-        meta = self._object("GET", f"/datasets/{dataset_id}")
         params = {"offset": offset, "limit": limit, "format": "json", "clean": "false"}
         if fields:
             params["fields"] = fields
@@ -296,6 +299,9 @@ class ApifyClient:
             raise ApifyError("Apify returned an invalid dataset page")
         if len(items) > limit:
             raise ApifyError("Apify returned more records than requested")
+        # Dataset counts can lag the write that made these rows available.
+        # Observe metadata after the page, never claim zero items beside rows.
+        meta = self._object("GET", f"/datasets/{dataset_id}")
         return meta, items
 
     def result(self, run: dict[str, Any], *, action: str = "status", dataset_id: str | None = None,
@@ -321,15 +327,25 @@ class ApifyClient:
             meta, items = self.dataset(selected, offset=offset, limit=limit, fields=fields)
             total = meta.get("itemCount")
             total = total if type(total) is int and total >= 0 else None
+            if total is not None and items and total < offset + len(items):
+                total = None
             complete = run["status"] in TERMINAL and offset == 0 and total is not None and len(items) >= total
             result = {"kind": "dataset", "dataset_id": selected, "sample_items": items,
                 "sample_count": len(items), "returned_count": len(items), "total_items": total,
-                "offset": offset, "limit": limit, "complete": complete,
+                "offset": offset, "limit": limit, "complete": complete, "requested_fields": fields,
                 "pagination": {"tool": "apify_read_result", "action": "dataset", "run_id": run_id,
                     "has_more": total is None or offset + len(items) < total,
                     "dataset_id": selected, "next_offset": offset + len(items)
                     if items and (total is None or offset + len(items) < total) else None}}
-            raw = {"run": run, "dataset": meta, "offset": offset, "items": items}
+            raw = {"run": run, "dataset": meta, "offset": offset, "items": items,
+                   "requested_fields": fields}
+            from lib.apify_actors import normalize_property_page
+
+            presentation = normalize_property_page(run.get("actId"), items)
+            if presentation is not None:
+                result["sample_items"] = presentation["items"]
+                result["presentation"] = {key: value for key, value in presentation.items() if key != "items"}
+                raw["presentation"] = presentation
         elif action == "record":
             if not isinstance(record_key, str) or not 1 <= len(record_key) <= 256:
                 raise ApifyError("A record key must contain 1–256 characters")
@@ -359,6 +375,12 @@ class ApifyClient:
                 return {"ok": True, "speech": "Apify record saved to Stash.", "data": data}
         elif action != "status":
             raise ApifyError("Unknown Apify result action")
+        from lib.apify_actors.zillow_location import run_geography
+
+        geography = run_geography(run_id, run.get("actId"))
+        if geography is not None:
+            raw["geography_attribution"] = geography
+            result["geography_attribution"] = geography
         data = make_external_result_data(provider="apify", tool="apify_read_result",
             execution=execution, result=result, raw_payload=raw)
         status = run["status"]
@@ -376,23 +398,43 @@ class ApifyClient:
 def run_actor(arguments: dict[str, Any], *, checkpoint: Callable[[], None] | None = None,
               client: ApifyClient | None = None) -> dict[str, Any]:
     """Foreground submission returns a native handle, never a background receipt."""
+    from lib.apify_actors import actor_input
+
     client = client or ApifyClient()
-    prepared = client.prepare(arguments.get("actor"), arguments.get("input"))
+    prepared = client.prepare(arguments.get("actor"), actor_input(arguments))
+    if "search" in arguments:
+        prepared["geography_attribution"] = {"provider": "openstreetmap"}
     if checkpoint:
         checkpoint()
     handle = client.start(prepared)
     from lib.external_results import make_external_result_data
+    summary = {"kind": "object", "complete": False}
+    if "search" in arguments:
+        summary["value"] = {"status_message": "Location bounds: © OpenStreetMap contributors. "
+            "Zillow searches the resolved map rectangle; nearby places may appear. "
+            "Check returned addresses and filters before calling listings matches."}
     return {"ok": True, "speech": "Apify accepted the Actor run. It is not confirmed complete. "
-        "Use apify_read_result with the returned run_id to check status; do not submit it again.",
+        "Use apify_read_result action=collect with the returned run_id to wait briefly and fetch output; "
+        "do not submit it again.",
         "data": make_external_result_data(provider="apify", tool="apify_run_actor",
-            execution={**handle, "status": "SUBMITTED"}, result={"kind": "object", "complete": False},
+            execution={**handle, "status": "SUBMITTED"}, result=summary,
             raw_payload={"checkpoint": handle})}
 
 
 def read_result(arguments: dict[str, Any], *, client: ApifyClient | None = None) -> dict[str, Any]:
     client = client or ApifyClient()
+    action = arguments.get("action", "status")
+    wait = arguments.get("wait_seconds", 30 if action == "collect" else 0)
+    if type(wait) is not int or not 0 <= wait <= 60 or (action != "collect" and wait):
+        raise ApifyError("wait_seconds requires action=collect and an integer between 0 and 60")
+    deadline = time.monotonic() + wait
     run = client.get_run(arguments.get("run_id"))
-    return client.result(run, action=arguments.get("action", "status"),
+    if action == "collect":
+        while run["status"] not in TERMINAL and time.monotonic() < deadline:
+            time.sleep(min(2, max(0, deadline - time.monotonic())))
+            run = client.get_run(arguments.get("run_id"))
+        action = "dataset" if run["status"] == "SUCCEEDED" and client.storages(run, "datasets") else "status"
+    return client.result(run, action=action,
         dataset_id=arguments.get("dataset_id"), offset=arguments.get("offset", 0),
         limit=arguments.get("limit"), fields=arguments.get("fields"),
         record_key=arguments.get("record_key", "OUTPUT"))

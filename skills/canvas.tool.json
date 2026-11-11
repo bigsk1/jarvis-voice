@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "canvas",
-  "description": "Save and read rich content from Jarvis Canvas - a visual viewer for research results, code snippets, comparisons, media, and reference material.\n\nFor requested research output, gather sufficient relevant evidence before writing the page. After a successful write, avoid more searches or mutations just to polish or verify it; continue any distinct remaining actions the user requested. To ADD material to an existing page, use action='append' with page_id and only the new Markdown; Canvas preserves the existing page server-side. action='update' changes only supplied fields: supplied content fully replaces the existing page body, so use it only for an intentional rewrite and pass the complete replacement. Omit content for updates limited to title, tags, or pinned. An update with image_url also needs content; image-only updates are not supported. When the source result includes media, preserve its complete URL or stash:// reference in content. Canvas automatically embeds supported YouTube videos and direct or stashed video files without tool-specific markup. For a featured YouTube video, put its complete watch or youtu.be URL on a line by itself; do not place its only reference inside a table or inline prose. This canonical form keeps the Canvas player and PDF thumbnail export aligned.\n\nUse when:\n- User asks to research something and results are complex\n- User asks to 'save to canvas' or 'put in viewer'\n- User asks to add a new section, source, video, or finding to an existing Canvas page → append\n- Content has tables, code, media, or detailed formatting\n- User asks 'what's on my canvas?' or 'read my canvas page about X'\n- User wants to summarize/read a specific canvas page\n\nFinding pages:\n- 'summarize the 69x Opportunity page' → action=read, search='69x Opportunity'\n- 'read my notes from yesterday' → action=read, search='Notes/2026-01'\n- 'what research do I have?' → action=read, search='Workflows/Research'\n- 'show all canvas pages' → action=list\n\nActions: create (new page), append (add content while preserving the page), update (change supplied fields; supplied content replaces the full body), delete (remove), list (show all), open (get URL), read (find and get page content by search term or page_id).",
+  "description": "Save and read rich content from Jarvis Canvas - a visual viewer for research results, code snippets, comparisons, media, and reference material.\n\nFor requested research output, gather sufficient relevant evidence before writing the page. After a successful write, avoid more searches or mutations just to polish or verify it; continue any distinct remaining actions the user requested. To ADD material to an existing page, use action='append' with page_id and only the new Markdown; Canvas preserves the existing page server-side. action='update' changes only supplied fields: supplied content fully replaces the existing page body, so use it only for an intentional rewrite and pass the complete replacement. Omit content for updates limited to title, tags, or pinned. An update with image_url also needs content; image-only updates are not supported. When the source result includes media, preserve its complete URL or stash:// reference in content. Canvas automatically embeds supported YouTube videos and direct or stashed video files without tool-specific markup. For a featured YouTube video, put its complete watch or youtu.be URL on a line by itself; do not place its only reference inside a table or inline prose. This canonical form keeps the Canvas player and PDF thumbnail export aligned.\n\nUse when:\n- User asks to research something and results are complex\n- User asks to 'save to canvas' or 'put in viewer'\n- User asks to add a new section, source, video, or finding to an existing Canvas page \u2192 append\n- Content has tables, code, media, or detailed formatting\n- User asks 'what's on my canvas?' or 'read my canvas page about X'\n- User wants to summarize/read a specific canvas page\n\nFinding pages:\n- 'summarize the 69x Opportunity page' \u2192 action=read, search='69x Opportunity'\n- 'read my notes from yesterday' \u2192 action=read, search='Notes/2026-01'\n- 'what research do I have?' \u2192 action=read, search='Workflows/Research'\n- 'show all canvas pages' \u2192 action=list\n\nActions: create (new page), append (add content while preserving the page), update (change supplied fields; supplied content replaces the full body), delete (remove), list (show all), open (get URL), read (find and get page content by search term or page_id).\n\nFor a Zillow/Redfin property report, pass property_sources using each fetched page raw_ref and saved source.mode. Canvas reads ALL retained rows deterministically and renders photos, city counts, search, sorting, cards and a table. Do not paste native JSON or rebuild the report from only the model preview. content may add a short evidence-based analysis; property_criteria states the requested criteria and does not certify matches. Include every fetched page needed for coverage. A small actor result limit does not establish whole-market coverage. For multi-page Apify results, include every retained_pages[].raw_ref with the enclosing source.mode; the top-level raw_ref alone can represent only one page. Unrecognized source records are explicitly counted and excluded from listing display, while full native records remain in their archives. Dataset coverage and successful listing recognition are separate.",
   "complementary_tools": [
     "stash",
     "manage_intel"
@@ -12,7 +12,15 @@
     "properties": {
       "action": {
         "type": "string",
-        "enum": ["create", "append", "update", "delete", "list", "open", "read"],
+        "enum": [
+          "create",
+          "append",
+          "update",
+          "delete",
+          "list",
+          "open",
+          "read"
+        ],
         "description": "Action to perform. create=new page; append=add new Markdown without resending old content; update=change supplied fields, with supplied content replacing the full body; delete=remove; list=show all; open=get URL; read=get page content"
       },
       "title": {
@@ -21,7 +29,7 @@
       },
       "content": {
         "type": "string",
-        "description": "Markdown content, required for create/append unless create includes image_url. For create, pass the complete page content in this call; never create a title-only or metadata-only page. For append, pass ONLY the new section; existing content is preserved server-side and no line numbers are needed. For update, content is optional for changes limited to title, tags, or pinned; if supplied, it fully replaces the body and must contain the complete intended page. Supports headers, lists, tables, code blocks, images, and video. Preserve complete direct media URLs and stash:// references from source tool results; Canvas detects video by media metadata rather than tool name. Put a featured YouTube watch or youtu.be URL on its own line so Canvas and PDF exports both render it as media. If you include sources/links, URLs must be complete and resolvable. NEVER use shortened/truncated links like 'https://...'. Use complete URL fields from source results, not shortened display labels. If the destination is unavailable, keep plain text rather than guessing a link."
+        "description": "Markdown content, required for create/append unless create includes image_url. For create, pass the complete page content in this call; never create a title-only or metadata-only page. For append, pass ONLY the new section; existing content is preserved server-side and no line numbers are needed. For update, content is optional for changes limited to title, tags, or pinned; if supplied, it fully replaces the body and must contain the complete intended page. Supports headers, lists, tables, code blocks, images, and video. Preserve complete direct media URLs and stash:// references from source tool results; Canvas detects video by media metadata rather than tool name. Put a featured YouTube watch or youtu.be URL on its own line so Canvas and PDF exports both render it as media. If you include sources/links, URLs must be complete and resolvable. NEVER use shortened/truncated links like 'https://...'. Use complete URL fields from source results, not shortened display labels. If the destination is unavailable, keep plain text rather than guessing a link. May be omitted when property_sources supplies the property report."
       },
       "image_url": {
         "type": "string",
@@ -33,7 +41,9 @@
       },
       "tags": {
         "type": "array",
-        "items": { "type": "string" },
+        "items": {
+          "type": "string"
+        },
         "description": "Tags for categorization. Examples: research, code, reference, movies, servers"
       },
       "source_query": {
@@ -59,9 +69,44 @@
       "limit": {
         "type": "integer",
         "description": "Max pages to return for list action (default 10)"
+      },
+      "property_sources": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 20,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ref": {
+              "type": "string",
+              "description": "Canonical stash:// ref from a retained property page raw_ref."
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "cloud",
+                "local"
+              ],
+              "description": "Original source.mode for that page, including after mode changes."
+            }
+          },
+          "required": [
+            "ref",
+            "mode"
+          ]
+        },
+        "description": "For create/append/update: all retained property pages to embed as a self-contained interactive report. Reads existing Stash files only; never starts another scrape. At most 2000 fetched rows/4 MiB rendered block. Normalizes native supported Apify pages or canonical property_listings pages; exact listing IDs/URLs deduplicate overlapping pages. If a saved Apify result includes retained_pages, include each retained_pages[].raw_ref with its enclosing source.mode, rather than only its top-level raw_ref."
+      },
+      "property_criteria": {
+        "type": "string",
+        "maxLength": 2000,
+        "description": "Requested location, price, type and listing-age criteria as plain text. Shown as requested criteria, not a claim that all returned records match."
       }
     },
-    "required": ["action"]
+    "required": [
+      "action"
+    ]
   },
   "permissions": {
     "dangerous": false,

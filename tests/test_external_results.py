@@ -18,6 +18,7 @@ from lib.external_results import (
     is_external_result,
     make_external_result_data,
     project_external_result,
+    select_external_followup_results,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -239,6 +240,245 @@ def test_followup_keeps_repeated_runs_separate_without_deduplication():
     assert all(len(item["result"]["items"]) == 5 for item in saved["results"])
 
 
+def test_apify_followup_keeps_disjoint_page_references_and_latest_failed_status():
+    base = _data()
+    base["source"]["provider"] = "apify"
+    base["result"]["kind"] = "dataset"
+    base["result"]["dataset_id"] = "dataset_exact"
+    base["result"]["sample_items"] = [{"address": "A retained property", "price": 420000,
+        "listing_status": "for_sale", "days_on_zillow": None}]
+    base["result"].pop("items", None)
+    earlier = deepcopy(base)
+    earlier["result"]["offset"] = 0
+    latest = deepcopy(base)
+    latest["result"]["offset"] = 20
+    latest["result"]["pagination"] = {"next_offset": 40, "run_id": "run_exact"}
+    status = deepcopy(base)
+    status["result"] = {"kind": "object", "value": {"status": "FAILED"}}
+    status["execution"]["status"] = "FAILED"
+    status["raw_ref"] = "stash://space_example/status_failed"
+    saved = followup.extract_followup_data({"apify_read_result": [earlier, latest, status]})["apify_read_result"]
+    assert saved["runs_count"] == 3 and saved["results_truncated"]
+    assert len(saved["results"]) == 1
+    result = saved["results"][0]["result"]
+    assert result["offset"] == 20 and result["pagination"]["next_offset"] == 40
+    assert result["sample_items"][0]["price"] == 420000
+    assert result["sample_items"][0]["days_on_zillow"] is None
+    assert result["returned_count"] == latest["result"]["returned_count"]
+    assert [page["offset"] for page in result["retained_pages"]] == [0, 20]
+    assert saved["results"][0]["execution"]["status"] == "FAILED"
+    assert saved["results"][0]["execution"]["status_raw_ref"] == status["raw_ref"]
+
+
+def test_apify_followup_does_not_replace_full_fetched_page_with_overlapping_tail():
+    full = _data(rows=[{"address": f"Property {i}", "price": 400000} for i in range(8)])
+    full["source"]["provider"] = "apify"
+    full["result"]["offset"] = 0
+    full["result"]["requested_fields"] = None
+    tail = deepcopy(full)
+    tail["raw_ref"] = "stash://space_example/tail"
+    tail["result"].update(offset=5, returned_count=3, items=deepcopy(full["result"]["items"][5:]))
+    saved = followup.extract_followup_data({"apify_read_result": [full, tail]})["apify_read_result"]
+    assert saved["results"][0]["result"]["returned_count"] == 8
+    assert saved["results"][0]["result"]["offset"] == 0
+    assert saved["results"][0]["result"]["retained_pages_count"] == 1
+
+
+def _apify_page(offset, *, count=20, run_id="run_exact", dataset_id="dataset_exact", mode="cloud"):
+    page = _data(rows=[{"record_id": f"row_{offset + index}", "description": "Evidence " * 100}
+                       for index in range(min(count, 20))], run_id=run_id, mode=mode)
+    page["source"]["provider"] = "apify"
+    page["result"].update(dataset_id=dataset_id, offset=offset, returned_count=count,
+                          requested_fields=None, pagination={"next_offset": offset + count})
+    page["raw_ref"] = f"stash://space_example/{run_id}_{dataset_id}_page_{offset}"
+    return page
+
+
+def test_twenty_disjoint_pages_survive_one_bounded_followup_without_merged_counts():
+    pages = [_apify_page(offset, count=100) for offset in range(0, 2000, 100)]
+    before = deepcopy(pages)
+    saved = followup.extract_followup_data({"apify_read_result": pages})["apify_read_result"]
+    result = saved["results"][0]["result"]
+    assert len(json.dumps(saved, ensure_ascii=True, separators=(",", ":"))) <= 6000
+    assert result["retained_pages_count"] == 20
+    assert [page["raw_ref"] for page in result["retained_pages"]] == [page["raw_ref"] for page in pages]
+    assert [page["offset"] for page in result["retained_pages"]] == list(range(0, 2000, 100))
+    assert result["returned_count"] == 100
+    assert result["offset"] == 1900
+    assert result["total_items"] is None and result["complete"] is None
+    assert not result.get("retained_pages_truncated")
+    assert pages == before
+
+
+@pytest.mark.parametrize("change", [
+    "unknown_fields", "different_fields", "partial_overlap", "sampled", "changed_rows",
+    "normalized", "compacted", "missing_archive",
+])
+def test_page_manifest_does_not_deduplicate_unproven_containment(change):
+    full = _apify_page(0, count=8)
+    tail = deepcopy(full)
+    tail["raw_ref"] = "stash://space_example/tail"
+    tail["result"].update(offset=5, returned_count=3, items=deepcopy(full["result"]["items"][5:]))
+    if change == "unknown_fields":
+        full["result"].pop("requested_fields")
+        tail["result"].pop("requested_fields")
+    elif change == "different_fields":
+        tail["result"]["requested_fields"] = "record_id"
+    elif change == "partial_overlap":
+        tail["result"]["returned_count"] = 8
+    elif change == "sampled":
+        full["result"]["returned_count"] = 100
+    elif change == "normalized":
+        full["result"]["presentation"] = {"kind": "properties"}
+    elif change == "compacted":
+        full["limits"]["truncated"] = True
+    elif change == "missing_archive":
+        full["raw_ref"] = None
+    else:
+        tail["result"]["items"][0]["record_id"] = "a_changed_record"
+    result = select_external_followup_results([full, tail])[0]["result"]
+    assert result["retained_pages_count"] == 2
+    assert [page["raw_ref"] for page in result["retained_pages"]] == [full["raw_ref"], tail["raw_ref"]]
+
+
+def test_broader_later_equivalent_page_replaces_only_contained_reference():
+    full = _apify_page(0, count=8)
+    tail = deepcopy(full)
+    tail["raw_ref"] = "stash://space_example/tail"
+    tail["result"].update(offset=5, returned_count=3, items=deepcopy(full["result"]["items"][5:]))
+    result = select_external_followup_results([tail, full, deepcopy(full)])[0]["result"]
+    assert result["retained_pages"] == [{
+        "offset": 0, "returned_count": 8, "requested_fields": None, "raw_ref": full["raw_ref"],
+    }]
+
+
+def test_page_manifests_and_native_status_do_not_cross_mode_run_or_dataset():
+    pages = [_apify_page(0), _apify_page(20, mode="local"),
+             _apify_page(40, run_id="other_run"), _apify_page(60, dataset_id="other_dataset")]
+    status = deepcopy(pages[0])
+    status["result"] = {"kind": "object", "value": {"status": "FAILED"}}
+    status["execution"]["status"] = "FAILED"
+    status["raw_ref"] = "stash://space_example/failed_status"
+    selected = select_external_followup_results([*pages, status], limit=10)
+    assert len(selected) == 4
+    for item in selected:
+        identity = (item["source"]["mode"], item["execution"]["run_id"], item["result"]["dataset_id"])
+        expected = next(page for page in pages if (
+            page["source"]["mode"], page["execution"]["run_id"], page["result"]["dataset_id"],
+        ) == identity)
+        assert item["result"]["retained_pages"][0]["raw_ref"] == expected["raw_ref"]
+        assert item["execution"]["status"] == ("FAILED" if identity[:2] == ("cloud", "run_exact") else "SUCCEEDED")
+
+
+def test_page_manifest_survives_preview_and_optional_metadata_pressure():
+    pages = [_apify_page(offset) for offset in range(0, 100, 20)]
+    status = deepcopy(pages[-1])
+    status["execution"]["status"] = "FAILED"
+    status["raw_ref"] = "stash://space_example/failed_status"
+    status["result"] = {"kind": "object", "value": {"status": "FAILED"}}
+    selected = select_external_followup_results([*pages, status])[0]
+    selected["result"]["optional_details"] = "very large " * 1000
+    selected["result"]["pagination"]["next_cursor"] = "opaque" * 2000
+    selected["artifacts"] = [{"kind": "raw", "url": "https://example.com/" + "x" * 5000}]
+    projected = project_external_result(selected, max_chars=1800)
+    assert len(json.dumps(projected, ensure_ascii=True, separators=(",", ":"))) <= 1800
+    assert projected["result"]["retained_pages"] == selected["result"]["retained_pages"]
+    assert projected["execution"]["run_id"] == "run_exact"
+    assert projected["execution"]["status"] == "FAILED"
+    assert projected["execution"]["status_raw_ref"] == status["raw_ref"]
+    assert projected["source"]["mode"] == "cloud"
+    assert projected["result"]["dataset_id"] == "dataset_exact"
+
+
+def test_pathological_page_manifest_marks_omitted_references_explicitly():
+    pages = [_apify_page(offset) for offset in range(0, 100, 20)]
+    for index, page in enumerate(pages):
+        page["raw_ref"] = f"stash://space_example/{index}_" + "x" * 300
+    selected = select_external_followup_results(pages)[0]
+    projected = project_external_result(selected, max_chars=1500)
+    assert projected["result"]["retained_pages_truncated"] is True
+    assert projected["result"]["retained_pages_count"] == 5
+    assert len(projected["result"]["retained_pages"]) < 5
+    assert all(page in selected["result"]["retained_pages"] for page in projected["result"]["retained_pages"])
+    assert projected["execution"]["run_id"] == "run_exact"
+    assert projected["result"]["dataset_id"] == "dataset_exact"
+    assert len(json.dumps(projected, ensure_ascii=True, separators=(",", ":"))) <= 1500
+
+
+def _failed_apify_trace(page):
+    with pytest.MonkeyPatch.context() as patch:
+        patch.syspath_prepend(str(ROOT / "orchestrator"))
+        from orchestrator_v2 import Orchestrator
+
+        sanitized = Orchestrator._sanitize_tool_trace_value(page)
+
+    return {
+        "tool": "apify_read_result", "ok": False,
+        "result_data": sanitized,
+    }
+
+
+def _apify_status(page, status):
+    observed = deepcopy(page)
+    observed["execution"]["status"] = status
+    observed["raw_ref"] = f"stash://space_example/status_{status.lower()}"
+    observed["result"] = {"kind": "object", "value": {"status": status}}
+    return observed
+
+
+def test_failed_trace_only_status_follows_successful_accumulated_page():
+    page = _apify_page(0)
+    failed = _apify_status(page, "FAILED")
+    saved = followup.extract_followup_data({
+        "apify_read_result": page,
+        "_tool_trace": [{"tool": "apify_read_result", "ok": True, "result_data": None},
+                        _failed_apify_trace(failed)],
+    })["apify_read_result"]["results"][0]
+    assert saved["execution"]["status"] == "FAILED"
+    assert saved["execution"]["status_raw_ref"] == failed["raw_ref"]
+    assert saved["result"]["retained_pages"][0]["raw_ref"] == page["raw_ref"]
+
+
+def test_failed_only_native_trace_keeps_recovery_identity():
+    failed = _apify_status(_apify_page(0), "FAILED")
+    saved = followup.extract_followup_data({
+        "_tool_trace": [_failed_apify_trace(failed)],
+    })["apify_read_result"]
+    assert saved["source"]["mode"] == "cloud"
+    assert saved["execution"]["run_id"] == "run_exact"
+    assert saved["execution"]["status"] == "FAILED"
+    assert saved["raw_ref"] == failed["raw_ref"]
+    assert saved["limits"]["trace_compacted"] is True
+
+
+@pytest.mark.parametrize("failure_first", [False, True])
+def test_later_success_wins_over_earlier_failed_trace_in_native_chronology(failure_first):
+    earlier, recovered = _apify_page(0), _apify_page(20)
+    failure = _failed_apify_trace(_apify_status(earlier, "FAILED"))
+    success = {"tool": "apify_read_result", "ok": True, "result_data": None}
+    runs = [recovered] if failure_first else [earlier, recovered]
+    trace = [failure, success] if failure_first else [success, failure, success]
+    saved = followup.extract_followup_data({
+        "apify_read_result": runs, "_tool_trace": trace,
+    })["apify_read_result"]["results"][0]
+    assert saved["execution"]["status"] == "SUCCEEDED"
+    assert saved["execution"]["status_raw_ref"] == recovered["raw_ref"]
+    assert saved["result"]["retained_pages_count"] == len(runs)
+
+
+def test_partial_trace_preserves_failure_without_inventing_its_status_order():
+    page = _apify_page(0)
+    saved = followup.extract_followup_data({
+        "apify_read_result": page,
+        "_tool_trace": [_failed_apify_trace(_apify_status(page, "FAILED"))],
+    })["apify_read_result"]["results"]
+    dataset = next(row for row in saved if row["result"]["kind"] == "dataset")
+    failure = next(row for row in saved if row["result"]["kind"] == "object")
+    assert dataset["execution"]["status"] == "SUCCEEDED"
+    assert failure["execution"]["status"] == "FAILED"
+    assert failure["limits"]["status_order_unknown"] is True
+
+
 @pytest.mark.parametrize("budget", [1800, 6000, 10000])
 def test_native_provider_budgets_keep_json_structure_and_recovery_handles(budget):
     data = _data(rows=[{"record_id": f"row_{index}", "content": "Evidence " * 1000}
@@ -256,3 +496,17 @@ def test_native_provider_budgets_keep_json_structure_and_recovery_handles(budget
     assert parsed["result"]["data"]["execution"]["run_id"] == "run_exact"
     assert parsed["result"]["data"]["raw_ref"] == "stash://space_example/f_raw"
     assert "result_preview_text" not in parsed
+
+
+def test_minimal_apify_failure_projection_preserves_status_and_order_uncertainty():
+    data = _data()
+    data["source"]["provider"] = "apify"
+    data["execution"].update(status="FAILED", irrelevant_id="x" * 12000)
+    data["result"] = {"kind": "object"}
+    data["limits"].update(status_order_unknown=True, trace_compacted=True)
+    projected = project_external_result(data, max_chars=1800)
+    assert projected["execution"]["run_id"] == "run_exact"
+    assert projected["execution"]["status"] == "FAILED"
+    assert projected["limits"]["status_order_unknown"] is True
+    assert projected["limits"]["trace_compacted"] is True
+    assert len(json.dumps(projected, separators=(",", ":"))) <= 1800

@@ -6,12 +6,14 @@ import gzip
 import io
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 import requests
 from urllib3.response import HTTPResponse
 
 from lib import apify
+from lib.apify_actors import zillow_location
 from lib.config_loader import config_scope
 
 RUN = "RunExample123"
@@ -43,6 +45,7 @@ def settings():
 @pytest.fixture
 def fake(settings, tmp_path, monkeypatch):
     monkeypatch.setenv("STASH_DIR", str(tmp_path / "stash"))
+    monkeypatch.setattr(zillow_location, "get_project_root", lambda: tmp_path)
     actor = {"id": ACTOR, "username": "example", "name": "scraper",
         "actorPermissionLevel": "LIMITED_PERMISSIONS", "defaultRunOptions": {"memoryMbytes": 1024}}
     schema = {"type": "object", "properties": {"query": {"type": "string"}},
@@ -119,6 +122,111 @@ def test_start_pins_validated_build_and_never_enables_restart(fake):
         "maxTotalChargeUsd": 1.0, "waitForFinish": 0, "restartOnError": "false",
         "forcePermissionLevel": "LIMITED_PERMISSIONS"}
     assert posts[0][2]["json"] == {"query": "user request"}
+
+
+@pytest.mark.parametrize("mode", ["cloud", "local"])
+def test_compiled_search_credit_survives_a_later_result_read(fake, monkeypatch, mode):
+    from lib import apify_actors
+    from lib.stash_helper import resolve_file_path
+
+    client, _, calls, *_ = fake
+    monkeypatch.setattr(apify_actors, "actor_input", lambda _args: {"query": "compiled search"})
+    with config_scope(mode):
+        accepted = apify.run_actor({"actor": "example/scraper", "search": {}}, client=client)
+        assert accepted["data"]["execution"]["run_id"] == RUN
+        # A new observer needs no original arguments or in-memory client state.
+        observer = apify.ApifyClient(client.settings, request=client.request)
+        collected = apify.read_result({"run_id": RUN, "action": "dataset"}, client=observer)
+        archive = json.loads(Path(resolve_file_path(stash_ref=collected["data"]["raw_ref"])).read_text())
+        assert archive["geography_attribution"] == {"provider": "openstreetmap"}
+        assert collected["data"]["result"]["geography_attribution"] == archive["geography_attribution"]
+        assert archive["requested_fields"] is None
+    assert len([call for call in calls if call[0] == "POST"]) == 1
+
+
+def test_raw_actor_input_does_not_invent_geography_credit(fake):
+    from lib.stash_helper import resolve_file_path
+
+    client, *_ = fake
+    apify.run_actor({"actor": "example/scraper", "input": {"query": "ordinary Actor"}}, client=client)
+    collected = apify.read_result({"run_id": RUN, "action": "dataset", "fields": "title"}, client=client)
+    archive = json.loads(Path(resolve_file_path(stash_ref=collected["data"]["raw_ref"])).read_text())
+    assert "geography_attribution" not in archive
+    assert "geography_attribution" not in collected["data"]["result"]
+    assert archive["requested_fields"] == collected["data"]["result"]["requested_fields"] == "title"
+
+
+def test_credit_write_failure_preserves_the_accepted_native_handle(fake, monkeypatch, caplog):
+    from lib import apify_actors
+
+    client, _, calls, *_ = fake
+    monkeypatch.setattr(apify_actors, "actor_input", lambda _args: {"query": "compiled search"})
+
+    def unavailable(*_args):
+        raise OSError("controlled cache failure")
+
+    monkeypatch.setattr(zillow_location.os, "replace", unavailable)
+    accepted = apify.run_actor({"actor": "example/scraper", "search": {}}, client=client)
+    assert accepted["ok"] is True
+    assert accepted["data"]["execution"]["run_id"] == RUN
+    assert len([call for call in calls if call[0] == "POST"]) == 1
+    assert "must not be resubmitted" in caplog.text
+    assert not list(zillow_location.get_project_root().rglob("*.tmp"))
+
+
+def test_collect_waits_for_existing_run_then_fetches_one_page_without_post(fake, monkeypatch):
+    client, responses, calls, *_ = fake
+    run = responses["GET", f"/actor-runs/{RUN}"]["data"]
+    run["status"] = "RUNNING"
+    clock = [0.0]
+    monkeypatch.setattr(apify.time, "monotonic", lambda: clock[0])
+
+    def finish(seconds):
+        clock[0] += seconds
+        run["status"] = "SUCCEEDED"
+
+    monkeypatch.setattr(apify.time, "sleep", finish)
+    result = apify.read_result({"run_id": RUN, "action": "collect", "wait_seconds": 10}, client=client)
+    assert result["data"]["result"]["kind"] == "dataset"
+    assert result["data"]["execution"]["status"] == "SUCCEEDED"
+    assert len([path for _, path, _ in calls if path.endswith("/items")]) == 1
+    assert all(method == "GET" for method, _, _ in calls)
+
+
+def test_collect_deadline_returns_running_handle_without_claiming_dataset_completion(fake, monkeypatch):
+    client, responses, calls, *_ = fake
+    responses["GET", f"/actor-runs/{RUN}"]["data"]["status"] = "RUNNING"
+    clock = [0.0]
+    monkeypatch.setattr(apify.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(apify.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    result = apify.read_result({"run_id": RUN, "action": "collect", "wait_seconds": 3}, client=client)
+    assert result["data"]["execution"]["run_id"] == RUN
+    assert result["data"]["execution"]["status"] == "RUNNING"
+    assert result["data"]["result"]["complete"] is False
+    assert not any(path.endswith("/items") or method == "POST" for method, path, _ in calls)
+    assert clock[0] == 3
+
+
+def test_known_property_page_projects_compact_rows_but_archives_native_data(fake):
+    from pathlib import Path
+
+    from lib.stash_helper import resolve_file_path
+
+    client, responses, _, _, _, run = fake
+    native = {"zpid": "123", "listingAddress": {"full": "A listing", "city": "Albany"},
+              "listingPrice": {"amount": 420000}, "listingStatus": "forSale",
+              "homeType": "SINGLE_FAMILY", "factsAndFeatures": {"wide": ["evidence"] * 1000}}
+    run["actId"] = "X46xKaa20oUA1fRiP"
+    responses["GET", f"/datasets/{DATASET}/items"] = [native]
+    output = client.result(run, action="dataset")["data"]
+    row = output["result"]["sample_items"][0]
+    assert row["price"] == 420000 and row["listing_status"] == "for_sale"
+    assert "factsAndFeatures" not in row
+    assert output["result"]["presentation"] == {"kind": "property_listings", "source": "zillow",
+                                               "input_count": 1, "unrecognized_count": 0}
+    archived = json.loads(Path(resolve_file_path(stash_ref=output["raw_ref"])).read_text())
+    assert archived["items"] == [native]
+    assert archived["presentation"]["items"] == [row]
 
 
 @pytest.mark.parametrize("requested", ["example/scraper", ACTOR])
@@ -329,6 +437,14 @@ def test_dataset_page_preserves_nested_json_and_pagination(fake):
     assert data["raw_ref"].startswith("stash://")
     assert all(call[0] == "GET" for call in calls)
     assert "page, not the complete" in result["speech"]
+
+
+def test_lagging_count_cannot_report_zero_total_or_complete_beside_fetched_rows(fake):
+    client, responses, _, *_, run = fake
+    responses["GET", f"/datasets/{DATASET}"]["data"]["itemCount"] = 0
+    result = client.result(run, action="dataset")["data"]["result"]
+    assert result["returned_count"] == 2 and result["total_items"] is None
+    assert result["complete"] is False
 
 
 @pytest.mark.parametrize("options", [{"limit": 0}, {"limit": 101}, {"limit": True},

@@ -7,7 +7,8 @@ API behind the existing `mcp_apify_search-actors` tool name. Two Jarvis tools
 handle execution and results for eligible, ordinary, limited-permission Actors:
 `apify_run_actor` and `apify_read_result`. Each Actor supplies its own input
 schema; adding another Actor does not require another tool, frontend adapter,
-or Tool RAG entry.
+or Tool RAG entry. Reviewed property Actors additionally share readable listing
+cards and a compact, provider-neutral property projection.
 
 Apify runs the Actors on its platform. Jarvis connects over HTTPS using the
 selected mode's API token. This integration needs no local Apify server, Node
@@ -128,12 +129,48 @@ search while retaining hosted MCP for `fetch-actor-details`.
 
 Matching trusted exceptions appear first, followed by official Store results.
 Official results use Apify's search; trusted exceptions match all query words
-against their title, name, description, and publisher. Keep keywords focused.
-Exception metadata reads share the search call's time budget. An incomplete or
-failed exception lookup marks the result partial, with no combined total or
-next-page offset; a later nonzero offset cannot return a reliable merged page.
-Configured trusted Actors remain available for direct details lookup and run
-preparation even when discovery is partial.
+against their title, name, description, README summary, and publisher. Keep
+keywords focused. Exception metadata reads share the search call's time budget.
+An incomplete or failed exception lookup marks the result partial, with no
+combined total or next-page offset; a later nonzero offset cannot return a
+reliable merged page. Configured trusted Actors remain available for direct
+details lookup and run preparation even when discovery is partial.
+
+### Store API search migration: November 15, 2026
+
+The [October 30 migration notice](https://apify.com/change-log/apify-store-api)
+announces a new Store backend on November 15. Keyword searches ignore upstream
+offsets, return at most 100 candidates, and report returned counts rather than
+the number of catalog matches. `sortBy` is ignored for all Store calls. Jarvis
+does not send it or attempt to page upstream keyword searches.
+
+For nonblank `keywords`, Jarvis fetches one official relevance window at offset
+zero and applies its existing `limit`/`offset` locally after matching trusted
+exceptions. `pagination.scope` is `search_window`; `source_limit` is 100 and
+`window_items` counts the combined window when all reads succeeded, and
+`offset_applied_locally=true` distinguishes Jarvis's paging from the upstream
+API's ignored offset. The result policy names `apify_run_actor` as the generic
+execution tool; separate Actor tools are not required.
+Jarvis replaces the hosted search description and parameter guidance for this
+native bridge, so upstream instructions about dedicated Actor tools or ignored
+search offsets do not override Jarvis's actual execution and paging behavior.
+`total_items` stays unknown and `complete=false`, including empty or short
+windows. `has_more=false` means the current window ended; refine keywords for
+other matches. This is not proof that the entire Store was searched. Rankings
+can be personalized and cached for five minutes, and separate requests do not
+form a saved snapshot.
+
+Blank or whitespace-only keywords omit the upstream `search` parameter and
+retain normal Store listing pagination and totals. The native `username=apify`
+filter remains in place for both paths. New category IDs and pricing filters
+do not change this trust policy; Jarvis keeps the existing public search inputs.
+
+Ratings come from nested `stats`; optional usage metrics may be absent. New
+`isVerified` values are advisory, and `readmeSummary` supplies a bounded fallback
+when the description is empty. Empty titles fall back to the native Actor name.
+None of these fields grants execution permission. Store pricing metadata is a
+discovery hint: inspect current Actor details/pricing before a paid run, since
+pricing-related filters can lag recent changes. Run limits are unchanged.
 
 Both foreground submission and the optional Web background worker enforce this
 same eligibility policy before starting a run. Configure exceptions through the
@@ -164,6 +201,7 @@ the Actor to finish. An accepted run is not completed output.
 | `APIFY_RUN_TIMEOUT_SECONDS` | `1800` | Provider run timeout; `1`–`3300` seconds. |
 | `APIFY_MAX_MEMORY_MB` | `2048` | Ceiling for Actor memory; a whole power of two from `128`–`32768` MiB. Invalid ceilings or unsupported final allocations reject new starts before submission. An Actor requiring more than the ceiling is rejected. |
 | `APIFY_POLL_SECONDS` | `30` | Background status-read interval; `1`–`300` seconds. Transient read failures back off up to 300 seconds. |
+| `APIFY_GEOCODER_URL` | `https://nominatim.openstreetmap.org/search` | Nominatim-compatible HTTPS endpoint used only by Zillow criteria preparation. Credentials/query strings in the configured URL are rejected. |
 | `APIFY_RESULT_PAGE_SIZE` | `20` | Default number of dataset records fetched per page; `1`–`100`. |
 | `APIFY_ALLOWED_ACTORS` | Empty | Additive, comma-separated exact native Actor IDs or `owner/name` exceptions for trusted community Actors. Empty permits official Apify-maintained Actors only; entries keep all official Actors eligible. |
 
@@ -214,9 +252,55 @@ observation still uses its saved mode's credential.
 
 CLI, REST API, voice, workflow calls, and Web calls without eligible background
 admission use the short foreground path. They receive a native run handle and
-must use `apify_read_result` later. They do not receive automatic late delivery
+must use `apify_read_result` to collect it. They do not receive automatic late delivery
 or turn a running handle into a completed workflow result. This integration
 needs no public callback URL or callback relay.
+
+## Zillow searches by criteria
+
+For `maxcopell/zillow-scraper`, supply `search` instead of `input` to express the
+requested location, listing status, price, property types and listing age.
+The dedicated Zillow adapter resolves verified location bounds and constructs
+URLs with mutually exclusive sale/rental/sold flags;
+the model does not need to visit Zillow in a browser or invent region IDs,
+map boundaries, or encoded `searchQueryState` filters.
+
+```json
+{
+  "actor": "maxcopell/zillow-scraper",
+  "search": {
+    "locations": ["Albany, OR", "Lebanon, OR"],
+    "listing_status": "for_sale",
+    "property_types": ["single_family"],
+    "price_min": 300000,
+    "price_max": 600000,
+    "max_days_on_zillow": 60,
+    "results_per_location": 10
+  }
+}
+```
+
+City/ZIP bounds come from a cached, Nominatim-compatible US location lookup
+(default: OpenStreetMap Nominatim). Requests share a process-safe one-per-second
+limit and successful results cache for 180 days under ignored `data/cache/`.
+`APIFY_GEOCODER_URL` selects another compatible HTTPS endpoint without code
+changes. There is no new API key, dependency installation, service or database.
+Ambiguous/unavailable location lookups fail before a paid Actor submission.
+Raw `input` skips this lookup. Bounds are map rectangles, rather than exact city
+polygons, so nearby places can appear. Attribution: [OpenStreetMap contributors](https://www.openstreetmap.org/copyright).
+After a compiler-assisted submission, the same ignored geography cache retains
+the source credit keyed by mode, native run ID and Actor ID. It contains no
+token or search input. Later result reads copy that known attribution into the
+retained page, so Canvas and PDF exports can credit the lookup after the
+original tool process exits. Ordinary raw-input and unknown legacy runs do not
+receive guessed attribution. A cache-write failure preserves the accepted run
+handle and never causes another submission.
+
+Website filtering remains external behavior: inspect returned city, status, price, type and age before saying the
+criteria matched. A missing age or price is unknown. A result limit can prevent
+exhaustive coverage. Other Actors keep their native `input` schema; every caller
+must provide exactly one of `input` or `search`. Permission, build, resource and
+billing checks apply to either form, including optional background execution.
 
 ## Read results and additional pages
 
@@ -225,6 +309,10 @@ these argument objects; replace `YOURRUNID` with that saved ID.
 
 ```json
 {"run_id":"YOURRUNID","action":"status"}
+```
+
+```json
+{"run_id":"YOURRUNID","action":"collect","wait_seconds":30,"limit":20}
 ```
 
 ```json
@@ -243,6 +331,14 @@ from the run's default key-value store; `OUTPUT` is the default key, but an Acto
 may use a different one or have no such record. Binary records are saved to
 Stash. A missing output is a reason to inspect the existing run and storage.
 
+`collect` observes the saved run for at most `wait_seconds` (0–60; default 30),
+then fetches one dataset page if it succeeded. A still-running result preserves
+the same handle for a later collection; it is not completed scraping. Failed or
+cancelled runs retain their native status. Collection never starts another run.
+Its foreground subprocess allowance is 150 seconds, leaving room for the final
+bounded HTTP response and dataset reads. Long-running Actors still need later
+collection or the optional background observer.
+
 Apify's [dataset API](https://docs.apify.com/api/v2/dataset-items-get) returns
 pages. Dataset counts can also lag briefly while the Actor is writing. Jarvis
 retains the provider's counts and distinguishes a fetched page, its displayed
@@ -254,7 +350,9 @@ part of its dataset in the current result.
 Results use the shared `external_result_v1` JSON envelope. Provider/run IDs,
 status, returned counts, total counts, offsets, and completeness come from
 deterministic execution and reads. An LLM can summarize the returned evidence;
-its prose does not replace this metadata or confirm a completed run.
+its prose does not replace this metadata or confirm a completed run. Dataset metadata is observed after fetching
+the page; a total smaller than the observed page range becomes unknown rather
+than displaying an impossible zero or claiming complete coverage.
 
 `ok` confirms the tool call succeeded; `SUBMITTED` or `RUNNING` still means the
 Actor has not finished. `result.complete` describes provider-result coverage,
@@ -263,12 +361,34 @@ while `sample_count` and truncation flags describe the preview. A complete
 Jarvis can read retained output or more pages of the same run when needed;
 retrieving missing evidence is not a reason to submit another Actor run.
 
-Web renders up to 20 preview rows in a generic table, with bounded JSON trees
-for nested or mixed records, plain text previews, and authenticated Stash
-downloads. Additional fields, depth, text, or rows can be omitted from the
+Reviewed Zillow and Redfin output renders property cards with price, address,
+location, status, beds/baths, area, listing age when known, property links and
+available safe HTTPS photos. Native IDs remain in secondary run details.
+Unsupported Actor/output shapes retain generic previews. Web renders up to 20
+preview rows, with authenticated Stash downloads. Additional fields, depth,
+text, or rows can be omitted from the
 preview with explicit truncation labels. Large integers that JavaScript cannot
 represent exactly are shown as exact decimal strings; the raw JSON archive
 retains the original numeric values.
+
+**Browse saved page** loads the already fetched archive through authenticated,
+saved-mode Stash access and pages its property rows locally. Browsing does not
+call Apify or a model. The displayed preview, fetched page and remote dataset
+total have separate counts; fetching 100 records does not mean all 100 fit into
+a model preview. Property archives retain both the original native records and
+compact normalized `presentation.items` for analysis or a Canvas report.
+
+Saved follow-ups keep one bounded preview per native mode/run/dataset, with
+`retained_pages` identifying every fetched page that cannot safely be deduplicated.
+Each entry keeps its own offset, returned count, selected fields when known, and
+raw Stash reference; the preview's counts still describe that one page, not a
+merged dataset. The latest observed native status and its `status_raw_ref` survive
+status-only reads, including failure after data was fetched. Separate runs,
+datasets and named output records remain separate. Read the retained pages for
+more detail, or continue with `pagination.next_offset`. A pathological manifest
+that exceeds the follow-up budget is explicitly marked `retained_pages_truncated`;
+its `retained_pages_count` includes the omitted references. Changing selected
+columns is not a reason to repeatedly fetch overlapping pages.
 
 The raw Stash record retains the fetched response or dataset page, not every
 page in the remote dataset. Downloads retain their original cloud/local mode
@@ -278,7 +398,17 @@ retention applies, and a failed archive save does not advertise a nonexistent
 download or repeat the Actor run.
 
 Canvas creation is a separate tool call when requested. Actor runs and result
-reads do not automatically create Canvas pages.
+reads do not automatically create Canvas pages. Pass all relevant retained `raw_ref` / saved `source.mode` pairs to the Canvas
+tool's `property_sources` argument. It reads full fetched pages, normalizes and
+deduplicates exact listing identities, and embeds a self-contained property
+report with photos, city counts, search, sorting, cards and a table. The model
+does not need to copy rows from its shortened preview. A saved report survives
+Stash expiry. See [Canvas property reports](../CANVAS_SYSTEM.md#property-listing-reports). Scheduled workflows use these same foreground input/result
+contracts: a submission step alone is not a completed monitoring report. They
+must collect the run and handle pagination/limits, unknown fields, and provider
+failures explicitly. Calling a property “new this week” additionally requires
+evidence from listing age or a saved comparison baseline; it cannot be inferred
+from a successful run or a small sample.
 
 See also [remote MCP transport](MCP_REMOTE_TRANSPORT.md),
 [tool management](../TOOL_MANAGEMENT.md),

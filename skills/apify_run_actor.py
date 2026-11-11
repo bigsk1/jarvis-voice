@@ -15,8 +15,8 @@ def main():
     try:
         load_config()
         arguments = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
-        if not isinstance(arguments, dict) or set(arguments) - {"actor", "input"}:
-            raise ApifyError("Expected actor and input arguments")
+        if not isinstance(arguments, dict) or set(arguments) - {"actor", "input", "search"}:
+            raise ApifyError("Expected actor and exactly one of input or search")
         result = run_actor(arguments)
     except (ApifyError, ValueError, TypeError) as exc:
         uncertain = isinstance(exc, ApifyError) and exc.uncertain

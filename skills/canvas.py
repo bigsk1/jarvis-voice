@@ -819,6 +819,20 @@ def main():
         load_config()
         
         action = args.get('action', 'create')
+
+        if 'property_sources' in args:
+            if action not in {'create', 'append', 'update'}:
+                raise ValueError('property_sources requires create, append or update')
+            from property_reports import build_property_report
+
+            narrative = args.get('content', '')
+            if not isinstance(narrative, str):
+                raise ValueError('content must be Markdown text')
+            args['content'] = narrative + build_property_report(
+                args['property_sources'], criteria_text=args.get('property_criteria', ''),
+            )
+        elif 'property_criteria' in args:
+            raise ValueError('property_criteria requires property_sources')
         
         if action == 'create':
             title = args.get('title')

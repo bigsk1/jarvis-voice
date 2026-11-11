@@ -9,6 +9,13 @@ class StructuredResultsRenderer {
     this._scrollControlsBound = false;
     this._readerDialog = null;
     this._readerOpener = null;
+    this._apifyAdapter = typeof window.createApifyResultAdapter === 'function'
+      ? window.createApifyResultAdapter({
+        node: (...args) => this._externalNode(...args),
+        stashLinks: (...args) => this._externalStashLinks(...args),
+        compactText: (...args) => this._compactText(...args),
+        toDom: model => this._externalNodeDom(model),
+      }) : null;
     this._registerDefaultAdapters();
     this._bindScrollControls();
   }
@@ -578,9 +585,11 @@ class StructuredResultsRenderer {
 
     this._scrollControlsBound = true;
     document.addEventListener('error', event => {
+      this._apifyAdapter?.handleImageError(event);
       if (event.target?.matches?.('.structured-bookmark-icon img')) event.target.hidden = true;
     }, true);
     document.addEventListener('click', event => {
+      if (this._apifyAdapter?.handleClick(event)) return;
       const expandableCard = event.target?.closest?.('.structured-result-card-expandable');
       if (expandableCard && !event.target?.closest?.('a')) {
         this._openExpandedResult(expandableCard);
@@ -1465,6 +1474,8 @@ class StructuredResultsRenderer {
   }
 
   _externalCollectionModel(payload, options = {}) {
+    const apify = this._apifyAdapter?.model(payload, options);
+    if (apify) return apify;
     const node = (tag, text, className = '', children = []) => this._externalNode(
       tag, className ? {class: className} : {}, text, children
     );

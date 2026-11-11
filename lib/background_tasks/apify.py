@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from lib.apify import TERMINAL, ApifyClient, ApifyError, ApifySettings
+from lib.apify_actors import actor_input
 
 from .local_skill import argument_validators
 from .models import AdmissionDenied
@@ -48,7 +49,7 @@ def policy(root: Path = ROOT):
                 or type(settings.get("timeout_seconds")) is not int
                 or not 1 <= settings["timeout_seconds"] <= 86400):
             raise AdmissionDenied("Apify execution is disabled or its reviewed policy changed")
-        argument_validators(manifest["parameters"], None)
+        argument_validators(manifest["parameters"], settings.get("argument_constraints"))
         schema = ToolSchema(TOOL, manifest["description"], manifest["parameters"], str(script),
                             permissions=permissions, execution=manifest["execution"], proxy_policy="off")
         # Bind the trusted provider code too: a script hash alone would miss edits
@@ -57,6 +58,10 @@ def policy(root: Path = ROOT):
             "manifest_sha256": hashlib.sha256(raw).hexdigest(),
             "script_sha256": hashlib.sha256(script.read_bytes()).hexdigest(),
             "provider_sha256": hashlib.sha256((root / "lib" / "apify.py").read_bytes()).hexdigest(),
+            "actor_adapters_sha256": hashlib.sha256(b"".join(
+                (root / "lib" / "apify_actors" / name).read_bytes() for name in
+                ("__init__.py", "zillow_search.py", "zillow_location.py", "zillow.py", "redfin.py", "properties.py")
+            )).hexdigest(),
             "binding_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
         return schema, evidence
     except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -82,7 +87,7 @@ def _authorize_start(context):
     web_config = json.loads(config_path.read_text()) if config_path.exists() else {}
     if TOOL in web_config.get("tools", {}).get("blocked", []):
         raise AdmissionDenied("Apify was blocked after admission")
-    for validator in argument_validators(schema.parameters, None):
+    for validator in argument_validators(schema.parameters, schema.background_execution.get("argument_constraints")):
         validator.validate(job["admission"]["arguments"])
 
 
@@ -98,7 +103,13 @@ def start(context):
             _authorize_start(context)
         client = ApifyClient()
         arguments = context.claim.job["admission"]["arguments"]
-        prepared = client.prepare(arguments["actor"], arguments["input"])
+        try:
+            inputs = actor_input(arguments)
+        except ValueError as exc:
+            raise ApifyError(str(exc)) from None
+        prepared = client.prepare(arguments["actor"], inputs)
+        if "search" in arguments:
+            prepared["geography_attribution"] = {"provider": "openstreetmap"}
         context.checkpoint()
         # Once this starts, cancellation/shutdown without a native checkpoint is
         # uncertain, even if the POST eventually returns after lease loss.

@@ -1860,6 +1860,7 @@ function selectPage(id) {
             pageContentEl.insertAdjacentHTML('afterbegin', buildCryptoChartEmbedHtml(inferredChart));
         }
     }
+    window.CanvasPropertyReport?.hydrate(pageView);
     setupScrollableTables(pageView);
     
     // Re-highlight code blocks

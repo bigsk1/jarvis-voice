@@ -20,6 +20,7 @@ from lib.external_results import make_external_result_data
 _WORK_SECONDS = 30.0  # Leave room inside the MCP call's 35-second hard deadline.
 _READERS = 4
 _STORE_LIMIT = 1000
+_SEARCH_LIMIT = 100
 _MAX_OFFSET = (1 << 53) - 1
 _CANONICAL = re.compile(r"[A-Za-z0-9_-]{1,80}/[A-Za-z0-9_-]{1,100}\Z")
 
@@ -51,7 +52,7 @@ def _canonical(details: dict) -> str | None:
 
 def _relevant(details: dict, keywords: str) -> bool:
     terms = re.findall(r"\w+", keywords.casefold())
-    text = " ".join(value for key in ("title", "name", "description", "username")
+    text = " ".join(value for key in ("title", "name", "description", "readmeSummary", "username")
                     if isinstance(value := details.get(key), str)).casefold()
     return all(term in text for term in terms) if terms else keywords.strip().casefold() in text
 
@@ -59,16 +60,19 @@ def _relevant(details: dict, keywords: str) -> bool:
 def _card(details: dict, *, official: bool) -> dict:
     actor_id = native_id(details.get("id"), "Actor ID")
     canonical = _canonical(details)
-    title, description = details.get("title"), details.get("description")
+    title = details.get("title")
+    description = details.get("description") or details.get("readmeSummary")
     card: dict[str, Any] = {
         "actor_id": actor_id, "actor": canonical or actor_id,
         "publisher": details.get("username") if canonical else None,
-        "title": title[:160] if isinstance(title, str) else canonical or actor_id,
+        "title": title[:160] if isinstance(title, str) and title else canonical or actor_id,
         "description": description[:400] if isinstance(description, str) else "",
         "eligibility": "official_apify" if official else "trusted_exception",
     }
     if canonical:
         card["url"] = "https://apify.com/" + canonical
+    if type(details.get("isVerified")) is bool:
+        card["isVerified"] = details["isVerified"]
     if ((isinstance(title, str) and len(title) > 160)
             or (isinstance(description, str) and len(description) > 400)):
         card["preview_truncated"] = True
@@ -76,7 +80,7 @@ def _card(details: dict, *, official: bool) -> dict:
     quality = {}
     for key, upstream in (("rating", "actorReviewRating"), ("reviews", "actorReviewCount"),
                           ("users", "totalUsers"), ("monthly_users", "totalUsers30Days")):
-        value = details.get(upstream, stats.get(upstream))
+        value = stats.get(upstream, details.get(upstream))
         if type(value) in (int, float):
             quality[key] = value
     card["quality"] = quality
@@ -126,9 +130,13 @@ def _official(client: ApifyClient, params: dict) -> tuple[list[dict], int | None
             continue
         seen.add(card["actor_id"])
         cards.append(card)
+    # Search totals describe only the returned window on the new backend.
+    # Before its rollout they may still exceed this window; neither establishes
+    # exhaustive catalog coverage. Listing without search retains real totals.
+    searching = "search" in params
     expected = min(params["limit"], max(0, total - params["offset"]))
     valid = valid and len(items) == expected
-    return cards, total if valid else None, valid
+    return cards, (len(cards) if searching else total) if valid else None, valid
 
 
 def _scan(client: ApifyClient, references: list[str], params: dict, keywords: str,
@@ -191,22 +199,27 @@ def search_actors(arguments: dict, *, client: ApifyClient | None = None,
                   deadline: float | None = None, cancel_event: Event | None = None) -> dict:
     """Return a generic result for the unchanged hosted MCP search tool inputs.
 
-    Completed searches page a deterministic trusted-exception prefix followed
-    by Store relevance order. An incomplete exception scan cannot establish a
-    combined offset; only offset zero may show provisional candidates.
+    Keyword searches slice a bounded relevance window locally. Listings without
+    keywords retain upstream paging. Rankings and exceptions can change between
+    calls; neither operation creates a saved snapshot. An incomplete exception
+    scan cannot establish combined offsets; only offset zero may show candidates.
     """
     keywords, limit, offset = _arguments(arguments)
     client = client or ApifyClient()
     deadline = deadline if deadline is not None else time.monotonic() + 35
     _check_active(deadline, cancel_event)
     references = sorted(client.settings.allowed_actors)
+    searching = bool(keywords.strip())
     # Cover the possible official slice while resolving exceptions in parallel.
     # Very large configurations remain eligible, but an uncovered slice is
     # explicitly unavailable rather than silently shifted or widened.
-    params = {"username": "apify", "search": keywords, "responseFormat": "full",
-              "sortBy": "relevance" if keywords.strip() else "popularity",
+    params = {"username": "apify", "responseFormat": "full",
               "offset": max(0, offset - len(references)),
               "limit": min(_STORE_LIMIT, limit + min(offset, len(references)))}
+    if searching:
+        # GET /store ignores search offsets after 2026-11-15. Fetch its one
+        # supported window, then paginate that window after trusted exceptions.
+        params.update(search=keywords, offset=0, limit=_SEARCH_LIMIT)
     found, checked, failed = _scan(client, references, params, keywords, deadline, cancel_event)
     exceptions = {card["actor_id"]: card for reference in references
                   if isinstance(card := found.get(reference), dict)}
@@ -229,8 +242,10 @@ def search_actors(arguments: dict, *, client: ApifyClient | None = None,
         cards = (trusted + official)[:limit]
     else:
         cards = []
-    total = official_total + len(trusted) if stable and official_total is not None else None
-    next_offset = offset + len(cards) if stable and total is not None and offset + len(cards) < total else None
+    window_total = official_total + len(trusted) if stable and official_total is not None else None
+    total = None if searching else window_total
+    next_offset = (offset + len(cards)
+                   if stable and window_total is not None and offset + len(cards) < window_total else None)
     scan = {"configured": len(references), "checked": len(checked), "matched": len(trusted),
             "complete": scan_complete}
     if pending := sorted(set(references) - checked):
@@ -246,21 +261,32 @@ def search_actors(arguments: dict, *, client: ApifyClient | None = None,
                        "order": "relevant_trusted_exceptions_then_official_store"},
         "policy": {"official_publisher": "apify", "trusted_exceptions": references,
                    "quality_metrics": "advisory_only", "exception_scan": scan,
-                   "details_tool": "mcp_apify_fetch-actor-details"},
+                   "details_tool": "mcp_apify_fetch-actor-details",
+                   "execution_tool": "apify_run_actor", "actor_specific_tools_required": False},
     }
+    if searching:
+        result["pagination"].update(scope="search_window", source_limit=_SEARCH_LIMIT,
+                                    window_items=window_total, catalog_total_known=False,
+                                    offset_applied_locally=True)
     if not stable:
         result["pagination_unavailable"] = True
     # Retain the filtered catalog page, never the unfiltered HTTP response.
     _check_active(deadline, cancel_event)
     data = make_external_result_data(provider="apify", tool="search-actors",
         execution={"status": "SUCCEEDED" if stable else "PARTIAL"}, result=result,
-        raw_payload={"scope": "eligible_catalog_page", "keywords": keywords, **result},
-        limits={"truncated": not stable, "catalog_partial": not stable})
+        raw_payload={"scope": "eligible_search_window_page" if searching else "eligible_catalog_page",
+                     "keywords": keywords, **result},
+        limits={"truncated": not stable, "catalog_partial": not stable,
+                "catalog_search_bounded": searching})
     _check_active(deadline, cancel_event)
     speech = f"Found {len(cards)} eligible Apify Actor candidates."
     if not stable:
         speech += (" Catalog search is partial; pagination is unavailable."
                    " Configured trusted Actors can still be looked up directly.")
-    elif not cards:
+    elif not cards and not searching:
         speech = "No eligible Apify Actors matched this catalog page."
+    if searching:
+        speech += (" Keyword search covers at most 100 official matches plus relevant trusted Actors;"
+                   " the total matching catalog size is unknown. Pagination stays within this returned"
+                   " window; refine the keywords for other matches. Rankings may change between calls.")
     return {"ok": True, "speech": speech, "data": data}

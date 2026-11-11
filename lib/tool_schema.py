@@ -23,6 +23,33 @@ _ADAPTIVE_DYNAMIC_TOOL_MAX = 5
 _COMPOUND_SEGMENT_TOOL_MAX = 2
 
 
+def _native_apify_search_description(parameters: dict) -> str:
+    """Describe the native bridge without loading its execution dependencies.
+
+    Operator scripts can import this module with only lib/ on sys.path.
+    """
+    descriptions = {
+        "keywords": "Focused search terms. Blank keywords browse the eligible Store listing.",
+        "limit": "Number of candidates to return from the combined page, from 1 to 10.",
+        "offset": (
+            "Jarvis's zero-based candidate offset. Keyword searches apply it locally within the "
+            "returned window of at most 100 official matches plus trusted exceptions; an offset "
+            "does not request another upstream search page. Blank keywords use Store listing pages."
+        ),
+    }
+    for name, description in descriptions.items():
+        parameter = parameters.get("properties", {}).get(name)
+        if isinstance(parameter, dict):
+            parameter["description"] = description
+    return (
+        "Search eligible Apify Actors through Jarvis's native Store API bridge. Returns structured "
+        "Actor cards and explicit pagination/coverage metadata. Use the generic apify_run_actor "
+        "tool for ordinary eligible Actors, then apify_read_result for the accepted run. Discover "
+        "these tools with tool_search when needed; separate per-Actor MCP tools are not required. "
+        "Searching and reading Actor details never start a scraping run."
+    )
+
+
 def _merge_compound_segment_rankings(
     primary: list[dict[str, Any]],
     segment_rankings: list[tuple[str, list[dict[str, Any]]]],
@@ -799,6 +826,9 @@ class ToolRegistry:
         if server_name == "google_workspace":
             from google_workspace import extend_workspace_schema
             description = extend_workspace_schema(tool_info["name"], parameters, description)
+        if (server_name == "apify" and tool_info["name"] == "search-actors"
+                and getattr(client, "result_contract", None) == "external_result_v1"):
+            description = _native_apify_search_description(parameters)
         prefix = metadata.get("description_prefix")
         if isinstance(prefix, str) and prefix.strip():
             description = prefix.strip() + "\n\n" + description

@@ -16,7 +16,7 @@ def main():
         load_config()
         arguments = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
         if not isinstance(arguments, dict) or set(arguments) - {
-            "run_id", "action", "dataset_id", "offset", "limit", "fields", "record_key"
+            "run_id", "action", "dataset_id", "offset", "limit", "fields", "record_key", "wait_seconds"
         }:
             raise ApifyError("Invalid Apify result arguments")
         result = read_result(arguments)

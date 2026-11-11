@@ -289,6 +289,12 @@ class ToolExecutor:
             return 1200  # 20 minutes — MoneyPrinterTurbo script + stock + TTS + render + download
         if tool_name == "weather":
             return 90  # Weather API can be slow with proxy fallback
+        if tool_name == "apify_read_result":
+            # Up to 60 seconds observing the existing run, one final status
+            # response, then the bounded dataset metadata/page reads.
+            return 150
+        if tool_name == "apify_run_actor":
+            return 180  # At most five cached location lookups, build checks and one submission.
         if tool_name == "external_network_intel":
             # A full passive profile combines several bounded HTTPS providers;
             # leave room for the configured primary/fallback proxy chain.

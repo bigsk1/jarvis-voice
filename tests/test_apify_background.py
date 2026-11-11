@@ -143,6 +143,7 @@ def integration(tmp_path, monkeypatch):
     for name in ('apify_run_actor.py', 'apify_run_actor.tool.json'):
         shutil.copyfile(ROOT / 'skills' / name, root / 'skills' / name)
     shutil.copyfile(ROOT / 'lib' / 'apify.py', root / 'lib' / 'apify.py')
+    shutil.copytree(ROOT / 'lib' / 'apify_actors', root / 'lib' / 'apify_actors')
     copied_binding = root / 'lib' / 'apify_binding.py'
     shutil.copyfile(Path(binding.__file__), copied_binding)
     for mode in ('cloud', 'local'):
@@ -247,6 +248,31 @@ def test_real_production_binding_pins_policy_and_delivers_provider_neutral_datas
     assert len(h.native.submissions) == 1
     assert not worker(h).run_once()
     assert 'fixture-' + mode not in json.dumps(saved)
+
+
+@pytest.mark.parametrize('mode', ['cloud', 'local'])
+def test_compiled_background_search_retains_credit_for_later_collection(integration, monkeypatch, mode):
+    from config_loader import config_scope
+    from stash_helper import resolve_file_path
+
+    from lib.apify_actors import zillow_location
+
+    h = integration
+    monkeypatch.setattr(zillow_location, 'get_project_root', lambda: h.root)
+    # Geography compilation is independently tested. Keep the real admission,
+    # native prepare/start, checkpoint and observer path around its result.
+    monkeypatch.setattr(binding, 'actor_input', lambda _arguments: ARGUMENTS['input'])
+    job = admit(h, mode=mode, arguments={'actor': 'fixture/scraper', 'search': {
+        'locations': ['Albany, OR'], 'listing_status': 'for_sale'}})
+    assert worker(h).run_once()
+    saved = h.store.get(job['id'])
+    assert saved['state'] == 'succeeded'
+    data = saved['result']['data']
+    assert data['result']['geography_attribution'] == {'provider': 'openstreetmap'}
+    with config_scope(mode):
+        archive = json.loads(Path(resolve_file_path(stash_ref=data['raw_ref'])).read_text())
+        assert archive['geography_attribution'] == {'provider': 'openstreetmap'}
+    assert len(h.native.submissions) == 1
 
 
 @pytest.mark.parametrize('arguments', [

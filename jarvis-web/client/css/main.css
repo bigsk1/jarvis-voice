@@ -2756,6 +2756,156 @@ button.tool-item:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.apify-run-status {
+  display: inline-block;
+  margin: 6px 0;
+  padding: 3px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.apify-listing-notice {
+  margin: 8px 0 12px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.apify-property-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.apify-property-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+
+.apify-property-image {
+  display: block;
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  background: var(--bg-primary);
+}
+
+.apify-property-image-fallback {
+  display: flex;
+  height: 150px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  font-size: 0.8rem;
+}
+
+.apify-property-image[hidden],
+.apify-property-image-fallback[hidden] {
+  display: none;
+}
+
+.apify-property-body {
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+
+.apify-property-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.apify-property-status {
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.apify-property-number,
+.apify-property-location,
+.apify-property-secondary {
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+}
+
+.apify-property-price {
+  margin-top: 8px;
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.apify-property-address {
+  margin: 5px 0 8px;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.apify-property-facts {
+  margin: 0 0 6px;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+}
+
+.apify-property-secondary {
+  margin: 0 0 10px;
+}
+
+.apify-property-location {
+  margin: -4px 0 8px;
+}
+
+.apify-browse-saved,
+.apify-saved-pagination button {
+  padding: 7px 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.apify-browse-saved:disabled,
+.apify-saved-pagination button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.apify-saved-page {
+  margin-top: 12px;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.apify-saved-page:empty {
+  margin-top: 0;
+}
+
+.apify-saved-page-summary {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.apify-saved-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .external-result-table-scroll {
   max-height: 360px;
   overflow: auto;

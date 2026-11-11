@@ -375,7 +375,9 @@ class BackgroundAdmissionService:
             if tool != APIFY_TOOL:
                 raise AdmissionDenied('Unsupported Apify submission tool')
             try:
-                for validator in argument_validators(schema.parameters, None):
+                for validator in argument_validators(
+                    schema.parameters, schema.background_execution.get('argument_constraints'),
+                ):
                     validator.validate(args)
             except (ValueError, ValidationError, Unresolvable):
                 raise AdmissionDenied('Apify arguments do not match the reviewed schema') from None

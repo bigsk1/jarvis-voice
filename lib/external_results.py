@@ -66,6 +66,102 @@ def is_external_result(value: Any) -> bool:
     )
 
 
+def select_external_followup_results(runs: list[dict], *, limit: int = 3) -> list[dict]:
+    """Keep Apify page recovery handles and latest status without merging rows.
+
+    Each mode/run/dataset owns one preview plus a compact page manifest. Only
+    provably equivalent contained rereads are redundant; disjoint or partially
+    overlapping pages remain recoverable through their own archive references.
+    Native status is independent of which page supplies the preview.
+    """
+    if not all(is_external_result(run) for run in runs):
+        return runs[-limit:]
+    payloads = [run.get("data", run) for run in runs]
+    latest_status = {}
+    for index, row in enumerate(payloads):
+        source, execution = row.get("source", {}), row.get("execution", {})
+        if (source.get("provider") == "apify" and execution.get("run_id") and execution.get("status")
+                and not row.get("limits", {}).get("status_order_unknown")):
+            latest_status[(source.get("mode"), execution["run_id"])] = (index, row)
+
+    selected: dict[tuple, tuple[int, dict]] = {}
+    pages: dict[tuple, list[dict]] = {}
+    dataset_runs = set()
+    for index, row in enumerate(payloads):
+        source, result = row.get("source", {}), row["result"]
+        run_id = row.get("execution", {}).get("run_id")
+        identity = (source.get("mode"), run_id)
+        if (source.get("provider") != "apify" or not run_id
+                or row.get("limits", {}).get("status_order_unknown")):
+            key = ("other", index)
+        elif result.get("kind") == "dataset":
+            dataset_runs.add(identity)
+            key = ("dataset", *identity, result.get("dataset_id"))
+            retained = pages.setdefault(key, [])
+            if any(_apify_page_contains(prior, row) for prior in retained):
+                selected[key] = (index, selected[key][1])
+                continue
+            retained[:] = [prior for prior in retained if not _apify_page_contains(row, prior)]
+            retained.append(row)
+        elif result.get("record_key"):
+            key = ("record", *identity, result.get("key_value_store_id"), result["record_key"])
+        else:
+            key = ("status", *identity)
+        selected[key] = (index, row)
+
+    for identity in dataset_runs:
+        selected.pop(("status", *identity), None)
+    projected = []
+    for key, (index, row) in selected.items():
+        compact = deepcopy(row)
+        if key[0] in {"dataset", "record", "status"}:
+            status_index, status_row = latest_status.get(key[1:3], (index, row))
+            execution = compact.setdefault("execution", {})
+            if status_row.get("execution", {}).get("status"):
+                execution["status"] = status_row["execution"]["status"]
+                execution["status_raw_ref"] = status_row.get("raw_ref")
+            index = max(index, status_index)
+        if key in pages:
+            compact["result"]["retained_pages"] = [
+                {**{field: page["result"][field] for field in (
+                    "offset", "returned_count", "requested_fields",
+                ) if field in page["result"]}, "raw_ref": page.get("raw_ref")}
+                for page in pages[key]
+            ]
+            compact["result"]["retained_pages_count"] = len(pages[key])
+        projected.append((index, compact))
+    return [row for _, row in sorted(projected, key=lambda item: item[0])[-limit:]]
+
+
+def _apify_page_contains(outer: dict, inner: dict) -> bool:
+    """Require exact archived identity or complete matching rows, never samples."""
+    old, new = outer["result"], inner["result"]
+    if not outer.get("raw_ref"):
+        return False
+    if (outer.get("raw_ref") and outer.get("raw_ref") == inner.get("raw_ref")
+            and all(old.get(key, _MISSING) == new.get(key, _MISSING)
+                    for key in ("offset", "returned_count", "requested_fields"))):
+        return True
+    start, size, new_start, new_size = (
+        old.get("offset"), old.get("returned_count"),
+        new.get("offset"), new.get("returned_count"),
+    )
+    if not (all(type(value) is int and value >= 0 for value in (start, size, new_start, new_size))
+            and start <= new_start and start + size >= new_start + new_size
+            and "requested_fields" in old and "requested_fields" in new
+            and old["requested_fields"] == new["requested_fields"]
+            and "presentation" not in old and "presentation" not in new
+            and not outer.get("limits", {}).get("truncated")
+            and not inner.get("limits", {}).get("truncated")
+            and outer.get("execution", {}).get("status") == inner.get("execution", {}).get("status")):
+        return False
+    old_rows = next((old[key] for key in _SAMPLE_KEYS if isinstance(old.get(key), list)), None)
+    new_rows = next((new[key] for key in _SAMPLE_KEYS if isinstance(new.get(key), list)), None)
+    return (isinstance(old_rows, list) and isinstance(new_rows, list)
+            and len(old_rows) == size and len(new_rows) == new_size
+            and _json_text(old_rows[new_start - start:new_start - start + new_size]) == _json_text(new_rows))
+
+
 def _handle_key(key: str) -> bool:
     return key in _HANDLE_KEYS or key.lower().endswith((
         "_id", "_ref", "_url", "_uri", "_cursor", "_token", "id", "cursor",
@@ -278,6 +374,8 @@ def project_external_result(
             if _handle_key(key) or key in {
                 "kind", "complete", "total_items", "returned_count", "sample_count",
                 "offset", "limit", "pagination", "has_more", "next_offset",
+                "retained_pages", "retained_pages_count", "retained_pages_truncated",
+                "requested_fields",
             }:
                 continue
             metadata.pop(key)
@@ -311,6 +409,28 @@ def project_external_result(
         "limits": {"truncated": True, "metadata_omitted": True,
                    **({"integer_strings": True} if projected["limits"].get("integer_strings") else {})},
     }
+    if projected["source"].get("provider") == "apify":
+        minimal["execution"] = {
+            key: item for key, item in projected.get("execution", {}).items()
+            if key in {"run_id", "actor_id", "status", "status_raw_ref"}
+        }
+        for key in ("status_order_unknown", "trace_compacted"):
+            if projected["limits"].get(key):
+                minimal["limits"][key] = True
+    if "retained_pages" in projected["result"]:
+        minimal["result"].update({
+            key: item for key, item in projected["result"].items()
+            if key in {"dataset_id", "retained_pages", "retained_pages_count", "retained_pages_truncated"}
+        })
+    # An ordinary manifest of twenty fetched pages fits in one follow-up
+    # budget. Pathological handle sizes or several datasets may not: omit
+    # whole page records explicitly, never shorten a raw reference or pretend
+    # that the remaining records describe all retained evidence.
+    pages = minimal["result"].get("retained_pages")
+    if isinstance(pages, list):
+        while pages and len(_json_text(minimal)) > max_chars:
+            pages.pop(0)
+            minimal["result"]["retained_pages_truncated"] = True
     if len(_json_text(minimal)) > max_chars:
         raise ValueError("External result reference metadata exceeds the context budget")
     return minimal

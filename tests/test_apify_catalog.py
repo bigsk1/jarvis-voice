@@ -38,8 +38,9 @@ class Response:
 
 
 class NativeAPI:
-    def __init__(self, *, official=None, trusted=()):
+    def __init__(self, *, official=None, trusted=(), legacy_search=False):
         self.official = official if official is not None else [actor(index) for index in range(5)]
+        self.legacy_search = legacy_search
         self.actors = {reference.replace("/", "~"): details for reference, details in trusted}
         self.calls, self.responses = [], []
         self.store_override = None
@@ -68,12 +69,20 @@ class NativeAPI:
             assert params["username"] == "apify"
             assert "includeUnrunnableActors" not in params
             assert params["responseFormat"] == "full"
+            assert "sortBy" not in params
             rows = [details for details in self.official
                     if details["username"] == params["username"]
-                    and catalog._relevant(details, params["search"])]
+                    and catalog._relevant(details, params.get("search", ""))]
             total = len(rows)
-            rows = rows[params["offset"]:params["offset"] + params["limit"]]
-            payload = {"data": {"total": total, "offset": params["offset"],
+            if "search" in params and not self.legacy_search:
+                # The November 2026 backend ignores offset and exposes only a
+                # relevance window. Its total is not a matching-catalog count.
+                rows = rows[:min(100, params["limit"])]
+                total, source_offset = len(rows), 0
+            else:
+                source_offset = params["offset"]
+                rows = rows[source_offset:source_offset + params["limit"]]
+            payload = {"data": {"total": total, "offset": source_offset,
                                  "limit": params["limit"], "count": len(rows), "items": rows}}
             if self.store_override is not None:
                 payload = self.store_override(params)
@@ -124,13 +133,24 @@ def test_official_owner_filter_is_upfront_with_original_query_and_default_limit(
     data, result = response["data"], response["data"]["result"]
     assert data["source"] == {"provider": "apify", "tool": "search-actors", "mode": "local"}
     assert data["execution"]["status"] == "SUCCEEDED"
-    assert result["complete"] is True and result["total_items"] == 1
+    assert result["complete"] is False and result["total_items"] is None
+    assert result["pagination"]["scope"] == "search_window"
+    assert result["pagination"]["source_limit"] == 100
+    assert result["pagination"]["window_items"] == 1
+    assert result["pagination"]["catalog_total_known"] is False
+    assert result["pagination"]["offset_applied_locally"] is True
+    assert result["policy"]["execution_tool"] == "apify_run_actor"
+    assert result["policy"]["actor_specific_tools_required"] is False
+    assert data["limits"]["catalog_search_bounded"] is True
+    assert data["limits"]["catalog_partial"] is False
+    assert data["limits"]["truncated"] is False
     assert result["sample_items"][0]["actor"] == "apify/scraper-1"
     assert result["sample_items"][0]["eligibility"] == "official_apify"
     assert api.calls[0][2]["params"] == {"username": "apify", "search": "Maps",
-        "responseFormat": "full", "sortBy": "relevance", "offset": 0, "limit": 5}
+        "responseFormat": "full", "offset": 0, "limit": 100}
     assert "unapproved" not in json.dumps(response)
     assert "unapproved" not in json.dumps(retained(data))
+    assert retained(data)["scope"] == "eligible_search_window_page"
     assert all(response.closed for response in api.responses)
 
 
@@ -152,7 +172,8 @@ def test_relevant_trusted_exceptions_are_additive_without_quality_thresholds():
     assert result["policy"]["trusted_exceptions"] == sorted(reference for reference, _ in trusted)
     assert result["policy"]["exception_scan"] == {"configured": 3, "checked": 3,
                                                   "matched": 2, "complete": True}
-    assert result["total_items"] == 3 and result["complete"] is True
+    assert result["total_items"] is None and result["complete"] is False
+    assert result["pagination"]["window_items"] == 3
 
 
 def test_all_thirty_exceptions_are_scanned_and_each_worker_inherits_scope():
@@ -203,11 +224,124 @@ def test_relevant_exceptions_prefix_has_stable_pages_and_short_last_page():
         result = catalog.search_actors({"keywords": "maps", "limit": 3, "offset": offset},
                                        client=client)["data"]["result"]
         assert result["pagination"]["available"] is True
-        assert result["total_items"] == 8
+        assert result["total_items"] is None and result["complete"] is False
+        assert result["pagination"]["window_items"] == 8
+        assert result["pagination"]["scope"] == "search_window"
         assert result["pagination"]["next_offset"] == (offset + 3 if offset < 6 else None)
         assert result["pagination"]["has_more"] is (offset < 6)
         ids.extend(item["actor_id"] for item in result["sample_items"])
     assert ids == ["Actor020", "Actor021", "Actor022", *[f"Actor{index:03}" for index in range(5)]]
+
+
+@pytest.mark.parametrize("legacy_search", [False, True])
+@pytest.mark.parametrize("offset,expected", [
+    (0, ["Actor200", "Actor201", "Actor202", *[f"Actor{index:03}" for index in range(7)]]),
+    (99, ["Actor096", "Actor097", "Actor098", "Actor099"]),
+    (100, ["Actor097", "Actor098", "Actor099"]),
+    (103, []),
+    (1000, []),
+])
+def test_keyword_offsets_slice_only_the_returned_window_with_old_and_new_totals(
+    legacy_search, offset, expected,
+):
+    trusted = [(f"trusted/scraper-{index}", actor(index, publisher="trusted"))
+               for index in (200, 201, 202)]
+    api = NativeAPI(official=[actor(index) for index in range(150)], trusted=trusted,
+                    legacy_search=legacy_search)
+    response = catalog.search_actors({"keywords": "maps", "limit": 10, "offset": offset},
+        client=api.client(reference for reference, _ in trusted))
+    data, result = response["data"], response["data"]["result"]
+
+    assert data["execution"]["status"] == "SUCCEEDED"
+    assert result["complete"] is False and result["total_items"] is None
+    assert [item["actor_id"] for item in result["sample_items"]] == expected
+    pagination = result["pagination"]
+    assert pagination["available"] is True
+    assert pagination["scope"] == "search_window"
+    assert pagination["source_limit"] == 100
+    assert pagination["window_items"] == 103
+    assert pagination["catalog_total_known"] is False
+    assert pagination["has_more"] is (offset == 0)
+    assert pagination["next_offset"] == (10 if offset == 0 else None)
+    store_calls = [call for call in api.calls if call[1] == "/store"]
+    assert len(store_calls) == 1
+    assert store_calls[0][2]["params"] == {"username": "apify", "responseFormat": "full",
+        "search": "maps", "offset": 0, "limit": 100}
+    archived = retained(data)
+    assert archived["scope"] == "eligible_search_window_page"
+    assert archived["pagination"] == pagination
+
+
+@pytest.mark.parametrize("keywords", ["", "   \t\n"])
+def test_blank_keywords_omit_search_and_preserve_remote_listing_pagination(keywords):
+    api = NativeAPI(official=[actor(index) for index in range(12)])
+    response = catalog.search_actors({"keywords": keywords, "limit": 3, "offset": 7},
+                                    client=api.client())
+    data, result = response["data"], response["data"]["result"]
+
+    assert api.calls[0][2]["params"] == {"username": "apify", "responseFormat": "full",
+                                        "offset": 7, "limit": 3}
+    assert [item["actor_id"] for item in result["sample_items"]] == ["Actor007", "Actor008", "Actor009"]
+    assert result["total_items"] == 12
+    assert result["pagination"]["available"] is True
+    assert result["pagination"]["next_offset"] == 10
+    assert result["pagination"]["has_more"] is True
+    assert result["pagination"].get("scope") != "search_window"
+    assert not data["limits"].get("catalog_search_bounded", False)
+    assert retained(data)["scope"] == "eligible_catalog_page"
+
+
+def test_keyword_window_scope_survives_bounded_followup_projection():
+    trusted = [(f"trusted/scraper-{index}", actor(index, publisher="trusted",
+                description="Maps and places " * 40)) for index in range(200, 230)]
+    api = NativeAPI(official=[actor(index) for index in range(150)], trusted=trusted)
+    response = catalog.search_actors({"keywords": "maps", "limit": 10, "offset": 28},
+        client=api.client(reference for reference, _ in trusted))
+    projection = project_external_result(response["data"], max_chars=2000)
+
+    assert len(json.dumps(projection, ensure_ascii=False, separators=(",", ":"))) <= 2000
+    result = json.loads(json.dumps(projection))["result"]
+    assert result["total_items"] is None and result["complete"] is False
+    assert result["offset"] == 28
+    assert result["pagination"]["scope"] == "search_window"
+    assert result["pagination"]["source_limit"] == 100
+    assert result["pagination"]["window_items"] == 130
+    assert result["pagination"]["catalog_total_known"] is False
+    assert result["pagination"]["available"] is True
+    assert result["pagination"]["offset_applied_locally"] is True
+    assert result["pagination"]["next_offset"] == 38
+    assert result["pagination"]["has_more"] is True
+    assert projection["limits"]["catalog_search_bounded"] is True
+
+
+@pytest.mark.parametrize("verified", [True, False])
+def test_new_store_fields_use_nested_ratings_and_bound_summary_fallback(verified):
+    summary = "Useful maps capability " * 30
+    details = actor(1, description="", readmeSummary=summary, isVerified=verified,
+                    actorReviewRating=1.0, actorReviewCount=99,
+                    stats={"actorReviewRating": 4.95, "actorReviewCount": 120,
+                           "totalUsers": 8500})
+    response = catalog.search_actors({"keywords": "maps"},
+                                    client=NativeAPI(official=[details]).client())
+    card = response["data"]["result"]["sample_items"][0]
+
+    assert card["quality"] == {"rating": 4.95, "reviews": 120, "users": 8500}
+    assert card["isVerified"] is verified
+    assert card["description"] == summary[:400]
+    assert card["preview_truncated"] is True
+    assert card["eligibility"] == "official_apify"
+
+
+def test_unverified_or_missing_optional_store_fields_do_not_reject_eligible_actor():
+    details = actor(1, title="", description="", stats={}, isVerified="not a boolean")
+    response = catalog.search_actors({}, client=NativeAPI(official=[details]).client())
+    card = response["data"]["result"]["sample_items"][0]
+
+    assert card["actor_id"] == "Actor001"
+    assert card["quality"] == {}
+    assert "isVerified" not in card
+    assert card["description"] == ""
+    assert card["eligibility"] == "official_apify"
 
 
 @pytest.mark.parametrize("offset,expected", [(0, ["Actor000"]), (1, [])])
@@ -225,7 +359,11 @@ def test_empty_keyword_match_does_not_retry_or_widen_query():
     data = catalog.search_actors({"keywords": "no-such-capability"},
         client=api.client(["trusted/scraper-20"]))["data"]
     assert data["result"]["sample_items"] == []
-    assert data["result"]["total_items"] == 0
+    assert data["result"]["total_items"] is None
+    assert data["result"]["complete"] is False
+    assert data["result"]["pagination"]["window_items"] == 0
+    assert data["result"]["pagination"]["has_more"] is False
+    assert data["result"]["pagination"]["available"] is True
     assert len(api.calls) == 2
     assert next(call[2]["params"]["search"] for call in api.calls if call[1] == "/store") == "no-such-capability"
 
@@ -258,7 +396,7 @@ def test_mismatched_trusted_identity_is_not_shown_or_archived():
 def test_unexpected_community_store_card_is_filtered_before_retention():
     api = NativeAPI()
     api.store_override = lambda params: {"data": {"total": 2, "offset": params["offset"],
-        "items": [actor(1), actor(99, publisher="outsider")]}}
+        "items": [actor(1), actor(99, publisher="outsider", isVerified=True)]}}
     response = catalog.search_actors({}, client=api.client())
     assert response["data"]["execution"]["status"] == "PARTIAL"
     assert response["data"]["result"]["total_items"] is None

@@ -5,6 +5,8 @@ from __future__ import annotations
 import html
 import http.client
 import ipaddress
+import json
+import math
 import re
 import socket
 import ssl
@@ -667,11 +669,172 @@ def _promote_youtube_source_lines(
     return "\n".join(output)
 
 
+def _property_text(value: object, *, limit: int = 300) -> str:
+    text = (" ".join("".join(char if ord(char) >= 32 else " " for char in value).split())[:limit]
+            if isinstance(value, str) else "")
+    return _escape_markdown_inline(text) if text else "unknown"
+
+
+def _property_number(value: object) -> str:
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not 0 <= value <= (1 << 53) - 1):
+        return "unknown"
+    return f"{value:,}"
+
+
+def _property_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("Nonfinite property data")
+    return parsed
+
+
+def _property_invalid_constant(_value: str):
+    raise ValueError("Nonfinite property data")
+
+
+def _property_coverage(data: dict, rows: list) -> tuple[int, int]:
+    """Validate both legacy snapshots and explicit native/recognized coverage."""
+    coverage = data["coverage"]
+    for value in (coverage.get("returned_count"), data.get("duplicates_removed")):
+        if type(value) is not int or not 0 <= value <= (1 << 53) - 1:
+            raise ValueError("Invalid property snapshot counts")
+    offset, total = coverage.get("offset"), coverage.get("total_items")
+    for value in (offset, total):
+        if value is not None and (type(value) is not int or not 0 <= value <= (1 << 53) - 1):
+            raise ValueError("Invalid property snapshot coverage")
+    explicit_counts = {"fetched_count", "unrecognized_count"} & coverage.keys()
+    if explicit_counts and len(explicit_counts) != 2:
+        raise ValueError("Incomplete property snapshot counts")
+    fetched = coverage.get("fetched_count", coverage["returned_count"])
+    excluded = coverage.get("unrecognized_count", 0)
+    if (type(fetched) is not int or type(excluded) is not int
+            or not 0 <= excluded <= fetched <= (1 << 53) - 1
+            or fetched != coverage["returned_count"] + excluded
+            or type(coverage.get("complete")) is not bool
+            or coverage["returned_count"] != len(rows) + data["duplicates_removed"]
+            or (coverage["complete"] and (total is None or offset not in (None, 0) or fetched < total))):
+        raise ValueError("Invalid property snapshot coverage")
+    return fetched, excluded
+
+
+def _property_fence_markdown(raw: str, findings: list[dict]) -> str:
+    """Expand the bounded snapshot without exporting identifiers or raw records."""
+    if len(raw.encode("utf-8")) > 4 * 1024 * 1024:
+        raise ValueError("Property snapshot exceeds the export limit")
+    data = json.loads(raw, parse_float=_property_float, parse_constant=_property_invalid_constant)
+    if (not isinstance(data, dict) or type(data.get("version")) is not int
+            or data["version"] != 1 or data.get("source") not in {"zillow", "redfin", "mixed"}
+            or not isinstance(data.get("criteria_text"), str) or len(data["criteria_text"]) > 2000
+            or not isinstance(data.get("items"), list) or len(data["items"]) > 2000
+            or not isinstance(data.get("coverage"), dict)):
+        raise ValueError("Invalid property snapshot")
+    coverage, rows = data["coverage"], data["items"]
+    fetched, excluded = _property_coverage(data, rows)
+    snapshot = data.get("snapshot_at")
+    if snapshot is not None:
+        if not isinstance(snapshot, str) or len(snapshot) > 48:
+            raise ValueError("Invalid property snapshot timestamp")
+        parsed = datetime.fromisoformat(snapshot.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError("Invalid property snapshot timezone")
+    counts = f"{len(rows)} properties from {coverage['returned_count']} fetched records"
+    if "fetched_count" in coverage:
+        counts = (f"{len(rows)} properties from {coverage['returned_count']} recognized records; "
+                  f"{fetched} fetched records")
+    offset = coverage.get("offset")
+    position = f"offset: {offset}" if offset is not None else "combined pages or unknown position"
+    lines = ["## Property listings", "",
+        f"Source: {_property_text(data['source'].title())}. "
+        f"Snapshot: {_property_text(snapshot)}.", "",
+        f"Criteria: {_property_text(data['criteria_text'], limit=2000)}.", "",
+        f"Coverage: {counts}; dataset total: {_property_number(coverage.get('total_items'))}; {position}. "
+        + ("Complete dataset coverage." if coverage["complete"] else "Partial dataset coverage."),
+        f"Duplicates removed: {data['duplicates_removed']}.", ""]
+    if excluded:
+        lines.extend([f"> {excluded} unsupported or error records were excluded from the property "
+                      "listing display; their original records remain in the retained source.", ""])
+        _append_once(findings, _finding("warn", "property_rows_excluded",
+            "Unsupported or error source records were excluded from the property listing display."))
+    attribution = data.get("geography_attribution")
+    if isinstance(attribution, dict) and attribution.get("provider") == "openstreetmap":
+        lines.extend(["Location bounds include geocoding from "
+                      "[© OpenStreetMap contributors](https://www.openstreetmap.org/copyright).", ""])
+    for index, row in enumerate(rows, start=1):
+        if (not isinstance(row, dict) or row.get("kind") != "property_listing"
+                or row.get("source") not in {"zillow", "redfin"}
+                or data["source"] not in {"mixed", row["source"]}):
+            raise ValueError("Invalid property snapshot row")
+        source = row["source"]
+        price = _property_text(row.get("price_text"), limit=100)
+        if price == "unknown":
+            amount = _property_number(row.get("price"))
+            currency = _property_text(row.get("currency"), limit=12)
+            price = (amount if amount == "unknown" else f"{amount} (currency unknown)"
+                     if currency == "unknown" else f"{currency} {amount}")
+        elif _property_number(row.get("price")) == "unknown":
+            price += " (amount unknown)"
+        status = row.get("listing_status")
+        home_type = row.get("property_type")
+        city = ", ".join(value for key in ("city", "state", "postal_code")
+                         if isinstance((value := row.get(key)), str) and value)
+        area = _property_number(row.get("area"))
+        unit = _property_text(row.get("area_unit"), limit=24)
+        if area != "unknown":
+            area += " (unit unknown)" if unit == "unknown" else " " + unit
+        lines.extend([f"### {index}. {_property_text(row.get('address'))}", "",
+            f"Location: {_property_text(city)}. Price: {price}.", "",
+            f"Status: {_property_text(status.replace('_', ' ') if isinstance(status, str) else None)}. "
+            f"Property type: {_property_text(home_type.replace('_', ' ') if isinstance(home_type, str) else None)}.",
+            "", f"Beds: {_property_number(row.get('bedrooms'))}; "
+            f"baths: {_property_number(row.get('bathrooms'))}; "
+            f"area: {area}; "
+            f"days on Zillow: {_property_number(row.get('days_on_zillow'))}.", ""])
+        url = row.get("url")
+        try:
+            parsed_url = urlparse(url) if isinstance(url, str) else None
+            safe_link = (isinstance(url, str) and len(url) <= 2048
+                and not any(char.isspace() or ord(char) < 32 or char in "\\<>\"'" for char in url)
+                and parsed_url is not None and parsed_url.scheme == "https"
+                and parsed_url.hostname in {source + ".com", "www." + source + ".com"}
+                and parsed_url.username is None and parsed_url.password is None
+                and parsed_url.port in (None, 443))
+        except ValueError:
+            safe_link = False
+        if safe_link:
+            destination = url.replace("(", "\\(").replace(")", "\\)")
+            lines.extend([f"[View {source.title()} listing]({destination})", ""])
+        else:
+            lines.extend(["Listing link: unavailable.", ""])
+            if url:
+                _append_once(findings, _finding("warn", "property_listing_link_omitted",
+                    "An unsafe or unsupported property link was omitted from the PDF."))
+    return "\n".join(lines)
+
+
+def _expand_property_fences(content: str, findings: list[dict]) -> str:
+    lines = content.splitlines(keepends=True)
+    blocks = [token for token in MarkdownIt("commonmark").parse(content)
+              if token.type == "fence" and token.info.strip() == "property-listings" and token.map]
+    for token in reversed(blocks):
+        try:
+            rendered = _property_fence_markdown(token.content, findings)
+        except (ValueError, TypeError, RecursionError, UnicodeError):
+            rendered = "> Property listings could not be included: invalid or oversized saved snapshot."
+            _append_once(findings, _finding("warn", "property_snapshot_omitted",
+                "An invalid or oversized property snapshot was replaced with a readable notice."))
+        start, end = token.map
+        lines[start:end] = ["\n\n" + rendered + "\n\n"]
+    return "".join(lines)
+
+
 def _normalize_markdown(content: str, findings: list[dict], media: list[dict]) -> str:
     content = str(content or "").replace("\r\n", "\n")
     outer = _OUTER_MARKDOWN_FENCE_RE.match(content.strip())
     if outer:
         content = outer.group("body").strip()
+
+    content = _expand_property_fences(content, findings)
 
     content, chart_count = _CRYPTO_CHART_RE.subn(
         "\n\n> Interactive chart omitted from this PDF snapshot.\n\n",
