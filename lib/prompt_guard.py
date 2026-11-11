@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import math
+import os
 import re
 import threading
 import time
@@ -24,7 +25,11 @@ from urllib.parse import urlsplit
 import requests
 
 from lib.prompt_guard_diagnostics import PromptGuardDiagnostics, validate_diagnostics
-from lib.prompt_guard_policy import resolve_prompt_guard_policy
+from lib.prompt_guard_policy import inherited_prompt_guard_scope, resolve_prompt_guard_policy
+from lib.prompt_guard_tool_policy import (
+    normalize_prompt_guard_policy_name,
+    resolve_tool_policy_name,
+)
 
 try:
     from config_loader import config_scope, get_active_config_mode, get_config_value
@@ -35,7 +40,9 @@ except ModuleNotFoundError as exc:
 
 logger = logging.getLogger("prompt_guard")
 
-DEFAULT_MAX_INPUT_BYTES = 8192
+# Fit a normal 12,000-character summarizer chunk even at four UTF-8 bytes per
+# character. The scanner still enforces its own token/window/request limits.
+DEFAULT_MAX_INPUT_BYTES = 64 * 1024
 MAX_INPUT_BYTES = 1024 * 1024
 MAX_RESPONSE_BYTES = 32 * 1024
 COOLDOWN_SECONDS = 30.0
@@ -224,7 +231,9 @@ def _parse_response(raw: bytes, threshold: float, *, text: str = "") -> _ScanRes
     )
 
 
-def _scan_text(text: str, *, source_type: str, source_name: str) -> PromptGuardResult:
+def _scan_text(
+    text: str, *, source_type: str, source_name: str, policy_name: str | None = None,
+) -> PromptGuardResult:
     started = time.monotonic()
     mode = get_active_config_mode()
     input_bytes = 0
@@ -248,9 +257,14 @@ def _scan_text(text: str, *, source_type: str, source_name: str) -> PromptGuardR
     if (not isinstance(source_type, str) or not _SOURCE_NAME.fullmatch(source_type)
             or not isinstance(source_name, str) or not _SOURCE_NAME.fullmatch(source_name)):
         return result("skipped", "invalid_source", threshold=settings.threshold)
+    selected_policy = normalize_prompt_guard_policy_name(policy_name)
+    if selected_policy is None and source_type in {"tool_result", "model_input"}:
+        selected_policy = resolve_tool_policy_name(source_name)
+    policy_options = {"policy_name": selected_policy} if selected_policy else {}
     decision = resolve_prompt_guard_policy(
         settings.threshold, source_type=source_type, source_name=source_name,
         policy_file=get_config_value("PROMPT_GUARD_POLICY_FILE", ""),
+        **policy_options,
     )
     settings = replace(settings, threshold=decision.threshold)
     policy_id = decision.policy_id
@@ -353,17 +367,24 @@ def _scan_text(text: str, *, source_type: str, source_name: str) -> PromptGuardR
 
 def scan_text(
     text: str, *, source_type: str, source_name: str, mode: str | None = None,
+    policy_name: str | None = None,
 ) -> PromptGuardResult:
     """Classify text without changing it, preserving matching scoped overrides.
 
     ``source_type`` and ``source_name`` must be short caller-owned identifiers,
     never a query, document title, URL or other external content. A validated
     detection is reported to the caller, which owns the content-handling policy.
+    ``policy_name`` comes from trusted runtime metadata, never source text or
+    model-filled arguments. Omitted names resolve from the tool's definition.
     """
     try:
         scope = config_scope(mode) if mode is not None and mode != get_active_config_mode() else nullcontext()
-        with scope:
-            return _scan_text(text, source_type=source_type, source_name=source_name)
+        with scope, inherited_prompt_guard_scope(
+            os.environ.get("JARVIS_INTERNAL_PROMPT_GUARD_CONTEXT"),
+        ):
+            policy_options = {"policy_name": policy_name} if policy_name else {}
+            return _scan_text(text, source_type=source_type, source_name=source_name,
+                              **policy_options)
     except Exception:
         # A configuration/observer bug must not convert a completed tool into a
         # failure. Do not print exception text, which may contain secrets.

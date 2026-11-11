@@ -1,21 +1,22 @@
 {
-  "v": 1,
-  "rules": [
-    {
-      "id": "ai_status_rss",
-      "source_type": "tool_result",
-      "source_name": "rss_feed",
-      "workflow_id": "rss_digest",
-      "profile": "ai_status",
-      "threshold": 0.9
-    },
-    {
-      "id": "ai_status_crawl",
-      "source_type": "tool_result",
-      "source_name": "crawl_url",
-      "workflow_id": "rss_digest",
-      "profile": "ai_status",
-      "threshold": 0.9
-    }
-  ]
+  "v": 2,
+  "tools": [
+    "crawl_url",
+    "brave_llm_context",
+    "rss_feed",
+    "browser_use",
+    "browser_use_cloud",
+    "mcp_fetch_fetch",
+    "mcp_brave_search_brave_web_search",
+    "source_library"
+  ],
+  "summarizers": {
+    "enabled": true
+  },
+  "policies": {
+    "web_content": 0.8,
+    "document_text": 0.8,
+    "high_risk": 0.7
+  },
+  "rules": []
 }

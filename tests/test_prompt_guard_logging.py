@@ -4,9 +4,11 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from config_loader import config_scope
+from prompt_guard_test_config import write_guard_config
 from tool_logger import ToolLogger
 
 import orchestrator.executor as executor_module
@@ -76,7 +78,7 @@ def harness(tmp_path, monkeypatch):
     ))
     return SimpleNamespace(
         executor=executor, logger=logger, calls=calls, scans=scans, scan=scan,
-        tool_process=tool_process, monkeypatch=monkeypatch,
+        tool_process=tool_process, monkeypatch=monkeypatch, policy_dir=tmp_path / "policies",
     )
 
 
@@ -85,9 +87,10 @@ def records(harness):
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 
-def scope(*names):
+def scope(harness, *names):
+    path = write_guard_config(harness.policy_dir / f"{uuid4().hex}.json", tools=names)
     return config_scope("cloud", overrides={
-        "PROMPT_GUARD_ENABLED": "true", "PROMPT_GUARD_TOOLS": ",".join(names),
+        "PROMPT_GUARD_ENABLED": "true", "PROMPT_GUARD_POLICY_FILE": path,
     })
 
 
@@ -105,7 +108,7 @@ def test_real_helpers_persist_only_reviewed_result(harness, tool, verdict):
             return observation
 
         harness.monkeypatch.setattr(observer, "scan_text", scan)
-    with scope(tool):
+    with scope(harness, tool):
         returned = harness.executor.execute(tool, {"url": "https://example.test/"})
     entries = records(harness)
     assert len(harness.calls) == len(harness.scans) == len(entries) == 1
@@ -136,7 +139,7 @@ def test_nothing_is_logged_until_scan_and_quarantine_complete(harness):
 
     harness.monkeypatch.setattr(observer, "scan_text", scan)
     harness.monkeypatch.setattr(observer, "save_incident", quarantine)
-    with scope("crawl_url"):
+    with scope(harness, "crawl_url"):
         returned = harness.executor.execute("crawl_url", {})
     assert returned["terminal_failure"] and len(records(harness)) == 1
 
@@ -147,7 +150,7 @@ def test_malformed_local_stdout_cannot_leak_raw_stderr_before_review(harness):
         return "not json", PRIVATE, False
 
     harness.monkeypatch.setattr(harness.tool_process, "run_local_process", run)
-    with scope("crawl_url"):
+    with scope(harness, "crawl_url"):
         returned = harness.executor.execute("crawl_url", {})
     assert returned["terminal_failure"]
     assert PRIVATE in harness.scans[0][0]
@@ -157,7 +160,7 @@ def test_malformed_local_stdout_cannot_leak_raw_stderr_before_review(harness):
 
 @pytest.mark.parametrize("tool", ["crawl_url", "mcp_fetch_fetch"])
 def test_direct_private_helper_keeps_immediate_logging_without_screening(harness, tool):
-    with scope(tool):
+    with scope(harness, tool):
         returned = harness.executor._execute_foreground(tool, {})
     assert returned == SOURCE_RESULT
     assert len(harness.calls) == len(records(harness)) == 1
@@ -178,7 +181,7 @@ def test_log_flush_failure_does_not_replace_or_replay_tool_outcome(harness, capl
         raise OSError(PRIVATE + " storage failure")
 
     harness.monkeypatch.setattr(harness.logger, "log_tool_call", broken_logger)
-    with scope("crawl_url"):
+    with scope(harness, "crawl_url"):
         returned = harness.executor.execute("crawl_url", {})
     assert len(harness.calls) == len(harness.scans) == len(attempts) == 1
     if flagged:
@@ -196,7 +199,7 @@ def test_nested_workflow_logs_remain_separate_per_invocation(harness):
         return {"ok": False, "speech": "Workflow stopped.", "data": {"child": child}}
 
     harness.monkeypatch.setattr(executor_module, "execute_workflow_tool", workflow)
-    with scope("crawl_url"):
+    with scope(harness, "crawl_url"):
         returned = harness.executor.execute("workflow", {"name": "research"})
     entries = records(harness)
     assert [entry["tool"] for entry in entries] == ["crawl_url", "workflow"]
@@ -212,7 +215,7 @@ def test_tool_search_helper_passes_its_log_to_same_review_boundary(harness):
     harness.monkeypatch.setattr(
         executor_module, "search_tools_runtime", lambda **_kwargs: dict(SOURCE_RESULT)
     )
-    with scope("tool_search"):
+    with scope(harness, "tool_search"):
         returned = harness.executor.execute("tool_search", {"query": "find"})
     assert returned["terminal_failure"]
     assert len(harness.scans) == len(records(harness)) == 1
@@ -224,7 +227,7 @@ def test_early_unlogged_return_still_passes_once_through_review(harness):
     harness.monkeypatch.setattr(observer, "scan_text", lambda text, **source: (
         harness.scans.append((text, source)) or PromptGuardResult("unknown", "timeout")
     ))
-    with scope("missing_tool"):
+    with scope(harness, "missing_tool"):
         returned = harness.executor.execute("missing_tool", {})
     assert returned["error"] == "Tool not found"
     assert len(harness.scans) == 1 and not harness.calls and not records(harness)
@@ -248,7 +251,7 @@ def test_concurrent_invocations_do_not_share_pending_logs(harness):
     harness.monkeypatch.setattr(observer, "scan_text", scan)
 
     def execute(name):
-        with scope("crawl_url", "rss_feed"):
+        with scope(harness, "crawl_url", "rss_feed"):
             return harness.executor.execute(name, {"name": name})
 
     with ThreadPoolExecutor(max_workers=2) as pool:

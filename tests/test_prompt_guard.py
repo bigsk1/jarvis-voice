@@ -300,12 +300,12 @@ def test_backend_state_does_not_grow_without_bound(transport, monkeypatch):
 
 def test_configuration_helpers_are_current_and_safe(transport):
     config, _, _, _ = transport
-    assert pg.is_enabled() and pg.get_max_input_bytes() == 8192
+    assert pg.is_enabled() and pg.get_max_input_bytes() == pg.DEFAULT_MAX_INPUT_BYTES
     config["PROMPT_GUARD_ENABLED"] = "false"
     config["PROMPT_GUARD_MAX_INPUT_BYTES"] = "not-integer"
-    assert not pg.is_enabled() and pg.get_max_input_bytes() == 8192
+    assert not pg.is_enabled() and pg.get_max_input_bytes() == pg.DEFAULT_MAX_INPUT_BYTES
     config["PROMPT_GUARD_MAX_INPUT_BYTES"] = str(pg.MAX_INPUT_BYTES + 1)
-    assert pg.get_max_input_bytes() == 8192
+    assert pg.get_max_input_bytes() == pg.DEFAULT_MAX_INPUT_BYTES
     config["PROMPT_GUARD_MAX_INPUT_BYTES"] = "1234"
     assert pg.get_max_input_bytes() == 1234
 

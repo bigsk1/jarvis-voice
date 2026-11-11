@@ -2,15 +2,24 @@
 
 import json
 import logging
+import threading
+from collections import OrderedDict
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 
 import config_loader
+import paths
 import pytest
 from config_loader import config_scope, get_active_config_mode, get_config_value
+from prompt_guard_test_config import write_guard_config
+from test_prompt_guard import Response, payload
 
+from lib import paths as package_paths
+from lib import prompt_guard as scanner
 from lib import prompt_guard_observer as observer
 from lib.prompt_guard import PromptGuardResult
+from lib.prompt_guard_policy import DEFAULT_POLICY_FILE
 
 
 @pytest.fixture
@@ -18,14 +27,20 @@ def configured(tmp_path, monkeypatch):
     monkeypatch.setattr(observer, "notify_prompt_guard_block", lambda *_args, **_kwargs: None)
     directory = tmp_path / "config"
     directory.mkdir()
+    (directory / "mcp-servers.json").write_text(json.dumps({"mcpServers": {}}))
+    (tmp_path / "skills").mkdir()
     for mode in ("cloud", "local"):
+        selected_tools = ["crawl_url", "brave_llm_context", "rss_feed"] if mode == "cloud" else ["local_fetch"]
+        policy_file = write_guard_config(directory / f"{mode}.json", tools=selected_tools)
         (directory / f"{mode}.env").write_text(
             "PROMPT_GUARD_ENABLED=true\n"
-            f"PROMPT_GUARD_TOOLS={'crawl_url,brave_llm_context,rss_feed' if mode == 'cloud' else 'local_fetch'}\n"
+            f"PROMPT_GUARD_POLICY_FILE={policy_file}\n"
             f"PROMPT_GUARD_URL=http://{mode}-guard:8188\n"
             "PROMPT_GUARD_MAX_INPUT_BYTES=8192\n"
         )
     monkeypatch.setattr(config_loader, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(paths, "get_project_root", lambda: tmp_path)
+    monkeypatch.setattr(package_paths, "get_project_root", lambda: tmp_path)
     calls = []
 
     def record(text, **source):
@@ -67,30 +82,105 @@ def test_unselected_tools_are_silent(configured, caplog, tool):
     assert caplog.records == []
 
 
-def test_empty_tools_disables_hook_and_wildcards_do_not_select_mcp(configured):
-    for value in ("", "*", "mcp_*"):
-        with config_scope("cloud", overrides={"PROMPT_GUARD_TOOLS": value}):
+def test_empty_tools_skips_unassigned_results_and_invalid_wildcards_do_not_expand_selection(configured, tmp_path):
+    for index, tools in enumerate(([], ["*"], ["mcp_*"])):
+        path = write_guard_config(tmp_path / f"selection-{index}.json", tools=tools)
+        with config_scope("cloud", overrides={"PROMPT_GUARD_POLICY_FILE": path}):
             observer.review_tool_result("crawl_url", {"data": "article"})
             observer.review_tool_result("mcp_fetch_fetch", {"data": "article"})
+            observer.review_tool_result("send_email", {"data": "private message"})
+            observer.review_tool_result("mcp_google_workspace_get_gmail_message", {"data": "private mail"})
     assert configured == []
 
 
-def test_exact_configuration_can_select_reviewed_mcp_tool(configured):
-    with config_scope("cloud", overrides={"PROMPT_GUARD_TOOLS": " mcp_fetch_fetch, crawl_url "}):
+def test_exact_configuration_can_select_reviewed_mcp_tool(configured, tmp_path):
+    path = write_guard_config(tmp_path / "mcp.json", tools=["mcp_fetch_fetch", "crawl_url"])
+    with config_scope("cloud", overrides={"PROMPT_GUARD_POLICY_FILE": path}):
         observer.review_tool_result("mcp_fetch_fetch", {"data": "article"})
     assert configured[0]["source_name"] == "mcp_fetch_fetch"
+
+
+@pytest.mark.parametrize("mode", ["cloud", "local"])
+@pytest.mark.parametrize("tool", ["mcp_apify_search-actors", "mcp_apify_fetch-actor-details"])
+@pytest.mark.parametrize("rule_threshold", [None, 0.75])
+def test_hyphenated_mcp_names_reach_scanner_and_terminal_block_with_exact_policy(
+    configured, tmp_path, monkeypatch, mode, tool, rule_threshold,
+):
+    path = tmp_path / "mcp-policy.json"
+    rules = [] if rule_threshold is None else [{
+        "id": "apify_exact", "source_type": "tool_result", "source_name": tool,
+        "threshold": rule_threshold,
+    }]
+    path.write_text(json.dumps({
+        "v": 2, "tools": [tool], "summarizers": {"enabled": True},
+        "policies": {"web_content": 0.7}, "rules": rules,
+    }))
+    requests = []
+
+    class Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def post(self, url, **kwargs):
+            assert self.trust_env is False
+            assert kwargs["allow_redirects"] is False and kwargs["stream"] is True
+            requests.append({"url": url, **kwargs})
+            return Response(payload(
+                injection_score=0.85, flagged=True, threshold=kwargs["json"]["threshold"],
+            ))
+
+    monkeypatch.setattr(scanner.requests, "Session", Session)
+    monkeypatch.setattr(scanner, "_states", OrderedDict())
+    monkeypatch.setattr(scanner, "_capacity", threading.BoundedSemaphore(1))
+    monkeypatch.setattr(observer, "scan_text", scanner.scan_text)
+    monkeypatch.setattr(observer, "save_incident", lambda **_kwargs: SimpleNamespace(
+        incident_id="pg-" + "a" * 32, evidence_saved=True,
+    ))
+    original = {"ok": True, "completion": "completed", "data": "PRIVATE_EXTERNAL_CONTENT"}
+    with config_scope(mode, {
+        "PROMPT_GUARD_POLICY_FILE": str(path), "PROMPT_GUARD_THRESHOLD": "0.95",
+        "PROMPT_GUARD_API_KEY": "temporary-test-key",
+    }):
+        assert observer.is_tool_selected(tool)
+        for neighbor in (tool.replace("-", "_"), tool.upper(), f"{tool}_other", f"other_{tool}"):
+            assert not observer.is_tool_selected(neighbor)
+            assert observer.review_tool_result(neighbor, original) is original
+        assert requests == []
+        blocked = observer.review_tool_result(tool, original, policy_name="web_content")
+
+    assert len(requests) == 1
+    body = requests[0]["json"]
+    assert body["source"] == {"type": "tool_result", "name": tool}
+    assert json.loads(body["text"]) == {"data": original["data"]}
+    threshold = 0.7 if rule_threshold is None else rule_threshold
+    policy_id = "policy:web_content" if rule_threshold is None else "apify_exact"
+    assert body["threshold"] == threshold
+    assert observer.is_prompt_guard_rejection(blocked)
+    assert blocked["retry_safe"] is False
+    assert blocked["data"]["prompt_guard"]["threshold"] == threshold
+    assert blocked["data"]["prompt_guard"]["policy_id"] == policy_id
+    assert blocked["data"]["prompt_guard"]["tool"] == tool
+    assert tool in blocked["speech"] and "not be retried" in blocked["speech"]
+    assert "PRIVATE_EXTERNAL_CONTENT" not in json.dumps(blocked)
+    assert original["data"] == "PRIVATE_EXTERNAL_CONTENT"
+    assert configured == []
 
 
 def test_default_selection_applies_when_setting_absent(configured):
     path = config_loader.get_project_root() / "config/cloud.env"
     path.write_text("\n".join(line for line in path.read_text().splitlines()
-                              if not line.startswith("PROMPT_GUARD_TOOLS=")))
+                              if not line.startswith("PROMPT_GUARD_POLICY_FILE=")))
+    root = Path(__file__).resolve().parents[1]
+    selected_tools = sorted(json.loads((root / DEFAULT_POLICY_FILE).read_text())["tools"])
     with config_scope("cloud"):
-        for tool in observer.DEFAULT_TOOLS.split(","):
+        for tool in selected_tools:
             observer.review_tool_result(
                 tool, {"data": "article"}, args={"action": "read"} if tool == "stash" else {},
             )
-    assert [call["source_name"] for call in configured] == observer.DEFAULT_TOOLS.split(",")
+    assert [call["source_name"] for call in configured] == selected_tools
 
 
 def test_disabled_skips_extraction_and_uses_shared_disabled_logging(configured, monkeypatch):
@@ -189,8 +279,9 @@ def test_no_stash_or_url_dereference(configured):
     assert json.loads(configured[0]["text"])["data"] == data
 
 
-def test_same_explicit_mode_preserves_request_overrides(configured):
-    with config_scope("cloud", overrides={"PROMPT_GUARD_TOOLS": "custom_fetch", "PROMPT_GUARD_URL": "http://request-guard:8188"}):
+def test_same_explicit_mode_preserves_request_overrides(configured, tmp_path):
+    path = write_guard_config(tmp_path / "request.json", tools=["custom_fetch"])
+    with config_scope("cloud", overrides={"PROMPT_GUARD_POLICY_FILE": path, "PROMPT_GUARD_URL": "http://request-guard:8188"}):
         observer.review_tool_result("custom_fetch", {"data": "article"}, mode="cloud")
     assert configured[0]["url"] == "http://request-guard:8188"
     assert configured[0]["mode"] == "cloud"
@@ -206,9 +297,10 @@ def test_different_mode_uses_its_config_and_restores_outer_scope(configured):
 
 
 @pytest.mark.parametrize("mode,tool", [("cloud", "crawl_url"), ("local", "local_fetch")])
-def test_explicit_background_scope_uses_job_config_and_restores_unrelated_request(configured, mode, tool):
+def test_explicit_background_scope_uses_job_config_and_restores_unrelated_request(configured, tmp_path, mode, tool):
+    path = write_guard_config(tmp_path / "unrelated.json", tools=["unrelated_tool"])
     with config_scope(mode, overrides={
-        "PROMPT_GUARD_ENABLED": "false", "PROMPT_GUARD_TOOLS": "unrelated_tool",
+        "PROMPT_GUARD_ENABLED": "false", "PROMPT_GUARD_POLICY_FILE": path,
         "PROMPT_GUARD_URL": "http://unrelated-request:8188",
     }):
         original = {"ok": True, "data": "Background report."}

@@ -10,6 +10,7 @@ from pathlib import Path
 import config_loader
 import pytest
 from config_loader import config_scope, get_active_config_mode, get_config_value
+from prompt_guard_test_config import write_guard_config
 from server_package_utils import load_server_package
 from test_task_callbacks import configured, deliver, event, headers
 
@@ -30,8 +31,9 @@ def guarded_callback(tmp_path, monkeypatch):
     directory = tmp_path / "config"
     directory.mkdir()
     for mode in ('cloud', 'local'):
+        path = write_guard_config(directory / f'{mode}.json', tools=['browser_use', 'custom_callback'])
         (directory / f'{mode}.env').write_text(
-            'PROMPT_GUARD_ENABLED=true\nPROMPT_GUARD_TOOLS=browser_use,custom_callback\n'
+            f'PROMPT_GUARD_ENABLED=true\nPROMPT_GUARD_POLICY_FILE={path}\n'
             f'PROMPT_GUARD_URL=http://{mode}-guard:8188\n'
             f'PROMPT_GUARD_API_KEY={mode}-test-key\n'
             'PROMPT_GUARD_MAX_INPUT_BYTES=262144\n'
@@ -143,7 +145,7 @@ def test_clean_and_unscanned_callbacks_preserve_legacy_results(guarded_callback,
     if failure == 'disabled':
         overrides['PROMPT_GUARD_ENABLED'] = 'false'
     if failure == 'unselected':
-        overrides['PROMPT_GUARD_TOOLS'] = ''
+        write_guard_config(config_loader.get_project_root() / 'config/cloud.json')
     if overrides:
         path = config_loader.get_project_root() / 'config/cloud.env'
         with path.open('a') as stream:

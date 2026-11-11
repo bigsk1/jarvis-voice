@@ -13,6 +13,7 @@ import threading
 import pytest
 import requests
 import uvicorn
+from prompt_guard_test_config import write_guard_config
 from test_task_callback_http import callback_app
 from test_web_background_tasks import eventually
 from test_web_background_tasks import journey as journey
@@ -106,7 +107,10 @@ def test_live_browser_configuration_reaches_real_child_scope_without_global_leak
     settings = {
         'LLM_PROVIDER': 'ollama', 'OLLAMA_CLOUD_MODEL': 'fixture-live:cloud',
         'OLLAMA_API_KEY': 'fixture-browser-token', 'STASH_DIR': '/unused/private/stash',
-        'PROMPT_GUARD_ENABLED': 'true', 'PROMPT_GUARD_TOOLS': 'browser_use',
+        'PROMPT_GUARD_ENABLED': 'true',
+        'PROMPT_GUARD_POLICY_FILE': write_guard_config(
+            tmp_path / 'guard-policy.json', tools=['browser_use'],
+        ),
     }
 
     def read_selected(mode):
@@ -130,7 +134,8 @@ def test_live_browser_configuration_reaches_real_child_scope_without_global_leak
 
     with prompt_guard_observer.config_scope('cloud', {}):
         assert prompt_guard_observer.is_enabled()
-        assert config_loader.get_config_value('PROMPT_GUARD_TOOLS') == 'browser_use'
+        assert prompt_guard_observer.is_tool_selected('browser_use')
+        assert config_loader.get_config_value('PROMPT_GUARD_POLICY_FILE') == settings['PROMPT_GUARD_POLICY_FILE']
         assert config_loader.get_config_value('PROMPT_GUARD_INCIDENT_DIR') == str(
             tmp_path.parent / 'prompt-guard-incidents',
         )
@@ -365,14 +370,15 @@ def test_browser_callback_after_intervening_web_tool(
             assert followup['arguments']['continue_job_id'] == job['id']
         if live:
             assert list((h.tmp / 'stash').rglob('browser-research.md'))
-            if deployment.get('PROMPT_GUARD_ENABLED', '').lower() in {'true', '1', 'yes', 'on'}:
-                selected = deployment.get('PROMPT_GUARD_TOOLS', 'browser_use').split(',')
-                if 'browser_use' in {name.strip() for name in selected}:
-                    scans = [observation for labels, observation in observed_prompt_guard
-                             if labels.get('source_name') == 'browser_use']
-                    assert len(scans) == 1, 'The live browser result did not reach Prompt Guard'
-                    assert scans[0].status == 'scanned', scans[0]
-                    assert scans[0].coverage_complete and scans[0].flagged is False
+            from lib import prompt_guard_observer
+            with prompt_guard_observer.config_scope('cloud', {}):
+                selected = prompt_guard_observer.is_enabled() and prompt_guard_observer.is_tool_selected('browser_use')
+            if selected:
+                scans = [observation for labels, observation in observed_prompt_guard
+                         if labels.get('source_name') == 'browser_use']
+                assert len(scans) == 1, 'The live browser result did not reach Prompt Guard'
+                assert scans[0].status == 'scanned', scans[0]
+                assert scans[0].coverage_complete and scans[0].flagged is False
     finally:
         allow_completion.set()
         stop.set()
@@ -409,8 +415,7 @@ def test_live_browser_callback_withholds_injection(
 
     monkeypatch.setattr(prompt_guard_observer, 'config_scope', configured_scope)
     with configured_scope(mode):
-        selected = config_loader.get_config_value('PROMPT_GUARD_TOOLS', 'browser_use').split(',')
-        if not prompt_guard_observer.is_enabled() or 'browser_use' not in {name.strip() for name in selected}:
+        if not prompt_guard_observer.is_enabled() or not prompt_guard_observer.is_tool_selected('browser_use'):
             pytest.skip(f'Prompt Guard for browser_use is not configured in {mode} mode')
 
     service, source, credential, _ = configured(tmp_path / 'tasks')

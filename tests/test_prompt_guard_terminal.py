@@ -12,7 +12,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "orchestrator"))
 
 import orchestrator_v2 as runtime
 
-from lib.prompt_guard_observer import is_prompt_guard_rejection, prompt_guard_notice
+from lib.prompt_guard_observer import (
+    PromptGuardInputBlocked,
+    is_prompt_guard_rejection,
+    prompt_guard_notice,
+)
 from orchestrator.pipeline_executor import PipelineExecutor
 from orchestrator.workflow_tool_runtime import execute_workflow_tool
 
@@ -128,6 +132,60 @@ def test_audio_failure_formatter_reports_content_rejection_before_artifact_failu
     assert runtime._format_terminal_tool_failure(
         "generate_audio", result["error"], result=result,
     ) == prompt_guard_notice(result)
+
+
+@pytest.mark.parametrize("tool", ["stash", "serpapi_youtube"])
+def test_automatic_summary_rejection_ends_turn_before_another_route(monkeypatch, tool):
+    original = rejection("text_summarizer", "rejected")
+    original["data"]["prompt_guard"]["source_type"] = "model_input"
+    original["usage"] = {"input_tokens": 12, "output_tokens": 3, "total_tokens": 15, "model_calls": 1}
+    original["speech"] = prompt_guard_notice(original)
+    instance, calls, routes = orchestrator_with({
+        "ok": True, "speech": "Read the saved source.", "data": {"content": "A screened excerpt."},
+    }, tool)
+    helper = ("_maybe_auto_summarize_stash_result" if tool == "stash"
+              else "_maybe_auto_summarize_serpapi_youtube_result")
+    monkeypatch.setattr(instance, helper, lambda *_args: ({"stash_ref": "stash://fixture/file"}, original))
+
+    result = instance.process("Summarize the source")
+
+    assert len(calls) == len(routes) == 1
+    assert is_prompt_guard_rejection(result)
+    assert result["speech"] == original["speech"]
+    assert result["data"]["text_summarizer"] == original["data"]
+    assert result["usage"]["total_tokens"] == 15
+    assert instance.status_updater.retry_errors == []
+
+
+def test_summary_backfill_rejection_cannot_reach_duplicate_synthesis(monkeypatch):
+    original = rejection("text_summarizer", "rejected")
+    original["data"]["prompt_guard"]["source_type"] = "model_input"
+    instance, _calls, _routes = orchestrator_with(original)
+    monkeypatch.setattr(instance, "_maybe_auto_summarize_stash_result", lambda *_args: ({}, original))
+    context = []
+    data = {"stash": {"content": "An earlier screened excerpt."}}
+    tools = ["stash"]
+
+    with pytest.raises(PromptGuardInputBlocked) as raised:
+        instance._maybe_backfill_stash_summary_for_synthesis("Summarize it", tools, data, context)
+
+    assert raised.value.result is original
+    assert context[-1]["result"] is original
+    assert context[-1]["meta"]["freshness"] == "failed_tool_call"
+    assert data["text_summarizer"] == original["data"]
+
+
+def test_duplicate_synthesis_does_not_convert_summary_block_to_fallback(monkeypatch):
+    original = rejection("text_summarizer", "rejected")
+    instance, _calls, _routes = orchestrator_with(original)
+    instance.router.provider = SimpleNamespace(chat=lambda *_args, **_kwargs: pytest.fail("Must not synthesize"))
+
+    def block(*_args):
+        raise PromptGuardInputBlocked(original)
+
+    monkeypatch.setattr(instance, "_maybe_backfill_stash_summary_for_synthesis", block)
+    with pytest.raises(PromptGuardInputBlocked):
+        instance._synthesize_duplicate_prevented_response("Summarize", ["stash"], {}, [])
 
 
 def pipeline_with(result):

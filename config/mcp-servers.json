@@ -1,6 +1,7 @@
 {
   "mcpServers": {
     "apify": {
+      "prompt_guard_policy": "web_content",
       "type": "http",
       "url": "https://mcp.apify.com/?tools=search-actors,fetch-actor-details&telemetry-enabled=false",
       "proxy_policy": "off",
@@ -205,6 +206,7 @@
       "enabled": false
     },
     "fetch": {
+      "prompt_guard_policy": "web_content",
       "command": "docker",
       "retry_discovery": true,
       "args": [
@@ -220,6 +222,7 @@
       "enabled": true
     },
     "brave_search": {
+      "prompt_guard_policy": "web_content",
       "command": "docker",
       "retry_discovery": true,
       "args": [

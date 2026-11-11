@@ -6,8 +6,10 @@ from copy import deepcopy
 from dataclasses import replace
 from types import SimpleNamespace
 
+import paths as path_helpers
 import pytest
 from config_loader import config_scope, get_active_config_mode, get_config_value
+from prompt_guard_test_config import write_guard_config
 
 from lib import prompt_guard_observer as observer
 from lib.prompt_guard import PromptGuardResult
@@ -15,7 +17,7 @@ from orchestrator.executor import ToolExecutor
 
 
 @pytest.fixture
-def screening(monkeypatch):
+def screening(monkeypatch, tmp_path):
     monkeypatch.setattr(observer, "notify_prompt_guard_block", lambda *_args, **_kwargs: None)
     calls = []
     observation = PromptGuardResult(
@@ -29,8 +31,9 @@ def screening(monkeypatch):
         return observation
 
     monkeypatch.setattr(observer, "scan_text", scan)
+    path = write_guard_config(tmp_path / "policy.json", tools=["stash", "source_library"])
     with config_scope("cloud", overrides={
-        "PROMPT_GUARD_ENABLED": "true", "PROMPT_GUARD_TOOLS": "stash,source_library",
+        "PROMPT_GUARD_ENABLED": "true", "PROMPT_GUARD_POLICY_FILE": path,
         "PROMPT_GUARD_URL": "http://synthetic-guard:8188", "PROMPT_GUARD_MAX_INPUT_BYTES": "8192",
     }):
         yield calls
@@ -77,9 +80,11 @@ def test_action_defaults_match_real_dispatchers_and_do_not_trust_result_metadata
     assert [call["source_name"] for call in screening] == ["source_library"]
 
 
-@pytest.mark.parametrize("selection", ["", "crawl_url", "*", "stash_*"])
-def test_artifact_reads_still_require_exact_tool_selection(screening, selection):
-    with config_scope("cloud", overrides={"PROMPT_GUARD_ENABLED": "true", "PROMPT_GUARD_TOOLS": selection}):
+@pytest.mark.parametrize("selection", [[], ["crawl_url"], ["*"], ["stash_*"]])
+def test_unassigned_artifact_reads_require_exact_tool_selection(screening, tmp_path, monkeypatch, selection):
+    monkeypatch.setattr(path_helpers, "get_project_root", lambda: tmp_path)
+    path = write_guard_config(tmp_path / "selection.json", tools=selection)
+    with config_scope("cloud", overrides={"PROMPT_GUARD_ENABLED": "true", "PROMPT_GUARD_POLICY_FILE": path}):
         for tool in ("stash", "source_library"):
             observer.review_tool_result(tool, {"data": {"content": "Evidence."}}, args={"action": "read"})
     assert screening == []
@@ -96,7 +101,7 @@ def test_real_executor_screens_completed_artifact_once_without_replaying(screeni
     executor = object.__new__(ToolExecutor)
     executor.mode = "cloud"
     executor.excluded_tools = set()
-    executor.registry = SimpleNamespace()
+    executor.registry = SimpleNamespace(get_tool=lambda _name: None)
     result = {"ok": True, "completion": "completed", "data": {"content": "PRIVATE_REPORT_BODY"}}
     executions = []
 
@@ -119,9 +124,10 @@ def test_real_executor_screens_completed_artifact_once_without_replaying(screeni
     assert "PRIVATE_REPORT_BODY" not in json.dumps(blocked)
 
 
-def test_attachment_ingestion_is_distinct_from_tool_selection_and_preserves_exact_text(screening):
+def test_attachment_ingestion_is_distinct_from_tool_selection_and_preserves_exact_text(screening, tmp_path):
     text = "Full attachment 😀\nParagraph two, no escaping or truncation."
-    with config_scope("cloud", overrides={"PROMPT_GUARD_ENABLED": "true", "PROMPT_GUARD_TOOLS": ""}):
+    path = write_guard_config(tmp_path / "no-tools.json")
+    with config_scope("cloud", overrides={"PROMPT_GUARD_ENABLED": "true", "PROMPT_GUARD_POLICY_FILE": path}):
         result = observer.review_untrusted_text("web_text", text)
     assert result == {"ok": True, "data": {"content": text}}
     assert screening[0]["text"] == text

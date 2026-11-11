@@ -4,6 +4,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from prompt_guard_test_config import write_guard_config
 from test_background_local_skill import NAME
 from test_background_local_skill import probe as probe
 from test_background_remote_skill import remote as remote
@@ -25,9 +26,10 @@ INCIDENT = "pg-" + "b" * 32
 
 def configure_guard(root, tools):
     for mode in ('cloud', 'local'):
+        path = write_guard_config(root / 'config' / f'{mode}-guard.json', tools=tools)
         with (root / 'config' / f'{mode}.env').open('a') as stream:
             stream.write(
-                f'PROMPT_GUARD_ENABLED=true\nPROMPT_GUARD_TOOLS={tools}\n'
+                f'PROMPT_GUARD_ENABLED=true\nPROMPT_GUARD_POLICY_FILE={path}\n'
                 f'PROMPT_GUARD_API_KEY=scanner-secret-{mode}\n'
             )
 
@@ -37,7 +39,7 @@ def guard(config_root, monkeypatch):
     import config_loader as scanner_config
 
     monkeypatch.setattr(scanner_config, 'get_project_root', lambda: config_root)
-    configure_guard(config_root, 'fixture,' + NAME)
+    configure_guard(config_root, ['fixture', NAME])
     scans, evidence = [], []
 
     def scan(text, **source):
@@ -226,7 +228,7 @@ def supervised(request, probe, config_root, monkeypatch, tmp_path):
     import tool_process
 
     p = probe if request.param == 'local' else request.getfixturevalue('remote')
-    configure_guard(config_root, NAME)
+    configure_guard(config_root, [NAME])
     log = ToolLogger(tmp_path / 'supervised-tool-logs')
     monkeypatch.setattr(executor, 'get_logger', lambda _mode: log)
     calls = []

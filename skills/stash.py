@@ -10,23 +10,23 @@ It provides structured storage for files, images, and other artifacts
 that need to persist across tool calls or sessions.
 """
 
-import sys
-import os
-import json
 import base64
+import json
+import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 # Add lib to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config
 from helper_task_prompts import STASH_SUMMARY_SYSTEM_PROMPT
 from paths import assert_not_restricted_read_path
-from stash_helper import (
-    open_space, get_space, list_spaces, cleanup_expired,
-    StashFile
-)
+from stash_helper import StashFile, cleanup_expired, get_space, list_spaces, open_space
+
+from lib.prompt_guard_observer import PromptGuardInputBlocked, review_model_input
 
 # Tool locations for calling other tools
 SKILLS_DIR = os.path.dirname(__file__)
@@ -122,12 +122,20 @@ def _summarize_content_with_llm_and_usage(
     Grok CLI OAuth and Ollama Cloud signed-in daemon access.
     """
     system_prompt = STASH_SUMMARY_SYSTEM_PROMPT
+    source_text = content[:8000]
 
     user_prompt = f"""Summarize this content from "{file_name}" in under {max_length} characters, preserving all key facts:
 
-{content[:8000]}"""
+{source_text}"""
 
     try:
+        review = review_model_input(
+            "stash_summary",
+            source_text,
+            args={"action": "remember", "file_name": file_name},
+        )
+        if not review.get("ok"):
+            raise PromptGuardInputBlocked(review)
         from llm_provider import create_configured_provider
 
         provider_name, model, provider = create_configured_provider(
@@ -164,6 +172,8 @@ def _summarize_content_with_llm_and_usage(
                 usage["peak_context_tokens"] = call_tokens
             return cleaned_summary, usage
         return None, usage
+    except PromptGuardInputBlocked:
+        raise
     except Exception as e:
         # Silent fail - caller will fallback to truncation
         print(f"LLM summarize failed: {e}", file=sys.stderr)
@@ -530,7 +540,7 @@ def action_remember(args: dict) -> dict:
         for space_info in all_spaces:
             try:
                 space = get_space(space_info['space_id'])
-                space_labels = [l.lower() for l in space.meta.get('labels', [])]
+                space_labels = [label.lower() for label in space.meta.get('labels', [])]
                 
                 for file_meta in space.meta.get('files', []):
                     file_name = file_meta.get('name', '').lower()
@@ -672,6 +682,8 @@ def action_remember(args: dict) -> dict:
                     content_truncated = True
             else:
                 value = content
+        except PromptGuardInputBlocked:
+            raise
         except Exception as e:
             value = f"[Could not read content: {e}]"
     else:
@@ -764,6 +776,9 @@ def main():
         result = handlers[action](args)
         print(json.dumps(result))
         
+    except PromptGuardInputBlocked as exc:
+        print(json.dumps(exc.result))
+        sys.exit(1)
     except Exception as e:
         print(json.dumps({
             "ok": False,

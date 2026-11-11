@@ -50,7 +50,11 @@ from workflow_availability import (
 )
 from pipeline_executor import PipelineExecutor
 from lib.background_tasks.admission import carry_pending_jobs
-from lib.prompt_guard_observer import is_prompt_guard_rejection, prompt_guard_notice
+from lib.prompt_guard_observer import (
+    PromptGuardInputBlocked,
+    is_prompt_guard_rejection,
+    prompt_guard_notice,
+)
 from lib.reminder_feedback import reminder_schedule_rejection
 from lib.reminder_receipts import reminder_schedule_warning
 from lib.reminder_schedule import resolve_schedule
@@ -2202,9 +2206,12 @@ Mode: {self.mode}
                             "lookup and couldn't complete the research."
                         )
                     else:
-                        final_speech = self._synthesize_duplicate_prevented_response(
-                            transcript, state.tools_used, state.accumulated_data, state.conversation_context
-                        )
+                        try:
+                            final_speech = self._synthesize_duplicate_prevented_response(
+                                transcript, state.tools_used, state.accumulated_data, state.conversation_context
+                            )
+                        except PromptGuardInputBlocked as blocked:
+                            return self._finish_blocked_summary(blocked.result, state, conversation_query)
 
                     coverage_warning = state.accumulated_data.get('_reminder_request_coverage_warning')
                     completed_any_tool = bool(state.tools_used)
@@ -2571,6 +2578,10 @@ Mode: {self.mode}
                             state.conversation_context,
                             state.seen_tool_calls,
                         )
+                        if is_prompt_guard_rejection(summary_result):
+                            return self._finish_blocked_summary(
+                                summary_result, state, conversation_query, summary_args,
+                            )
                         # The derived summary was not part of the provider-native
                         # tool_result continuation. Force the next routing turn to
                         # use Jarvis's text context so it sees the completed summary.
@@ -3342,6 +3353,8 @@ Your synthesized response:"""
                 return _build_duplicate_safeguard_fallback()
             return response.strip()
             
+        except PromptGuardInputBlocked:
+            raise
         except Exception as e:
             # Fallback: still try to be useful
             if sys.stdout.isatty():
@@ -3518,6 +3531,8 @@ Your synthesized response:"""
                 )
             return None, None
 
+        if is_prompt_guard_rejection(summary_result):
+            return summary_args, summary_result
         if not isinstance(summary_result, dict) or not summary_result.get("ok"):
             return None, None
 
@@ -3640,9 +3655,27 @@ Your synthesized response:"""
                 print(f"⚠️ Auto text_summarizer failed for stash read: {e}", file=sys.stderr)
             return None, None
 
+        if is_prompt_guard_rejection(result):
+            return summary_args, result
         if not isinstance(result, dict) or not result.get("ok"):
             return None, None
         return summary_args, result
+
+    def _finish_blocked_summary(
+        self, result: dict, state: TurnState, query: str, arguments: dict | None = None,
+    ) -> dict:
+        """End this turn before synthesis or another tool can reuse rejected input."""
+        self._merge_workflow_usage(state.total_usage, result.get("usage"))
+        speech = prompt_guard_notice(result)
+        self._log_conversation(query, speech, state.tools_used, success=False)
+        self.status_updater.mark_complete()
+        return {
+            **result, "speech": speech, "data": state.accumulated_data,
+            "tool_name": "text_summarizer", "tool_args": arguments or {},
+            "tools_used": state.tools_used, "tool_trace": state.tool_trace,
+            "usage": state.total_usage if self._has_usage_data(state.total_usage) else None,
+            "server_side_tools": state.total_usage.get("server_side_tools", {}),
+        }
 
     def _add_auto_summary_context(
         self,
@@ -3653,7 +3686,7 @@ Your synthesized response:"""
         conversation_context: list,
         seen_tool_calls: set | None = None,
     ) -> None:
-        """Record an automatic text_summarizer result like any other successful tool result."""
+        """Record an automatic summary or its neutral terminal rejection."""
         tools_used.append("text_summarizer")
         if seen_tool_calls is not None:
             seen_tool_calls.add(("text_summarizer", json.dumps(summary_args, sort_keys=True)))
@@ -3676,7 +3709,7 @@ Your synthesized response:"""
             "meta": {
                 "executed_at_iso": executed_at.isoformat(),
                 "executed_at_local": executed_at.strftime("%Y-%m-%d %H:%M:%S %Z"),
-                "freshness": "derived_tool_call",
+                "freshness": "failed_tool_call" if is_prompt_guard_rejection(summary_result) else "derived_tool_call",
                 "ttl_seconds": None,
                 "source": "text_summarizer",
                 "authoritative_live": False,
@@ -3717,6 +3750,8 @@ Your synthesized response:"""
                     accumulated_data,
                     conversation_context,
                 )
+                if is_prompt_guard_rejection(summary_result):
+                    raise PromptGuardInputBlocked(summary_result)
                 return
 
     def _apply_qa_prompt_overrides(self, base_prompt: str) -> str:

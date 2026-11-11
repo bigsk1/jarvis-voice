@@ -211,6 +211,15 @@ search tools in a short availability hint; it does not enable the tool, change
 Tool RAG ranking, or require search. Omit the field for other tools. MCP tools
 use per-tool `tool_metadata` in `config/mcp-servers.json` instead.
 
+Tools can also declare top-level `"prompt_guard_policy": "web_content"` to
+enable screening and select a named threshold in the operator's Prompt Guard JSON file. This is
+runtime metadata alongside `proxy_policy`, not a model-settable parameter.
+MCP servers can assign a default policy for all their tools; operator-owned
+`tool_metadata` can override it per tool. These assignments need no duplicate
+guard JSON `tools` entry. The list opts in unassigned tools using the global
+threshold. The independent summarizer input switch remains in JSON; see
+[Prompt Guard](../docs/PROMPT_GUARD.md#per-tool-named-policies).
+
 ---
 
 ## Tool Definition Format

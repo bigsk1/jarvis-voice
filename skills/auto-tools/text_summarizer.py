@@ -2,18 +2,21 @@
 """
 Text processing tool for summarization, keyword extraction, word/character counting, and sentiment analysis.
 """
-import sys
-import os
 import json
+import os
 import re
+import sys
 from collections import Counter
 from typing import Any
 
 # IMPORTANT: This tool lives in skills/auto-tools/, so go up 2 levels to reach lib/
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import get_config_value, load_config
 from helper_task_prompts import TEXT_SUMMARY_SYSTEM_PROMPT
 from stash_helper import parse_stash_ref, resolve_file_path
+
+from lib.prompt_guard_observer import PromptGuardInputBlocked, review_model_input
 
 
 def merge_llm_usage(total: dict[str, Any], usage: dict[str, Any] | None) -> None:
@@ -62,8 +65,17 @@ def llm_chat_with_usage(
     model: str,
     max_tokens: int,
     capture_usage: bool,
+    source_text: str,
+    source_info: dict[str, Any] | None = None,
 ) -> str:
-    """Call the provider without tools and retain its metering data."""
+    """Screen the consumed evidence, then call the provider without tools."""
+    review = review_model_input(
+        "text_summarizer",
+        source_text,
+        args={"operation": "summarize", **(source_info or {})},
+    )
+    if not review.get("ok"):
+        raise PromptGuardInputBlocked(review)
     if not capture_usage:
         return provider.chat(
             message,
@@ -378,6 +390,8 @@ def summarize_with_llm(text: str, args: dict[str, Any], source_info: dict[str, A
                 model=model,
                 max_tokens=max_tokens,
                 capture_usage=capture_usage,
+                source_text=chunks[0],
+                source_info=source_info,
             )
             if summary and not summary.strip().lower().startswith("error:"):
                 meta["llm_used"] = True
@@ -406,6 +420,8 @@ def summarize_with_llm(text: str, args: dict[str, Any], source_info: dict[str, A
                 model=model,
                 max_tokens=max_tokens,
                 capture_usage=capture_usage,
+                source_text=chunk,
+                source_info=source_info,
             )
             if not partial or partial.strip().lower().startswith("error:"):
                 meta["_usage"] = usage_total or None
@@ -429,6 +445,8 @@ def summarize_with_llm(text: str, args: dict[str, Any], source_info: dict[str, A
             model=model,
             max_tokens=max_tokens,
             capture_usage=capture_usage,
+            source_text=combined,
+            source_info=source_info,
         )
         if final and not final.strip().lower().startswith("error:"):
             meta["llm_used"] = True
@@ -436,6 +454,10 @@ def summarize_with_llm(text: str, args: dict[str, Any], source_info: dict[str, A
             return final.strip(), meta
         meta["_usage"] = usage_total or None
         return None, meta
+    except PromptGuardInputBlocked as exc:
+        if usage_total:
+            raise PromptGuardInputBlocked({**exc.result, "usage": dict(usage_total)}) from exc
+        raise
     except Exception as e:
         meta["llm_error"] = str(e)[:500]
         meta["_usage"] = usage_total or None
@@ -566,6 +588,9 @@ def main():
                 response["server_side_tools"] = usage["server_side_tools"]
         print(json.dumps(response))
         
+    except PromptGuardInputBlocked as exc:
+        print(json.dumps(exc.result))
+        sys.exit(1)
     except Exception as e:
         print(json.dumps({"ok": False, "error": str(e), "speech": f"Error: {e}"}))
         sys.exit(1)

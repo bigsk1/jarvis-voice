@@ -42,7 +42,7 @@ the operator environment and restart the relevant service. Follow the
 Do not use the repo `.venv` for `bin/sync-tools.py`.
 
 If Prompt Guard is enabled, include `serpapi_google_search` in the selected
-mode's existing `PROMPT_GUARD_TOOLS` list; both starter settings include it.
+JSON policy file's `tools` array; the shipped example includes it.
 The shared executor screens returned search previews and `read_result`
 excerpts before they enter the conversation model's context. It does not
 scan the complete retained JSON when saving it or follow `raw_ref` itself.
@@ -116,10 +116,10 @@ For broader analysis, the existing `text_summarizer` tool accepts
 `stash_ref: "<raw_ref>"` and an optional `focus`. It reads the original saved
 artifact directly. Use JSON section reads for exact offers, prices, identifiers
 and counts; a generated summary is a separate interpretation of that evidence.
-Its internal model input currently bypasses the shared tool-result scan;
-selecting `stash` or the Google tool for Prompt Guard does not screen this
-internal file read. Use the Google tool's `read_result` action for excerpts
-that pass through the configured tool-result screening boundary.
+With Prompt Guard enabled, the summarizer screens the actual source chunks
+before its own model consumes them, using the JSON `summarizers.enabled`
+gate (default `true`). This is separate from the selected tool-result checks;
+neither a stored artifact nor a partial scan certifies the complete file.
 
 The search HTTP allowance is 90 seconds; the executor allows 120 seconds for
 the request, retention and process cleanup. Qualifying transient search

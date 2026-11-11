@@ -13,6 +13,10 @@ from typing import Any
 
 from http_client import normalize_proxy_policy
 from hybrid_retrieval import adaptive_rank_cutoff, query_segments
+from prompt_guard_tool_policy import (
+    normalize_prompt_guard_policy_name,
+    resolve_mcp_tool_policy_name,
+)
 from tool_child_environment import parse_child_environment_policy
 from tool_manifest_files import iter_tool_manifests
 from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
@@ -298,6 +302,7 @@ class ToolSchema:
         child_environment: dict[str, Any] | None = None,
         availability: dict[str, Any] | None = None,
         web_search: bool = False,
+        prompt_guard_policy: str | None = None,
     ):
         """
         Initialize a tool schema.
@@ -317,6 +322,7 @@ class ToolSchema:
                 }
             deterministic_routing: Optional metadata for non-LLM fallback routing.
             proxy_policy: Runtime network policy: inherit, off, prefer, or require.
+            prompt_guard_policy: Trusted named threshold policy; never a model argument.
             prerequisite_tools: Optional upstream tools that should be visible
                 whenever this tool is retrieved so required inputs can be resolved.
             web_search: Include this callable tool in the router's search availability hint.
@@ -335,6 +341,7 @@ class ToolSchema:
         }
         self.deterministic_routing = deterministic_routing or {}
         self.proxy_policy = normalize_proxy_policy(proxy_policy)
+        self.prompt_guard_policy = normalize_prompt_guard_policy_name(prompt_guard_policy)
         self.child_environment_names = parse_child_environment_policy(
             child_environment, availability
         )
@@ -481,6 +488,7 @@ Parameters:
             child_environment=data.get('child_environment'),
             availability=data.get('availability'),
             web_search=data.get('web_search') is True,
+            prompt_guard_policy=data.get('prompt_guard_policy'),
         )
 
 
@@ -691,7 +699,7 @@ class ToolRegistry:
             enabled_servers = []
             for server_name, client in manager.servers.items():
                 server_config = config.get("mcpServers", {}).get(server_name, {})
-                if not server_config.get("enabled", False):
+                if not server_config.get("enabled", True):
                     if verbose:
                         print(f"  ⊝ {server_name} (disabled)")
                     continue
@@ -855,6 +863,7 @@ class ToolRegistry:
             execution=execution_for_tool(tool_name, server_name, tool_info["name"]),
             web_search=metadata.get("web_search") is True,
             prerequisite_tools=metadata.get("prerequisite_tools"),
+            prompt_guard_policy=resolve_mcp_tool_policy_name(server_config, tool_info["name"]),
         )
 
     def _register_mcp_tools(self, server_name, client, server_config, tools) -> int:

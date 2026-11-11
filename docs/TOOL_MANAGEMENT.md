@@ -244,6 +244,15 @@ The optional manifest `proxy_policy` controls networking at runtime:
 `inherit`, `off`, `prefer`, or fail-closed `require`. It is not an availability
 requirement. See [network proxy configuration](NETWORK_PROXY.md).
 
+The optional manifest `prompt_guard_policy` enables screening and selects a named threshold from
+the operator's Prompt Guard JSON file. Like `proxy_policy`, this is trusted
+runtime metadata and is not exposed as a model argument. MCP tools use
+operator-owned server defaults or per-tool `tool_metadata` overrides. Assignments
+need no duplicate entry in the guard's JSON `tools` list; that list selects
+unassigned tools at the global threshold. The master opt-in and workflow
+exceptions remain authoritative. See
+[Prompt Guard policies and input screening](PROMPT_GUARD.md#per-tool-named-policies).
+
 ## Discovery, hints, workflows, and background tasks
 
 `tool_search` and `workflow` are promoted as discovery candidates only while

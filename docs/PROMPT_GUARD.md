@@ -7,8 +7,8 @@ service, including a GPU service elsewhere on the LAN. Jarvis needs no local
 inference packages, model weights, additional service, or database.
 
 The check runs after a selected tool returns, before its result enters the next
-model turn or workflow step. Text attachments are checked immediately before
-their content is inserted into model context:
+model turn or workflow step. Text attachments and enabled summarizer source
+inputs are checked immediately before their content reaches a model:
 
 - **Clean scan:** return the original tool result unchanged.
 - **Confirmed detection:** withhold the returned content, end the tool turn or
@@ -37,13 +37,12 @@ PROMPT_GUARD_ENABLED=false
 PROMPT_GUARD_URL=http://your-prompt-guard-host:8188
 PROMPT_GUARD_API_KEY=
 PROMPT_GUARD_THRESHOLD=0.8
-# Optional exact source/workflow/profile exceptions:
-# PROMPT_GUARD_POLICY_FILE=config/prompt_guard_policy.json.example
+# Optional custom JSON selection, named policies and workflow exceptions:
+# PROMPT_GUARD_POLICY_FILE=config/prompt_guard_policy.json
 PROMPT_GUARD_TIMEOUT_SECONDS=2
-PROMPT_GUARD_MAX_INPUT_BYTES=8192
+PROMPT_GUARD_MAX_INPUT_BYTES=65536
 # Optional; requires a scanner supporting the return_windows request field.
 PROMPT_GUARD_RETURN_WINDOWS=false
-PROMPT_GUARD_TOOLS=crawl_url,brave_llm_context,rss_feed,browser_use,browser_use_cloud,stash,source_library,serpapi_google_search
 PROMPT_GUARD_ALERTS_ENABLED=false
 PROMPT_GUARD_ALERT_THRESHOLD=0.95
 PROMPT_GUARD_ALERT_COOLDOWN_SECONDS=3600
@@ -66,23 +65,110 @@ request. Omitted diagnostics remain compatible with aggregate-only responses.
 Roll back diagnostic capture by setting it false; scoring, input representation,
 thresholds, and withholding rules are unchanged.
 
-`PROMPT_GUARD_TOOLS` is a comma-separated list of exact tool names. An empty
-value selects no tools. Review what a tool returns before adding it: selected
-results are sent to another service. Email, calendar, memory, and arbitrary MCP
-tools are not selected by default. No new tool schemas or Web settings are added.
+Tool selection now lives in JSON, rather than a comma-separated ENV value.
+Copy `config/prompt_guard_policy.json.example` to
+`config/prompt_guard_policy.json` and set `PROMPT_GUARD_POLICY_FILE` to that
+private file. Both modes can use the same file or separate
+`prompt_guard_policy.cloud.json` and `prompt_guard_policy.local.json` files.
+An unset path uses the shipped example. Its shape is:
+
+```json
+{
+  "v": 2,
+  "tools": [
+    "crawl_url",
+    "source_library"
+  ],
+  "summarizers": {"enabled": true},
+  "policies": {
+    "web_content": 0.8,
+    "document_text": 0.8,
+    "high_risk": 0.7
+  },
+  "rules": []
+}
+```
+
+The shipped example selects additional existing public-content tools and SSH
+output. Names are exact, including hyphens in MCP names such as
+`mcp_apify_search-actors`; wildcards are rejected. The `tools` array opts in
+tools that should use the global threshold. Named policy assignments also opt
+in tools, without a list entry. An empty `tools` array therefore leaves only
+assigned tools selected. Review a tool's returned content before selecting it: results
+are sent to another service. Email, calendar, memory and arbitrary MCP tools
+are not selected by default.
+
+`summarizers.enabled` is independent of that selection. It defaults to `true`
+and applies only when the master `PROMPT_GUARD_ENABLED` flag is on. Set it to
+`false` to pause source screening inside `text_summarizer` and Stash's
+`remember(summarize=true)` helper while retaining selected returned-result and
+Web attachment screening. Turning it off does not stop summaries themselves.
+
+Existing installations must move every selected name from
+`PROMPT_GUARD_TOOLS` into `tools`, remove that ENV entry, and upgrade an existing
+v1 policy to the v2 shape above while retaining its `rules`. The CSV setting
+is no longer read. JSON edits are reloaded for each check; ENV changes still
+require restarting affected processes. A missing or invalid file selects no
+tool results, logs `invalid_policy`, retains the global threshold, and defaults
+the summarizer gate to `true`. An invalid file is never treated as a clean scan.
+
+### Per-tool named policies
+
+An optional top-level tool-manifest field enables result screening and selects
+a named threshold:
+
+```json
+"prompt_guard_policy": "web_content"
+```
+
+This is operator-owned metadata beside `proxy_policy`, not a model argument.
+There is no need to repeat the tool name in `tools`. For an MCP server, add the
+same field to its existing server entry in `config/mcp-servers.json` to cover
+all its tools. Per-tool `tool_metadata` can choose a different policy:
+
+```json
+{
+  "prompt_guard_policy": "web_content",
+  "tool_metadata": {
+    "inspect_sensitive_result": {"prompt_guard_policy": "high_risk"}
+  }
+}
+```
+
+The example shows fields to merge into an existing server entry, retaining its
+transport settings. Valid per-tool assignments override the server default;
+missing, null or invalid assignments inherit it. Server assignment applies to
+all returned tool results on that server, so review its content before opting
+in. Remote MCP metadata, tool arguments and returned payloads cannot choose a policy.
+An omitted MCP `enabled` field defaults to `true` for both tool discovery and
+policy lookup. Set it explicitly to `false` to disable the server.
+Restart processes that execute tools after changing manifest or MCP assignments
+so their registered schemas use the same bindings. Threshold edits in the
+Prompt Guard policy JSON continue to reload on each check.
+Google Search starts with `web_content`; Stash and `text_summarizer` use
+`document_text`. Both named thresholds start at `0.8`. A tool without a named
+policy is screened only when listed in `tools`, then uses the global threshold
+unless an exact rule overrides it. The master enable flag still applies to all
+screening. Removing a name from `tools` does not disable its policy assignment;
+remove the assignment too when that tool should no longer be screened.
+
+The order is: matching workflow/profile rule, matching source-only rule, named
+tool policy, then the mode's global threshold. Several tools can share a name
+and be tuned in one place. Unknown policy names use the global threshold and
+log `unknown_policy`; they never disable screening. Named policies are not
+the same thing as RSS profile selectors or Jarvis tool-availability profiles.
 
 ### Scoped thresholds
 
 The ENV threshold is the fallback for that mode. Higher thresholds block fewer
-results; lower thresholds are more sensitive. Set `PROMPT_GUARD_POLICY_FILE` to
-a small JSON policy to override exact source types/names. Relative paths resolve
-against the project root; absolute paths work too. The shipped example is usable
-directly and covers both the AI Status feed and its article crawls:
+results; lower thresholds are more sensitive. Add entries to the JSON `rules`
+array to override exact source types/names. Relative file paths resolve against
+the project root; absolute paths work too. For example, these two entries
+relax only the AI Status RSS digest and its article crawls:
 
 ```json
-{
-  "v": 1,
-  "rules": [{
+[
+  {
     "id": "ai_status_rss",
     "source_type": "tool_result",
     "source_name": "rss_feed",
@@ -96,26 +182,33 @@ directly and covers both the AI Status feed and its article crawls:
     "workflow_id": "rss_digest",
     "profile": "ai_status",
     "threshold": 0.9
-  }]
-}
+  }
+]
 ```
 
 `ai_status` is an RSS profile, not a workflow ID. Other RSS profiles and ordinary
 crawls keep the ENV threshold. The selection model consumes the screened feed
-result; there is no separate classifier call for its prompt. Starter ENV files
-leave the policy path commented out: explicitly set it to enable these exceptions.
+result; there is no separate classifier call for its prompt. The shipped v2
+example has no exception rules; add these only when wanted.
 Removing `workflow_id` and `profile` makes a rule
 apply to that tool everywhere. Source type/name are mandatory exact selectors;
 there are no wildcard matches. More workflow/profile selectors win, then the
 first declared rule wins a specificity tie. Duplicate selectors/IDs and invalid
-fields invalidate the file. Missing or malformed policies log a safe code and
-retain normal screening at the ENV threshold instead of disabling the guard.
+fields invalidate the file. Source-only rules also apply to tools outside a
+workflow. A rule can use either numeric `threshold` or a named `policy`, never
+both. A malformed file falls back as described above rather than activating
+only the valid subset of rules.
 
 Workflow identity and a configured RSS profile are captured before execution
 in a mode-bound scope. Tool results and model-filled arguments cannot choose
 their own policy. The scope resets on completion, errors, and nested workflows.
-The file is reread for each scan; changing ENV settings requires restarting the
-affected processes. Policy IDs and effective thresholds appear in scan metadata,
+The executor carries its validated workflow snapshot into tool child processes,
+so internal summarizer checks retain applicable workflow exceptions. Arguments,
+saved text and result fields cannot forge that snapshot. To exempt a summarizer
+input specifically, match `source_type: "model_input"` and
+`source_name: "text_summarizer"` or `"stash_summary"` in a rule. Existing
+`tool_result` rules keep their original returned-result scope.
+Policy IDs and effective thresholds appear in scan metadata,
 receipts, and private incidents. The scanner service needs no change.
 
 ### High-score block alerts
@@ -241,15 +334,15 @@ steps both stop on a confirmed detection, including looped steps.
 
 Selected `stash` calls screen `read` results; selected `source_library` calls
 screen `read` and `search` results. These names are included in starter settings.
-Existing explicit `PROMPT_GUARD_TOOLS` lists need them added to opt in. Saving,
+Custom JSON can opt them in through `tools` or a named policy assignment. Saving,
 listing, indexing, downloading, renaming, and deleting artifacts are unaffected.
 Stash's URL, MIME, and filesystem checks remain separate from prompt screening.
 Storing an artifact is not a clean verdict, and screening never automatically
 resolves references in other tool results.
 
 The Google Search tool uses the same boundary. Add `serpapi_google_search` to
-an existing `PROMPT_GUARD_TOOLS` list to screen its returned search previews
-and saved `read_result` excerpts. Both starter settings include this name.
+the JSON `tools` array or assign its named policy to screen returned search previews
+and saved `read_result` excerpts. The shipped example includes this name.
 The tool can save the complete provider JSON before the returned preview is
 screened; the scan does not open that saved archive or certify its omitted
 sections. Local tools and MCP tools both require their exact selected names.
@@ -258,7 +351,7 @@ Web chat screens the text evidence it inserts from current attachments,
 historical attachment excerpts, and legacy text context before orchestration or
 upload vision starts. It does not screen the user's task instructions as source
 evidence. This separate insertion boundary follows `PROMPT_GUARD_ENABLED`;
-`PROMPT_GUARD_TOOLS` filters tool results only. When enabled, Web bounds inserted
+The JSON `tools` array and named assignments select tool results only. When enabled, Web bounds inserted
 text to `PROMPT_GUARD_MAX_INPUT_BYTES` without splitting UTF-8 characters, then
 screens exactly that excerpt. Omitted text is labeled as an excerpt and the
 complete file stays in Stash. History also retains its existing 4,000-character
@@ -305,16 +398,47 @@ shortened a page or stored content in Stash before screening. Original accepted
 callback bodies remain in the private durable inbox for authentication and
 deduplication; quarantine is not their only storage location. Progress updates,
 browser agents' internal observations, provider-hosted search, and APIs bypassing
-these shared boundaries remain outside this integration. Tools that fetch and
-summarize internally need a separate hook before their own model call.
-In particular, `stash.remember` and `text_summarizer`'s internal Stash-to-model
-read are not covered merely by selecting `stash.read`. Selecting
-`text_summarizer` itself would screen its returned summary, not its internal
-model input. Direct artifact HTTP downloads remain downloads, not
+these shared boundaries remain outside this integration. Other tools that fetch
+and summarize internally need a reviewed hook before their own model call.
+Direct artifact HTTP downloads remain downloads, not
 model consumption. PDFs, OCR/transcription/vision output, provider-hosted search,
 and external agents' internal observations need their own reviewed text-ingestion
 hooks or selected result tools. This integration does not classify raw binaries
 or claim that local storage makes source text trusted.
+
+### Summarizer model inputs
+
+With the master guard on and `summarizers.enabled: true`, `text_summarizer`
+screens each actual source chunk before its helper model reads it, then screens
+merged partial summaries before the final model call. This covers explicit
+summarization, automatic Stash summaries and automatic YouTube transcript
+summaries. Stash's separate `remember(summarize=true)` helper screens its actual
+8,000-character source slice before its model call. These hooks use the same
+scanner, thresholds, incidents and unknown/fail-open behavior as other inputs.
+They apply regardless of which provider/model each helper uses, and do not
+depend on selecting the summarizer for returned-result screening. Count,
+keyword, sentiment and extractive operations make no helper-model call.
+
+The shipped input budget is 64 KiB (65,536 bytes), enough for the normal
+12,000-character chunk even when every character takes four UTF-8 bytes. The
+same budget covers Stash's 8,000-character source slice. Existing explicit
+budgets remain in effect. A smaller configured budget or a larger custom chunk
+can still skip a scan: oversized source text is passed through under the
+existing fail-open policy, never shortened and reported as fully screened.
+
+Jarvis sends the resolved classification threshold and optional window
+diagnostics request. Window size, overlap, token limits, request-body limits,
+queue capacity and inference deadline remain scanner settings. Jarvis's own
+scan timeout remains independent; increasing a server limit does not extend
+the client timeout. Inputs rejected by the scanner remain unknown/unscanned.
+
+A confirmed input detection produces a terminal `model_input` receipt. No
+fallback summary, truncated source or Memory write follows that detection.
+Automatic-summary wrappers preserve the stop rather than silently dropping it.
+The current chat turn or workflow ends with the neutral notice, without asking
+the chat model to retrieve the source by another tool. Other requests continue.
+Usage from any earlier completed summary chunks remains recorded. A file is not
+certified as fully screened when only selected chunks or an excerpt were used.
 
 Restart Web, the task worker, and any callback/API processes after updating so
 completion, delivery, and callback handling load the same code. No browser image
@@ -381,7 +505,7 @@ manipulation, preference poisoning, delayed triggers, and long documents.
 Long-placement inputs include documents around 95 KiB; a case
 named for a window boundary is an approximate placement, not an attested split at
 a tokenizer boundary. Reported window positions come from actual scans.
-The runner respects the configured input limit. A mode using the default 8 KiB
+The runner respects the configured input limit. A mode using the default 64 KiB
 limit will skip the long cases; completing those requires a larger limit already
 validated for that service, such as the measured GPU configuration described above.
 

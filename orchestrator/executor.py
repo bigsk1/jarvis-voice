@@ -37,6 +37,7 @@ from tool_progress import parse_tool_progress
 from tool_search_runtime import search_tools_runtime
 
 from lib.prompt_guard_observer import review_tool_result
+from lib.prompt_guard_policy import export_prompt_guard_context
 
 try:
     from .workflow_tool_runtime import execute_workflow_tool
@@ -466,7 +467,11 @@ class ToolExecutor:
         result = reject_background_result(self._execute_foreground(
             tool_name, args, skip_permission_check, log_callback=stage_log,
         ))
-        result = review_tool_result(tool_name, result, args=args, mode=getattr(self, 'mode', None))
+        get_tool = getattr(getattr(self, 'registry', None), 'get_tool', None)
+        policy_name = getattr(get_tool(tool_name), 'prompt_guard_policy', None) if callable(get_tool) else None
+        policy_options = {'policy_name': policy_name} if policy_name else {}
+        result = review_tool_result(tool_name, result, args=args, mode=getattr(self, 'mode', None),
+                                    **policy_options)
         for entry in pending_logs:
             try:
                 self.logger.log_tool_call(**{**entry, "result": result})
@@ -677,6 +682,14 @@ class ToolExecutor:
                         tool_env, child_names, home=child_home,
                         proxy_policy=proxy_policy,
                     )
+                # Workflow exceptions cross the process boundary only through
+                # this parent-owned snapshot. Discard stale inherited state on
+                # every launch; arguments and returned text cannot set it.
+                tool_env.pop('JARVIS_INTERNAL_PROMPT_GUARD_CONTEXT', None)
+                tool_env.pop('JARVIS_OVERRIDE_JARVIS_INTERNAL_PROMPT_GUARD_CONTEXT', None)
+                guard_context = export_prompt_guard_context()
+                if guard_context is not None:
+                    tool_env['JARVIS_INTERNAL_PROMPT_GUARD_CONTEXT'] = guard_context
                 from tool_process import run_local_process
                 stdout, stderr, cancelled = run_local_process(
                     cmd, input_json, python_script=tool_script.suffix == '.py', cwd=self.skills_dir,

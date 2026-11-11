@@ -16,24 +16,31 @@ from contextlib import nullcontext
 from typing import Any
 
 try:
-    from config_loader import config_scope, get_active_config_mode, get_config_value
+    from config_loader import config_scope, get_active_config_mode
 except ModuleNotFoundError as exc:
     if exc.name != "config_loader":
         raise
-    from lib.config_loader import config_scope, get_active_config_mode, get_config_value
+    from lib.config_loader import config_scope, get_active_config_mode
 
 from lib.prompt_guard import PromptGuardResult, get_max_input_bytes, is_enabled, scan_text
 from lib.prompt_guard_alerts import notify_prompt_guard_block
 from lib.prompt_guard_incidents import save_incident
+from lib.prompt_guard_policy import is_tool_selected, is_valid_tool_name, summarizers_enabled
 
 logger = logging.getLogger("prompt_guard.observer")
 
-DEFAULT_TOOLS = "crawl_url,brave_llm_context,rss_feed,browser_use,browser_use_cloud,stash,source_library"
-_TOOL_NAME = re.compile(r"[A-Za-z0-9_]{1,100}\Z")
 _POLICY_ID = re.compile(r"[A-Za-z0-9_.:-]{1,100}\Z")
 _MAX_DEPTH = 32
 _MAX_NODES = 4096
 _INCIDENT_ID = re.compile(r"pg-[0-9a-f]{32}\Z")
+
+
+class PromptGuardInputBlocked(Exception):
+    """Carry a confirmed input rejection past ordinary summarizer fallbacks."""
+
+    def __init__(self, result: dict[str, Any]):
+        super().__init__("Model input withheld by Prompt Guard.")
+        self.result = result
 
 
 def is_prompt_guard_rejection(result: object) -> bool:
@@ -72,7 +79,7 @@ def prompt_guard_notice(result: dict[str, Any]) -> str:
     metadata = data.get("prompt_guard") if isinstance(data, dict) else None
     metadata = metadata if isinstance(metadata, dict) else {}
     tool = metadata.get("tool")
-    tool_label = tool if isinstance(tool, str) and _TOOL_NAME.fullmatch(tool) else "a tool"
+    tool_label = tool if is_valid_tool_name(tool) else "a tool"
     incident = metadata.get("incident_id")
     reference = (
         f" Incident {incident}."
@@ -83,6 +90,12 @@ def prompt_guard_notice(result: dict[str, Any]) -> str:
         return (
             "Prompt Guard withheld attachment text because it detected a possible prompt injection."
             f"{reference} The attachment text was not sent to the model and will not be retried automatically."
+        )
+    if metadata.get("source_type") == "model_input":
+        return (
+            f"Prompt Guard withheld source text for {tool_label} because it detected a possible prompt injection."
+            f"{reference} The blocked text was not sent to the summarizer model."
+            " No fallback summary or Memory write followed this detection, and it will not be retried automatically."
         )
     return (
         f"Prompt Guard withheld content from {tool_label} because it detected a possible prompt injection."
@@ -98,7 +111,7 @@ def _withheld_result(
     if not isinstance(completion, str) or completion not in {"completed", "rejected", "unknown"}:
         completion = "unknown"
     original_ok = original.get("ok")
-    if source_type == "attachment":
+    if source_type in {"attachment", "model_input"}:
         completion = "rejected"
     withheld = {
         "ok": False,
@@ -263,9 +276,10 @@ def _review_content(
     tool_name: str, result: dict[str, Any], *, source_type: str,
     args: dict[str, Any] | None, mode: str | None,
     config_overrides: dict[str, str] | None, text: str | None = None,
+    policy_name: str | None = None,
 ) -> dict[str, Any]:
     """Apply the shared fail-open scan and fail-closed confirmed withholding."""
-    if not isinstance(tool_name, str) or not _TOOL_NAME.fullmatch(tool_name):
+    if not is_valid_tool_name(tool_name):
         return result
     withheld: dict[str, Any] | None = None
     try:
@@ -277,28 +291,28 @@ def _review_content(
         )
         with scope:
             if source_type == "tool_result":
-                raw_tools = get_config_value("PROMPT_GUARD_TOOLS", DEFAULT_TOOLS)
-                if not isinstance(raw_tools, str):
-                    _log_skip(tool_name, "invalid_tool_selection")
+                selection_policy = {"policy_name": policy_name} if policy_name is not None else {}
+                if (not is_tool_selected(tool_name, **selection_policy)
+                        or not _selected_artifact_action(tool_name, args)):
                     return result
-                selected = {name.strip() for name in raw_tools.split(",") if name.strip()}
-                if tool_name not in selected or not _selected_artifact_action(tool_name, args):
-                    return result
+            elif source_type == "model_input" and not summarizers_enabled():
+                return result
+            scan_policy = {"policy_name": policy_name} if policy_name is not None else {}
             if not is_enabled():
                 # The shared client reports disabled before validating text.
                 # Avoid inspecting large results when observation is switched off.
-                scan_text("", source_type=source_type, source_name=tool_name)
+                scan_text("", source_type=source_type, source_name=tool_name, **scan_policy)
                 return result
             try:
                 scanned_text = (
                     _plain_content(text, get_max_input_bytes())
-                    if source_type == "attachment"
+                    if source_type in {"attachment", "model_input"}
                     else _serialize_content(result, get_max_input_bytes())
                 )
             except _SkippedContent as exc:
                 _log_skip(tool_name, str(exc), source_type=source_type)
                 return result
-            observation = scan_text(scanned_text, source_type=source_type, source_name=tool_name)
+            observation = scan_text(scanned_text, source_type=source_type, source_name=tool_name, **scan_policy)
             if not isinstance(observation, PromptGuardResult) or observation.status != "scanned" or observation.flagged is not True:
                 return result
             # Establish the neutral result before attempting any optional I/O.
@@ -349,10 +363,11 @@ def _review_content(
 def review_tool_result(
     tool_name: str, result: dict[str, Any], *, args: dict[str, Any] | None = None,
     mode: str | None = None, config_overrides: dict[str, str] | None = None,
+    policy_name: str | None = None,
 ) -> dict[str, Any]:
     """Screen selected returned evidence; preserve results on incomplete scans.
 
-    An empty PROMPT_GUARD_TOOLS disables tool-result screening. Selected Stash
+    The JSON tools array and trusted policy bindings opt in results. Selected Stash
     reads and Source Library reads/searches are screened when they return, not
     when an artifact is saved, downloaded, indexed, or listed. No referenced
     artifact or URL is resolved here. Existing request and job scopes survive.
@@ -360,7 +375,7 @@ def review_tool_result(
     """
     return _review_content(
         tool_name, result, source_type="tool_result", args=args, mode=mode,
-        config_overrides=config_overrides,
+        config_overrides=config_overrides, policy_name=policy_name,
     )
 
 
@@ -372,7 +387,7 @@ def review_untrusted_text(
 
     Source names are short caller-owned constants, never filenames or content.
     This ingestion boundary follows PROMPT_GUARD_ENABLED and the normal resource
-    limits; PROMPT_GUARD_TOOLS applies only to tool results. Clean or unscanned
+    limits; the JSON tools selection applies only to tool results. Clean or unscanned
     text returns ``{ok: True, data: {content: text}}`` unchanged. Confirmed hits
     return the same neutral terminal receipt used by tool-result consumers,
     with no claim that a tool executed or a model consumed the attachment.
@@ -381,4 +396,22 @@ def review_untrusted_text(
     return _review_content(
         source_name, result, source_type="attachment", args=args, mode=mode,
         config_overrides=config_overrides, text=text,
+    )
+
+
+def review_model_input(
+    source_name: str, text: str, *, mode: str | None = None,
+    args: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Screen the exact source slice immediately before a summarizer model call.
+
+    The master enable flag and JSON summarizers.enabled gate apply independently
+    of returned-tool selection. Caller-owned source names choose policy; neither
+    tool arguments nor document metadata can select a threshold. A confirmed
+    receipt must propagate without raw/extractive fallback or Memory writes.
+    """
+    result = {"ok": True, "data": {"content": text}}
+    return _review_content(
+        source_name, result, source_type="model_input", args=args, mode=mode,
+        config_overrides=None, text=text,
     )

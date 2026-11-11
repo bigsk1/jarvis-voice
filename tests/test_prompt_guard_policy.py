@@ -30,9 +30,17 @@ AI_RULE = {
 EXAMPLE_POLICY = str(Path(__file__).resolve().parents[1] / "config/prompt_guard_policy.json.example")
 
 
+def document(rules=None):
+    return {
+        "v": 2, "tools": ["rss_feed", "crawl_url"], "summarizers": {"enabled": True},
+        "policies": {"web_content": 0.8, "document_text": 0.8},
+        "rules": [AI_RULE] if rules is None else rules,
+    }
+
+
 def write_policy(tmp_path, rules=None):
     path = tmp_path / "policy.json"
-    path.write_text(json.dumps({"v": 1, "rules": [AI_RULE] if rules is None else rules}))
+    path.write_text(json.dumps(document(rules)))
     return str(path)
 
 
@@ -79,18 +87,23 @@ def test_source_only_and_workflow_rules_are_refined_by_exact_profile(tmp_path):
     ("rss_digest", "ai_status"), ("rss_digest", "daily_tech"),
     ("research", None), ("ai_status", None), (None, None),
 ])
-def test_shipped_policy_relaxes_only_ai_status_feed_and_article_results(mode, workflow_id, profile):
+def test_operator_policy_relaxes_only_ai_status_feed_and_article_results(
+    tmp_path, mode, workflow_id, profile,
+):
+    selected = write_policy(tmp_path, [
+        {**AI_RULE, "id": "ai_status_rss", "source_name": "rss_feed"}, AI_RULE,
+    ])
     with config_scope(mode), policy.workflow_prompt_guard_scope(
         mode=mode, workflow_id=workflow_id, profile=profile,
     ):
         for source_name, rule_id in (("rss_feed", "ai_status_rss"), ("crawl_url", "ai_status_crawl")):
-            decision = resolve(EXAMPLE_POLICY, source_name=source_name)
+            decision = resolve(selected, source_name=source_name)
             if workflow_id == "rss_digest" and profile == "ai_status":
                 assert decision == policy.PromptGuardPolicyDecision(0.9, rule_id)
             else:
                 assert decision == policy.PromptGuardPolicyDecision(0.8)
-        assert resolve(EXAMPLE_POLICY, source_name="web_search").threshold == 0.8
-        assert resolve(EXAMPLE_POLICY, source_type="attachment", source_name="web_text").threshold == 0.8
+        assert resolve(selected, source_name="web_search").threshold == 0.8
+        assert resolve(selected, source_type="attachment", source_name="web_text").threshold == 0.8
 
 
 def test_policy_relative_path_is_project_relative_and_reload_has_no_stale_cache(tmp_path, monkeypatch):
@@ -101,26 +114,29 @@ def test_policy_relative_path_is_project_relative_and_reload_has_no_stale_cache(
     assert resolve(path).threshold == 0.83
 
 
-@pytest.mark.parametrize("document", [
-    [], {}, {"v": True, "rules": []}, {"v": 2, "rules": []},
-    {"v": 1, "rules": [], "default": 0.99}, {"v": 1, "rules": {}},
-    {"v": 1, "rules": [AI_RULE] * 129},
-    {"v": 1, "rules": [AI_RULE, AI_RULE]},
-    {"v": 1, "rules": [AI_RULE, {**AI_RULE, "id": "duplicate_selector"}]},
-    *({"v": 1, "rules": [{**AI_RULE, "threshold": value}]}
+@pytest.mark.parametrize("invalid_document", [
+    [], {}, {"v": True, "rules": []}, {"v": 1, "rules": []},
+    {**document([]), "default": 0.99}, document({}),
+    document([AI_RULE] * 129), document([AI_RULE, AI_RULE]),
+    document([AI_RULE, {**AI_RULE, "id": "duplicate_selector"}]),
+    *(document([{**AI_RULE, "threshold": value}])
       for value in (True, "0.9", None, -0.1, 1.1, 10 ** 400, float("nan"), float("inf"))),
-    *({"v": 1, "rules": [{**AI_RULE, "id": value}]}
+    *(document([{**AI_RULE, "id": value}])
       for value in ("configured_default", "bad\nname", "has space", "", None, "*")),
-    {"v": 1, "rules": [{**AI_RULE, "category": "trusted"}]},
-    {"v": 1, "rules": [{key: value for key, value in AI_RULE.items() if key != "source_name"}]},
-    {"v": 1, "rules": [{**AI_RULE, "source_name": "crawl_*"}]},
-    {"v": 1, "rules": [{**AI_RULE, "profile": "ai status"}]},
-    {"v": 1, "rules": [{**AI_RULE, "workflow_id": "research"}]},
-    {"v": 1, "rules": [{key: value for key, value in AI_RULE.items() if key != "workflow_id"}]},
+    document([{**AI_RULE, "category": "trusted"}]),
+    document([{key: value for key, value in AI_RULE.items() if key != "source_name"}]),
+    document([{**AI_RULE, "source_name": "crawl_*"}]),
+    document([{**AI_RULE, "profile": "ai status"}]),
+    document([{**AI_RULE, "workflow_id": "research"}]),
+    document([{key: value for key, value in AI_RULE.items() if key != "workflow_id"}]),
+    document([{**AI_RULE, "policy": "web_content"}]),
+    document([{key: value for key, value in AI_RULE.items() if key != "threshold"}]),
+    document([{**{key: value for key, value in AI_RULE.items() if key != "threshold"},
+               "policy": "missing_policy"}]),
 ])
-def test_invalid_policy_is_rejected_whole_without_losing_default(tmp_path, document):
+def test_invalid_policy_is_rejected_whole_without_losing_default(tmp_path, invalid_document):
     path = tmp_path / "invalid.json"
-    path.write_text(json.dumps(document))
+    path.write_text(json.dumps(invalid_document))
     with policy.workflow_prompt_guard_scope(
         mode="cloud", workflow_id="rss_digest", profile="ai_status",
     ):
@@ -342,7 +358,7 @@ def pipeline_with(execute):
     ("ai_status", 0.9, True), ("daily_tech", 0.8, False),
 ])
 def test_real_rss_recipe_screens_feed_result_before_selection_model(
-    transport, monkeypatch, mode, profile, threshold, selection_runs,
+    transport, monkeypatch, tmp_path, mode, profile, threshold, selection_runs,
 ):
     calls, _, _ = transport
     monkeypatch.setattr("lib.rss_feeds.config.load_profiles", lambda: {"ai_status": {}, "daily_tech": {}})
@@ -383,7 +399,9 @@ def test_real_rss_recipe_screens_feed_result_before_selection_model(
 
     monkeypatch.setattr(instance, "_chat_with_usage", select)
     with config_scope(mode, {
-        **scan_config(EXAMPLE_POLICY), "PROMPT_GUARD_TOOLS": "rss_feed,crawl_url",
+        **scan_config(write_policy(tmp_path, [
+            {**AI_RULE, "id": "ai_status_rss", "source_name": "rss_feed"}, AI_RULE,
+        ])),
     }):
         result = instance.execute(recipe, f"/rss_digest {profile}")
     assert result["ok"] is selection_runs

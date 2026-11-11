@@ -242,10 +242,21 @@ For networks that require an HTTP(S) proxy for outbound API calls and downloads,
 ### Optional Prompt Guard screening
 
 `PROMPT_GUARD_ENABLED=false` leaves the external scanner off. Opt in with its
-base `PROMPT_GUARD_URL`, `PROMPT_GUARD_API_KEY`, and an exact comma-separated
-`PROMPT_GUARD_TOOLS` list in the selected mode env. The default selection is
-`crawl_url,brave_llm_context,rss_feed,browser_use,browser_use_cloud`. Both cloud
-and local mode support it, including selected background completion results.
+base `PROMPT_GUARD_URL` and `PROMPT_GUARD_API_KEY` in the selected mode env.
+Readable JSON holds the exact `tools` selection, named threshold `policies`,
+workflow exception `rules`, and independent `summarizers.enabled` switch.
+Assigning `prompt_guard_policy` in a tool manifest enables screening without
+a duplicate `tools` entry. In an MCP server entry, the same field covers all
+its tools; per-tool `tool_metadata` can override the inherited policy. The
+`tools` list remains available for unassigned tools using the global threshold.
+Copy `prompt_guard_policy.json.example` to a private policy file and select it
+with `PROMPT_GUARD_POLICY_FILE`; an unset path uses the shipped example.
+Both modes can share a file or point to different private files. The old
+comma-separated tool ENV setting is no longer read.
+Summarizer input checks default on when the master flag is on; setting
+`summarizers.enabled` to `false` disables those checks while selected tool
+results and Web attachments remain screened. Both cloud and local mode
+support this, including selected background completion results.
 Confirmed detections withhold returned content, stop automatic retries and
 workflows, and create private incident files under
 `logs/prompt-guard/incidents/<mode>/`. Scanner outages and oversized inputs
@@ -543,6 +554,12 @@ does not enable the server or every tool on that server:
   "brave_web_search": {"web_search": true}
 }
 ```
+
+Prompt Guard also accepts `"prompt_guard_policy": "web_content"` on the MCP
+server entry to screen all its tools while the guard is enabled. An individual
+`tool_metadata` entry can assign another named policy. These assignments enable
+screening without repeating names in the guard JSON `tools` list; see
+[Prompt Guard policy assignments](../docs/PROMPT_GUARD.md#per-tool-named-policies).
 
 ### Jarvis vs OpenCode MCP Servers
 

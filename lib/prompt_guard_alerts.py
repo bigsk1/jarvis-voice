@@ -124,7 +124,7 @@ def notify_prompt_guard_block(
         if not isinstance(receipt, dict) or receipt.get("content_withheld") is not True:
             return None
         source_type = receipt.get("source_type", "tool_result")
-        if source_type not in {"tool_result", "attachment"}:
+        if source_type not in {"tool_result", "attachment", "model_input"}:
             return None
 
         mode = get_active_config_mode()
