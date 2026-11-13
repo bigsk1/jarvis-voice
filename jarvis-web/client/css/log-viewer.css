@@ -318,7 +318,50 @@ body.logs-page {
   color: inherit;
   text-align: left;
   cursor: pointer;
+  min-width: 0;
+  flex: 1;
+}
+
+.folder-tree-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-inline-start: calc(var(--folder-depth, 0) * 10px);
   margin-bottom: var(--space-sm);
+}
+
+.folder-toggle {
+  flex: 0 0 24px;
+  align-self: stretch;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.folder-toggle:hover {
+  color: var(--text-primary);
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+.folder-chevron {
+  display: inline-block;
+  width: 1.1em;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.folder-card:focus-visible,
+.folder-toggle:focus-visible {
+  outline: 2px solid rgba(var(--accent-rgb), 0.7);
+  outline-offset: 2px;
+}
+
+.folder-card .meta-pill {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .folder-card:hover,

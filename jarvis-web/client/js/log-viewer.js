@@ -2,7 +2,10 @@ class LogsViewerApp {
   constructor() {
     this.state = {
       folders: [],
-      selectedFolder: '',
+      folderTree: [],
+      expandedFolders: new Set(),
+      collapsedFilterFolders: new Set(),
+      selectedFolder: null,
       folderFilter: '',
       files: [],
       fileOffset: 0,
@@ -79,6 +82,7 @@ class LogsViewerApp {
 
     this.elements.folderFilterInput.addEventListener('input', Utils.debounce((event) => {
       this.state.folderFilter = event.target.value.trim().toLowerCase();
+      this.state.collapsedFilterFolders.clear();
       this.renderFolders();
     }, 120));
 
@@ -135,20 +139,25 @@ class LogsViewerApp {
       const response = await Utils.auth.fetch('/api/logs/folders');
       const data = await response.json();
       this.state.folders = data.folders || [];
-      this.renderFolders();
-
-      if (!this.state.folders.length) {
-        this.state.selectedFolder = '';
-        this.renderFiles();
-        return;
-      }
+      this.state.folderTree = this.buildFolderTree(this.state.folders);
+      const branchPaths = new Set();
+      const collectBranches = (nodes) => nodes.forEach((node) => {
+        if (node.children.length) branchPaths.add(node.path);
+        collectBranches(node.children);
+      });
+      collectBranches(this.state.folderTree);
+      this.state.expandedFolders = new Set(
+        [...this.state.expandedFolders].filter((path) => branchPaths.has(path))
+      );
 
       const selectedStillExists = this.state.folders.some((folder) => folder.path === this.state.selectedFolder);
       if (!preserveSelection || !selectedStillExists) {
-        this.selectFolder(this.state.folders[0].path, true);
+        const initialFolder = this.state.folders.find((folder) => folder.path === '')
+          || this.state.folders.find((folder) => !folder.path.includes('/'));
+        await this.selectFolder(initialFolder?.path ?? null, true);
       } else {
         this.renderFolders();
-        this.loadFiles(true);
+        await this.loadFiles(true);
       }
     } catch (error) {
       console.error('[LogsViewer] Failed to load folders:', error);
@@ -157,39 +166,108 @@ class LogsViewerApp {
     }
   }
 
-  renderFolders() {
-    const filtered = this.state.folders.filter((folder) => {
-      if (!this.state.folderFilter) {
-        return true;
+  buildFolderTree(folders) {
+    const roots = [];
+    const nodes = new Map();
+    const ensureNode = (path) => {
+      if (nodes.has(path)) return nodes.get(path);
+      const parts = path.split('/');
+      const node = { path, name: parts.at(-1) || 'logs', folder: null, children: [] };
+      nodes.set(path, node);
+      if (parts.length > 1) {
+        ensureNode(parts.slice(0, -1).join('/')).children.push(node);
+      } else {
+        roots.push(node);
       }
-      const haystack = `${folder.label} ${(folder.extensions || []).join(' ')}`.toLowerCase();
-      return haystack.includes(this.state.folderFilter);
-    });
+      return node;
+    };
+    folders.forEach((folder) => { ensureNode(folder.path).folder = folder; });
+    const sortNodes = (items) => {
+      items.sort((a, b) => a.name.localeCompare(b.name));
+      items.forEach((node) => sortNodes(node.children));
+    };
+    sortNodes(roots);
+    return roots;
+  }
 
-    if (!filtered.length) {
+  toggleFolder(folderPath) {
+    const toggledFolders = this.state.folderFilter
+      ? this.state.collapsedFilterFolders : this.state.expandedFolders;
+    if (toggledFolders.has(folderPath)) {
+      toggledFolders.delete(folderPath);
+    } else {
+      toggledFolders.add(folderPath);
+    }
+    this.renderFolders();
+  }
+
+  renderFolders() {
+    const query = this.state.folderFilter;
+    const filtered = query ? this.state.folders.filter((folder) => {
+      const haystack = `${folder.label} ${(folder.extensions || []).join(' ')}`.toLowerCase();
+      return haystack.includes(query);
+    }) : this.state.folders;
+    const tree = query ? this.buildFolderTree(filtered) : this.state.folderTree;
+
+    if (!tree.length) {
       this.elements.folderList.innerHTML = '<div class="empty-state compact">No matching folders.</div>';
       return;
     }
 
-    this.elements.folderList.innerHTML = filtered.map((folder) => `
-      <button class="folder-card ${folder.path === this.state.selectedFolder ? 'active' : ''}" data-folder="${Utils.escapeHtml(folder.path)}">
-        <div class="folder-card-header">
-          <h3>${Utils.escapeHtml(folder.label)}</h3>
-          <span class="meta-pill">${folder.file_count} files</span>
+    const activeElement = document.activeElement;
+    const focused = this.elements.folderList.contains(activeElement) ? activeElement?.dataset : null;
+    const renderNode = (node, depth) => {
+      const folder = node.folder;
+      const hasChildren = node.children.length > 0;
+      const expanded = hasChildren && (query
+        ? !this.state.collapsedFilterFolders.has(node.path) : this.state.expandedFolders.has(node.path));
+      const path = Utils.escapeHtml(node.path);
+      const name = Utils.escapeHtml(node.name);
+      const chevron = `<span class="folder-chevron" aria-hidden="true">${expanded ? '▾' : '▸'}</span>`;
+      return `
+      <div class="folder-tree-node">
+        <div class="folder-tree-row" style="--folder-depth: ${Math.min(depth, 4)}">
+          ${hasChildren && folder ? `
+            <button type="button" class="folder-toggle" data-toggle-folder="${path}" aria-expanded="${expanded}"
+              aria-label="${expanded ? 'Collapse' : 'Expand'} ${path}" title="${expanded ? 'Collapse' : 'Expand'} subfolders">${chevron}</button>
+          ` : ''}
+          <button type="button" class="folder-card ${folder && node.path === this.state.selectedFolder ? 'active' : ''}"
+            ${folder ? `data-folder="${path}"` : `data-toggle-folder="${path}" aria-expanded="${expanded}"`}
+            title="${path || 'logs'}" ${folder && node.path === this.state.selectedFolder ? 'aria-current="true"' : ''}>
+            <div class="folder-card-header">
+              <h3>${!folder ? chevron : ''}${name}</h3>
+              ${folder ? `<span class="meta-pill">${folder.file_count} ${folder.file_count === 1 ? 'file' : 'files'}</span>` : ''}
+            </div>
+            ${hasChildren ? `<div class="folder-card-meta">${node.children.length} subfolder${node.children.length === 1 ? '' : 's'}</div>` : ''}
+            ${folder ? `
+              <div class="folder-card-meta">
+                ${(folder.extensions || []).map((extension) => `<span class="tag-pill">${Utils.escapeHtml(extension)}</span>`).join('')}
+              </div>
+              <div class="folder-card-meta">
+                <span>${this.formatDateTime(folder.latest_modified_at)}</span>
+                <span>${Utils.escapeHtml(folder.latest_file || '')}</span>
+              </div>
+            ` : ''}
+          </button>
         </div>
-        <div class="folder-card-meta">
-          ${(folder.extensions || []).map((extension) => `<span class="tag-pill">${Utils.escapeHtml(extension)}</span>`).join('')}
-        </div>
-        <div class="folder-card-meta">
-          <span>${this.formatDateTime(folder.latest_modified_at)}</span>
-          <span>${Utils.escapeHtml(folder.latest_file || '')}</span>
-        </div>
-      </button>
-    `).join('');
+        ${expanded ? `<div role="group" aria-label="Subfolders of ${path}">${node.children.map((child) => renderNode(child, depth + 1)).join('')}</div>` : ''}
+      </div>`;
+    };
+    this.elements.folderList.innerHTML = tree.map((node) => renderNode(node, 0)).join('');
 
-    this.elements.folderList.querySelectorAll('.folder-card').forEach((button) => {
+    this.elements.folderList.querySelectorAll('[data-folder]').forEach((button) => {
       button.addEventListener('click', () => this.selectFolder(button.dataset.folder || ''));
     });
+    this.elements.folderList.querySelectorAll('[data-toggle-folder]').forEach((button) => {
+      button.addEventListener('click', () => this.toggleFolder(button.dataset.toggleFolder));
+    });
+    if (focused) {
+      const buttons = this.elements.folderList.querySelectorAll('[data-folder], [data-toggle-folder]');
+      [...buttons].find((button) => (
+        focused.folder !== undefined ? button.dataset.folder === focused.folder
+          : button.dataset.toggleFolder === focused.toggleFolder
+      ))?.focus({ preventScroll: true });
+    }
   }
 
   async selectFolder(folderPath, force = false) {
@@ -204,7 +282,22 @@ class LogsViewerApp {
     this.state.contentRecords = [];
     this.state.contentLines = [];
     this.state.markdownContent = '';
+    if (folderPath !== null) {
+      const parts = folderPath.split('/');
+      for (let depth = 1; depth < parts.length; depth += 1) {
+        this.state.expandedFolders.add(parts.slice(0, depth).join('/'));
+      }
+    }
     this.renderFolders();
+    if (folderPath === null) {
+      this.state.files = [];
+      this.elements.selectedFolderLabel.textContent = 'Choose a folder';
+      this.elements.fileSummary.textContent = 'No folder selected';
+      this.renderFiles();
+      this.renderContent();
+      this.setMobileStage('folders');
+      return;
+    }
     if (this.isMobileLayout()) {
       this.setMobileStage('files');
     }
@@ -212,7 +305,7 @@ class LogsViewerApp {
   }
 
   async loadFiles(reset = true) {
-    if (!this.state.selectedFolder && this.state.selectedFolder !== '') {
+    if (this.state.selectedFolder === null) {
       return;
     }
 
@@ -402,7 +495,7 @@ class LogsViewerApp {
     if (this.state.contentViewType === 'yaml-records') {
       if (!this.state.contentRecords.length) {
         this.elements.viewerContent.innerHTML = `<div class="empty-state compact">${
-          this.state.fileSearch ? 'No matching JSONL records in this file.' : 'No JSONL records found.'
+          this.state.fileSearch ? 'No matching records in this file.' : 'No records found.'
         }</div>`;
       } else {
         this.elements.viewerContent.innerHTML = this.state.contentRecords.map((record, index) => `
@@ -516,7 +609,7 @@ class LogsViewerApp {
     if (this.isMobileLayout()) {
       if (this.state.selectedFile) {
         this.setMobileStage('viewer');
-      } else if (this.state.selectedFolder) {
+      } else if (this.state.selectedFolder !== null) {
         this.setMobileStage('files');
       } else {
         this.setMobileStage('folders');

@@ -70,6 +70,7 @@
           <div class="filter-row">
             <div class="chip-group" id="extensionChips">
               <button class="filter-chip active" data-extension="">All</button>
+              <button class="filter-chip" data-extension="json">JSON</button>
               <button class="filter-chip" data-extension="jsonl">JSONL</button>
               <button class="filter-chip" data-extension="log">LOG</button>
               <button class="filter-chip" data-extension="md">MD</button>
@@ -119,7 +120,7 @@
         <div class="viewer-content" id="viewerContent">
           <div class="empty-state">
             <p>Pick a file to open it in a cleaner read-only view.</p>
-            <p>`.jsonl` shows newest entries first and converts dotted keys like `a.b.c` into nested YAML.</p>
+            <p>JSON reports and JSONL entries display as nested YAML. JSONL shows newest entries first.</p>
           </div>
         </div>
 

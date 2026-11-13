@@ -255,8 +255,13 @@ chronological sorting; the internal `pg-<uuid>` ID used by receipts and alerts
 is unchanged. Older `pg-<uuid>.json` reports remain valid. Incident directories
 have owner-only access (0700), and files
 have owner-only read/write access (0600). The default log tree is gitignored and
-excluded from Docker image builds. JSON quarantine files are not exposed by the
-Web Log Explorer, enrolled in Stash, or injected into ordinary model context.
+excluded from Docker image builds. Reports under the default log tree can be
+inspected in the read-only Web Log Explorer at `/logs`, using the existing Web
+authentication settings, under
+`prompt-guard` → `incidents` → `cloud` or `local`. JSON reports display as escaped
+YAML text; opening them does not enroll them in Stash or inject them into
+ordinary model context. Custom incident directories outside the log tree remain
+outside the viewer.
 
 A report includes the incident ID, UTC timestamp, mode, tool name, score,
 threshold, window coverage, validated service request/model identifiers,

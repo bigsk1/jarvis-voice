@@ -14,9 +14,8 @@ import yaml
 
 from ..config import JARVIS_ROOT
 
-
-ALLOWED_EXTENSIONS = {'.jsonl', '.log', '.md'}
-SEARCHABLE_EXTENSIONS = {'.jsonl', '.log', '.md'}
+ALLOWED_EXTENSIONS = {'.json', '.jsonl', '.log', '.md'}
+SEARCHABLE_EXTENSIONS = {'.json', '.jsonl', '.log', '.md'}
 DATE_TOKEN_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$|^\d{8}_\d{6}$|^\d{8}$')
 
 
@@ -130,6 +129,8 @@ class LogExplorerService:
     def read_file(self, relative_path: str, offset: int = 0, limit: int = 50, search: str = '') -> dict:
         """Read a log file in a format suited for the viewer."""
         file_path = self.resolve_file(relative_path)
+        if file_path.suffix == '.json':
+            return self._read_json(file_path, offset=offset, limit=limit, search=search)
         if file_path.suffix == '.jsonl':
             return self._read_jsonl(file_path, offset=offset, limit=limit, search=search)
         if file_path.suffix == '.log':
@@ -154,6 +155,27 @@ class LogExplorerService:
         if not resolved.exists() or not resolved.is_file() or not self._is_allowed_file(resolved):
             raise LogExplorerError(f'File not found or not allowed: {relative_path}')
         return resolved
+
+    def _read_json(self, file_path: Path, offset: int, limit: int, search: str = '') -> dict:
+        """Render a complete JSON document as one searchable record."""
+        content = file_path.read_text(encoding='utf-8', errors='replace')
+        normalized_search = search.strip().lower()
+        records = []
+        if offset == 0 and content.strip() and (not normalized_search or normalized_search in content.lower()):
+            records.append(self._jsonl_record(content))
+
+        metadata = self._file_metadata(file_path)
+        metadata.update({
+            'view_type': 'yaml-records',
+            'records': records,
+            'offset': offset,
+            'limit': limit,
+            'returned': len(records),
+            'has_more': False,
+            'next_offset': offset + len(records),
+            'search': search,
+        })
+        return metadata
 
     def _read_jsonl(self, file_path: Path, offset: int, limit: int, search: str = '') -> dict:
         records = []

@@ -148,7 +148,7 @@ when returning to the tab, without fetching conversations or rebuilding the list
 | **Source toggles** | Enable/disable LLM, Tools, OpenCode, Feedback  |
 | **Expandable details** | Click entry to see full parsed JSON  |
 | **Resizable panel** | Drag to resize, state persisted  |
-| **`/logs` browser** | Read-only log explorer for `.jsonl`, `.log`, and `.md` with search, lazy loading, and mobile drill-down |
+| **`/logs` browser** | Read-only log explorer for `.json`, `.jsonl`, `.log`, and `.md` with search, lazy loading, and mobile drill-down |
 
 ### Response feedback
 
@@ -434,7 +434,7 @@ Repo root (shared with core Jarvis — outside jarvis-web/):
 | GET | `/api/stash/<space_id>/<file_id>` | Serve file from stash |
 | GET | `/api/music/<filename>` | Serve generated music files |
 | GET | `/api/videos/<filename>` | Serve generated video files |
-| GET | `/api/logs/folders` | List folders containing `.jsonl`, `.log`, or `.md` |
+| GET | `/api/logs/folders` | List folders containing `.json`, `.jsonl`, `.log`, or `.md` |
 | GET | `/api/logs/files` | List files in a folder, newest-first, with optional search |
 | GET | `/api/logs/content` | Fetch paged content for the selected log file |
 
@@ -1709,10 +1709,12 @@ A dedicated page at `/logs` for browsing structured and plain-text logs without 
 **Features:**
 - **Read-only by design** - No editing, deletion, or file writes
 - **Auth-protected** - Reuses the existing Jarvis Web auth/session checks
-- **Focused file types** - Shows only folders containing `.jsonl`, `.log`, or `.md`
-- **Predictable navigation** - Folders stay A-Z while files inside each folder stay newest-first
+- **Focused file types** - Shows `.json`, `.jsonl`, `.log`, and `.md` files and their parent folders
+- **Nested folders** - Each top-level folder appears once, with subfolders collapsed until expanded. Folders with their own files also have a separate arrow to expand their children; files inside each folder stay newest-first.
+- **Folder filter** - Matching subfolders appear with their parent folders expanded; clearing the filter restores the previous expansion state.
 - **Folder-level search** - Search ranks matching files and carries the filter into the viewer
 - **JSONL rendering** - Parses each line, nestifies dotted keys, and renders YAML-style cards newest-first
+- **JSON reports** - Complete JSON documents, including Prompt Guard incidents under `prompt-guard/incidents/cloud` and `local`, render as one read-only YAML record. A JSON file-type filter and content search are available.
 - **Markdown rendering** - `.md` files render as markdown in both the viewer and modal
 - **Lazy loading** - Large files page in more content instead of loading the entire file at once
 - **Mobile drill-down** - Small screens switch to folder → files → viewer with back arrows

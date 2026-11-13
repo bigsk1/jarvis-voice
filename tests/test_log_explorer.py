@@ -9,6 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "jarvis-web"))
 
@@ -63,6 +65,126 @@ class LogExplorerServiceTests(unittest.TestCase):
         by_content = self.explorer.list_files(folder="tools", search="calendar_lookup")
         self.assertEqual([item["filename"] for item in by_content["files"]], ["tool-calls-2026-04-11.jsonl"])
         self.assertGreaterEqual(by_content["files"][0]["search_hit_count"], 1)
+
+    def test_json_only_prompt_guard_incidents_are_discoverable_in_both_modes(self):
+        for mode in ("cloud", "local"):
+            incident_dir = self.logs_root / "prompt-guard" / "incidents" / mode
+            incident_dir.mkdir(parents=True)
+            (incident_dir / "2026-11-09-pg-example.json").write_text(
+                json.dumps({"incident_id": "pg-example", "mode": mode}, indent=2),
+                encoding="utf-8",
+            )
+
+        folders = self.explorer.list_folders()
+
+        self.assertEqual(
+            [folder["path"] for folder in folders],
+            ["prompt-guard/incidents/cloud", "prompt-guard/incidents/local"],
+        )
+        for folder in folders:
+            with self.subTest(folder=folder["path"]):
+                self.assertEqual(folder["file_count"], 1)
+                self.assertEqual(folder["extensions"], ["json"])
+                self.assertEqual(folder["latest_file"], "2026-11-09-pg-example.json")
+
+    def test_json_filter_searches_incident_contents_and_filename(self):
+        incident_dir = self.logs_root / "prompt-guard" / "incidents" / "cloud"
+        incident_dir.mkdir(parents=True)
+        (incident_dir / "2026-11-09-pg-target.json").write_text(
+            json.dumps({"evidence": {"text": "Unique quarantine evidence"}}, indent=2),
+            encoding="utf-8",
+        )
+        (incident_dir / "2026-11-09-pg-other.json").write_text(
+            json.dumps({"evidence": {"text": "Unrelated content"}}, indent=2),
+            encoding="utf-8",
+        )
+        (incident_dir / "diagnostic.log").write_text(
+            "Unique quarantine evidence\n", encoding="utf-8",
+        )
+
+        for extension in ("json", ".json"):
+            with self.subTest(extension=extension):
+                result = self.explorer.list_files(
+                    folder="prompt-guard/incidents/cloud",
+                    extension=extension,
+                    search="QUARANTINE EVIDENCE",
+                )
+                self.assertEqual(result["total"], 1)
+                self.assertEqual(
+                    [item["filename"] for item in result["files"]],
+                    ["2026-11-09-pg-target.json"],
+                )
+                self.assertEqual(result["files"][0]["extension"], ".json")
+                self.assertGreaterEqual(result["files"][0]["search_hit_count"], 1)
+
+        by_name = self.explorer.list_files(
+            folder="prompt-guard/incidents/cloud", extension="json", search="pg-target",
+        )
+        self.assertEqual([item["filename"] for item in by_name["files"]], ["2026-11-09-pg-target.json"])
+
+    def test_pretty_json_is_one_complete_yaml_record_with_finite_paging(self):
+        report = {
+            "incident_id": "pg-example",
+            "timestamp": "2026-11-09T12:34:56Z",
+            "mode": "local",
+            "scan": {
+                "score": 0.98,
+                "diagnostics": {
+                    "winning_window_index": 1,
+                    "windows": [{"index": 0, "score": 0.2}, {"index": 1, "score": 0.98}],
+                },
+            },
+            "evidence": {"text": "First line\nNeedle evidence: <script>untrusted()</script>"},
+            "candidate_source_urls": ["https://example.com/a", "https://example.com/b"],
+        }
+        (self.logs_root / "incident.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+        result = self.explorer.read_file("incident.json", offset=0, limit=1)
+
+        self.assertEqual(result["view_type"], "yaml-records")
+        self.assertEqual(result["extension"], ".json")
+        self.assertEqual(result["returned"], 1)
+        self.assertEqual(len(result["records"]), 1)
+        self.assertEqual(result["records"][0]["timestamp"], report["timestamp"])
+        self.assertEqual(yaml.safe_load(result["records"][0]["yaml"]), report)
+        self.assertFalse(result["has_more"])
+        self.assertEqual(result["next_offset"], 1)
+
+        next_page = self.explorer.read_file("incident.json", offset=1, limit=1)
+        self.assertEqual(next_page["records"], [])
+        self.assertEqual(next_page["returned"], 0)
+        self.assertEqual(next_page["next_offset"], 1)
+        self.assertFalse(next_page["has_more"])
+
+        matching = self.explorer.read_file("incident.json", search="  NEEDLE EVIDENCE  ")
+        self.assertEqual(len(matching["records"]), 1)
+        self.assertEqual(yaml.safe_load(matching["records"][0]["yaml"]), report)
+
+    def test_json_document_search_without_a_match_has_no_records(self):
+        (self.logs_root / "incident.json").write_text(
+            json.dumps({"timestamp": "2026-11-09T12:34:56Z", "evidence": {"text": "Example"}}, indent=2),
+            encoding="utf-8",
+        )
+
+        result = self.explorer.read_file("incident.json", search="absent phrase", offset=0, limit=1)
+
+        self.assertEqual(result["view_type"], "yaml-records")
+        self.assertEqual(result["records"], [])
+        self.assertEqual(result["returned"], 0)
+        self.assertEqual(result["next_offset"], 0)
+        self.assertFalse(result["has_more"])
+
+    def test_malformed_json_retains_the_whole_document_as_raw_evidence(self):
+        malformed = '{\n  "evidence": "<script>untrusted()</script>",\n  "incomplete":'
+        (self.logs_root / "incident.json").write_text(malformed, encoding="utf-8")
+
+        result = self.explorer.read_file("incident.json", offset=0, limit=1)
+
+        self.assertEqual(result["view_type"], "yaml-records")
+        self.assertEqual(result["returned"], 1)
+        self.assertEqual(len(result["records"]), 1)
+        self.assertEqual(yaml.safe_load(result["records"][0]["yaml"]), {"raw_line": malformed})
+        self.assertFalse(result["has_more"])
 
     def test_read_jsonl_nestifies_dotted_keys_and_returns_newest_first(self):
         file_path = self.logs_root / "llm-calls-2026-04-11.jsonl"

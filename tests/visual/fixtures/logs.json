@@ -3,6 +3,54 @@
     "ok": true,
     "folders": [
       {
+        "path": "prompt-guard/incidents/cloud",
+        "label": "prompt-guard/incidents/cloud",
+        "file_count": 2,
+        "extensions": ["json"],
+        "latest_modified_at": "2026-10-16T17:42:00Z",
+        "latest_file": "2026-10-16-pg-example.json"
+      },
+      {
+        "path": "prompt-guard/incidents/local",
+        "label": "prompt-guard/incidents/local",
+        "file_count": 1,
+        "extensions": ["json"],
+        "latest_modified_at": "2026-10-16T17:42:00Z",
+        "latest_file": "2026-10-16-pg-example-local.json"
+      },
+      {
+        "path": "dependency-updates/review/production-venv/lib/python3.12/site-packages/example/licenses",
+        "label": "dependency-updates/review/production-venv/lib/python3.12/site-packages/example/licenses",
+        "file_count": 1,
+        "extensions": ["md"],
+        "latest_modified_at": "2026-10-16T17:42:00Z",
+        "latest_file": "LICENSE.md"
+      },
+      {
+        "path": "tests/20261016T174200/sample-browser",
+        "label": "tests/20261016T174200/sample-browser",
+        "file_count": 2,
+        "extensions": ["log"],
+        "latest_modified_at": "2026-10-16T17:42:00Z",
+        "latest_file": "browser.log"
+      },
+      {
+        "path": "tests/20261015T174200",
+        "label": "tests/20261015T174200",
+        "file_count": 1,
+        "extensions": ["log"],
+        "latest_modified_at": "2026-10-15T17:42:00Z",
+        "latest_file": "pytest.log"
+      },
+      {
+        "path": "tools/background",
+        "label": "tools/background",
+        "file_count": 3,
+        "extensions": ["jsonl"],
+        "latest_modified_at": "2026-10-16T17:42:00Z",
+        "latest_file": "tasks-2026-10-16.jsonl"
+      },
+      {
         "path": "tools",
         "label": "tools",
         "file_count": 24,
