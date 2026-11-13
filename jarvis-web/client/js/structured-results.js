@@ -408,6 +408,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_trader_joes_search', shopping.adaptTraderJoes);
     this.register('serpapi_trader_joes_product', shopping.adaptTraderJoes);
     this.register('serpapi_hotel_search', localTravel.adaptHotels);
+    this.register('serpapi_airbnb_search', localTravel.adaptAirbnb);
     this.register('serpapi_yelp_search', localTravel.adaptYelp);
     this.register('serpapi_open_table_reviews', localTravel.adaptOpenTableReviews);
     this.register('serpapi_search_index', search.adaptSearchIndex);

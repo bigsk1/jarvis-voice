@@ -3224,6 +3224,15 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 followup[key] = extracted
             continue
         request_context = _extract_generic_tool_request(data, key)
+        if key == 'serpapi_airbnb_search':
+            extracted = _local_travel_followup.extract_airbnb_followup(
+                value, 10 if max_candidates == FOLLOWUP_DEFAULT_MAX_CANDIDATES else max_candidates,
+            )
+            if extracted:
+                if request_context:
+                    extracted['request'] = request_context
+                followup[key] = extracted
+            continue
         if key in {'serpapi_trader_joes_search', 'serpapi_trader_joes_product'}:
             extracted = _shopping_followup.extract_trader_joes_followup(
                 value, 10 if max_candidates == FOLLOWUP_DEFAULT_MAX_CANDIDATES else max_candidates,

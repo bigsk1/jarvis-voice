@@ -1631,6 +1631,7 @@ class JarvisApp {
       serpapi_google_local: '📍',
       serpapi_google_local_services: '🛠️',
       serpapi_hotel_search: '🏨',
+      serpapi_airbnb_search: '🏠',
       serpapi_youtube: '▶️',
       serpapi_youtube_search: '▶️',
       serpapi_open_table_reviews: '🍽️',

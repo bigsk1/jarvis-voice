@@ -929,6 +929,18 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_airbnb_search": _case({
+        "engine": "airbnb", "query": "Phoenix, Arizona", "currency": "USD",
+        "dates_mode": "suggested", "results_count": 1,
+        "search_context": {"query": "Phoenix, Arizona", "adults": 2, "room_type": "entire_home"},
+        "budget_context": {"enabled": True, "min_price_per_night": 125, "max_price_per_night": 250},
+        "results": [{"listing_id": "90071992547409931", "name": "Desert house",
+                     "url": "https://www.airbnb.com/rooms/90071992547409931",
+                     "image_url": "https://a0.muscache.com/im/pictures/desert-house.jpg",
+                     "total_price": 750, "price_formatted": "$750", "price_qualifier": "for 5 nights",
+                     "nightly_average": 150, "rating": 4.9, "reviews": 42,
+                     "check_in_date": "2030-06-01", "check_out_date": "2030-06-06", "nights": 5}],
+    }),
     "serpapi_hotel_search": _case(
         {
             "engine": "google_hotels",

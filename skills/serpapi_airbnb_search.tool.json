@@ -1,0 +1,43 @@
+{
+  "enabled": true,
+  "name": "serpapi_airbnb_search",
+  "description": "Find Airbnb vacation rentals and places to stay for an explicitly named destination, with listing photos, exact links, stay totals, dates, ratings and rooms. Use for 'find an Airbnb house in Austin', 'compare vacation rentals in Lake Tahoe', or 'Airbnb homes for 2 adults at $125 to $250 per night'. Always require the user's destination in query; never substitute their home/default location. Default to entire homes, houses, 2 adults, USD and a $125..$250 nightly budget unless overridden. Dates are optional: omit both dates when the user has not supplied them; Airbnb then suggests different dates per listing, usually 5 nights. Nightly bounds are converted to Airbnb's fee-inclusive total-trip bounds using requested nights, or 5 nights when undated. Returned prices are stay totals, never base nightly rates; nightly_average is only an average total divided by returned nights. Reuse saved listing IDs, URLs, actual dates and search/budget context for follow-up comparisons. Smoking_allowed and pets>0 are positive filters; this tool cannot establish non-smoking or pet-free stays. Read current listing rules, fees, availability and cancellation before booking. One cached SerpApi call, no bookings or purchases.",
+  "script": "serpapi_airbnb_search.py",
+  "proxy_policy": "off",
+  "prompt_guard_policy": "web_content",
+  "child_environment": {"mode": "restricted", "from_availability": true},
+  "complementary_tools": ["canvas", "stash"],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {"type": "string", "minLength": 1, "maxLength": 400, "description": "Required explicit destination from the user: city, region, neighborhood, address or landmark. Do not infer a destination from default/local location settings."},
+      "check_in_date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Optional user-supplied check-in date YYYY-MM-DD. Must be paired with check_out_date; omit both when unspecified instead of inventing dates."},
+      "check_out_date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Optional check-out date YYYY-MM-DD, later than the paired check-in date."},
+      "adults": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Number of adults ages 13+; default 2."},
+      "children": {"type": "integer", "minimum": 0, "maximum": 50, "description": "Children ages 2..12; default 0."},
+      "infants": {"type": "integer", "minimum": 0, "maximum": 50, "description": "Infants under age 2; default 0."},
+      "pets": {"type": "integer", "minimum": 0, "maximum": 50, "description": "Positive count requests places allowing pets. Default 0 is omitted from the provider request and does not establish a pet-free property."},
+      "room_type": {"type": "string", "enum": ["entire_home", "private_room"], "description": "Default entire_home. Combined with house this approximates whole houses, not guaranteed detached single-family homes. Explicit private_room removes the default house property filter unless property_types is explicitly supplied."},
+      "property_types": {"type": "array", "maxItems": 4, "items": {"type": "string", "enum": ["house", "apartment", "guesthouse", "hotel"]}, "description": "Property types; default [house] for entire homes. An explicit empty array removes the property-type filter. Hotels use [hotel]."},
+      "amenities": {"type": "array", "maxItems": 25, "items": {"type": "string", "enum": ["wifi", "kitchen", "washer", "dryer", "air_conditioning", "heating", "dedicated_workspace", "tv", "hair_dryer", "iron", "pool", "hot_tub", "free_parking", "ev_charger", "crib", "king_bed", "gym", "bbq_grill", "breakfast", "indoor_fireplace", "smoking_allowed", "waterfront", "smoke_alarm", "carbon_monoxide_alarm", "private_attached_bathroom"]}, "description": "Require documented amenities. smoking_allowed is a positive filter; no non-smoking or pet-free filter is supported. private_attached_bathroom applies to private rooms."},
+      "bedrooms": {"type": "integer", "minimum": 0, "maximum": 50, "description": "Minimum bedrooms; omit when unspecified."},
+      "beds": {"type": "integer", "minimum": 0, "maximum": 50, "description": "Minimum beds; omit when unspecified."},
+      "bathrooms": {"type": "number", "minimum": 0, "maximum": 50, "description": "Minimum bathrooms; fractional values such as 1.5 are accepted."},
+      "currency": {"type": "string", "pattern": "^[A-Z]{3}$", "description": "Supported three-letter currency code; default USD. Prices and nightly budget bounds use this currency."},
+      "min_price_per_night": {"type": "number", "minimum": 0, "maximum": 1000000, "description": "Minimum nightly budget in the requested currency. With no custom bounds, defaults to 125..250. Supplying one custom bound applies only that bound. Multiplied by requested nights or 5 suggested nights for the provider's fee-inclusive trip-total filter."},
+      "max_price_per_night": {"type": "number", "minimum": 0, "maximum": 1000000, "description": "Maximum nightly budget. With no custom bounds, defaults to 125..250. Multiplied by requested nights or 5 when undated. Suggested stay lengths can vary per listing, so review actual totals/dates and nightly_average."},
+      "use_price_filter": {"type": "boolean", "description": "Default true. Set false to disable the price filter entirely, including default nightly bounds."},
+      "instant_book": {"type": "boolean", "description": "Only places bookable without waiting for host approval when true."},
+      "self_check_in": {"type": "boolean", "description": "Only places with self check-in when true."},
+      "guest_favorite": {"type": "boolean", "description": "Only Airbnb Guest favorites when true."},
+      "luxe": {"type": "boolean", "description": "Only Airbnb Luxe properties when true."},
+      "num_results": {"type": "integer", "minimum": 1, "maximum": 10, "description": "Listing cards to return; default 5, maximum 10. One provider page returns at most 18 rows."},
+      "page": {"type": "integer", "minimum": 1, "maximum": 15, "description": "Explicit result page; default 1, maximum 15."},
+      "no_cache": {"type": "boolean", "description": "Default false; identical cached results are free. Set true only when a fresh paid lookup is needed."}
+    },
+    "required": ["query"],
+    "additionalProperties": false
+  },
+  "permissions": {"dangerous": false, "bash": false, "network": true, "filesystem": false, "auto_approve": true},
+  "availability": {"all_of_env": ["SERP_API_KEY"], "setup_hint": "Set SERP_API_KEY in the active mode env file. No location defaults are used."}
+}

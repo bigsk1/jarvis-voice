@@ -20,6 +20,7 @@ SERPAPI_UNRESOLVED_INCIDENTS_ENDPOINT = (
 SERPAPI_STATUS_TIMEOUT = 3
 
 SERPAPI_TOOL_ENGINES = {
+    "serpapi_airbnb_search": ("airbnb",),
     "serpapi_extract": ("extract",),
     "serpapi_ebay_product": ("ebay_product",),
     "serpapi_ebay_search": ("ebay",),
@@ -47,6 +48,7 @@ SERPAPI_TOOL_ENGINES = {
 }
 
 SERPAPI_ENGINE_LABELS = {
+    "airbnb": "Airbnb Search",
     "extract": "Extract",
     "amazon": "Amazon Search",
     "amazon_product": "Amazon Product",
@@ -92,6 +94,7 @@ SERPAPI_ENGINE_LABELS = {
 }
 
 SERPAPI_ENGINE_STATUS_ALIASES = {
+    "airbnb": ("airbnb search api", "airbnb search", "airbnb api"),
     "extract": ("extract api", "extract"),
     "amazon": ("amazon search api", "amazon search", "amazon api"),
     "amazon_product": ("amazon product api", "amazon product"),

@@ -27,6 +27,7 @@
     "serpapi_amazon_search": false,
     "serpapi_google_search": false,
     "serpapi_ebay_product": false,
+    "serpapi_airbnb_search": false,
     "serpapi_trader_joes_search": false,
     "serpapi_trader_joes_product": false,
     "serpapi_walmart_search": false,

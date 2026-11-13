@@ -61,6 +61,7 @@ const expectedTools = [
   'serpapi_trader_joes_search',
   'serpapi_trader_joes_product',
   'serpapi_hotel_search',
+  'serpapi_airbnb_search',
   'serpapi_yelp_search',
   'serpapi_open_table_reviews',
   'serpapi_search_index',

@@ -46,6 +46,96 @@ window.createLocalTravelResultAdapters = function createLocalTravelResultAdapter
     };
   }
 
+  function adaptAirbnb(payload) {
+    const text = value => typeof value === 'string' ? value.trim() : '';
+    const numeric = value => typeof value === 'number' && Number.isFinite(value);
+    const strings = value => Array.isArray(value) ? value.map(text).filter(Boolean) : [];
+    const context = payload.search_context && typeof payload.search_context === 'object'
+      ? payload.search_context : {};
+    const budget = payload.budget_context && typeof payload.budget_context === 'object'
+      ? payload.budget_context : {};
+    const propertyNames = new Map([
+      ['house', 'houses'], ['apartment', 'apartments'], ['guesthouse', 'guesthouses'], ['hotel', 'hotels'],
+    ]);
+    const propertyTypes = strings(context.property_types)
+      .map(value => propertyNames.get(value) || value.replace(/_/g, ' ')).join(', ');
+    const party = [['children', 'child', 'children'], ['infants', 'infant', 'infants'], ['pets', 'pet', 'pets']]
+      .filter(([key]) => numeric(context[key]) && context[key] > 0)
+      .map(([key, singular, plural]) => `${context[key]} ${context[key] === 1 ? singular : plural}`);
+    const amenities = strings(context.amenities).map(value => value === 'wifi' ? 'Wi-Fi'
+      : value === 'tv' ? 'TV' : value.replace(/_/g, ' ')).join(', ');
+    const currency = text(payload.currency) || 'USD';
+    const minimum = numeric(budget.min_price_per_night) && budget.min_price_per_night >= 0
+      ? formatPrice(budget.min_price_per_night, currency) : '';
+    const maximum = numeric(budget.max_price_per_night) && budget.max_price_per_night >= 0
+      ? formatPrice(budget.max_price_per_night, currency) : '';
+    const hasBudget = budget.enabled !== false && Boolean(minimum || maximum);
+    const budgetLabel = !hasBudget ? 'No price filter'
+      : minimum && maximum ? `${minimum}–${maximum}/night budget`
+      : minimum ? `From ${minimum}/night` : `Up to ${maximum}/night`;
+    const suggestedDates = (payload.dates_mode || context.dates_mode) === 'suggested';
+    const dateLabel = suggestedDates
+      ? `Airbnb-suggested dates${hasBudget && numeric(budget.filter_nights) && budget.filter_nights > 0
+        ? `; budget based on ${budget.filter_nights} night${budget.filter_nights === 1 ? '' : 's'}` : ''}`
+      : [text(context.check_in_date), text(context.check_out_date)].filter(Boolean).join(' → ');
+    const items = getRows(payload)
+      .filter(row => !Array.isArray(row) && (text(row.name) || text(row.title))).map(row => {
+      const currency = text(row.currency) || text(payload.currency) || 'USD';
+      const price = text(row.price_formatted)
+        || (numeric(row.total_price) && row.total_price >= 0 ? formatPrice(row.total_price, currency) : '');
+      const checkIn = text(row.check_in_date);
+      const checkOut = text(row.check_out_date);
+      const dates = checkIn && checkOut ? `${checkIn} → ${checkOut}`
+        : checkIn ? `Check-in ${checkIn}` : checkOut ? `Check-out ${checkOut}` : '';
+      const suggested = (row.dates_mode || payload.dates_mode || context.dates_mode) === 'suggested';
+      const rooms = [['bedrooms', 'bedroom'], ['beds', 'bed'], ['bathrooms', 'bath']]
+        .filter(([key]) => numeric(row[key]) && row[key] >= 0)
+        .map(([key, label]) => `${row[key]} ${label}${row[key] === 1 ? '' : 's'}`);
+      const average = numeric(row.total_price) && row.total_price >= 0
+        && numeric(row.nightly_average) && row.nightly_average >= 0
+        && numeric(row.nights) && row.nights > 0
+        ? `${formatPrice(row.nightly_average.toFixed(2), currency)}/night average (stay total ÷ ${row.nights} night${row.nights === 1 ? '' : 's'}, including fees)`
+        : '';
+      const name = text(row.name) || text(row.title) || 'Airbnb stay';
+      return {
+        title: name, url: row.url,
+        image: text(row.thumbnail) || text(row.image_url) || strings(row.images)[0],
+        primary: price ? `${price} total incl. fees` : 'Price not returned',
+        chips: [
+          numeric(row.rating) ? `★ ${row.rating}` : '',
+          numeric(row.reviews) ? `${formatCount(row.reviews)} reviews` : '',
+          ...rooms, ...strings(row.badges),
+          row.is_new_listing === true ? 'New listing' : '',
+          row.free_cancellation === true ? 'Free cancellation' : '',
+        ].filter(Boolean),
+        details: [
+          text(row.title) !== name ? text(row.title) : '',
+          dates ? `${suggested ? 'Suggested dates' : 'Dates'}: ${dates}` : 'Dates not returned',
+          text(row.price_qualifier), average,
+          compactText(text(row.description), 220),
+          !rooms.length ? strings(row.details).join(' · ') : '',
+          ...strings(row.price_disclaimers),
+        ].filter(Boolean),
+        actionLabel: 'View on Airbnb',
+      };
+    });
+    return {
+      kind: 'hotel', layout: 'rail',
+      eyebrow: 'Airbnb stays', heading: text(payload.query) || text(context.query) || 'Airbnb stays',
+      subtitle: [
+        text(context.room_type).replace(/_/g, ' '),
+        propertyTypes,
+        numeric(context.adults) ? `${context.adults} adult${context.adults === 1 ? '' : 's'}` : '',
+        ...party,
+        amenities ? `Requested amenities: ${amenities}` : '',
+        budgetLabel, dateLabel,
+        numeric(payload.results_count) && payload.results_count > items.length
+          ? `${items.length} of ${payload.results_count} listings shown` : '',
+      ].filter(Boolean).join(' · '),
+      items: items.length ? items : [{title: 'No Airbnb listings returned'}],
+    };
+  }
+
   function adaptYelp(payload) {
     const items = getRows(payload).map(row => {
       const chips = [];
@@ -537,6 +627,7 @@ window.createLocalTravelResultAdapters = function createLocalTravelResultAdapter
 
   return {
     adaptHotels,
+    adaptAirbnb,
     adaptYelp,
     adaptOpenTableReviews,
     adaptTripadvisor,

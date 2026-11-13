@@ -969,6 +969,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `serpapi_google_local_services` - **SerpApi Google Local Services**: Screened US professional-service providers with Google badges, contact/availability details, focused provider drill-down, and explicit city-CID resolution cost
 - `serpapi_maps_search` - **SerpApi Maps**: Google Maps place and local business search with normalized address/rating/contact fields
 - `serpapi_hotel_search` - **SerpApi Hotels**: Google Hotels search with check-in/out, guest, price, and rating filters
+- [`serpapi_airbnb_search`](docs/tools/airbnb-tool/README.md) - **SerpApi Airbnb search**: Destination-specific stays with optional dates, nightly-budget conversion, actual stay totals, photos, guest filters, and saved follow-ups
 - [`serpapi_travel_explore`](docs/tools/travel-explore-tool/README.md) - **SerpApi Travel Explore**: Flexible destination discovery from an origin with suggested dates, headline flight/hotel planning prices, airport handoffs, and public Google Travel links
 - `serpapi_tripadvisor` - **SerpApi Tripadvisor**: Search destinations, hotels, restaurants, attractions, and forums; retrieve place details, nearby suggestions, and filtered reviews by `place_id`
 - `serpapi_open_table_reviews` - **SerpApi OpenTable Reviews**: Retrieve paginated diner reviews, detailed category ratings, rating summaries, restaurant responses, and review photos from an OpenTable restaurant ID or URL; supports JSON, HTML, and Markdown output

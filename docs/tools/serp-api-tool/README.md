@@ -39,6 +39,7 @@ SerpApi's own index of public webpages and source URLs.
 | `serpapi_google_local_services` | `google_local_services` plus conditional `google_maps` resolver | Screened US professional-service providers, Google badges, contact and availability details, and provider drill-down |
 | `serpapi_maps_search` | `google_maps` | Places and local businesses with addresses, ratings, hours, phones, and websites |
 | `serpapi_hotel_search` | `google_hotels` | Future lodging with stay dates, guests, prices, ratings, amenities, and property links |
+| [`serpapi_airbnb_search`](../airbnb-tool/README.md) | `airbnb` | Airbnb stays for an explicit destination, with optional dates, nightly-budget conversion, stay totals, guest filters and photos |
 | `serpapi_travel_explore` | `google_travel_explore` | Flexible destination discovery from an origin with suggested dates, headline flight/hotel planning prices, and exact airport handoffs; see the [Travel Explore guide](../travel-explore-tool/README.md) |
 | `serpapi_tripadvisor` | `tripadvisor`, `tripadvisor_place`, `tripadvisor_reviews` | Destination, hotel, restaurant, attraction, and forum discovery plus place details, nearby suggestions, and reviews |
 | `serpapi_open_table_reviews` | `open_table_reviews` | Paginated OpenTable diner reviews, rating summaries, category ratings, restaurant responses, and photos by restaurant ID or URL; JSON, HTML, or Markdown output |
@@ -78,7 +79,7 @@ The family uses these common layers:
   Tripadvisor, Google Events, Google
   Local, Google Local Services, Google News Light, Google Shopping Light,
   Google Immersive Product, Google Trends, Trending Now,
-  Google Sports, Google Search, Search Index, eBay, Walmart, Trader Joe's, OpenTable Reviews, Yelp, Maps, and YouTube cards.
+  Google Sports, Google Search, Search Index, eBay, Walmart, Trader Joe's, Airbnb, OpenTable Reviews, Yelp, Maps, and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
 option for the older focused tools. Normal conversational and workflow calls
@@ -112,6 +113,10 @@ Trader Joe's also uses a validated `store_id` or an exact ZIP match, with
 `JARVIS_TRADER_JOES_STORE_ID` as its optional preferred-store setting. An
 unmatched ZIP leaves the all-store catalog in effect, with that limitation
 reported. See the [Trader Joe's location rules](../trader-joes-tool/README.md#store-and-postal-code-selection).
+Airbnb requires an explicit destination in every search; it does not inherit
+the configured location or postal code. See the
+[Airbnb guide](../airbnb-tool/README.md) for optional dates and the distinction
+between a nightly budget and the provider's whole-stay price filters.
 
 The `serpapi_*` manifests declare:
 
@@ -664,6 +669,21 @@ description, website, images, and detailed hours.
 Dates must be `YYYY-MM-DD`. Jarvis resolves relative dates before calling the
 tool. The default is lowest complete-stay price; results are reference quotes
 and the tool never books or pays.
+
+### Airbnb
+
+```json
+{"query": "Asheville, NC", "min_price_per_night": 125, "max_price_per_night": 250}
+```
+
+An explicit destination is required. Dates are optional but must be supplied
+together when chosen. Airbnb otherwise suggests dates for each listing.
+Jarvis converts the nightly budget to the provider's whole-stay filter using
+the explicit stay length, or five nights for an undated search. Results show
+actual returned dates, stay totals and defensible nightly averages including
+fees. Defaults are an entire house for two adults in USD. The API has no
+smoke-free or pet-free filter. See the [Airbnb guide](../airbnb-tool/README.md)
+for cheaper refinements, guest and amenity filters, and saved follow-ups.
 
 ### Travel Explore
 

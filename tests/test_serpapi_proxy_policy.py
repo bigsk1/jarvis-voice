@@ -13,6 +13,7 @@ sys.path.insert(0, str(SKILLS))
 import serpapi_home_depot  # noqa: E402
 
 EXPECTED_SERPAPI_TOOLS = {
+    "serpapi_airbnb_search",
     "flight_search",
     "serpapi_ebay_product",
     "serpapi_ebay_search",

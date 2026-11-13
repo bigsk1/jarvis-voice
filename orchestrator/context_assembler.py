@@ -20,6 +20,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 try:
+    from serpapi_airbnb_context import project_airbnb_data
+except ModuleNotFoundError as exc:
+    if exc.name != "serpapi_airbnb_context":
+        raise
+    from lib.serpapi_airbnb_context import project_airbnb_data
+
+try:
     from serpapi_trader_joes_context import TRADER_JOES_TOOLS, project_trader_joes_data
 except ModuleNotFoundError as exc:
     if exc.name != "serpapi_trader_joes_context":
@@ -33,9 +40,10 @@ except ModuleNotFoundError as exc:
         raise
     from lib.serpapi_walmart_context import WALMART_TOOLS, project_walmart_data
 
-_SHOPPING_PROJECTORS = {
+_RESULT_PROJECTORS = {
     **dict.fromkeys(WALMART_TOOLS, project_walmart_data),
     **dict.fromkeys(TRADER_JOES_TOOLS, project_trader_joes_data),
+    "serpapi_airbnb_search": project_airbnb_data,
 }
 
 try:
@@ -189,7 +197,7 @@ class ContextAssembler:
                         for key in ("candidates", "filters", "product_summary", "results", "top_results")
                     ):
                         continue
-                    if tool not in _SHOPPING_PROJECTORS:
+                    if tool not in WALMART_TOOLS | TRADER_JOES_TOOLS:
                         return ""
                     is_walmart = tool in WALMART_TOOLS
                     retailer = "Walmart" if is_walmart else "Trader Joe's"
@@ -200,6 +208,44 @@ class ContextAssembler:
                         f"Selected tool hints: {names}. "
                         f"Reuse saved {retailer} evidence when sufficient; for refinements preserve "
                         "the saved query, location, and returned filter values."
+                    )
+        return ""
+
+    @staticmethod
+    def _airbnb_followup_hint(current_query: str, history: list) -> str:
+        """Keep the destination search available for referential stay refinements."""
+        query = current_query.lower().strip()
+        if not query or len(query) > 800 or "selected tool hints:" in query:
+            return ""
+        named = "airbnb" in query
+        if not named and (
+            re.search(r"\b(weather|walmart|trader|amazon|flights?|restaurants?|hotels?)\b", query)
+            or not re.search(r"\b(same|those|these|that|it|its|first|second|third|cheaper|instead|pool|pets?|guests?|bedrooms?|nights?)\b|what about|next page", query)
+        ):
+            return ""
+        for message in reversed(history):
+            results = message.get("tool_results") if isinstance(message, dict) else None
+            if not isinstance(results, dict):
+                continue
+            for tool, value in reversed(list(results.items())):
+                if tool != "serpapi_airbnb_search":
+                    if not named and (tool.startswith("serpapi_") or tool in {"flight_search", "weather"}):
+                        return ""
+                    continue
+                runs = value if isinstance(value, list) else [value]
+                if isinstance(value, dict) and type(value.get("runs_count")) is int:
+                    runs = value.get("results", [])
+                for run in reversed(runs) if isinstance(runs, list) else []:
+                    if not isinstance(run, dict) or run.get("ok") is False:
+                        continue
+                    payload = run.get("data", run)
+                    if not isinstance(payload, dict) or not payload.get("query"):
+                        continue
+                    return (
+                        "Selected tool hints: serpapi_airbnb_search. Reuse saved listing evidence "
+                        "when sufficient; for refinements preserve the destination, guests, dates "
+                        "and nightly budget unless the user changes them. Suggested listing dates "
+                        "are examples, not user-selected travel dates. Never substitute local defaults."
                     )
         return ""
 
@@ -419,10 +465,10 @@ class ContextAssembler:
                 )
                 extracted_parts.append((f"\n=== {tool_name} ===", [_followup_json(projected)]))
                 continue
-            if tool_name in _SHOPPING_PROJECTORS:
+            if tool_name in _RESULT_PROJECTORS:
                 budget = max(512, min(9000, tool_budget) // max(1, len(items)))
                 extracted_parts.append((f"\n=== {tool_name} ===", [
-                    _followup_json(_SHOPPING_PROJECTORS[tool_name](item, max_chars=budget)) for item in items
+                    _followup_json(_RESULT_PROJECTORS[tool_name](item, max_chars=budget)) for item in items
                 ]))
                 continue
             if tool_name == "send_webhook":
@@ -559,6 +605,9 @@ class ContextAssembler:
         shopping_hint = self._shopping_followup_hint(current_query, recent)
         if shopping_hint:
             context_lines.append(shopping_hint)
+        airbnb_hint = self._airbnb_followup_hint(current_query, recent)
+        if airbnb_hint:
+            context_lines.append(airbnb_hint)
         if any(
             isinstance(message.get("tool_results"), dict)
             and any(
@@ -1137,12 +1186,12 @@ class ContextAssembler:
             if len(rendered) <= available:
                 return finish(rendered, truncated=truncated)
 
-        if tool_name in _SHOPPING_PROJECTORS:
+        if tool_name in _RESULT_PROJECTORS:
             envelope = {"ok": result.get("ok", True)}
             if result.get("error"):
                 envelope["error"] = self.truncate_preview_text(result["error"], 200)
             overhead = len(json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))) + 100
-            data = _SHOPPING_PROJECTORS[tool_name](result.get("data"), max_chars=max(256, available - overhead))
+            data = _RESULT_PROJECTORS[tool_name](result.get("data"), max_chars=max(256, available - overhead))
             truncated = bool(data.get("context_truncated"))
             rendered = json.dumps({"result": {**envelope, "data": data}, "result_truncated": truncated},
                                   ensure_ascii=False, separators=(",", ":"))
@@ -1332,8 +1381,8 @@ class ContextAssembler:
             return 6000  # A bounded shortlist with complete article URLs and digest handles.
         if lowered == "serpapi_extract":
             return 10000  # Retain article evidence with complete source and feed URLs.
-        if lowered in _SHOPPING_PROJECTORS:
-            return 10000  # Up to ten shopping identities or one product's detail evidence.
+        if lowered in _RESULT_PROJECTORS:
+            return 10000  # Up to ten exact identities with price and date context.
         if lowered == "source_library":
             return 16000  # Several exact passages plus source citations.
         if lowered == "project_nomad":
@@ -1468,6 +1517,8 @@ class ContextAssembler:
             return []
 
         normalized_tool_name = str(tool_name or "").strip().lower()
+        if normalized_tool_name == "serpapi_airbnb_search":
+            return project_airbnb_data(data, max_candidates=max_items).get("candidates", [])
         if normalized_tool_name == "serpapi_google_immersive_product":
             candidate_keys = (
                 "stores",
@@ -1608,7 +1659,7 @@ class ContextAssembler:
                     max_depth=1,
                 )
 
-            if normalized_tool_name in _SHOPPING_PROJECTORS:
+            if normalized_tool_name in WALMART_TOOLS | TRADER_JOES_TOOLS:
                 for key in ("position", "us_item_id", "reviews", "currency", "price_formatted", "seller_name",
                             "in_stock", "out_of_stock", "sponsored", "available", "size", "category", "category_id"):
                     if key in item and item[key] is not None:
@@ -3834,12 +3885,12 @@ class ContextAssembler:
         result_chars_total = len(full_serialized)
         max_chars = self.tool_context_max_chars(tool_name)
 
-        if tool_name in _SHOPPING_PROJECTORS:
+        if tool_name in _RESULT_PROJECTORS:
             envelope = {"ok": result.get("ok", True)}
             if result.get("error"):
                 envelope["error"] = self.truncate_preview_text(result["error"], 300)
             overhead = len(json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))) + 20
-            data = _SHOPPING_PROJECTORS[tool_name](result.get("data"), max_chars=max_chars - overhead)
+            data = _RESULT_PROJECTORS[tool_name](result.get("data"), max_chars=max_chars - overhead)
             serialized = json.dumps({**envelope, "data": data}, ensure_ascii=False, separators=(",", ":"))
             return serialized, result_chars_total, len(serialized), bool(data.get("context_truncated"))
 

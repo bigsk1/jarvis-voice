@@ -550,6 +550,7 @@ one source is not evidence that a recipient is unavailable in another.
 | `serpapi_google_local_services` | Screened US professional-service providers from Google Local Services, with Google badges, contact/availability data, provider detail drill-down, and visible one- or two-search CID resolution |
 | `serpapi_maps_search` | SerpApi Google Maps place and local business search |
 | `serpapi_hotel_search` | Future Google Hotels options, cheapest-first stay pricing, and filters |
+| [`serpapi_airbnb_search`](../docs/tools/airbnb-tool/README.md) | Airbnb stays for an explicit destination, with optional dates, nightly budgets, stay totals, photos, guest filters and saved follow-ups |
 | `serpapi_travel_explore` | Flexible destination discovery with suggested dates, headline flight/hotel planning prices, and airport handoffs |
 | `flight_search` | Future flight options and prices via SerpApi Google Flights or a keyless fallback |
 | `serpapi_youtube` | SerpApi YouTube video details and transcript fallback |

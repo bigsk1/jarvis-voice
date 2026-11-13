@@ -306,6 +306,8 @@ class ToolExecutor:
             return 120  # SerpApi deep search can take up to 90 seconds
         if tool_name == "serpapi_amazon_search":
             return 90  # SerpApi include product details can take up to 90 seconds
+        if tool_name == "serpapi_airbnb_search":
+            return 90  # One bounded 60s provider request plus process cleanup.
         if tool_name == "serpapi_home_depot":
             return 200  # Direct SerpApi only; up to two sequential 90s HTTP calls if include_product_details
         if tool_name in {"serpapi_walmart_search", "serpapi_walmart_product",

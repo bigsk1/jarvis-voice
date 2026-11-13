@@ -7,6 +7,18 @@ Shared truncation and bounding policy remains in the public facade.
 
 from collections.abc import Callable
 
+try:
+    from serpapi_airbnb_context import project_airbnb_data
+except ModuleNotFoundError as exc:
+    if exc.name != "serpapi_airbnb_context":
+        raise
+    from lib.serpapi_airbnb_context import project_airbnb_data
+
+
+def extract_airbnb_followup(value, max_candidates: int) -> dict:
+    """Use the same date/price projection as immediate model context, including repeated runs."""
+    return project_airbnb_data(value, max_candidates=max_candidates)
+
 
 def extend_yelp_search(
     value: dict,
