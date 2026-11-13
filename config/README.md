@@ -111,6 +111,22 @@ See also: [xAI provider guide](../docs/XAI_PROVIDER.md),
 
 ## Important Settings
 
+### Shopping location
+
+`JARVIS_DEFAULT_POSTAL_CODE` is the selected mode's optional structured
+postal/ZIP code. Tools use it only where their provider supports the relevant
+location behavior; `JARVIS_DEFAULT_LOCATION` remains the general city/region
+setting.
+
+For US Walmart searches and product details, the optional
+`JARVIS_WALMART_STORE_ID` selects a preferred Walmart store. A tool call's
+explicit `store_id` or US `postal_code` overrides the configured defaults.
+Without those overrides or a configured store, Jarvis can match
+`JARVIS_DEFAULT_POSTAL_CODE` against SerpApi's public store list; a ZIP with no
+exact match leaves the provider's location in effect and is reported as such.
+This does not locate the nearest store. See the
+[Walmart location rules](../docs/tools/walmart-tool/README.md#store-and-postal-code-selection).
+
 ### LLM Provider Selection
 
 Note:

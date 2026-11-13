@@ -1,0 +1,59 @@
+{
+  "enabled": true,
+  "name": "serpapi_walmart_product",
+  "description": "Get details and reviews for one Walmart product: pictures, price/currency, ratings/review count, specifications, seller offers, variants and reported stock/shipping/pickup/delivery when available. Use for 'tell me more about the second Walmart product', 'what do its reviews say', or a Walmart.com product URL. Reuse the product_id and store_id from saved Walmart search candidates; numeric us_item_id also works. The product API supports US Walmart.com only. Individual review excerpts and availability are limited to what Walmart returns for the selected location. One cached SerpApi product request; no purchases.",
+  "script": "serpapi_walmart_product.py",
+  "proxy_policy": "off",
+  "prompt_guard_policy": "web_content",
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true,
+    "allow": [
+      "JARVIS_DEFAULT_POSTAL_CODE",
+      "JARVIS_WALMART_STORE_ID"
+    ]
+  },
+  "complementary_tools": [
+    "serpapi_walmart_search",
+    "canvas",
+    "stash"
+  ],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "product_id": {
+        "type": "string",
+        "description": "Walmart product_id from search (prefer alphanumeric ID), numeric us_item_id, or Walmart.com /ip/ product URL. Reuse saved search ID and store_id; do not repeat search to look up a selected product."
+      },
+      "store_id": {
+        "type": "string",
+        "description": "Explicit Walmart store ID for local prices/availability; overrides all location defaults."
+      },
+      "postal_code": {
+        "type": "string",
+        "description": "Optional US ZIP override; otherwise uses configured Walmart store or JARVIS_DEFAULT_POSTAL_CODE. Exact ZIP-to-store lookup only; unmatched ZIP is explicitly reported, never treated as local availability."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "Bypass SerpApi cache. Default false; exact cached responses are free."
+      }
+    },
+    "required": [
+      "product_id"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  }
+}

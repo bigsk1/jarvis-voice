@@ -6,7 +6,194 @@ discovery and detail runs. Shared truncation, scalar-compaction, and bounding
 policy remains in the public facade.
 """
 
+import json
 from collections.abc import Callable
+
+try:
+    from serpapi_walmart_context import (
+        bounded_walmart_filters,
+        compact_related_queries,
+        compact_variant_options,
+    )
+except ModuleNotFoundError as exc:
+    if exc.name != 'serpapi_walmart_context':
+        raise
+    from lib.serpapi_walmart_context import (
+        bounded_walmart_filters,
+        compact_related_queries,
+        compact_variant_options,
+    )
+
+
+def extract_walmart_followup(
+    value,
+    max_candidates: int,
+    *,
+    truncate_text: Callable[[str, int], str],
+    bound_structured_value: Callable[..., object],
+) -> dict:
+    """Keep Walmart item/store identities and bounded product/review evidence."""
+    raw_runs = value if isinstance(value, list) else [value]
+    selected = [run for run in raw_runs[-3:] if isinstance(run, dict)]
+    if not selected:
+        return {}
+    budget = (7500 - 150) // len(selected)
+
+    def project(payload: dict) -> dict:
+        result = {field: payload[field] for field in (
+            'engine', 'query', 'country', 'walmart_domain', 'product_id', 'us_item_id',
+            'store_id', 'results_count', 'provider_results_count', 'results_truncated',
+            'top_url', 'top_product_id', 'external_content_trust',
+            'requested_filters',
+        ) if payload.get(field) not in (None, '', [], {})}
+        if isinstance(payload.get('filters'), list):
+            result['filters'], omitted = bounded_walmart_filters(payload['filters'], max_chars=min(3000, budget // 3))
+            result['filters_truncated'] = bool(payload.get('filters_truncated')) or omitted
+        if isinstance(payload.get('related_queries'), list):
+            result['related_queries'], omitted = compact_related_queries(payload['related_queries'])
+            result['related_queries_truncated'] = bool(payload.get('related_queries_truncated')) or omitted
+        for field, maximum in (('location_context', 700), ('search_information', 400), ('pagination', 400)):
+            if isinstance(payload.get(field), dict):
+                result[field] = bound_structured_value(payload[field], max_chars=maximum)
+        rows = payload.get('results') or payload.get('top_results') or []
+        rows = [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+        candidates = []
+        for row in rows[:max_candidates]:
+            candidate = {field: row[field] for field in (
+                'position', 'product_id', 'us_item_id', 'upc', 'url', 'thumbnail', 'image_url',
+                'price', 'price_formatted', 'currency', 'price_was', 'rating', 'reviews',
+                'seller_name', 'sponsored', 'in_stock', 'out_of_stock', 'free_shipping', 'two_day_shipping',
+                'free_shipping_with_walmart_plus', 'quantity', 'price_per_unit',
+            ) if isinstance(row.get(field), (str, int, float, bool)) and row[field] != ''}
+            for field in ('price', 'price_formatted'):
+                if field in row and row[field] is None:
+                    candidate[field] = None
+            for field in ('title', 'manufacturer', 'special_offer_text'):
+                if isinstance(row.get(field), str) and row[field]:
+                    candidate[field] = truncate_text(row[field], 240)
+            if isinstance(row.get('price_was'), dict):
+                candidate['price_was'] = {field: row['price_was'][field] for field in (
+                    'price', 'currencyUnit', 'currency_unit', 'currency', 'priceString', 'price_string',
+                ) if isinstance(row['price_was'].get(field), (str, int, float))}
+            for field in ('shipping', 'pickup', 'delivery', 'shipping_option', 'pickup_option', 'delivery_option'):
+                if row.get(field) not in (None, '', [], {}):
+                    candidate[field] = bound_structured_value(row[field], max_chars=240)
+            if candidate:
+                candidates.append(candidate)
+        result['candidates'] = candidates
+        result['candidates_truncated'] = len(rows) > len(candidates)
+
+        summary = payload.get('product_summary')
+        if isinstance(summary, dict):
+            detail = {field: summary[field] for field in (
+                'product_id', 'us_item_id', 'in_stock', 'quantity',
+            ) if isinstance(summary.get(field), (str, int, float, bool))}
+            if isinstance(summary.get('description'), str) and summary['description']:
+                detail['description_excerpt'] = truncate_text(summary['description'], min(1000, budget // 5))
+            for field in ('specifications', 'variants', 'offers'):
+                if summary.get(field) not in (None, '', [], {}):
+                    detail[field] = bound_structured_value(summary[field], max_chars=min(600, budget // 6))
+            swatches = summary.get('variant_swatches')
+            if isinstance(swatches, list):
+                detail['variant_options'] = compact_variant_options(swatches)
+            images = summary.get('images')
+            if isinstance(images, list):
+                detail['images'] = [url for url in images[:3] if isinstance(url, str)]
+                detail['images_truncated'] = len(images) > len(detail['images'])
+            if detail:
+                result['product_summary'] = detail
+
+        source = payload.get('reviews_results')
+        if isinstance(source, dict):
+            review_data = {}
+            if isinstance(source.get('ratings'), list):
+                review_data['ratings'] = [
+                    {key: item[key] for key in ('stars', 'count') if key in item}
+                    for item in source['ratings'][:5] if isinstance(item, dict)
+                ]
+            reviews = source.get('reviews')
+            if isinstance(reviews, dict):
+                compact_reviews = {key: reviews[key] for key in ('recommended_percentage', 'rating', 'count')
+                                   if isinstance(reviews.get(key), (int, float))}
+
+                def review(row):
+                    if not isinstance(row, dict):
+                        return {}
+                    compact = {key: row[key] for key in ('rating', 'positive_feedback', 'negative_feedback')
+                               if isinstance(row.get(key), (int, float))}
+                    for key in ('title', 'text', 'review_submission_time', 'user_nickname', 'customer_type'):
+                        if isinstance(row.get(key), str) and row[key]:
+                            compact[key] = truncate_text(row[key], 500 if key == 'text' else 160)
+                    return compact
+
+                for field in ('top_positive', 'top_negative'):
+                    if projected_review := review(reviews.get(field)):
+                        compact_reviews[field] = projected_review
+                customers = reviews.get('customer_reviews')
+                if isinstance(customers, list):
+                    compact_reviews['customer_reviews'] = [review(row) for row in customers[:2] if isinstance(row, dict)]
+                    compact_reviews['customer_reviews_truncated'] = len(customers) > 2
+                review_data['reviews'] = compact_reviews
+            if review_data:
+                result['reviews_results'] = bound_structured_value(review_data, max_chars=min(2600, budget // 2))
+
+        def size() -> int:
+            return len(json.dumps(result, ensure_ascii=False))
+
+        # Keep source URLs and item IDs exact. Remove optional complete sections
+        # or rows if unusually long provider fields fill the history budget.
+        detail = result.get('product_summary', {})
+        for field in ('images', 'offers', 'variants', 'specifications', 'description_excerpt'):
+            if size() > budget and field in detail:
+                detail.pop(field)
+                result['followup_truncated'] = True
+        for field in ('search_information', 'pagination', 'top_url'):
+            if size() > budget and field in result:
+                result.pop(field)
+                result['followup_truncated'] = True
+        for index in range(len(candidates) - 1, -1, -1):
+            candidate = candidates[index]
+            for field in ('thumbnail', 'image_url', 'shipping_option', 'pickup_option', 'delivery_option'):
+                if field == 'image_url' and index < 3:
+                    continue
+                if size() > budget and field in candidate:
+                    candidate.pop(field)
+                    result['followup_truncated'] = True
+        options = detail.get('variant_options')
+        if isinstance(options, list):
+            total = len(options) + detail.get('variant_options_omitted', 0)
+            while size() > budget and len(options) > 1:
+                options.pop()
+                detail['variant_options_omitted'] = total - len(options)
+                result['followup_truncated'] = True
+        for candidate in reversed(candidates):
+            if size() > budget and candidate.get('product_id') and 'url' in candidate:
+                candidate.pop('url')
+                result['followup_truncated'] = True
+        if size() > budget and 'related_queries' in result:
+            result.pop('related_queries')
+            result['related_queries_truncated'] = True
+        if size() > budget and 'filters' in result:
+            available = max(0, budget - size() + len(json.dumps(result['filters'], ensure_ascii=False)) - 80)
+            result['filters'], omitted = bounded_walmart_filters(result['filters'], max_chars=available)
+            result['filters_truncated'] = bool(result.get('filters_truncated')) or omitted
+        while size() > budget and len(candidates) > 1:
+            candidates.pop()
+            result['candidates_truncated'] = True
+        for field in ('reviews_results', 'search_information', 'pagination', 'top_url', 'location_context'):
+            if size() > budget and field in result:
+                result.pop(field)
+                result['followup_truncated'] = True
+        return result
+
+    projected = []
+    for run in selected:
+        payload = run.get('data') if isinstance(run.get('data'), dict) else run
+        projected.append(project(payload))
+    if len(raw_runs) == 1:
+        return projected[0]
+    return {'runs_count': len(raw_runs), 'results': projected,
+            'results_truncated': len(selected) < len(raw_runs)}
 
 
 def extend_home_depot(

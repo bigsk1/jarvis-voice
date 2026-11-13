@@ -29,6 +29,8 @@ SerpApi's own index of public webpages and source URLs.
 | `serpapi_google_trending_now` | `google_trends_trending_now`, `google_trends_news` | Discover current trends without a seed topic, then retrieve associated news for one selected trend token |
 | `serpapi_ebay_search` | `ebay` | eBay listing discovery with price, condition, seller, shipping, images, and product IDs |
 | `serpapi_ebay_product` | `ebay_product` | One eBay listing's focused details by numeric product ID |
+| [`serpapi_walmart_search`](../walmart-tool/README.md) | `walmart` | US or Mexico Walmart product discovery, filters, sellers, shipping, variants, pagination and store context |
+| [`serpapi_walmart_product`](../walmart-tool/README.md) | `walmart_product` | One US Walmart product's details, specifications, offers, variants, reviews and images |
 | `serpapi_home_depot` | `home_depot`, `home_depot_product` | Home Depot products, price/rating comparison, store or ZIP availability, and focused details |
 | `serpapi_google_events` | `google_events` | Upcoming local or virtual events with dates, venues, descriptions, ticket sources, public maps, images, date filters, and active-mode location fallback; see the [Google Events guide](../google-events-tool/README.md) |
 | `serpapi_google_local` | `google_local` | Google Local business listings near an explicit or mode-default location, with ratings, hours, service options, ads, related place searches, and pagination |
@@ -74,7 +76,7 @@ The family uses these common layers:
   Tripadvisor, Google Events, Google
   Local, Google Local Services, Google News Light, Google Shopping Light,
   Google Immersive Product, Google Trends, Trending Now,
-  Google Sports, Google Search, Search Index, eBay, OpenTable Reviews, Yelp, Maps, and YouTube cards.
+  Google Sports, Google Search, Search Index, eBay, Walmart, OpenTable Reviews, Yelp, Maps, and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
 option for the older focused tools. Normal conversational and workflow calls
@@ -97,7 +99,13 @@ SERP_API_KEY=your-key
 Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
 `JARVIS_DEFAULT_LOCATION` and `JARVIS_DEFAULT_POSTAL_CODE` can localize Google
 Search and Shopping Light when no location is supplied. The postal code also localizes
-Amazon delivery and Home Depot availability where supported.
+Amazon delivery and Home Depot availability where supported. Walmart's API
+accepts `store_id` rather than a ZIP: Jarvis can map a configured US postal
+code to an exact entry in SerpApi's public store list. A call's `store_id` or
+`postal_code` overrides the configured defaults; `JARVIS_WALMART_STORE_ID`
+overrides the configured postal code. Unmatched ZIPs leave the provider's
+location in effect and are reported as such. See the
+[Walmart location rules](../walmart-tool/README.md#store-and-postal-code-selection).
 
 The `serpapi_*` manifests declare:
 
@@ -186,6 +194,9 @@ additional searches:
 | Amazon empty-result query normalization | Up to 2 bounded retry calls |
 | Amazon `include_product_details=true` | Up to `product_details_limit` additional product calls, maximum 5 |
 | Home Depot `include_product_details=true` | 1 additional product call |
+| Walmart search or focused product call | 1 |
+| Walmart search followed by one selected product | 2 total calls |
+| Walmart ZIP-to-store lookup using SerpApi's public store list | 0 |
 | Tripadvisor search with details and reviews | Up to 3 total calls |
 | Tripadvisor details-only or reviews-only action | 1 |
 | OpenTable Reviews JSON, HTML, or Markdown page | 1 |
@@ -527,6 +538,16 @@ Reuse a returned numeric `product_id` with `serpapi_ebay_product`:
 }
 ```
 
+### Walmart discovery and detail
+
+Use `serpapi_walmart_search` for Walmart-specific shopping, then pass a chosen
+result's product ID to `serpapi_walmart_product` for details. Search supports
+the US and Mexico domains; the focused product tool supports US products.
+Store-based prices can differ from general online offers, and a missing
+stock field is not proof of availability. See the
+[Walmart tool guide](../walmart-tool/README.md) for examples, location selection,
+and the distinction between Walmart's item and product IDs.
+
 ### Home Depot
 
 ```json
@@ -863,6 +884,8 @@ reuse the correct item or place instead of guessing:
 
 - Amazon ASINs, links, images, prices, ratings, Prime, delivery, and stock;
 - eBay and Home Depot product IDs;
+- Walmart product and item IDs, seller, price, shipping, variants, and the
+  selected store and returned location;
 - Maps, Yelp, and Tripadvisor place IDs;
 - OpenTable restaurant IDs, pagination, rating summaries, and bounded review excerpts;
 - Google Trends summaries, regional values, recent timeline points, and

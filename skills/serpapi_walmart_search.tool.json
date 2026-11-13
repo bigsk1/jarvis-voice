@@ -1,0 +1,119 @@
+{
+  "enabled": true,
+  "name": "serpapi_walmart_search",
+  "description": "Search Walmart products with pictures, prices/currency, ratings, review counts, seller, product_id and numeric us_item_id. Use for 'find coffee makers at Walmart', 'show Walmart groceries', 'Walmart vacuums under $100' or price-sorted comparisons. Local prices use store_id or configured Walmart store/ZIP when resolvable; check location_context and the returned location before claiming nearby stock. Returns product cards in Jarvis Web. For details or reviews of an already selected product use serpapi_walmart_product with its saved product_id and store_id instead of repeating the search. One cached SerpApi search request; no purchases. Returned filter catalogs carry exact provider facet IDs for follow-ups; reuse those values, never invent IDs from brand labels. If no matching filter option is returned, refine keywords instead and describe that as a keyword search.",
+  "script": "serpapi_walmart_search.py",
+  "proxy_policy": "off",
+  "prompt_guard_policy": "web_content",
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true,
+    "allow": [
+      "JARVIS_DEFAULT_POSTAL_CODE",
+      "JARVIS_WALMART_STORE_ID"
+    ]
+  },
+  "complementary_tools": [
+    "serpapi_walmart_product",
+    "canvas",
+    "stash"
+  ],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Walmart product keywords, e.g. coffee maker, cordless vacuum, groceries. Required unless cat_id supplied."
+      },
+      "cat_id": {
+        "type": "string",
+        "description": "US category ID from prior filters, optionally instead of query."
+      },
+      "num_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "description": "Number of product cards to return; default 5, clamped 1..10."
+      },
+      "sort_by": {
+        "type": "string",
+        "enum": [
+          "price_low",
+          "price_high",
+          "best_seller",
+          "best_match",
+          "rating_high",
+          "new"
+        ],
+        "description": "Requested sort; price/rating sorting disables relevance blending unless soft_sort explicitly true."
+      },
+      "min_price": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Minimum product price."
+      },
+      "max_price": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Maximum product price."
+      },
+      "page": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "description": "Results page; default 1. Use for additional products."
+      },
+      "facet": {
+        "type": "string",
+        "description": "Exact facet value from a returned filters option with param=facet; combine exact tokens with ||. Do not invent IDs from human-readable brand/attribute labels. Category options use cat_id, not facet. If no matching catalog option is returned, refine query keywords instead."
+      },
+      "soft_sort": {
+        "type": "boolean",
+        "description": "US relevance blending. False by default when sort_by supplied to honor price/rating order."
+      },
+      "next_day": {
+        "type": "boolean",
+        "description": "US NextDay delivery products only; default false."
+      },
+      "spelling": {
+        "type": "boolean",
+        "description": "Allow Walmart spelling fixes; provider default true."
+      },
+      "walmart_domain": {
+        "type": "string",
+        "enum": [
+          "walmart.com",
+          "walmart.com.mx"
+        ],
+        "description": "Storefront; default US walmart.com. Mexico requires explicit store_id for local results and supports fewer filters. Product detail tool supports US only."
+      },
+      "store_id": {
+        "type": "string",
+        "description": "Explicit Walmart store ID for local prices/availability; overrides all location defaults."
+      },
+      "postal_code": {
+        "type": "string",
+        "description": "Optional US ZIP override; otherwise uses configured Walmart store or JARVIS_DEFAULT_POSTAL_CODE. Exact ZIP-to-store lookup only; unmatched ZIP is explicitly reported, never treated as local availability."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "Bypass SerpApi cache. Default false; exact cached responses are free."
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  }
+}

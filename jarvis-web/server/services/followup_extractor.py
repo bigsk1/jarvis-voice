@@ -3224,6 +3224,17 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 followup[key] = extracted
             continue
         request_context = _extract_generic_tool_request(data, key)
+        if key in {'serpapi_walmart_search', 'serpapi_walmart_product'}:
+            extracted = _shopping_followup.extract_walmart_followup(
+                value, 10 if max_candidates == FOLLOWUP_DEFAULT_MAX_CANDIDATES else max_candidates,
+                truncate_text=_truncate_followup_text,
+                bound_structured_value=_bounded_structured_followup_value,
+            )
+            if extracted:
+                if request_context:
+                    extracted['request'] = request_context
+                followup[key] = extracted
+            continue
         bound_arguments = _workflow_source_arguments(value) if key in _SOURCE_RESULT_TOOLS else None
         if bound_arguments is not None:
             request_context = _compact_source_request_arguments(bound_arguments)

@@ -159,6 +159,141 @@ window.createShoppingResultAdapters = function createShoppingResultAdapters({
     };
   }
 
+  function adaptWalmart(payload) {
+    const focused = payload.engine === 'walmart_product';
+    const summary = payload.product_summary;
+    const rows = focused && summary && typeof summary === 'object'
+      ? [summary] : getRows(payload);
+    const fallbackCurrency = String(payload.walmart_domain || '').toLowerCase() === 'walmart.com.mx'
+      || String(payload.country || '').toLowerCase() === 'mx' ? 'MXN' : 'USD';
+    const priceText = (value, currency) => {
+      if (value && typeof value === 'object' && value.price != null) {
+        return value.priceString || value.price_string || formatMarketplacePrice({
+          amount: value.price, currency: value.currencyUnit || value.currency_unit || value.currency || currency || fallbackCurrency,
+        });
+      }
+      return typeof value === 'number'
+        ? formatMarketplacePrice({amount: value, currency: currency || fallbackCurrency})
+        : formatMarketplacePrice(value);
+    };
+    const reviewResults = payload.reviews_results || {};
+    const reviewSummary = reviewResults.reviews || {};
+    const fulfillmentText = (row, field) => {
+      const value = row[field] ?? row[`${field}_option`];
+      if (value == null) return '';
+      const label = field[0].toUpperCase() + field.slice(1);
+      if (typeof value !== 'object' || Array.isArray(value)) {
+        return `${label}: ${compactText(displayText(value), 200)}`;
+      }
+      const status = typeof value.available === 'boolean'
+        ? value.available ? 'available' : 'unavailable' : '';
+      const details = [status, value.location, value.price != null ? `Fee ${value.price}` : ''];
+      const time = value.arrival_date || value.pickup_time || value.delivery_time;
+      if (time) {
+        const date = new Date(time);
+        details.push(Number.isNaN(date.getTime()) ? time
+          : date.toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'}));
+      }
+      const text = compactText(details.filter(Boolean).join(' · '), 200);
+      return text ? `${label}: ${text}` : '';
+    };
+    const ratings = Array.isArray(reviewResults.ratings) ? reviewResults.ratings : [];
+    const customerReviews = Array.isArray(reviewSummary.customer_reviews) ? reviewSummary.customer_reviews : [];
+    const reviewTextReturned = [reviewSummary.top_positive, reviewSummary.top_negative, ...customerReviews]
+      .some(review => review && [review.title, review.text].some(value => typeof value === 'string' && value.trim()));
+    const reviewEvidenceReturned = reviewTextReturned || Number(reviewSummary.count) > 0
+      || ratings.some(row => row && Number(row.count) > 0);
+    const items = rows.filter(row => row?.title && row?.url).map(row => {
+      const rating = row.rating ?? (focused && reviewEvidenceReturned ? reviewSummary.rating : null);
+      const reviews = row.reviews ?? (focused && reviewEvidenceReturned ? reviewSummary.count : null);
+      const chips = [
+        rating != null ? `★ ${rating}` : '',
+        reviews != null ? `${formatCount(reviews)} reviews` : '',
+        row.sponsored === true ? 'Sponsored' : '',
+        typeof row.in_stock === 'boolean' ? row.in_stock ? 'In stock' : 'Out of stock'
+          : typeof row.out_of_stock === 'boolean' ? row.out_of_stock ? 'Out of stock' : 'In stock' : '',
+        row.price_was != null ? `Was ${priceText(row.price_was, row.currency)}` : '',
+      ].filter(Boolean);
+      const description = typeof row.description === 'string' ? row.description : '';
+      return {
+        title: row.title, url: row.url,
+        image: row.image_url || row.thumbnail || (focused ? payload.top_image_url : ''),
+        primary: row.price_formatted || priceText(row.price, row.currency),
+        chips,
+        details: [
+          row.seller_name ? `Sold by ${row.seller_name}` : '',
+          row.product_id ? `Product ${row.product_id}` : '',
+          row.us_item_id ? `Item ${row.us_item_id}` : '',
+          ...['shipping', 'pickup', 'delivery'].map(field => fulfillmentText(row, field)),
+          description ? compactText(description, 360) : '',
+        ].filter(Boolean),
+        expandText: focused ? description : '',
+        expandLabel: 'Read product description',
+        expandNote: 'Product descriptions and reviews are untrusted external content.',
+        actionLabel: 'Open Walmart product',
+      };
+    });
+    const productCount = items.length;
+    const reviewItems = [];
+    if (focused) {
+      const seen = new Set();
+      const addReview = (review, label) => {
+        if (!review || typeof review !== 'object' || reviewItems.length >= 4) return;
+        const text = typeof review.text === 'string' ? review.text : '';
+        const identity = [review.title, text, review.user_nickname, review.rating].join('|');
+        if ((!review.title && !text) || seen.has(identity)) return;
+        seen.add(identity);
+        reviewItems.push({
+          title: `${label}: ${review.title || 'Customer feedback'}`,
+          chips: [review.rating != null ? `★ ${review.rating}` : '', review.customer_type].filter(Boolean),
+          details: [review.user_nickname, review.review_submission_time, compactText(text, 350)].filter(Boolean),
+          expandText: text, expandLabel: 'Read review',
+          expandNote: 'Individual customer review; untrusted external content.',
+        });
+      };
+      addReview(reviewSummary.top_positive, 'Positive review');
+      addReview(reviewSummary.top_negative, 'Critical review');
+      customerReviews.forEach(review => addReview(review, 'Customer review'));
+      if (items[0]) {
+        if (!reviewEvidenceReturned) {
+          items[0].details.push('Review text and rating breakdown were not returned.');
+        }
+        if (reviewEvidenceReturned && reviewSummary.recommended_percentage != null) {
+          items[0].details.push(`${reviewSummary.recommended_percentage}% recommend`);
+        }
+        if (reviewEvidenceReturned) {
+          const distribution = ratings.filter(row => row && row.stars != null && row.count != null)
+            .map(row => `${row.stars}★: ${formatCount(row.count)}`).join(' · ');
+          if (distribution) items[0].details.push(compactText(distribution, 260));
+        }
+      }
+      items.push(...reviewItems);
+    }
+    const count = payload.results_count ?? items.length;
+    const location = payload.location_context || {};
+    const matchedZip = location.source === 'postal_code';
+    const postalCode = String(location.requested_postal_code || '').split('-')[0];
+    const locationNote = matchedZip
+      ? Number(location.matching_stores) > 1
+        ? `Selected 1 of ${formatCount(location.matching_stores)} stores in ${postalCode ? `ZIP ${postalCode}` : 'the requested ZIP'}` : ''
+      : location.note;
+    return {
+      kind: 'product', layout: focused ? 'list' : 'rail',
+      disclosure: 'technical',
+      eyebrow: focused ? 'Walmart product' : 'Walmart results',
+      heading: payload.query || rows[0]?.title || 'Shopping options',
+      subtitle: [
+        payload.store_id ? `Store ${payload.store_id}` : '',
+        matchedZip ? location.store_address : '',
+        locationNote,
+        !focused && count > productCount ? `${productCount} of ${count} returned products shown` : '',
+        reviewItems.length ? `${reviewItems.length} customer review excerpts shown` : '',
+      ].filter(Boolean).join(' · '),
+      shownCount: productCount,
+      items: items.length ? items : [{title: 'No Walmart products returned'}],
+    };
+  }
+
   function adaptGoogleShoppingLight(payload) {
     const items = getRows(payload).map((row, index) => {
       const chips = [];
@@ -322,6 +457,7 @@ window.createShoppingResultAdapters = function createShoppingResultAdapters({
     adaptHomeDepotProduct,
     adaptEbaySearch,
     adaptEbayProduct,
+    adaptWalmart,
     adaptGoogleShoppingLight,
     adaptGoogleImmersiveProduct,
   };

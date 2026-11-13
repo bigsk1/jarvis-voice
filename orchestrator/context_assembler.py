@@ -14,9 +14,17 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
+
+try:
+    from serpapi_walmart_context import WALMART_TOOLS, project_walmart_data
+except ModuleNotFoundError as exc:
+    if exc.name != "serpapi_walmart_context":
+        raise
+    from lib.serpapi_walmart_context import WALMART_TOOLS, project_walmart_data
 
 try:
     from tool_failure_policy import EMPTY_SEARCH_RECOVERY_HINT, is_recoverable_empty_search
@@ -125,6 +133,50 @@ class ContextAssembler:
         "without another search. Use returned offsets for another local page. "
         "A new search is only for new or refreshed Google results."
     )
+
+    @staticmethod
+    def _walmart_followup_hint(current_query: str, history: list) -> str:
+        """Keep saved Walmart source tools available for referential shopping follow-ups."""
+        query = current_query.lower().strip()
+        if (not query or len(query) > 800 or "selected tool hints:" in query
+                or re.search(r"\b(amazon|ebay|home depot|target)\b", query)
+                or not re.search(r"\b(returned|previous|last|same|those|these|that|this|first|second|third|fourth|fifth)\b", query)
+                or not re.search(r"\b(filters?|products?|items?|results?|ratings?|stars?|prices?|details?|reviews?|variants?|ones?)\b", query)):
+            return ""
+        shopping_tools = WALMART_TOOLS | {
+            "serpapi_home_depot", "serpapi_ebay_search", "serpapi_ebay_product",
+            "serpapi_amazon_search", "serpapi_google_shopping_light",
+            "serpapi_google_immersive_product",
+        }
+        for message in reversed(history):
+            results = message.get("tool_results")
+            if message.get("role") != "assistant" or not isinstance(results, dict):
+                continue
+            for tool, value in reversed(list(results.items())):
+                if tool not in shopping_tools:
+                    continue
+                runs = value if isinstance(value, list) else [value]
+                if (isinstance(value, dict) and isinstance(value.get("runs_count"), int)
+                        and isinstance(value.get("results"), list)):
+                    runs = value["results"]
+                for run in reversed(runs):
+                    if not isinstance(run, dict) or run.get("ok") is False or run.get("error"):
+                        continue
+                    data = run.get("data") if isinstance(run.get("data"), dict) else run
+                    if data.get("error") or not any(
+                        isinstance(data.get(key), (list, dict)) and data[key]
+                        for key in ("candidates", "filters", "product_summary", "results", "top_results")
+                    ):
+                        continue
+                    if tool not in WALMART_TOOLS:
+                        return ""
+                    # Schema availability only: saved evidence may already answer the request.
+                    return (
+                        "Selected tool hints: serpapi_walmart_search, serpapi_walmart_product. "
+                        "Reuse saved Walmart evidence when sufficient; for refinements preserve "
+                        "the saved query, location, and returned filter values."
+                    )
+        return ""
 
     @staticmethod
     def has_external_results(tool_results: dict) -> bool:
@@ -342,6 +394,12 @@ class ContextAssembler:
                 )
                 extracted_parts.append((f"\n=== {tool_name} ===", [_followup_json(projected)]))
                 continue
+            if tool_name in WALMART_TOOLS:
+                budget = max(512, min(9000, tool_budget) // max(1, len(items)))
+                extracted_parts.append((f"\n=== {tool_name} ===", [
+                    _followup_json(project_walmart_data(item, max_chars=budget)) for item in items
+                ]))
+                continue
             if tool_name == "send_webhook":
                 from webhook_context import project_webhook_runs
 
@@ -473,6 +531,9 @@ class ContextAssembler:
                and google_runs_budget(message["tool_results"].get("serpapi_google_search"))
                for message in recent):
             context_lines.append(self._GOOGLE_RESULT_HINT)
+        walmart_hint = self._walmart_followup_hint(current_query, recent)
+        if walmart_hint:
+            context_lines.append(walmart_hint)
         if any(
             isinstance(message.get("tool_results"), dict)
             and any(
@@ -1051,6 +1112,18 @@ class ContextAssembler:
             if len(rendered) <= available:
                 return finish(rendered, truncated=truncated)
 
+        if tool_name in WALMART_TOOLS:
+            envelope = {"ok": result.get("ok", True)}
+            if result.get("error"):
+                envelope["error"] = self.truncate_preview_text(result["error"], 200)
+            overhead = len(json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))) + 100
+            data = project_walmart_data(result.get("data"), max_chars=max(256, available - overhead))
+            truncated = bool(data.get("context_truncated"))
+            rendered = json.dumps({"result": {**envelope, "data": data}, "result_truncated": truncated},
+                                  ensure_ascii=False, separators=(",", ":"))
+            if len(rendered) <= available:
+                return finish(rendered, truncated=truncated)
+
         try:
             parsed_summary = json.loads(result_summary)
             rendered = json.dumps(
@@ -1234,6 +1307,8 @@ class ContextAssembler:
             return 6000  # A bounded shortlist with complete article URLs and digest handles.
         if lowered == "serpapi_extract":
             return 10000  # Retain article evidence with complete source and feed URLs.
+        if lowered in WALMART_TOOLS:
+            return 10000  # Up to ten shopping identities or one product with review evidence.
         if lowered == "source_library":
             return 16000  # Several exact passages plus source citations.
         if lowered == "project_nomad":
@@ -1379,6 +1454,8 @@ class ContextAssembler:
             "tmdb_movies",
             "tmdb_tv_shows",
             "serpapi_travel_explore",
+            "serpapi_walmart_search",
+            "serpapi_walmart_product",
         }:
             # These tools already return a bounded results list; prefer it over
             # the five-row UI-oriented top_results slice for LLM follow-ups.
@@ -1503,6 +1580,15 @@ class ContextAssembler:
                     depth=0,
                     max_depth=1,
                 )
+
+            if normalized_tool_name in WALMART_TOOLS:
+                for key in ("position", "us_item_id", "reviews", "currency", "price_formatted", "seller_name",
+                            "in_stock", "out_of_stock", "sponsored"):
+                    if key in item and item[key] is not None:
+                        candidate[key] = self.build_preview_value(item[key], parent_key=key, max_depth=1)
+                for key in ("store_id", "country", "walmart_domain", "location_context"):
+                    if key in data:
+                        candidate[key] = data[key]
 
             if is_hotel_search:
                 for key in ("price_total", "price_per_night"):
@@ -3720,6 +3806,15 @@ class ContextAssembler:
         full_serialized = json.dumps(result, indent=2, default=str)
         result_chars_total = len(full_serialized)
         max_chars = self.tool_context_max_chars(tool_name)
+
+        if tool_name in WALMART_TOOLS:
+            envelope = {"ok": result.get("ok", True)}
+            if result.get("error"):
+                envelope["error"] = self.truncate_preview_text(result["error"], 300)
+            overhead = len(json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))) + 20
+            data = project_walmart_data(result.get("data"), max_chars=max_chars - overhead)
+            serialized = json.dumps({**envelope, "data": data}, ensure_ascii=False, separators=(",", ":"))
+            return serialized, result_chars_total, len(serialized), bool(data.get("context_truncated"))
 
         if tool_name == "rss_feed":
             data = project_rss_feed_data(result, max_chars=min(6000, max_chars - 80), include_content=True)

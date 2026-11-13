@@ -1656,6 +1656,8 @@ class JarvisApp {
       serpapi_home_depot: '🛒',
       serpapi_ebay_search: '🛒',
       serpapi_ebay_product: '🛒',
+      serpapi_walmart_search: '🛒',
+      serpapi_walmart_product: '🛒',
       brave_llm_context: '🦁',
       crawl_url: '🕷️',
       bookmark_search: '🔖',

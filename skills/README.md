@@ -540,6 +540,8 @@ one source is not evidence that a recipient is unavailable in another.
 | `serpapi_google_sports` | Google Sports schedules, scores, direct-game line or period scores, box scores, viewing options, recap links, standings, players, brackets, league stats, and rankings with optional query-to-KGMID resolution |
 | `serpapi_ebay_search` | eBay listing discovery with prices, condition, shipping, images, and product IDs |
 | `serpapi_ebay_product` | Focused eBay listing details by numeric product ID |
+| [`serpapi_walmart_search`](../docs/tools/walmart-tool/README.md) | US or Mexico Walmart discovery with prices, sellers, shipping, variants and store context |
+| [`serpapi_walmart_product`](../docs/tools/walmart-tool/README.md) | Focused US Walmart details, specifications, offers, variants, reviews and images |
 | `serpapi_home_depot` | SerpApi Home Depot product search with store/ZIP filters |
 | `serpapi_google_events` | Upcoming local or virtual Google Events using an explicit or active-mode default location, with dates, venues, ticket links, public maps, images, and date filters |
 | `serpapi_google_local` | Google Local business discovery using explicit or mode-default location, with ratings, hours, service options, sponsored listings, related searches, and pagination |

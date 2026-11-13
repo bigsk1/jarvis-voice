@@ -879,6 +879,22 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_walmart_search": _case({
+        "engine": "walmart", "query": "coffee", "country": "us", "store_id": "1234",
+        "walmart_domain": "walmart.com", "results_count": 1,
+        "results": [{"title": "Coffee", "url": "https://www.walmart.com/ip/123456",
+                     "product_id": "4ABC", "us_item_id": "123456", "price": 9.99,
+                     "rating": 4.5, "reviews": 42, "thumbnail": "https://images.example/coffee.jpg"}],
+    }),
+    "serpapi_walmart_product": _case({
+        "engine": "walmart_product", "product_id": "4ABC", "country": "us", "store_id": "1234",
+        "results_count": 1,
+        "results": [{"title": "Coffee", "url": "https://www.walmart.com/ip/123456",
+                     "product_id": "4ABC", "us_item_id": "123456", "price": 9.99}],
+        "product_summary": {"product_id": "4ABC", "description": "A useful description."},
+        "reviews_results": {"reviews": {"rating": 4.5, "count": 42,
+                                           "top_positive": {"title": "Good coffee", "text": "Fresh and flavorful.", "rating": 5}}},
+    }),
     "serpapi_home_depot": _case(
         {
             "engine": "home_depot",

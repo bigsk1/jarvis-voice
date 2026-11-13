@@ -39,6 +39,8 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_travel_explore": ("google_travel_explore",),
     "serpapi_search_index": ("search_index",),
     "serpapi_tripadvisor": ("tripadvisor",),
+    "serpapi_walmart_search": ("walmart",),
+    "serpapi_walmart_product": ("walmart_product",),
     "serpapi_youtube_search": ("youtube",),
 }
 
@@ -74,6 +76,8 @@ SERPAPI_ENGINE_LABELS = {
     "tripadvisor": "Tripadvisor Search",
     "tripadvisor_place": "Tripadvisor Place",
     "tripadvisor_reviews": "Tripadvisor Reviews",
+    "walmart": "Walmart Search",
+    "walmart_product": "Walmart Product",
     "yelp": "Yelp Search",
     "yelp_reviews": "Yelp Reviews",
     "youtube": "YouTube Search",
@@ -140,6 +144,8 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
     ),
     "tripadvisor_place": ("tripadvisor place api", "tripadvisor place"),
     "tripadvisor_reviews": ("tripadvisor reviews api", "tripadvisor reviews"),
+    "walmart": ("walmart search api", "walmart search", "walmart api"),
+    "walmart_product": ("walmart product api", "walmart product"),
     "yelp": ("yelp search api", "yelp search", "yelp api"),
     "yelp_reviews": ("yelp reviews api", "yelp reviews"),
     "youtube": ("youtube search api", "youtube search", "youtube api"),
