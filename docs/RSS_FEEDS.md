@@ -68,11 +68,15 @@ docker compose up -d --build
 ```
 
 The workflow needs `rss_feed`, `canvas`, and a configured LLM. Article enrichment
-uses the existing optional `crawl_url` tool and its `CRAWL4AI_URL` /
-`CRAWL4AI_API_KEY` settings. Without Crawl4AI, the digest can use feed content
-and clearly labeled feed-description notes. It must not claim to have read an
-article from its headline alone. Normal tool-profile and request restrictions
-still apply.
+uses the existing optional `tavily_extract` tool and `TAVILY_API_KEY` in the
+selected mode. It requests plain article text with basic extraction, no focused
+query, and a 12,000-character cap. Complete inline feed bodies need no extra
+article request. If Tavily is unavailable or extraction fails, the digest can
+use feed content and clearly labeled feed-description notes. Reader and
+prompt-budget truncation remain explicit; it must not claim a complete article
+was read from its headline or an excerpt. Prompt Guard still scans reader
+results, and a rejection stops the workflow before publication. Normal
+tool-profile and request restrictions still apply.
 
 After installing a new tool, follow the normal [tool discovery and sync
 instructions](../skills/README.md#tool-discovery) for each mode you use. Editing

@@ -96,7 +96,8 @@ before orchestration; downstream actions still require your permitted tools. See
 `rss_feed` reads public RSS/Atom URLs without API credentials. Optional private
 profiles in `config/rss_feeds.yaml` define feeds, interests, exclusions and
 bounded story counts for `/rss_digest daily_tech`. The workflow shortlists IDs,
-optionally reads selected articles with `crawl_url`, refreshes one Canvas page,
+optionally reads selected incomplete articles with `tavily_extract` in plain-text
+format, refreshes one Canvas page,
 and records only confirmed published links. No schedule is installed automatically.
 See [RSS setup, publication state and limits](../docs/RSS_FEEDS.md).
 

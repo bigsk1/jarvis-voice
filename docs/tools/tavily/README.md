@@ -38,9 +38,13 @@ Use Tavily to extract the page at https://example.com/article.
 answer or raw page bodies. Advanced search costs more credits. An optional
 `time_range` uses strict published-date filtering, which can omit undated
 sources. `tavily_extract` defaults to basic extraction and caps the returned
-markdown at 12,000 characters. A `query` asks Tavily for relevant chunks; a
-`max_chars` override can raise the cap to 20,000. Both tools mark external text
-as untrusted. Search and extraction can consume Tavily credits.
+content at 12,000 characters. `format: "markdown"` is the default; use
+`format: "text"` for plain article text. The RSS digest uses text without a
+query so extraction is not narrowed to relevance-ranked chunks. A `query`
+asks Tavily for relevant chunks; a `max_chars` override can raise the cap to
+20,000. The article body appears once in `data.content`; the speech field is
+a short status message. Both tools mark external text as untrusted. Search
+and extraction can consume Tavily credits.
 
 These tools cover search and extraction only. Tavily Crawl, Map, and Research
 are separate API operations and are not enabled by this integration.

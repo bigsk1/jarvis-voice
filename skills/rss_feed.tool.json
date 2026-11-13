@@ -5,7 +5,7 @@
   "script": "rss_feed.py",
   "proxy_policy": "prefer",
   "complementary_tools": [
-    "crawl_url",
+    "tavily_extract",
     "canvas",
     "schedule_task"
   ],

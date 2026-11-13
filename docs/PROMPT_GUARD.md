@@ -145,6 +145,9 @@ policy lookup. Set it explicitly to `false` to disable the server.
 Restart processes that execute tools after changing manifest or MCP assignments
 so their registered schemas use the same bindings. Threshold edits in the
 Prompt Guard policy JSON continue to reload on each check.
+Tavily Extract is included in the default `tools` selection and uses the
+mode's global threshold unless an exact rule overrides it. Existing custom
+policy files should include `tavily_extract` when screening article reads.
 Google Search starts with `web_content`; Stash and `text_summarizer` use
 `document_text`. Both named thresholds start at `0.8`. A tool without a named
 policy is screened only when listed in `tools`, then uses the global threshold

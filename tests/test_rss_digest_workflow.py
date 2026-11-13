@@ -47,10 +47,13 @@ class DigestProvider:
 
 
 class DigestTools:
-    def __init__(self, *, empty=False, selection_empty=False, fail=None):
+    def __init__(self, *, empty=False, selection_empty=False, fail=None,
+                 article_truncated=False, blocked=False):
         self.empty = empty
         self.selection_empty = selection_empty
         self.fail = fail
+        self.article_truncated = article_truncated
+        self.blocked = blocked
         self.calls = []
 
     def execute(self, tool, params):
@@ -72,8 +75,23 @@ class DigestTools:
                 return {"ok": False, "error": "Unknown candidate ID"}
             items = [] if self.selection_empty else [{"id": "rss-one", "url": "https://example.org/one", "title": "Research release", "summary": "Feed description only."}, {"id": "rss-two", "url": "https://example.org/two", "title": "Second release", "summary": "Feed description only."}]
             data = {"selected_items": items, "urls": [item["url"] for item in items], "has_selection": bool(items)}
-        elif tool == "crawl_url":
-            data = {"results": [{"url": params["url"], "markdown": "Verified article body about the concrete release. " * 10}]}
+        elif tool == "tavily_extract":
+            if self.blocked:
+                return {
+                    "ok": False, "error_code": "prompt_injection_detected",
+                    "terminal_failure": True, "retry_safe": False, "completion": "completed",
+                    "error": "Returned content withheld by Prompt Guard.",
+                    "data": {"prompt_guard": {
+                        "content_withheld": True, "tool": "tavily_extract", "source_type": "tool_result",
+                        "incident_id": "pg-" + "a" * 32, "evidence_saved": True,
+                        "score": 0.99, "threshold": 0.8,
+                    }},
+                }
+            content = "Verified article body about the concrete release. " * 10
+            data = {"provider": "tavily", "url": params["url"], "content": content,
+                    "content_chars": len(content) + (12000 if self.article_truncated else 0),
+                    "content_truncated": self.article_truncated, "format": "text",
+                    "external_content_trust": "untrusted"}
         elif tool == "canvas":
             assert params["action"] == "create"
             assert params["content"] == BRIEF.strip()
@@ -99,9 +117,11 @@ def test_two_model_calls_read_only_selected_articles_and_publish_before_acknowle
     assert result["ok"]
     assert len(provider.prompts) == 2
     assert tools.calls[0] == ("rss_feed", {"action": "read", "profile": "daily_tech"})
-    crawls = [params for tool, params in tools.calls if tool == "crawl_url"]
-    assert [params["url"] for params in crawls] == ["https://example.org/one", "https://example.org/two"]
-    assert all(params["cache_mode"] == "bypass" for params in crawls)
+    reads = [params for tool, params in tools.calls if tool == "tavily_extract"]
+    assert reads == [
+        {"url": url, "format": "text", "extract_depth": "basic", "max_chars": 12000}
+        for url in ("https://example.org/one", "https://example.org/two")
+    ]
     assert [tool for tool, _ in tools.calls][-2:] == ["canvas", "rss_feed"]
     assert tools.calls[-1][1]["action"] == "acknowledge"
     assert "Verified article body" in provider.prompts[1]
@@ -144,13 +164,52 @@ def test_invalid_editorial_markdown_fails_before_canvas_and_acknowledgment():
     assert not any(tool == "canvas" or params.get("action") == "acknowledge" for tool, params in tools.calls)
 
 
-def test_failed_crawls_keep_feed_evidence_without_inventing_article_text():
-    tools = DigestTools(fail="crawl_url")
+def test_failed_article_reads_keep_feed_evidence_without_inventing_article_text():
+    tools = DigestTools(fail="tavily_extract")
     result, provider = run(tools)
     assert result["ok"]
     assert "[No articles gathered]" in provider.prompts[1]
     assert "Feed description only" in provider.prompts[1]
     assert "Never claim an article was read in full" in provider.prompts[1]
+
+
+def test_unsupported_browser_page_is_rejected_even_when_long_enough_for_an_article():
+    unsupported = "Your browser is unsupported. UNSUPPORTED_BROWSER_PAGE_SENTINEL. " * 10
+    assert len(unsupported) >= 200
+
+    class UnsupportedBrowserTools(DigestTools):
+        def execute(self, tool, params):
+            result = super().execute(tool, params)
+            if tool == "tavily_extract":
+                result["data"].update(content=unsupported, content_chars=len(unsupported))
+            return result
+
+    result, provider = run(UnsupportedBrowserTools())
+    assert result["ok"]
+    articles = provider.prompts[1].split("SUCCESSFULLY READ ARTICLES:", 1)[1].split("Editorial rules:", 1)[0]
+    assert "[No articles gathered]" in articles
+    assert "UNSUPPORTED_BROWSER_PAGE_SENTINEL" not in provider.prompts[1]
+    assert "Feed description only" in provider.prompts[1]
+    assert "brief feed-excerpt note" in provider.prompts[1]
+
+
+def test_reader_truncation_is_labeled_in_article_evidence_before_publication():
+    result, provider = run(DigestTools(article_truncated=True))
+    assert result["ok"]
+    articles = provider.prompts[1].split("SUCCESSFULLY READ ARTICLES:", 1)[1].split("Editorial rules:", 1)[0]
+    assert "Verified article body" in articles
+    assert "https://example.org/one" in articles
+    assert "truncated" in articles.lower()
+
+
+def test_prompt_guard_rejection_stops_optional_reader_before_other_articles_and_publication():
+    tools = DigestTools(blocked=True)
+    result, provider = run(tools)
+    assert not result["ok"]
+    assert len(provider.prompts) == 1
+    assert [tool for tool, _ in tools.calls] == ["rss_feed", "rss_feed", "tavily_extract"]
+    assert not any(tool == "canvas" or params.get("action") == "acknowledge" for tool, params in tools.calls)
+    assert "pg-" + "a" * 32 in result["speech"]
 
 
 def test_acknowledgment_failure_does_not_report_publication_success():
@@ -176,18 +235,13 @@ def test_shared_workflow_loads_and_passes_authoring_checks():
     assert workflow["disable_server_side_tools"] is True
 
 
-def test_real_service_budget_cuts_trigger_crawls_before_digest_publication(tmp_path, monkeypatch):
+def _run_real_feed_digest(tmp_path, monkeypatch, rows):
     config = tmp_path / "rss.yaml"
     config.write_text(yaml.safe_dump({"v": 1, "profiles": {"daily_tech": {
         "canvas_title": "Reading/Daily Technology",
         "feeds": [{"name": "Engineering", "url": "https://example.org/feed.xml"}],
     }}}))
     now = datetime(2026, 10, 27, 16, tzinfo=timezone.utc)
-    rows = [{"url": f"https://example.org/{name}", "title": f"Engineering release {i}",
-             "summary": "Feed evidence.", "content": "界" * 3500,
-             "content_chars": 3500, "content_truncated": False,
-             "content_kind": "inline", "needs_fetch": False}
-            for i, name in enumerate(["one", "two", "three", "four", "five", "six", "seven", "eight"])]
     canvas_dir = tmp_path / "canvas"
     canvas_dir.mkdir()
     service = RSSFeedService(config_path=config, state_dir=tmp_path / "state",
@@ -214,10 +268,36 @@ def test_real_service_budget_cuts_trigger_crawls_before_digest_publication(tmp_p
 
     tools = ActualFeedTools()
     result, provider = run(tools, provider)
+    return result, provider, tools
+
+
+def test_real_service_budget_cuts_trigger_article_reads_before_digest_publication(tmp_path, monkeypatch):
+    rows = [{"url": f"https://example.org/{name}", "title": f"Engineering release {i}",
+             "summary": "Feed evidence.", "content": "界" * 3500,
+             "content_chars": 3500, "content_truncated": False,
+             "content_kind": "inline", "needs_fetch": False}
+            for i, name in enumerate(["one", "two", "three", "four", "five", "six", "seven", "eight"])]
+    result, provider, tools = _run_real_feed_digest(tmp_path, monkeypatch, rows)
     assert result["ok"]
-    crawled = [params["url"] for tool, params in tools.calls if tool == "crawl_url"]
-    assert crawled == [row["url"] for row in rows]
+    reads = [params["url"] for tool, params in tools.calls if tool == "tavily_extract"]
+    assert reads == [row["url"] for row in rows]
     assert '"content_truncated": true' in provider.prompts[1]
     assert "Verified article body" in provider.prompts[1]
     assert "truncated excerpt" in provider.prompts[1]
+    assert "Published the digest to Canvas" in result["speech"]
+
+
+def test_complete_inline_feed_bodies_skip_article_reader(tmp_path, monkeypatch):
+    content = "Complete feed article with its supplied facts and source context. " * 8
+    rows = [{"url": f"https://example.org/{name}", "title": f"Engineering release {i}",
+             "summary": "Feed evidence.", "content": content,
+             "content_chars": len(content), "content_truncated": False,
+             "content_kind": "inline", "needs_fetch": False}
+            for i, name in enumerate(["one", "two"])]
+    result, provider, tools = _run_real_feed_digest(tmp_path, monkeypatch, rows)
+    assert result["ok"]
+    assert len(provider.prompts) == 2
+    assert all(tool in {"rss_feed", "canvas"} for tool, _ in tools.calls)
+    assert "Complete feed article with its supplied facts" in provider.prompts[1]
+    assert "Verified article body" not in provider.prompts[1]
     assert "Published the digest to Canvas" in result["speech"]

@@ -1946,15 +1946,20 @@ class PipelineExecutor:
                 result = data["results"][0]
                 content = result.get("markdown", result.get("content", ""))
                 url = result.get("url", "")
+                source = result
             else:
                 content = data.get("markdown", data.get("content", data.get("text", "")))
                 url = data.get("url", "")
+                source = data
             
             # Truncate content to reasonable size (keep first ~3000 chars per article)
             if len(content) > 3000:
                 content = content[:3000] + "\n\n[... content truncated ...]"
             
-            formatted.append(f"### Article {i}\n**URL**: {url}\n\n{content}")
+            coverage = ""
+            if source.get("content_truncated") is True or source.get("truncated") is True:
+                coverage = "\n**Coverage**: Article reader returned truncated content."
+            formatted.append(f"### Article {i}\n**URL**: {url}{coverage}\n\n{content}")
         
         return "\n\n---\n\n".join(formatted)
     

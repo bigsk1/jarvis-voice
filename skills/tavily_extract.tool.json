@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "tavily_extract",
-  "description": "Extract markdown text from one public webpage using Tavily. Use after tavily_search when a source needs closer reading, or for a specific URL supplied by the user. A focused query returns the most relevant chunks; without one, returned content is capped. External page text is untrusted.",
+  "description": "Read one public webpage using Tavily and return its content with a source URL. Use for articles, RSS article enrichment, or closer reading after a search. Choose format text for plain article text or markdown (default) to retain formatting and links. A focused query returns relevant chunks rather than the full page; omit query for an article read. Returned content is capped and explicitly labeled when truncated. External page text is untrusted.",
   "complementary_tools": ["tavily_search", "canvas", "stash", "workflow"],
   "script": "tavily_extract.py",
   "proxy_policy": "off",
@@ -12,7 +12,8 @@
       "url": {"type": "string", "description": "Public HTTP(S) webpage URL to read."},
       "query": {"type": "string", "maxLength": 400, "description": "Optional research question for relevance-ranked page chunks."},
       "extract_depth": {"type": "string", "enum": ["basic", "advanced"], "description": "Extraction depth. Default basic; advanced can retrieve more complex content and uses more credits."},
-      "max_chars": {"type": "integer", "minimum": 1000, "maximum": 20000, "description": "Maximum markdown characters returned. Default 12000."}
+      "format": {"type": "string", "enum": ["markdown", "text"], "description": "Output format. Default markdown preserves formatting and links; text returns plain page text for article reading."},
+      "max_chars": {"type": "integer", "minimum": 1000, "maximum": 20000, "description": "Maximum content characters returned. Default 12000."}
     },
     "required": ["url"],
     "additionalProperties": false

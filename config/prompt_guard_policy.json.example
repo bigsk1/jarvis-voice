@@ -2,6 +2,7 @@
   "v": 2,
   "tools": [
     "crawl_url",
+    "tavily_extract",
     "brave_llm_context",
     "rss_feed",
     "browser_use",

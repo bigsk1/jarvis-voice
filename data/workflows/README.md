@@ -49,7 +49,8 @@ skipped through normal workflow availability rules.
 
 `/rss_digest daily_tech` reads the named private profile from
 `config/rss_feeds.yaml`, shortlists fresh candidate IDs with one model call,
-optionally crawls only selected articles, and writes a concise complete Canvas
+optionally reads selected incomplete articles with Tavily Extract in plain-text
+format, and writes a concise complete Canvas
 page with a second model call. The profile's exact Canvas title is reused on
 later runs. Acknowledgment follows verified publication; no-new results keep
 the existing page, and no recurring task is installed automatically. See

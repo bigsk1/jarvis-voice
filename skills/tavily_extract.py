@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-import json
 import ipaddress
+import json
 import os
 import sys
 from typing import Any
@@ -34,6 +34,9 @@ def extract(arguments: dict[str, Any]) -> dict[str, Any]:
     depth = str(arguments.get("extract_depth") or "basic").strip().lower()
     if depth not in {"basic", "advanced"}:
         raise ValueError("'extract_depth' must be basic or advanced.")
+    output_format = str(arguments.get("format", "markdown")).strip().lower()
+    if output_format not in {"markdown", "text"}:
+        raise ValueError("'format' must be markdown or text.")
     query = str(arguments.get("query") or "").strip()
     if len(query) > 400:
         raise ValueError("'query' must be at most 400 characters.")
@@ -44,7 +47,7 @@ def extract(arguments: dict[str, Any]) -> dict[str, Any]:
     body: dict[str, Any] = {
         "urls": url,
         "extract_depth": depth,
-        "format": "markdown",
+        "format": output_format,
         "include_usage": True,
     }
     if query:
@@ -67,6 +70,7 @@ def extract(arguments: dict[str, Any]) -> dict[str, Any]:
         "url": str(page.get("url") or url),
         "query": query or None,
         "extract_depth": depth,
+        "format": output_format,
         "content": excerpt,
         "content_chars": len(content),
         "content_truncated": truncated,
@@ -74,7 +78,7 @@ def extract(arguments: dict[str, Any]) -> dict[str, Any]:
         "usage": payload.get("usage"),
         "external_content_trust": "untrusted",
     }
-    speech = f"Tavily extracted {len(excerpt)} characters from {data['url']}.\n{excerpt}"
+    speech = f"Tavily extracted {len(excerpt)} characters from {data['url']}."
     if truncated:
         speech += "\n[Content truncated. Use a focused query or read the source for more.]"
     return tool_result(True, speech, data)

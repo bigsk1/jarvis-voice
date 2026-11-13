@@ -51,17 +51,20 @@ def test_search_uses_basic_request_and_preserves_cited_sources():
 
 
 def test_extract_caps_content_and_handles_per_url_failure():
+    content = "EXTERNAL_PAGE_BODY_SENTINEL " + "x" * 1400
     with patch("tavily_extract.request_tavily", return_value={
-        "results": [{"url": "https://example.org/page", "raw_content": "x" * 1400}],
+        "results": [{"url": "https://example.org/page", "raw_content": content}],
         "failed_results": [], "request_id": "request-2",
     }) as request:
         result = tavily_extract.extract({"url": "https://example.org/page", "max_chars": 1000})
     assert result["ok"] is True
-    assert result["data"]["content_chars"] == 1400
-    assert len(result["data"]["content"]) == 1000
+    assert result["data"]["content_chars"] == len(content)
+    assert result["data"]["content"] == content[:1000]
     assert result["data"]["content_truncated"] is True
+    assert "EXTERNAL_PAGE_BODY_SENTINEL" not in result["speech"]
     assert request.call_args.args[1]["urls"] == "https://example.org/page"
     assert request.call_args.args[1]["extract_depth"] == "basic"
+    assert request.call_args.args[1]["format"] == "markdown"
 
     with patch("tavily_extract.request_tavily", return_value={
         "results": [], "failed_results": [{"url": "https://example.org/page", "error": "blocked"}],
@@ -69,6 +72,74 @@ def test_extract_caps_content_and_handles_per_url_failure():
         failed = tavily_extract.extract({"url": "https://example.org/page"})
     assert failed["ok"] is False
     assert "could not be extracted" in failed["error"]
+
+
+def test_extract_text_format_preserves_article_body_without_duplicating_it_in_speech():
+    content = "EXTERNAL_PAGE_BODY_SENTINEL\nUseful article facts and https://example.org/source."
+    with patch("tavily_extract.request_tavily", return_value={
+        "results": [{"url": "https://example.org/page", "raw_content": content}],
+        "request_id": "request-text", "usage": {"credits": 1},
+    }) as request:
+        result = tavily_extract.extract({"url": "https://example.org/page", "format": "text"})
+    assert result["ok"] is True
+    assert result["data"]["content"] == content
+    assert result["data"]["content_chars"] == len(content)
+    assert result["data"]["content_truncated"] is False
+    assert result["data"]["url"] == "https://example.org/page"
+    assert result["data"]["external_content_trust"] == "untrusted"
+    assert "EXTERNAL_PAGE_BODY_SENTINEL" not in result["speech"]
+    body = request.call_args.args[1]
+    assert body["format"] == "text"
+    assert "query" not in body
+    assert "chunks_per_source" not in body
+
+
+@pytest.mark.parametrize("output_format", ["html", "json", True, 123, ["text"], {"format": "text"}])
+def test_extract_rejects_invalid_format_before_network(output_format):
+    with patch("tavily_extract.request_tavily") as request:
+        with pytest.raises(ValueError, match="format"):
+            tavily_extract.extract({"url": "https://example.org/page", "format": output_format})
+    request.assert_not_called()
+
+
+def test_shipped_guard_policy_scans_tavily_body_once_at_global_threshold_in_both_modes(monkeypatch):
+    from lib import prompt_guard_observer as observer
+    from lib.prompt_guard import PromptGuardResult
+    from lib.prompt_guard_policy import is_tool_selected, resolve_prompt_guard_policy
+
+    scanned = []
+    content = "GUARD_ARTICLE_BODY_SENTINEL with useful source facts."
+
+    def scan(text, **source):
+        scanned.append((text, source))
+        return PromptGuardResult(status="scanned", flagged=False, threshold=0.85)
+
+    monkeypatch.setattr(observer, "scan_text", scan)
+    for mode in ("cloud", "local"):
+        with config_loader.config_scope(mode, overrides={
+            "PROMPT_GUARD_ENABLED": "true",
+            "PROMPT_GUARD_POLICY_FILE": str(ROOT / "config/prompt_guard_policy.json.example"),
+            "PROMPT_GUARD_THRESHOLD": "0.85",
+            "PROMPT_GUARD_MAX_INPUT_BYTES": "65536",
+        }):
+            assert is_tool_selected("tavily_extract")
+            decision = resolve_prompt_guard_policy(
+                float(config_loader.get_config_value("PROMPT_GUARD_THRESHOLD")),
+                source_type="tool_result", source_name="tavily_extract",
+            )
+            assert decision.threshold == 0.85
+            assert decision.policy_id == "configured_default"
+            assert decision.error_code is None
+            with patch("tavily_extract.request_tavily", return_value={
+                "results": [{"url": "https://example.org/page", "raw_content": content}],
+            }):
+                result = tavily_extract.extract({"url": "https://example.org/page", "format": "text"})
+            assert observer.review_tool_result("tavily_extract", result) is result
+    assert len(scanned) == 2
+    for text, source in scanned:
+        assert text.count("GUARD_ARTICLE_BODY_SENTINEL") == 1
+        assert json.loads(text)["data"]["content"] == content
+        assert source == {"source_type": "tool_result", "source_name": "tavily_extract"}
 
 
 def test_extract_rejects_private_or_credential_urls_before_network():
@@ -122,6 +193,8 @@ def test_manifests_are_key_gated_and_followups_keep_source_context():
         assert manifest["availability"]["all_of_env"] == ["TAVILY_API_KEY"]
         assert manifest["proxy_policy"] == "off"
         assert manifest["parameters"]["additionalProperties"] is False
+        if name == "tavily_extract":
+            assert set(manifest["parameters"]["properties"]["format"]["enum"]) == {"markdown", "text"}
 
     load_server_package("tavily_followup_server", ROOT / "jarvis-web" / "server")
     path = ROOT / "jarvis-web" / "server" / "services" / "followup_extractor.py"
@@ -130,6 +203,10 @@ def test_manifests_are_key_gated_and_followups_keep_source_context():
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    with patch("tavily_extract.request_tavily", return_value={
+        "results": [{"url": "https://example.org/notes", "raw_content": "A deeper detail."}],
+    }):
+        extract_result = tavily_extract.extract({"url": "https://example.org/notes", "format": "text"})
     result = module.extract_followup_data({
         "tavily_search": {"data": {
             "query": "release notes", "results": [{
@@ -137,11 +214,10 @@ def test_manifests_are_key_gated_and_followups_keep_source_context():
                 "snippet": "Specific detail.",
             }],
         }},
-        "tavily_extract": {"data": {
-            "url": "https://example.org/notes", "content": "A deeper detail.",
-        }},
+        "tavily_extract": extract_result,
     })
     assert result["tavily_search"]["candidates"][0]["url"] == "https://example.org/notes"
+    assert result["tavily_extract"]["url"] == "https://example.org/notes"
     assert result["tavily_extract"]["content_excerpt"] == "A deeper detail."
 
 
