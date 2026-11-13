@@ -8,7 +8,6 @@ import os
 import re
 import sys
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
@@ -23,21 +22,25 @@ from serpapi_client import (
 
 GOOGLE_EVENTS_TIMEOUT = 90
 DEFAULT_MAX_RESULTS = 10
-LOCALE_RE = re.compile(r"^[a-z]{2}$")
 QUERY_LOCATION_RE = re.compile(r"\b(?:in|near|around)\s+\S+", re.IGNORECASE)
 EMBEDDED_LOCATION_RE = re.compile(
     r"\b(?:in|near|around)\s+([A-Za-z][A-Za-z .'-]*?)"
     r"(?=\s+(?:today|tomorrow|this|next|on|during|under|for|with|without)\b|$)",
     re.IGNORECASE,
 )
-DATE_FILTERS = {
-    "today": "date:today",
-    "tomorrow": "date:tomorrow",
-    "week": "date:week",
-    "next_week": "date:next_week",
-    "month": "date:month",
-    "next_month": "date:next_month",
+DATE_QUERY_PHRASES = {
+    "today": "today",
+    "tomorrow": "tomorrow",
+    "week": "this week",
+    "next_week": "next week",
+    "month": "this month",
+    "next_month": "next month",
 }
+QUERY_PREFERENCES_NOTE = (
+    "Date and virtual requests are search-query preferences, not strict filters. "
+    "Check each returned event's date and participation mode."
+)
+UNSUPPORTED_EXTRA_PARAMS = {"htichips", "event_type", "start", "gl", "hl"}
 RESERVED_KEYS = {
     "engine",
     "api_key",
@@ -107,13 +110,17 @@ def _bounded_int(
     return number
 
 
-def normalize_locale(value: Any, label: str) -> str | None:
-    locale = str(value or "").strip().lower()
-    if not locale:
-        return None
-    if not LOCALE_RE.fullmatch(locale):
-        raise ValueError(f"'{label}' must be a two-letter code such as us or en.")
-    return locale
+def validate_current_engine_options(options: dict[str, Any]) -> None:
+    """Reject retired options instead of claiming they affect the current engine."""
+    for name, supported in (("country", "us"), ("language", "en")):
+        value = options.get(name)
+        if value not in (None, "") and str(value).lower() != supported:
+            raise ValueError(
+                "Google Events currently retrieves US-English results only "
+                "(country=us, language=en); put the event destination in query or location."
+            )
+    if options.get("start") not in (None, 0, "0"):
+        raise ValueError("Google Events pagination is not supported; omit 'start'.")
 
 
 def resolve_location(
@@ -184,14 +191,25 @@ def embedded_query_ambiguity_warning(query: str) -> str | None:
     return location_ambiguity_warning(match.group(1))
 
 
-def normalize_date_filter(value: Any) -> tuple[str | None, str | None]:
+def normalize_date_filter(value: Any) -> str | None:
     date_filter = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
     if not date_filter:
-        return None, None
-    if date_filter not in DATE_FILTERS:
-        allowed = ", ".join(DATE_FILTERS)
+        return None
+    if date_filter not in DATE_QUERY_PHRASES:
+        allowed = ", ".join(DATE_QUERY_PHRASES)
         raise ValueError(f"'date_filter' must be one of: {allowed}.")
-    return date_filter, DATE_FILTERS[date_filter]
+    return date_filter
+
+
+def apply_query_preferences(query: str, date_filter: str | None, virtual: bool) -> str:
+    """Express supported search intent in q without resurrecting removed filter chips."""
+    if date_filter:
+        phrase = DATE_QUERY_PHRASES[date_filter]
+        if not re.search(rf"\b{re.escape(phrase)}\b", query, re.IGNORECASE):
+            query = f"{query} {phrase}"
+    if virtual and not re.search(r"\b(?:virtual|online)\b", query, re.IGNORECASE):
+        query = f"virtual {query}"
+    return query
 
 
 def _compact_ticket_info(value: Any) -> list[dict[str, Any]]:
@@ -299,6 +317,7 @@ def normalize_events(value: Any, *, limit: int) -> tuple[list[dict[str, Any]], i
             "event_location_map": event_map or None,
             "thumbnail": item.get("thumbnail"),
             "image": item.get("image"),
+            "event_token": item.get("event_token") if isinstance(item.get("event_token"), str) else None,
         }
         events.append(
             {key: field for key, field in event.items() if field not in (None, "", [], {})}
@@ -306,34 +325,6 @@ def normalize_events(value: Any, *, limit: int) -> tuple[list[dict[str, Any]], i
         if len(events) >= limit:
             break
     return events, len(raw_events)
-
-
-def _pagination_start(value: Any) -> int | None:
-    if not value:
-        return None
-    try:
-        raw_start = parse_qs(urlparse(str(value)).query).get("start", [None])[0]
-        return int(raw_start) if raw_start is not None else None
-    except (TypeError, ValueError):
-        return None
-
-
-def normalize_pagination(payload: dict[str, Any], *, start: int) -> dict[str, Any]:
-    pagination = payload.get("serpapi_pagination")
-    pagination = pagination if isinstance(pagination, dict) else {}
-    next_start = _pagination_start(pagination.get("next") or pagination.get("next_link"))
-    previous_start = _pagination_start(pagination.get("previous"))
-    return {
-        key: field
-        for key, field in {
-            "current": pagination.get("current"),
-            "start": start,
-            "has_more": next_start is not None,
-            "next_start": next_start,
-            "previous_start": previous_start,
-        }.items()
-        if field not in (None, "") or key == "has_more"
-    }
 
 
 def _search_metadata(payload: dict[str, Any]) -> dict[str, Any]:
@@ -388,6 +379,7 @@ def main() -> int:
         query = _validate_text(input_data.get("query"), "query", 500)
         if not query:
             raise ValueError("'query' is required.")
+        validate_current_engine_options(input_data)
 
         location, uule, location_source = resolve_location(
             input_data.get("location"), input_data.get("uule")
@@ -398,11 +390,6 @@ def main() -> int:
             if query_location_embedded
             else location_ambiguity_warning(location)
         )
-        country = normalize_locale(input_data.get("country"), "country")
-        language = normalize_locale(input_data.get("language"), "language")
-        start = _bounded_int(input_data.get("start"), "start", default=0, minimum=0, maximum=1000)
-        if start % 10 != 0:
-            raise ValueError("'start' must be a multiple of 10.")
         max_results = _bounded_int(
             input_data.get("max_results"),
             "max_results",
@@ -410,9 +397,14 @@ def main() -> int:
             minimum=1,
             maximum=20,
         )
-        date_filter, date_chip = normalize_date_filter(input_data.get("date_filter"))
+        date_filter = normalize_date_filter(input_data.get("date_filter"))
         virtual = parse_bool(input_data.get("virtual", False))
-        filter_chips = [chip for chip in (date_chip, "event_type:Virtual-Event" if virtual else None) if chip]
+        effective_query = apply_query_preferences(effective_query, date_filter, virtual)
+        query_preferences = {}
+        if date_filter:
+            query_preferences["date_filter"] = date_filter
+        if virtual:
+            query_preferences["virtual"] = True
         no_cache = parse_bool(input_data.get("no_cache", False))
         include_raw = parse_bool(input_data.get("include_raw", False))
         extra_params = input_data.get("extra_params", {})
@@ -420,19 +412,20 @@ def main() -> int:
             extra_params = {}
         if not isinstance(extra_params, dict):
             raise ValueError("'extra_params' must be an object.")
+        if UNSUPPORTED_EXTRA_PARAMS.intersection(extra_params):
+            raise ValueError(
+                "Google Events no longer supports locale overrides, filter chips or pagination; "
+                "use query wording or date_filter/virtual query preferences instead."
+            )
 
         params: dict[str, Any] = {
             "engine": "google_events",
             "q": effective_query,
-            "start": start,
             "no_cache": "true" if no_cache else "false",
         }
         for key, field in (
             ("location", location),
             ("uule", uule),
-            ("gl", country),
-            ("hl", language),
-            ("htichips", ",".join(filter_chips)),
         ):
             if field not in (None, ""):
                 params[key] = field
@@ -442,7 +435,6 @@ def main() -> int:
         events, provider_results_count = normalize_events(
             payload.get("events_results"), limit=max_results
         )
-        pagination = normalize_pagination(payload, start=start)
         metadata = _search_metadata(payload)
         search_information = payload.get("search_information")
         search_information = search_information if isinstance(search_information, dict) else {}
@@ -457,12 +449,10 @@ def main() -> int:
             "location_source": location_source,
             "location_ambiguity_warning": warning,
             "uule_used": bool(uule),
-            "country": country,
-            "language": language,
-            "date_filter": date_filter,
-            "virtual": virtual,
-            "filters": filter_chips,
-            "start": start,
+            "country": "us",
+            "language": "en",
+            "query_preferences": query_preferences,
+            "query_preferences_note": QUERY_PREFERENCES_NOTE if query_preferences else None,
             "max_results": max_results,
             "results_count": len(events),
             "provider_results_count": provider_results_count,
@@ -472,9 +462,7 @@ def main() -> int:
             "events_results_state": _compact_text(
                 search_information.get("events_results_state"), 300
             ),
-            "pagination": pagination,
-            "has_more": pagination.get("has_more", False),
-            "next_start": pagination.get("next_start"),
+            "pagination_supported": False,
             "search_id": metadata.get("id"),
             "search_metadata": metadata,
             "google_events_url": metadata.get("google_events_url"),
@@ -489,7 +477,10 @@ def main() -> int:
         if include_raw:
             data["raw"] = payload
 
-        return_success(build_speech(query, location_label, events), data)
+        speech = build_speech(query, location_label, events)
+        if query_preferences:
+            speech = f"{speech} {QUERY_PREFERENCES_NOTE}"
+        return_success(speech, data)
         return 0
     except ValueError as exc:
         return_error(str(exc))

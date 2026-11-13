@@ -34,7 +34,7 @@ SerpApi's own index of public webpages and source URLs.
 | [`serpapi_trader_joes_search`](../trader-joes-tool/README.md) | `trader_joes` | Trader Joe's discovery with prices, sizes, dietary/category filters, occasion tags and validated store context |
 | [`serpapi_trader_joes_product`](../trader-joes-tool/README.md) | `trader_joes_product` | One Trader Joe's product's ingredients, allergens, nutrition panels, dietary labels, images and store assortment status |
 | `serpapi_home_depot` | `home_depot`, `home_depot_product` | Home Depot products, price/rating comparison, store or ZIP availability, and focused details |
-| `serpapi_google_events` | `google_events` | Upcoming local or virtual events with dates, venues, descriptions, ticket sources, public maps, images, date filters, and active-mode location fallback; see the [Google Events guide](../google-events-tool/README.md) |
+| `serpapi_google_events` | `google_events` | Event discovery with dates, venues, ticket sources, images, query preferences, and active-mode location fallback; see the [Google Events guide](../google-events-tool/README.md) |
 | `serpapi_google_local` | `google_local` | Google Local business listings near an explicit or mode-default location, with ratings, hours, service options, ads, related place searches, and pagination |
 | `serpapi_google_local_services` | `google_local_services` plus conditional `google_maps` resolver | Screened US professional-service providers, Google badges, contact and availability details, and provider drill-down |
 | `serpapi_maps_search` | `google_maps` | Places and local businesses with addresses, ratings, hours, phones, and websites |
@@ -266,6 +266,19 @@ The recommended flow is listing discovery first, then a focused ASIN lookup.
 The tool preserves discovery URLs and merges detail rows by ASIN. Price,
 rating, reviews, Prime, delivery, shipping, stock, availability, badges,
 recent-purchase signals, and coupons remain unknown when SerpApi omits them.
+Product rows also retain bounded `item_ingredients` and `important_information`
+warnings for ordinary answers and saved follow-ups. `product_evidence_truncated`
+reports omitted evidence; absence is not evidence that a product has no warnings.
+
+Delivery settings follow the selected Amazon domain. US searches use the
+configured postal code when `delivery_zip` is omitted. ZIP defaults are not
+borrowed for another country's storefront. Amazon UAE (`amazon.ae`), Egypt
+(`amazon.eg`), and Saudi Arabia (`amazon.sa`) accept optional `delivery_city`
+instead of `delivery_zip`; other domains reject that city option. Explicit
+incompatible city/ZIP options fail before the request, and selected-product
+enrichment reuses the same location. The result reports whether localization
+was requested and its source. Non-US domains use the provider's language
+default unless `language` is supplied.
 
 ### Google Shopping Light
 
@@ -385,6 +398,9 @@ search, and provider-native server-side search for recap narrative. Missing
 optional search tools do not hide or fail the workflow. Jarvis-facing
 `football` means American football and is translated to SerpApi `af`; `soccer`
 means association football and is translated to `ft`.
+Live American-football rows can include `down_and_distance`, with
+`timeouts_remaining` and `possession` on each team. Zero timeouts and false
+possession remain explicit in cards and follow-ups; absent fields remain unknown.
 
 ### Search Index source discovery
 
@@ -403,6 +419,16 @@ not the provider-specific Google Search engine, and it does not fetch page
 bodies. It can satisfy a general search-engine-style source request when exact
 Google provenance is not required. Pass a chosen URL to MCP Fetch, `crawl_url`,
 a summarizer, Stash, or Canvas.
+
+The same tool also supports `type=place`, `product`, `video`, or `publication`.
+Typed results keep their provider IDs and evidence rather than being mistaken
+for an empty webpage result. Places accept explicit `ll` coordinates and a
+`radius` in kilometers (greater than zero, at most 20000). Products accept
+`product_source` and an optional two-letter `country` market. Publications
+accept inclusive four-digit `as_ylo`/`as_yhi` year bounds. `country` and
+`language` can also provide web-ranking preferences. Compatible existing
+`extra_params` calls use the same validation. Typed prices and place details
+are indexed observations: use a retailer or Maps tool for a current check.
 
 ### Google Images Light
 
@@ -495,6 +521,23 @@ as News or YouTube, and an evenly bounded timeline suitable for workflow
 inputs. It is query-driven: use it when the topic is already known. Use
 `serpapi_google_trending_now` instead to discover trends without a seed topic.
 
+For `interest_over_time`, `geo` and `date` also accept arrays or comma-separated
+values aligned with `query`. Each must contain one shared value or one value
+per comparison. A single topic also repeats across the supplied regions or
+periods: `query: "coffee"` and `geo: ["US", "GB"]` compare the same term in two
+places. Multiple regions must be explicit codes; Worldwide can only be used
+as one shared geography. Multiple date windows must be custom ranges, all
+using dates or all using hourly timestamps, with reasonably similar durations.
+Repeated terms retain distinct
+`query_index` identities, comparison labels, and their own dates/timestamps.
+Different date ranges may have different lengths; the shorter series ending
+does not move its remaining values into another series. Other views retain
+one shared geography and date range.
+
+Results, cards and saved follow-ups carry an interpretation note: these are
+normalized relative-interest scores, not absolute search counts. Equal regional
+scores do not imply equal search volume.
+
 ### Google Trends Trending Now
 
 Discover current trends without supplying a topic:
@@ -549,6 +592,11 @@ Reuse a returned numeric `product_id` with `serpapi_ebay_product`:
 }
 ```
 
+Explicit `_ipg` page sizes are 60, 120, or 240. This controls the provider
+page, while `num_results` still bounds the returned shortlist. Sold and
+completed listing filters are unavailable because eBay requires login for
+them; Jarvis rejects `show_only=Sold`/`Complete` before making a paid request.
+
 ### Walmart discovery and detail
 
 Use `serpapi_walmart_search` for Walmart-specific shopping, then pass a chosen
@@ -584,6 +632,11 @@ store selection, results and follow-ups.
 Pass `product_id` without a query for a focused product lookup. Set
 `include_product_details=true` on a search only when full descriptions,
 specifications, or larger images are needed.
+Alternatively pass `store_sku` alone for a US focused lookup. A store SKU can
+match different products, so use the returned `product_id` as authoritative
+and retain `lookup_note`. Product details and saved follow-ups preserve
+`availability_type`, including a provider's discontinued label. US `ps` page
+size is capped at 24; Canada's `pagesize` can be up to 40.
 
 ### Google Local and Maps
 
@@ -615,6 +668,13 @@ Use Google Maps when a map-centered coordinate bias is more useful:
 
 Use Yelp when Yelp ratings, price tiers, attributes, or review excerpts are the
 primary signal.
+
+Maps exposes `min_price`, `max_price`, `min_rating`, `open_state`,
+`open_on_day`, and `open_at_hour` as named arguments, with the same validation
+for existing `extra_params` calls. Results retain `requested_filters`, the
+canonical `effective_filters` sent, and `filter_notes`. Minimum rating is a
+ranking preference, so lower-rated or unrated results can appear. Price-tier
+ranges overlap; the card and notes explain those semantics.
 
 ### Google Local Services
 
@@ -738,8 +798,12 @@ mode env file. Qualify ambiguous cities: use `Portland, Oregon` or
 result includes `location_ambiguity_warning` rather than pretending Jarvis
 knows which city was intended.
 
-Date filters support `today`, `tomorrow`, `week`, `next_week`, `month`, and
-`next_month`; `virtual: true` can be combined with any of them. Results retain
+Date preferences support `today`, `tomorrow`, `week`, `next_week`, `month`, and
+`next_month`; `virtual: true` adds virtual/online wording. These are query
+preferences, not strict provider filters; verify returned dates and formats.
+The revamped engine removed `htichips`/`event_type`, uses US-English retrieval,
+and exposes no supported page offset. Jarvis rejects incompatible legacy
+arguments before HTTP and does not claim more pages. Results retain
 bounded event timing, venue, address, description, image, ticket-source, and
 public map fields. Use returned venue/address data with `serpapi_google_local`,
 `serpapi_tripadvisor`, Maps, or weather in a later tool call or workflow step.
@@ -776,6 +840,8 @@ Focused follow-ups reuse the returned `place_id`:
 Search can set `include_details` and `include_reviews`, but each enrichment is
 an additional paid request. Vacation Rentals are intentionally unsupported
 because Tripadvisor discontinued that API surface.
+Details preserve bounded `award` and `review_distribution` evidence, including
+zero-count rating buckets, through cards and saved follow-ups.
 
 ### Yelp
 
@@ -835,6 +901,13 @@ Discover videos:
 Then pass a selected URL to `serpapi_youtube`, `youtube_transcript`, or
 `youtube_video`. SerpApi detail/transcript fallback is useful when yt-dlp is
 blocked by cookies, authentication, or transcript availability.
+Video details retain stable channel IDs, numeric length, age restriction and
+AI labels, chapters (including `auto_generated`), and music credits when
+provided. Unknown booleans remain unknown. Search rows preserve channel IDs
+and chapters; returned community posts and featured panels are separate,
+bounded evidence with their own IDs, links, and images. Cards distinguish
+those from video results. Truncation flags report bounded sections; none of
+these additions automatically adds another provider request.
 
 ## Shared SerpApi workflows
 

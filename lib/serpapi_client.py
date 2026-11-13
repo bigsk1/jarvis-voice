@@ -211,6 +211,7 @@ GENERIC_RESERVED_KEYS = {
     "amazon_domain",
     "language",
     "delivery_zip",
+    "delivery_city",
     "shipping_location",
 }
 
@@ -682,8 +683,50 @@ def extract_generic_results(payload: dict[str, Any], engine: str, limit: int) ->
 
     if engine == "amazon_product":
         product = payload.get("product_results") or {}
-        if product:
-            results.append(normalize_item(product, "product_results"))
+        if isinstance(product, dict) and product:
+            row = normalize_item(product, "product_results")
+            remaining = 4000
+            truncated = False
+            ingredients = payload.get("item_ingredients", product.get("item_ingredients"))
+            if isinstance(ingredients, list):
+                compact_ingredients = []
+                ingredient_remaining = 1500
+                for value in ingredients:
+                    if not isinstance(value, str):
+                        continue
+                    if len(compact_ingredients) >= 20 or ingredient_remaining <= 0:
+                        truncated = True
+                        break
+                    text = value[:ingredient_remaining]
+                    truncated |= len(text) < len(value)
+                    compact_ingredients.append(text)
+                    remaining -= len(text)
+                    ingredient_remaining -= len(text)
+                if compact_ingredients:
+                    row["item_ingredients"] = compact_ingredients
+            information = payload.get("important_information", product.get("important_information"))
+            if isinstance(information, list):
+                compact_information = []
+                for value in information:
+                    if not isinstance(value, dict):
+                        continue
+                    if len(compact_information) >= 12 or remaining <= 0:
+                        truncated = True
+                        break
+                    section = {}
+                    for field, maximum in (("title", 160), ("text", 2000)):
+                        text = value.get(field)
+                        if isinstance(text, str):
+                            section[field] = text[:min(maximum, remaining)]
+                            truncated |= len(section[field]) < len(text)
+                            remaining -= len(section[field])
+                    if section:
+                        compact_information.append(section)
+                if compact_information:
+                    row["important_information"] = compact_information
+            if "item_ingredients" in row or "important_information" in row or truncated:
+                row["product_evidence_truncated"] = truncated
+            results.append(row)
         return results[:limit]
 
     candidates = []

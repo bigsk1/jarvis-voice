@@ -65,6 +65,8 @@ def events_payload():
                 },
                 "thumbnail": "https://images.example/jazz-small.jpg",
                 "image": "https://images.example/jazz.jpg",
+                "event_token": "opaque-event-handle-123",
+                "serpapi_event_details_link": "https://serpapi.com/search.json?engine=google_event_details&api_key=do-not-keep",
             },
             {
                 "title": "Community Market",
@@ -114,11 +116,13 @@ def test_normalization_keeps_public_event_ticket_venue_and_map_fields():
         "link": "https://www.google.com/maps/place/Waterfront+Park",
     }
     assert "serpapi_link" not in json.dumps(events)
+    assert events[0]["event_token"] == "opaque-event-handle-123"
+    assert "serpapi_event_details_link" not in json.dumps(events)
     assert events[1]["venue"] == {"name": "Eastside Plaza"}
     assert events[1]["url"] == "https://market.example/details"
 
 
-def test_qualified_location_is_added_to_query_and_filters_are_combined():
+def test_date_and_virtual_preferences_use_query_wording_without_removed_filter_chips():
     exit_code, result, request = run_main(
         {
             "query": "live music",
@@ -127,7 +131,7 @@ def test_qualified_location_is_added_to_query_and_filters_are_combined():
             "virtual": True,
             "country": "us",
             "language": "en",
-            "start": 10,
+            "start": 0,
             "max_results": 1,
             "no_cache": True,
         },
@@ -138,20 +142,21 @@ def test_qualified_location_is_added_to_query_and_filters_are_combined():
     assert result["ok"] is True
     assert request.call_args.args[0] == {
         "engine": "google_events",
-        "q": "live music in Portland, Oregon",
-        "start": 10,
+        "q": "virtual live music in Portland, Oregon this week",
         "no_cache": "true",
         "location": "Portland, Oregon",
-        "gl": "us",
-        "hl": "en",
-        "htichips": "date:week,event_type:Virtual-Event",
     }
     data = result["data"]
-    assert data["effective_query"] == "live music in Portland, Oregon"
+    assert data["effective_query"] == "virtual live music in Portland, Oregon this week"
+    assert data["query_preferences"] == {"date_filter": "week", "virtual": True}
+    assert "not strict filters" in data["query_preferences_note"]
+    assert "not strict filters" in result["speech"]
+    assert data["country"] == "us" and data["language"] == "en"
     assert data["location_source"] == "explicit"
     assert data["results_count"] == 1
     assert data["provider_results_count"] == 2
-    assert data["next_start"] == 10
+    assert data["pagination_supported"] is False
+    assert not {"filters", "date_filter", "virtual", "start", "next_start", "has_more", "pagination"} & data.keys()
     assert data["external_content_trust"] == "untrusted"
     assert data["google_events_url"].startswith("https://www.google.com/")
     assert "json_endpoint" not in json.dumps(data)
@@ -216,8 +221,9 @@ def test_uule_missing_location_invalid_inputs_and_reserved_extra_params():
     request.assert_not_called()
 
     invalid_cases = (
-        ({"query": "events", "location": "Portland", "country": "usa"}, "two-letter"),
-        ({"query": "events", "location": "Portland", "start": 5}, "multiple of 10"),
+        ({"query": "events", "location": "Portland", "country": "fr"}, "US-English"),
+        ({"query": "events", "location": "Portland", "language": "fr"}, "US-English"),
+        ({"query": "events", "location": "Portland", "start": 10}, "pagination is not supported"),
         ({"query": "events", "location": "Portland", "date_filter": "weekend"}, "date_filter"),
         ({"query": "events", "location": "Portland", "extra_params": []}, "object"),
     )
@@ -236,7 +242,6 @@ def test_uule_missing_location_invalid_inputs_and_reserved_extra_params():
                 "engine": "google",
                 "q": "override",
                 "location": "Seattle",
-                "htichips": "date:tomorrow",
             },
         },
         events_payload(),
@@ -247,6 +252,27 @@ def test_uule_missing_location_invalid_inputs_and_reserved_extra_params():
     assert request.call_args.args[0]["location"] == "Portland, Oregon"
     assert request.call_args.args[0]["custom_option"] == "enabled"
     assert "htichips" not in request.call_args.args[0]
+
+    for retired in ("htichips", "event_type", "start", "gl", "hl"):
+        exit_code, result, request = run_main(
+            {"query": "events", "location": "Paris, France", "extra_params": {retired: "unsupported"}},
+            events_payload(),
+        )
+        assert exit_code == 1 and "no longer supports" in result["error"]
+        request.assert_not_called()
+
+
+def test_query_preferences_preserve_international_destination_and_deduplicate_existing_words():
+    exit_code, result, request = run_main(
+        {"query": "online conferences in Paris next week", "location": "Paris, France",
+         "date_filter": "next_week", "virtual": True},
+        events_payload(),
+    )
+    assert exit_code == 0
+    assert request.call_args.args[0]["q"] == "online conferences in Paris next week"
+    assert request.call_args.args[0]["location"] == "Paris, France"
+    assert result["data"]["country"] == "us" and result["data"]["language"] == "en"
+    assert result["data"]["query_preferences"] == {"date_filter": "next_week", "virtual": True}
 
 
 def test_raw_empty_timeout_manifest_proxy_and_status_registration():
@@ -278,6 +304,8 @@ def test_raw_empty_timeout_manifest_proxy_and_status_registration():
     )
     assert manifest["proxy_policy"] == "off"
     assert manifest["availability"]["all_of_env"] == ["SERP_API_KEY"]
+    assert not {"country", "language", "start"} & manifest["parameters"]["properties"].keys()
+    assert "not a strict date filter" in manifest["parameters"]["properties"]["date_filter"]["description"]
     assert serpapi_client.serpapi_engines_for_tool(
         "serpapi_google_events", {"query": "events"}
     ) == ("google_events",)

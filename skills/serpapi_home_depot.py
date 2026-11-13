@@ -5,12 +5,13 @@ Search Home Depot products through SerpApi with normalized product output.
 """
 import json
 import os
+import re
 import sys
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
-from config_loader import load_config, get_config_value
+from config_loader import get_config_value, load_config
 from serpapi_client import (
     clamp_results_count,
     get_proxy_enabled,
@@ -19,13 +20,13 @@ from serpapi_client import (
     request_serpapi,
 )
 
-
 RESERVED_KEYS = {
     "engine",
     "api_key",
     "output",
     "q",
     "product_id",
+    "store_sku",
     "country",
     "hd_sort",
     "hd_filter_tokens",
@@ -264,6 +265,7 @@ def extract_home_depot_product(payload: dict[str, Any], country: str = "us") -> 
         "bullets": item.get("bullets"),
         "specifications": item.get("specifications"),
         "info_and_guides": item.get("info_and_guides"),
+        "availability_type": item.get("availability_type"),
         "source": "product_results",
     }
     if not product["title"] and not product["url"] and not product["product_id"]:
@@ -271,12 +273,12 @@ def extract_home_depot_product(payload: dict[str, Any], country: str = "us") -> 
     return product
 
 
-def build_product_params(product_id: str, delivery_zip: str, store_id: str) -> dict[str, Any]:
+def build_product_params(product_id: str, delivery_zip: str, store_id: str, store_sku: str = "") -> dict[str, Any]:
     params: dict[str, Any] = {
         "engine": "home_depot_product",
-        "product_id": product_id,
         "no_cache": "false",
     }
+    params["store_sku" if store_sku else "product_id"] = store_sku or product_id
     if delivery_zip:
         params["delivery_zip"] = delivery_zip
     if store_id:
@@ -313,6 +315,9 @@ def main() -> int:
 
         query = str(input_data.get("query") or input_data.get("q") or "").strip()
         product_id = str(input_data.get("product_id", "")).strip()
+        store_sku = input_data.get("store_sku", "")
+        if not isinstance(store_sku, str) or (store_sku and not re.fullmatch(r"[0-9]{1,20}", store_sku)):
+            raise ValueError("store_sku must be a numeric Home Depot US Store SKU string.")
         country = _normalize_country(input_data.get("country", "us"))
         sort_by = input_data.get("sort_by")
         hd_filter_tokens = _serialize_csv(input_data.get("hd_filter_tokens"))
@@ -333,18 +338,31 @@ def main() -> int:
         include_product_details = parse_bool(input_data.get("include_product_details", False), default=False)
         include_raw = parse_bool(input_data.get("include_raw", False))
         extra_params = input_data.get("extra_params", {}) or {}
+        if store_sku and (query or product_id):
+            raise ValueError("Use store_sku alone for a focused lookup, or product_id for one exact product; do not combine these with a query.")
+        if (store_sku or (product_id and not query)) and country != "us":
+            raise ValueError("Focused Home Depot product/SKU lookup supports US products only; use query for Canada searches.")
+        for field, maximum in (("ps", 24), ("pagesize", 40)):
+            value = input_data.get(field)
+            if value is not None and (type(value) is not int or not 1 <= value <= maximum):
+                raise ValueError(f"{field} must be an integer from 1 to {maximum}.")
 
-        if not query and not product_id:
-            return_error("Provide 'query' for search or 'product_id' for a focused Home Depot product lookup.")
+        if not query and not product_id and not store_sku:
+            return_error("Provide 'query' for search, or 'product_id'/'store_sku' for a focused Home Depot product lookup.")
             return 1
 
-        if product_id and not query:
-            product_payload = _home_depot_serpapi(build_product_params(product_id, delivery_zip, store_id))
+        if store_sku or (product_id and not query):
+            product_params = build_product_params(product_id, delivery_zip, store_id, store_sku)
+            merge_extra_params(product_params, extra_params, reserved_keys=RESERVED_KEYS)
+            product_payload = _home_depot_serpapi(product_params)
             product = extract_home_depot_product(product_payload, country=country)
             results = [product] if product else []
             data: dict[str, Any] = {
                 "engine": "home_depot_product",
-                "product_id": product_id,
+                "product_id": product.get("product_id") if store_sku and product else product_id or None,
+                "requested_store_sku": store_sku or None,
+                "lookup_note": "A Store SKU can match several products, and the provider's selected product can vary. Reuse the returned product_id for this exact product."
+                if store_sku else None,
                 "country": country,
                 "results_count": len(results),
                 "results": results,
@@ -359,7 +377,10 @@ def main() -> int:
             }
             if include_raw:
                 data["raw"] = product_payload
-            return_success(build_speech(product_id, results), data=data)
+            speech = build_speech(store_sku or product_id, results)
+            if store_sku:
+                speech += " " + data["lookup_note"]
+            return_success(speech, data=data)
             return 0
 
         params: dict[str, Any] = {

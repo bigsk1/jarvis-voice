@@ -1,13 +1,17 @@
 {
   "enabled": true,
   "name": "serpapi_youtube_search",
-  "description": "Search YouTube by keyword. Use for 'find YouTube videos about...', 'search YouTube for...', or when no specific video URL is known. Returns title, URL, channel, published date, views, duration, thumbnail, and pagination token. For a known URL's details or transcript, use serpapi_youtube. To download a video file, use youtube_video.",
+  "description": "Search YouTube by keyword for videos, community posts and featured channel/topic panels when returned by YouTube. Use for 'find YouTube videos about...', 'search YouTube for...', or when no specific video URL is known. Returns title, URL, channel, published date, views, duration, thumbnail, stable channel ID, bounded video chapters and pagination token. Community posts and the featured panel are separate structured fields with their own identities and links; they are not video rows. For a known URL's details or transcript, use serpapi_youtube. To download a video file, use youtube_video.",
   "complementary_tools": [
     "canvas",
     "stash"
   ],
   "script": "serpapi_youtube_search.py",
   "proxy_policy": "off",
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true
+  },
   "parameters": {
     "type": "object",
     "properties": {

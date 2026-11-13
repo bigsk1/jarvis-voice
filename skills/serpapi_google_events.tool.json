@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_google_events",
-  "description": "Find upcoming in-person or virtual events. Use for concerts, festivals, comedy, markets, family activities, conferences, nightlife, things happening today or this week, or general 'events near me' requests. Returns event dates and times, venues, addresses, descriptions, prices, ticket links, public event links, map links, and images. Keep event keywords in query and put the city in location. When location is omitted, use the configured default location or postal code; do not infer geography from a proxy. Qualify ambiguous cities such as Portland as 'Portland, Oregon' or 'Portland, Maine'. Use serpapi_google_local for nearby businesses, serpapi_tripadvisor for destination attractions, and weather when conditions matter.",
+  "description": "Find upcoming events through Google's current mobile Events search. Use for concerts, festivals, comedy, markets, family activities, conferences, nightlife, things happening today or this week, or general 'events near me' requests. Returns dates, venues, prices, public/ticket/map links, images and event identifiers when available. Date and virtual requests become search-query preferences, not guaranteed filters; verify the returned dates and participation mode. Retrieval is fixed to US English but supports international destinations in query/location. Pagination is not supported. Keep event keywords in query and put the city in location. When location is omitted, use the configured default location or postal code; never infer geography from a proxy. Qualify ambiguous cities, such as Portland, Oregon or Portland, Maine. Use serpapi_google_local for businesses and serpapi_tripadvisor for attractions.",
   "complementary_tools": [
     "serpapi_google_local",
     "serpapi_tripadvisor",
@@ -13,6 +13,11 @@
   ],
   "script": "serpapi_google_events.py",
   "proxy_policy": "off",
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true,
+    "allow": ["JARVIS_DEFAULT_LOCATION", "JARVIS_DEFAULT_POSTAL_CODE"]
+  },
   "parameters": {
     "type": "object",
     "properties": {
@@ -29,7 +34,7 @@
       "uule": {
         "type": "string",
         "maxLength": 500,
-        "description": "Advanced Google-encoded search origin. Cannot be combined with location; coordinate-based values should also supply a matching country. Because uule is not human-readable, put any desired event city directly in query."
+        "description": "Advanced Google-encoded search origin. Cannot be combined with location. Because uule is not human-readable, put any desired event city directly in query. Retrieval remains US English."
       },
       "date_filter": {
         "type": "string",
@@ -41,28 +46,11 @@
           "month",
           "next_month"
         ],
-        "description": "Optional Google Events date filter. Leave blank for the engine's normal upcoming-event range."
+        "description": "Optional date preference added to the search query as today, tomorrow, this week, next week, this month or next month. This is not a strict date filter; verify each returned event's dates. Omit for the normal upcoming-event range."
       },
       "virtual": {
         "type": "boolean",
-        "description": "Limit results to virtual events. Can be combined with date_filter. Default false."
-      },
-      "country": {
-        "type": "string",
-        "pattern": "^[a-zA-Z]{2}$",
-        "description": "Optional two-letter Google country code such as us, uk, or fr."
-      },
-      "language": {
-        "type": "string",
-        "pattern": "^[a-zA-Z]{2}$",
-        "description": "Optional two-letter result language such as en, es, or fr."
-      },
-      "start": {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 1000,
-        "multipleOf": 10,
-        "description": "Result offset for pagination: 0, 10, 20, and so on. Use next_start from a prior response. Default 0."
+        "description": "Prefer virtual events by adding virtual to the search query. Google may still return in-person events; this does not enforce virtual-only results. Can be combined with date_filter. Default false."
       },
       "max_results": {
         "type": "integer",
@@ -76,7 +64,7 @@
       },
       "extra_params": {
         "type": "object",
-        "description": "Advanced non-reserved Google Events parameters passed through to SerpApi. Core query, location, localization, date/type filter, pagination, cache, and output controls cannot be overridden."
+        "description": "Advanced non-reserved current Google Events parameters passed through to SerpApi. Query, location, cache and output controls cannot be overridden. Removed htichips/event_type filters, locale overrides and pagination are rejected."
       },
       "include_raw": {
         "type": "boolean",

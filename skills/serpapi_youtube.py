@@ -4,11 +4,12 @@ Jarvis Skill: SerpApi YouTube
 Fetch YouTube video details through SerpApi, with optional transcript fallback.
 """
 import json
+import math
 import os
 import re
 import sys
 from typing import Any
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from config_loader import load_config
@@ -19,7 +20,6 @@ from serpapi_client import (
     request_serpapi,
 )
 from stash_helper import StashFile, open_space
-
 
 RESERVED_KEYS = {
     "engine",
@@ -44,6 +44,48 @@ VALID_HOSTS = {
 }
 
 MAX_TRANSCRIPT_CHARS = 20000
+
+
+def _bounded_media_rows(
+    value: Any, fields: tuple[str, ...], *, maximum: int, max_chars: int,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Bound optional provider metadata without cutting thumbnail URLs."""
+    source = value if isinstance(value, list) else []
+    rows: list[dict[str, Any]] = []
+    truncated = False
+    used = 2
+    for item in source[:maximum]:
+        if not isinstance(item, dict):
+            continue
+        row: dict[str, Any] = {}
+        for key in fields:
+            field = item.get(key)
+            if key == "auto_generated":
+                if type(field) is bool:
+                    row[key] = field
+            elif key == "time_start":
+                if type(field) in (int, float) and math.isfinite(field) and field >= 0:
+                    row[key] = field
+            elif isinstance(field, str) and field.strip():
+                limit = 2048 if key == "thumbnail" else 240
+                if key == "thumbnail" and len(field) > limit:
+                    truncated = True
+                    continue
+                row[key] = field[:limit]
+                truncated |= len(field) > limit
+        if not row:
+            continue
+        cost = len(json.dumps(row, ensure_ascii=False)) + 1
+        if used + cost > max_chars and "thumbnail" in row:
+            row.pop("thumbnail")
+            truncated = True
+            cost = len(json.dumps(row, ensure_ascii=False)) + 1
+        if used + cost > max_chars:
+            truncated = True
+            break
+        rows.append(row)
+        used += cost
+    return rows, truncated or len(source) > len(rows)
 
 
 def return_success(speech: str, data: dict[str, Any] | None = None) -> None:
@@ -256,9 +298,23 @@ def normalize_video_data(payload: dict[str, Any], video_id: str) -> dict[str, An
                 "channel": item.get("channel", {}).get("name")
                 if isinstance(item.get("channel"), dict)
                 else None,
+                "channel_id": item["channel"].get("channel_id")
+                if isinstance(item.get("channel"), dict)
+                and isinstance(item["channel"].get("channel_id"), str)
+                and len(item["channel"]["channel_id"]) <= 128
+                else None,
             }
         )
 
+    chapters, chapters_truncated = _bounded_media_rows(
+        payload.get("chapters"), ("title", "thumbnail", "time_start", "auto_generated"),
+        maximum=24, max_chars=6000,
+    )
+    music, music_truncated = _bounded_media_rows(
+        payload.get("music"), ("title", "artist", "album", "thumbnail"),
+        maximum=8, max_chars=4000,
+    )
+    seconds = payload.get("length_seconds")
     return {
         "video_id": video_id,
         "url": payload.get("link") or f"https://www.youtube.com/watch?v={video_id}",
@@ -266,6 +322,8 @@ def normalize_video_data(payload: dict[str, Any], video_id: str) -> dict[str, An
         "description": payload.get("description"),
         "thumbnail": thumbnail,
         "channel": channel.get("name"),
+        "channel_id": channel.get("channel_id")
+        if isinstance(channel.get("channel_id"), str) and len(channel["channel_id"]) <= 128 else None,
         "channel_url": channel.get("link"),
         "channel_thumbnail": channel.get("thumbnail"),
         "channel_verified": channel.get("verified"),
@@ -277,6 +335,13 @@ def normalize_video_data(payload: dict[str, Any], video_id: str) -> dict[str, An
         "extracted_likes": payload.get("extracted_likes"),
         "published_date": payload.get("published_date"),
         "duration": payload.get("length"),
+        "length_seconds": seconds if type(seconds) is int and seconds >= 0 else None,
+        "age_restricted": payload.get("age_restricted") if type(payload.get("age_restricted")) is bool else None,
+        "made_with_ai": payload.get("made_with_ai") if type(payload.get("made_with_ai")) is bool else None,
+        "chapters": chapters,
+        "chapters_truncated": chapters_truncated,
+        "music": music,
+        "music_truncated": music_truncated,
         "live": payload.get("live"),
         "comment_count": payload.get("comment_count"),
         "extracted_comment_count": payload.get("extracted_comment_count"),

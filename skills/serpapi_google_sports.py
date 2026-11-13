@@ -21,7 +21,6 @@ from serpapi_client import (
     request_serpapi,
 )
 
-
 GOOGLE_SPORTS_TIMEOUT = 90
 DEFAULT_MAX_RESULTS = 12
 LOCALE_RE = re.compile(r"^[a-z]{2}$")
@@ -387,6 +386,9 @@ def _team(value: Any) -> dict[str, Any] | None:
         "seeding": value.get("seeding"),
         "win": value.get("win") if isinstance(value.get("win"), bool) else None,
         "red_card": value.get("red_card") if isinstance(value.get("red_card"), bool) else None,
+        "timeouts_remaining": value.get("timeouts_remaining")
+        if type(value.get("timeouts_remaining")) is int and value["timeouts_remaining"] >= 0 else None,
+        "possession": value.get("possession") if type(value.get("possession")) is bool else None,
     }
     return {key: item for key, item in compact.items() if item not in (None, "", [], {})} or None
 
@@ -589,6 +591,7 @@ def _game(item: dict[str, Any], *, position: int, group: str | None = None) -> d
         "teams": teams,
         "status": _text(item.get("status") or item.get("stage"), 100),
         "status_original": _text(item.get("status_original"), 100),
+        "down_and_distance": _text(item.get("down_and_distance"), 200),
         "date": _text(item.get("date"), 100),
         "time": _text(item.get("time"), 100),
         "start_time": _text(item.get("start_time"), 100),

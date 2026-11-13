@@ -11,6 +11,7 @@
   ],
   "script": "serpapi_tripadvisor.py",
   "proxy_policy": "off",
+  "child_environment": {"mode": "restricted", "from_availability": true},
   "parameters": {
     "type": "object",
     "properties": {

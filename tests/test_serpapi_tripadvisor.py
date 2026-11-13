@@ -164,6 +164,39 @@ def test_place_normalization_collects_bounded_interesting_places():
     assert interesting[1]["categories"] == ["Italian", "Roman"]
 
 
+def test_place_retains_bounded_award_and_review_distribution_including_zero_counts():
+    payload = detail_payload()
+    payload["place_result"].update(
+        award={"type": "Travelers' Choice", "year": "2026", "api_key": "SECRET_SENTINEL"},
+        review_distribution=[{"rating": "Excellent", "count": 900}, {"rating": "Terrible", "count": 0}],
+    )
+    exit_code, result, request = run_main({"action": "details", "place_id": "187791"}, payload)
+    assert exit_code == 0 and request.call_count == 1
+    place = result["data"]["place"]
+    assert place["award"] == {"type": "Travelers' Choice", "year": "2026"}
+    assert place["review_distribution"] == [{"rating": "Excellent", "count": 900}, {"rating": "Terrible", "count": 0}]
+    assert place["award_truncated"] is False and place["review_distribution_truncated"] is False
+    assert "SECRET_SENTINEL" not in json.dumps(result)
+    assert json.loads(json.dumps(result, allow_nan=False)) == result
+
+    payload["place_result"]["award"]["type"] = "Long award name " * 100
+    payload["place_result"]["review_distribution"] = [{"rating": "Label " * 100, "count": index} for index in range(20)]
+    place, _ = extract_tripadvisor_place(payload, "187791")
+    assert len(place["award"]["type"]) == 200 and place["award_truncated"] is True
+    assert len(place["review_distribution"]) == 5 and place["review_distribution_truncated"] is True
+    assert len(place["review_distribution"][0]["rating"]) == 80
+
+
+def test_missing_or_malformed_award_distribution_do_not_create_review_evidence():
+    payload = detail_payload()
+    payload["place_result"].update(award=[], review_distribution=[
+        None, {"rating": {}, "count": 5}, {"rating": "Excellent", "count": True},
+        {"rating": "Poor", "count": -1}, {"rating": "Average", "count": float('nan')},
+    ])
+    place, _ = extract_tripadvisor_place(payload, "187791")
+    assert "award" not in place and "review_distribution" not in place
+
+
 def test_interesting_places_deduplicate_place_ids_across_sections():
     place = detail_payload()["place_result"]
     place["nearby"]["attractions"] = [

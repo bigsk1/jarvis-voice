@@ -42,6 +42,35 @@ const renderer = sandbox.structuredResultsRenderer;
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
 
 
+def test_index_typed_sources_and_distinct_trend_scopes_render_without_false_labels():
+    _run_renderer_assertions("""
+const html = renderer.render({serpapi_search_index: {result_type: 'product', query: 'coffee', results: [{
+  result_type: 'product', title: '<Coffee>', url: 'https://example.test/product',
+  product_id: '000123', price: 0, currency: 'USD', last_updated: '2026-10-05',
+}]}});
+for (const text of ['&lt;Coffee&gt;', 'USD 0', 'Indexed offer; verify current price and stock', '2026-10-05']) {
+  assert.ok(html.includes(text), text);
+}
+assert.ok(!html.includes('<Coffee>'));
+const publication = renderer.render({serpapi_search_index: {result_type: 'publication', results: [{
+  result_type: 'publication', title: 'A paper', publication_info: {summary: 'A. Author, 2024'},
+  url: 'https://example.test/paper',
+}]}});
+assert.ok(publication.includes('A. Author, 2024'));
+const trends = renderer.render({serpapi_google_trends: {
+  interpretation_note: 'Relative interest, not absolute search counts',
+  query: 'coffee, coffee', data_type: 'interest_over_time', results: [
+    {title: 'coffee · US · now 7-d', query: 'coffee', query_index: 0, geo: 'US', latest_value: 0},
+    {title: 'coffee · GB · today 3-m', query: 'coffee', query_index: 1, geo: 'GB', latest_value: 80},
+  ],
+}});
+for (const text of ['coffee · US · now 7-d', 'coffee · GB · today 3-m', 'Latest 0', 'Latest 80',
+  'Relative interest, not absolute search counts']) {
+  assert.ok(trends.includes(text), text);
+}
+""")
+
+
 def test_family_registration_is_instance_local_and_keeps_saved_amazon_alias():
     _run_renderer_assertions("""
 const first = new sandbox.StructuredResultsRenderer();

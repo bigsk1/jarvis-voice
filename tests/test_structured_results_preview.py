@@ -590,7 +590,7 @@ for (const expected of [
   'Hotel signal $167', '2026-10-09 → 2026-10-16', 'LAS · Las Vegas',
   '2h 44m ground transfer', 'Explore destination', 'Open Google Travel',
   'Google Events · External content', 'live music in Portland, Oregon',
-  '1 event · Portland, Oregon · week', 'Waterfront Jazz Night',
+  '1 event · Portland, Oregon · Date preference: this week', 'Waterfront Jazz Night',
   'Fri, Aug 14, 7:30 PM PDT', 'Concert', 'Venue ★ 4.7',
   '1,250 venue reviews', '1 link', 'Waterfront Park, Portland, OR',
   'Tickets / details', 'Open Google Events',

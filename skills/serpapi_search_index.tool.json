@@ -2,7 +2,7 @@
   "enabled": true,
   "web_search": true,
   "name": "serpapi_search_index",
-  "description": "General-purpose web search over SerpApi's own LLM-first Search Index (not Google). Use it for search-engine-style requests when public webpages and source URLs are needed and provider-specific Google results are not required. Discover public webpages and source URLs through the index for research and retrieval grounding, reference discovery, reproducible datasets, and workflow pipelines. Use it to find relevant articles, documentation, guides, reports, websites, and other indexed pages about a topic, then read a selected public URL with serpapi_extract when available. MCP Fetch or crawl_url remain supported page readers; choose a reader present in the active tool list/profile, and use browser tools for JavaScript or interaction. Pass the retrieved content to summarizers, Canvas, Stash, or later workflow steps. Standard mode returns ranked indexed sources; deep mode expands recall by decomposing the query into parallel aspects. Results preserve exact URLs, titles, snippets, dates, languages, images, sitelinks, related queries, pagination, and a SerpApi search ID. Cached results are allowed by default.",
+  "description": "General-purpose web search over SerpApi's own LLM-first Search Index (not Google). Use it for search-engine-style requests when public webpages and source URLs are needed and provider-specific Google results are not required. Discover public webpages and source URLs through the index for research and retrieval grounding, reference discovery, reproducible datasets, and workflow pipelines. Use it to find relevant articles, documentation, guides, reports, websites, and other indexed pages about a topic, then read a selected public URL with serpapi_extract when available. MCP Fetch or crawl_url remain supported page readers; choose a reader present in the active tool list/profile, and use browser tools for JavaScript or interaction. Pass the retrieved content to summarizers, Canvas, Stash, or later workflow steps. Standard mode returns ranked indexed sources; deep mode expands recall by decomposing the query into parallel aspects. Results preserve exact URLs, titles, snippets, dates, languages, images, sitelinks, related queries, pagination, and a SerpApi search ID. Cached results are allowed by default. Also supports indexed places, products, videos and publications with type, exact provider IDs and corpus-specific filters. Indexed prices and place details may be stale; use retailer or Maps tools for a current check.",
   "complementary_tools": [
     "serpapi_extract",
     "mcp_fetch_fetch",
@@ -63,6 +63,54 @@
       "include_raw": {
         "type": "boolean",
         "description": "Include the full SerpApi response for debugging or dataset capture. Default false."
+      },
+      "type": {
+        "type": "string",
+        "enum": [
+          "web",
+          "place",
+          "product",
+          "video",
+          "publication"
+        ],
+        "description": "Indexed corpus. Default web; select place, product, video, or publication for typed results. Results are indexed observations, not a live retailer stock or price check."
+      },
+      "ll": {
+        "type": "string",
+        "maxLength": 100,
+        "description": "Place anchor coordinates, e.g. 32.7767,-96.797 or @32.7767,-96.797,14z. Requires type=place. No home-location fallback."
+      },
+      "radius": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 20000,
+        "description": "Place radius in kilometers; requires ll and type=place."
+      },
+      "product_source": {
+        "type": "string",
+        "maxLength": 100,
+        "description": "Restrict type=product to a source, e.g. google."
+      },
+      "as_ylo": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 9999,
+        "description": "Inclusive lower publication year; requires type=publication."
+      },
+      "as_yhi": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 9999,
+        "description": "Inclusive upper publication year; requires type=publication."
+      },
+      "country": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Two-letter country code. Web ranking preference; restricts product results to that market. Omitted searches all markets."
+      },
+      "language": {
+        "type": "string",
+        "description": "Language ranking preference such as en, fr, or en-GB."
       }
     },
     "required": [
@@ -81,5 +129,10 @@
       "SERP_API_KEY"
     ],
     "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  },
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true,
+    "allow": []
   }
 }

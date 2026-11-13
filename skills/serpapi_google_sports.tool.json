@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_google_sports",
-  "description": "Get current Google Sports schedules, scores, box scores, viewing options, recap links, standings, rosters, brackets, league statistics, and rankings. Use for 'when do the Lakers play next?', 'what was the latest score?', 'what happened in the latest Dodgers game?', 'where can I watch this game?', 'show Premier League standings', 'who is on the roster?', 'show the playoff bracket', 'league leaders', or 'Google Sports for...'. Unbounded team and league game views return a current-centered window with the most recent games first, followed by nearby upcoming games. In Jarvis-facing input, football means American football and soccer means association football. Also supports basketball, baseball, cricket, ice hockey, and rugby. Provide a normal team, league, or matchup query; provide kgmid directly for a deterministic one-search lookup. Team standings prioritize the requested team and its division or conference. This is structured sports data, not general sports news; use serpapi_google_news_light for news coverage.",
+  "description": "Get current Google Sports schedules, scores, box scores, viewing options, recap links, standings, rosters, brackets, league statistics, and rankings. Use for 'when do the Lakers play next?', 'what was the latest score?', 'what happened in the latest Dodgers game?', 'where can I watch this game?', 'show Premier League standings', 'who is on the roster?', 'show the playoff bracket', 'league leaders', or 'Google Sports for...'. Unbounded team and league game views return a current-centered window with the most recent games first, followed by nearby upcoming games. In Jarvis-facing input, football means American football and soccer means association football. Also supports basketball, baseball, cricket, ice hockey, and rugby. Provide a normal team, league, or matchup query; provide kgmid directly for a deterministic one-search lookup. Team standings prioritize the requested team and its division or conference. This is structured sports data, not general sports news; use serpapi_google_news_light for news coverage. Live American football can include down_and_distance for the game and timeouts_remaining/possession for each team when supplied.",
   "complementary_tools": [
     "serpapi_google_news_light",
     "serpapi_google_trending_now",
@@ -11,6 +11,10 @@
   ],
   "script": "serpapi_google_sports.py",
   "proxy_policy": "off",
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true
+  },
   "parameters": {
     "type": "object",
     "properties": {

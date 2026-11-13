@@ -326,10 +326,11 @@ def test_tool_rag_replay_fixture_is_redacted_and_content_addressed():
     fixture = load_tool_rag_replay_fixture()
 
     assert fixture["schema_version"] == 2
-    assert fixture["fixture_id"] == "jarvis-ollama-tool-rag-replay-v4"
+    assert fixture["fixture_id"] == "jarvis-ollama-tool-rag-replay-v5"
+    assert fixture["fixture_path"] == "config/benchmarks/ollama-tool-rag-replay-v5.json"
     assert fixture["supersedes"] == {
-        "fixture_id": "jarvis-ollama-tool-rag-replay-v3",
-        "fixture_sha256": "791b198b526c5ba31dbfe4243c62c8a8356a754ea8845e214d7f0fc1b0e2a48a",
+        "fixture_id": "jarvis-ollama-tool-rag-replay-v4",
+        "fixture_sha256": "a57bea4d5bbebbf7a261d1c42bb236a50ec317f198f4191c79269269b76008fc",
     }
     version, prompt = load_router_prompt(fixture["router_prompt_version"])
     assert version == "v4"
@@ -359,6 +360,10 @@ def test_tool_rag_replay_fixture_is_redacted_and_content_addressed():
             "ollama-tool-rag-replay-v3.json",
             "791b198b526c5ba31dbfe4243c62c8a8356a754ea8845e214d7f0fc1b0e2a48a",
         ),
+        (
+            "ollama-tool-rag-replay-v4.json",
+            "a57bea4d5bbebbf7a261d1c42bb236a50ec317f198f4191c79269269b76008fc",
+        ),
     ],
 )
 def test_tool_rag_replay_history_stays_immutable_for_historical_reports(filename, digest):
@@ -370,7 +375,8 @@ def test_tool_rag_replay_history_stays_immutable_for_historical_reports(filename
 def test_replay_v4_preserves_v3_cases_grading_and_non_discovery_schemas():
     previous_path = ROOT / "config" / "benchmarks" / "ollama-tool-rag-replay-v3.json"
     previous = json.loads(previous_path.read_text(encoding="utf-8"))
-    current = load_tool_rag_replay_fixture()
+    current_path = ROOT / "config" / "benchmarks" / "ollama-tool-rag-replay-v4.json"
+    current = json.loads(current_path.read_text(encoding="utf-8"))
 
     for key in ("schema_version", "grading_semantics", "router_prompt_version", "router_base_sha256", "safety"):
         assert current[key] == previous[key]
@@ -385,18 +391,45 @@ def test_replay_v4_preserves_v3_cases_grading_and_non_discovery_schemas():
                 assert new_packet["tool_schema_sha256"][name] == digest
 
 
-def test_tool_rag_replay_still_rejects_unreviewed_schema_drift(monkeypatch):
+def test_replay_v5_preserves_v4_cases_grading_and_non_home_depot_schemas():
+    previous_path = ROOT / "config" / "benchmarks" / "ollama-tool-rag-replay-v4.json"
+    previous = json.loads(previous_path.read_text(encoding="utf-8"))
+    current = load_tool_rag_replay_fixture()
+
+    for key in ("schema_version", "grading_semantics", "router_prompt_version", "router_base_sha256", "safety"):
+        assert current[key] == previous[key]
+    assert len(current["packets"]) == len(previous["packets"])
+    for old_packet, new_packet in zip(previous["packets"], current["packets"], strict=True):
+        for key in ("packet_id", "family", "trace_shape", "final_tools", "cases"):
+            assert new_packet[key] == old_packet[key]
+        assert new_packet["tool_schema_sha256"].keys() == old_packet["tool_schema_sha256"].keys()
+        for name, digest in old_packet["tool_schema_sha256"].items():
+            if name == "serpapi_home_depot":
+                assert new_packet["tool_schema_sha256"][name] != digest
+                assert new_packet["schema_snapshot_sha256"] != old_packet["schema_snapshot_sha256"]
+                schema = next(tool["input_schema"] for tool in new_packet["tools"] if tool["name"] == name)
+                assert schema["properties"]["ps"]["maximum"] == 24
+                assert schema["properties"]["pagesize"]["maximum"] == 40
+                assert "store_sku" in schema["properties"]
+            else:
+                assert new_packet["tool_schema_sha256"][name] == digest
+        if "serpapi_home_depot" not in old_packet["final_tools"]:
+            assert new_packet["schema_snapshot_sha256"] == old_packet["schema_snapshot_sha256"]
+
+
+@pytest.mark.parametrize("tool_name", ["tool_search", "serpapi_home_depot"])
+def test_tool_rag_replay_still_rejects_unreviewed_schema_drift(monkeypatch, tool_name):
     load_original = benchmark_fixtures.load_skill_tool
 
     def changed_tool(name):
         tool = load_original(name)
-        if name == "tool_search":
+        if name == tool_name:
             tool["description"] += " Unreviewed schema change."
         return tool
 
     monkeypatch.setattr(benchmark_fixtures, "load_skill_tool", changed_tool)
 
-    with pytest.raises(ValueError, match="schema drift for 'tool_search'"):
+    with pytest.raises(ValueError, match=f"schema drift for '{tool_name}'"):
         load_tool_rag_replay_fixture()
 
 

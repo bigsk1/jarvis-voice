@@ -27,6 +27,25 @@ window.createShoppingResultAdapters = function createShoppingResultAdapters({
       if (product.reviews != null) chips.push(`${product.reviews} reviews`);
       if (product.asin) chips.push(`ASIN ${product.asin}`);
       if (product.prime === true || product.is_prime === true) chips.push('Prime');
+      const evidence = [];
+      let partialEvidence = product.product_evidence_truncated === true;
+      if (Array.isArray(product.item_ingredients) && product.item_ingredients.length) {
+        const text = product.item_ingredients.filter(value => typeof value === 'string').join('; ');
+        evidence.push(`Ingredients: ${compactText(text, 600)}`);
+        partialEvidence ||= text.length > 600;
+      }
+      const sections = Array.isArray(product.important_information) ? product.important_information : [];
+      sections.slice(0, 4).forEach(section => {
+        if (!section || typeof section !== 'object') return;
+        const title = typeof section.title === 'string' ? section.title : 'Product information';
+        const text = typeof section.text === 'string' ? section.text : '';
+        evidence.push(`${compactText(title, 120)}: ${compactText(text, 300)}`);
+        partialEvidence ||= title.length > 120 || text.length > 300;
+      });
+      partialEvidence ||= sections.length > 4;
+      if (partialEvidence) evidence.push('Product information is partial; open the product for complete warnings and ingredients.');
+      const deliveryContext = payload.delivery_city ? `Delivery city: ${compactText(payload.delivery_city, 200)}`
+        : payload.delivery_zip ? `Delivery postal code: ${compactText(payload.delivery_zip, 200)}` : '';
       return {
         title: product.title,
         url: product.url,
@@ -38,6 +57,8 @@ window.createShoppingResultAdapters = function createShoppingResultAdapters({
           compactText(displayText(product.availability)),
           compactText(displayText(product.stock)),
           compactText(displayText(product.condition)),
+          deliveryContext,
+          ...evidence,
         ].filter(Boolean),
         actionLabel: 'Open product',
       };
@@ -73,6 +94,8 @@ window.createShoppingResultAdapters = function createShoppingResultAdapters({
           compactText(displayText(product.delivery)),
           compactText(displayText(product.pickup)),
           compactText(displayText(product.stock)),
+          product.availability_type ? `Availability: ${compactText(product.availability_type, 200)}` : '',
+          compactText(payload.lookup_note, 400),
         ].filter(Boolean),
         actionLabel: 'Open product',
       };

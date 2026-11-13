@@ -1,13 +1,14 @@
 {
   "enabled": true,
   "name": "serpapi_maps_search",
-  "description": "Search Google Maps for places around coordinates, a map pin, or a map radius. Use for 'search Google Maps for coffee near this pin', 'what's around these coordinates', or 'places on the map near this lat/lng'. Returns address, rating, hours, phone, and website. Use serpapi_google_local for 'near me' or nearby businesses without a map center. Use serpapi_yelp_search for Yelp ratings and filters.",
+  "description": "Search Google Maps for places around coordinates, a map pin, or a map radius. Use for 'coffee near this pin', 'places open now near these coordinates', or map searches with price ranges, preferred minimum ratings, or opening day/hour constraints. Returns address, rating, hours, phone, website, and the effective provider filters. Price filters select overlapping place price ranges; minimum rating is a ranking preference and can still return lower-rated or unrated places. Use serpapi_google_local for 'near me' businesses without a map center and serpapi_yelp_search for Yelp filters.",
   "complementary_tools": [
     "canvas",
     "stash"
   ],
   "script": "serpapi_maps_search.py",
   "proxy_policy": "off",
+  "child_environment": {"mode": "restricted", "from_availability": true},
   "parameters": {
     "type": "object",
     "properties": {
@@ -34,6 +35,30 @@
       "num_results": {
         "type": "integer",
         "description": "How many normalized results to return (1-10, default: 5)."
+      },
+      "min_price": {
+        "type": "number", "minimum": 0,
+        "description": "Lower bound of the place's price range. Google returns overlapping ranges, not a guaranteed bill or per-person quote. Applies to places with numerical price data, such as restaurants."
+      },
+      "max_price": {
+        "type": "number", "minimum": 0,
+        "description": "Upper bound of the place price range; must not be below min_price. Google matches overlapping price ranges."
+      },
+      "min_rating": {
+        "type": "number", "enum": [2, 2.5, 3, 3.5, 4, 4.5],
+        "description": "Preferred minimum Google rating. A ranking preference, not a strict cutoff: lower-rated or unrated places can still appear."
+      },
+      "open_state": {
+        "type": "string", "enum": ["now", "24h"],
+        "description": "Prefer places open now or open 24 hours. Cannot be combined with open_on_day or open_at_hour."
+      },
+      "open_on_day": {
+        "type": "string", "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+        "description": "Day the place is open. Cannot be combined with open_state. Pair with open_at_hour for a specific hour."
+      },
+      "open_at_hour": {
+        "type": "integer", "minimum": 0, "maximum": 23,
+        "description": "Hour the place is open, 0 (midnight) through 23. Requires open_on_day and cannot be combined with open_state."
       },
       "no_cache": {
         "type": "boolean",

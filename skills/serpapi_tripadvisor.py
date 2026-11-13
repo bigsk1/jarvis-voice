@@ -387,6 +387,40 @@ def extract_tripadvisor_place(
         "offers": offers,
         "source": "place_result",
     }
+    award = raw.get("award")
+    if isinstance(award, dict):
+        compact_award = {}
+        award_truncated = False
+        for field, maximum in (("type", 200), ("year", 20)):
+            value = award.get(field)
+            if not isinstance(value, str) and not (field == "year" and type(value) is int):
+                continue
+            value = " ".join(str(value).split())
+            if value:
+                compact_award[field] = value[:maximum]
+                award_truncated |= len(value) > maximum
+        if compact_award:
+            place["award"] = compact_award
+            place["award_truncated"] = award_truncated
+    distribution = raw.get("review_distribution")
+    if isinstance(distribution, list):
+        compact_distribution = []
+        distribution_truncated = False
+        for bucket in distribution:
+            if not isinstance(bucket, dict) or not isinstance(bucket.get("rating"), str):
+                continue
+            count = bucket.get("count")
+            rating = " ".join(bucket["rating"].split())
+            if not rating or type(count) is not int or count < 0:
+                continue
+            if len(compact_distribution) >= 5:
+                distribution_truncated = True
+                break
+            compact_distribution.append({"rating": rating[:80], "count": count})
+            distribution_truncated |= len(rating) > 80
+        if compact_distribution:
+            place["review_distribution"] = compact_distribution
+            place["review_distribution_truncated"] = distribution_truncated
     interesting_places = extract_interesting_places(raw)
     return place, interesting_places
 

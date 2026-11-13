@@ -1,13 +1,15 @@
 {
   "enabled": true,
   "name": "serpapi_amazon_search",
-  "description": "Search Amazon listings or retrieve one Amazon product page. Use for Amazon product discovery, ASIN lookup, bestseller/listing checks, prices, ratings, reviews, Prime eligibility, delivery and stock signals, product comparisons, and purchase research. Amazon searches default delivery_zip from the configured postal code when omitted. Recommended pattern: use engine=amazon first to gather and compare candidates, then use engine=amazon_product with a chosen ASIN for richer details, a direct link, and an image. If saving a focused product to Canvas, preserve its thumbnail by passing it as image_url.",
+  "description": "Search Amazon listings or retrieve one Amazon product page. Use for Amazon product discovery, ASIN lookup, bestseller/listing checks, prices, ratings, reviews, Prime eligibility, delivery and stock signals, product comparisons, ingredients and safety warnings. Amazon.ae/.eg/.sa use optional delivery_city and never inherit a default ZIP; other domains use delivery_zip, defaulting to the configured postal code. Recommended pattern: use engine=amazon first to gather candidates, then engine=amazon_product with a chosen ASIN for details, bounded item_ingredients/important_information, a direct link and an image. Keep the same domain and delivery location for follow-ups. If saving a focused product to Canvas, preserve its thumbnail by passing it as image_url.",
   "complementary_tools": [
     "canvas",
     "stash"
   ],
   "script": "serpapi_amazon_search.py",
   "proxy_policy": "off",
+  "prompt_guard_policy": "web_content",
+  "child_environment": {"mode": "restricted", "from_availability": true, "allow": ["JARVIS_DEFAULT_POSTAL_CODE"]},
   "parameters": {
     "type": "object",
     "properties": {
@@ -30,7 +32,7 @@
       },
       "language": {
         "type": "string",
-        "description": "Amazon locale (default: en_US)."
+        "description": "Amazon locale. Defaults to en_US for amazon.com; other domains use the provider's domain-specific default unless explicitly supplied."
       },
       "device": {
         "type": "string",
@@ -66,7 +68,12 @@
       },
       "delivery_zip": {
         "type": "string",
-        "description": "ZIP/postal code used to localize Amazon delivery results. For amazon and amazon_product engines, defaults to the configured postal code when omitted."
+        "description": "Postal-code delivery location for domains other than amazon.ae/.eg/.sa. Defaults to the configured postal code when omitted. Unsupported on those three city-based domains; cannot be combined with delivery_city."
+      },
+      "delivery_city": {
+        "type": "string",
+        "maxLength": 200,
+        "description": "Optional city, such as Dubai, only for amazon.ae, amazon.eg or amazon.sa. These domains never inherit a default ZIP. Omit when unspecified; do not guess a city. Cannot be combined with delivery_zip. Reused for product detail enrichment."
       },
       "shipping_location": {
         "type": "string",

@@ -305,6 +305,7 @@ class ContextAssembler:
     )
     _PREVIEW_OPAQUE_TOKEN_KEYS = frozenset(
         {
+            "event_token",
             "page_token",
             "immersive_product_page_token",
             "stores_next_page_token",
@@ -1659,6 +1660,15 @@ class ContextAssembler:
                     max_depth=1,
                 )
 
+            extra_fields = {
+                "serpapi_amazon_search": ("item_ingredients", "important_information", "product_evidence_truncated"),
+                "serpapi_home_depot": ("availability_type", "store_sku_number", "model_number", "stock_information"),
+                "serpapi_youtube_search": ("channel_id", "chapters", "chapters_truncated"),
+            }.get(normalized_tool_name, ())
+            for key in extra_fields:
+                if item.get(key) not in (None, "", [], {}):
+                    candidate[key] = self.build_preview_value(item[key], parent_key=key, max_depth=4)
+
             if normalized_tool_name in WALMART_TOOLS | TRADER_JOES_TOOLS:
                 for key in ("position", "us_item_id", "reviews", "currency", "price_formatted", "seller_name",
                             "in_stock", "out_of_stock", "sponsored", "available", "size", "category", "category_id"):
@@ -1751,6 +1761,12 @@ class ContextAssembler:
                     "snippet",
                     "language",
                     "sitelinks",
+                    "result_type", "data_cid", "place_id", "data_id", "address",
+                    "gps_coordinates", "rating", "reviews", "price", "currency",
+                    "product_id", "min_price", "max_price", "gl", "last_updated",
+                    "video_id", "channel", "views", "length", "published_date",
+                    "result_id", "publication_info", "resources", "inline_links",
+                    "details_truncated",
                 ):
                     value = item.get(key)
                     if value not in (None, "", [], {}):
@@ -1758,11 +1774,12 @@ class ContextAssembler:
                             value,
                             parent_key=key,
                             depth=0,
-                            max_depth=2,
+                            max_depth=4,
                         )
 
             if is_google_events:
                 for key in (
+                    "event_token",
                     "type",
                     "start_date",
                     "when",
@@ -1937,6 +1954,7 @@ class ContextAssembler:
             if is_google_trends:
                 for key in (
                     "query",
+                    "query_index", "date",
                     "trend_type",
                     "topic_id",
                     "topic_type",
@@ -2671,6 +2689,9 @@ class ContextAssembler:
             "engine",
             "query",
             "mode",
+            "result_type",
+            "filters",
+            "result_details_truncated",
             "safe",
             "start",
             "num_results",
@@ -2721,6 +2742,11 @@ class ContextAssembler:
             "title",
             "channel",
             "channel_url",
+            "channel_id",
+            "engine", "search_query", "results_count", "posts_results_count",
+            "provider_posts_results_count", "posts_results_truncated", "featured_panel_truncated",
+            "supplemental_note", "length_seconds", "age_restricted", "made_with_ai",
+            "comment_count", "category", "keywords", "chapters_truncated", "music_truncated",
             "published_date",
             "duration",
             "views",
@@ -2742,6 +2768,10 @@ class ContextAssembler:
                     parent_key=key,
                     max_depth=1,
                 )
+
+        for key in ("chapters", "music", "posts_results", "featured_panel"):
+            if isinstance(data.get(key), (list, dict)) and data[key]:
+                preview[key] = self.build_preview_value(data[key], parent_key=key, max_depth=5)
 
         description = data.get("description")
         links_chars = 0
@@ -2817,6 +2847,9 @@ class ContextAssembler:
             "engine",
             "query",
             "queries",
+            "comparisons",
+            "multiple_comparisons",
+            "interpretation_note",
             "data_type",
             "provider_data_type",
             "date",
@@ -3274,6 +3307,7 @@ class ContextAssembler:
                 "player_position",
                 "jersey_number",
                 "value",
+                "down_and_distance",
             ):
                 value = item.get(key)
                 if value not in (None, "", [], {}):
@@ -3296,6 +3330,8 @@ class ContextAssembler:
                             "short_code",
                             "score",
                             "win",
+                            "possession",
+                            "timeouts_remaining",
                         )
                         if team.get(key) not in (None, "")
                     }
@@ -3343,7 +3379,7 @@ class ContextAssembler:
         return candidates
 
     def build_google_events_data_preview(self, data: Any) -> dict[str, Any]:
-        """Keep Google Events filters, provenance, and pagination compact."""
+        """Keep query preferences distinct from enforced provider filters."""
         if not isinstance(data, dict):
             return {}
 
@@ -3359,10 +3395,9 @@ class ContextAssembler:
             "uule_used",
             "country",
             "language",
-            "date_filter",
-            "virtual",
-            "filters",
-            "start",
+            "query_preferences",
+            "query_preferences_note",
+            "pagination_supported",
             "max_results",
             "results_count",
             "provider_results_count",
@@ -3370,8 +3405,6 @@ class ContextAssembler:
             "events_results_state",
             "search_id",
             "google_events_url",
-            "has_more",
-            "next_start",
             "serpapi_searches_used",
             "external_content_trust",
             "untrusted_external_content",
@@ -3386,19 +3419,11 @@ class ContextAssembler:
                     max_depth=2,
                 )
 
-        pagination = data.get("pagination")
-        if isinstance(pagination, dict):
-            preview["pagination"] = {
-                key: pagination[key]
-                for key in (
-                    "current",
-                    "start",
-                    "has_more",
-                    "next_start",
-                    "previous_start",
-                )
-                if pagination.get(key) not in (None, "") or key == "has_more"
+        if "query_preferences" not in data and (data.get("date_filter") or data.get("virtual")):
+            preview["query_preferences"] = {
+                key: data[key] for key in ("date_filter", "virtual") if data.get(key)
             }
+            preview["query_preferences_note"] = "Saved request preferences; current Google Events does not guarantee these filters."
         return preview
 
     def build_google_local_data_preview(self, data: Any) -> dict[str, Any]:
@@ -4002,7 +4027,7 @@ class ContextAssembler:
                 data_preview = self.build_yelp_data_preview(data)
             elif normalized_tool_name == "serpapi_open_table_reviews":
                 data_preview = self.build_open_table_reviews_data_preview(data)
-            elif normalized_tool_name == "serpapi_youtube":
+            elif normalized_tool_name in {"serpapi_youtube", "serpapi_youtube_search"}:
                 data_preview = self.build_serpapi_youtube_data_preview(data)
             elif normalized_tool_name == "serpapi_search_index":
                 data_preview = self.build_search_index_data_preview(data)
@@ -4083,6 +4108,15 @@ class ContextAssembler:
                 data_preview = self.build_video_analysis_data_preview(data)
             else:
                 data_preview = self.build_preview_value(data, parent_key="data")
+            if isinstance(data, dict) and isinstance(data_preview, dict):
+                for key in {
+                    "serpapi_amazon_search": ("amazon_domain", "delivery_city", "delivery_zip", "delivery_localized",
+                                               "delivery_location_source", "delivery_location_note"),
+                    "serpapi_home_depot": ("requested_store_sku", "product_id", "lookup_note"),
+                    "serpapi_maps_search": ("requested_filters", "effective_filters", "filter_notes"),
+                }.get(normalized_tool_name, ()):
+                    if data.get(key) not in (None, "", [], {}):
+                        data_preview[key] = self.build_preview_value(data[key], parent_key=key, max_depth=3)
             preview_payload = {
                 "ok": result.get("ok", True),
                 "speech": self.truncate_preview_text(result.get("speech", ""), 400),

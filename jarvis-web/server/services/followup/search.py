@@ -210,7 +210,8 @@ def extend_youtube_search(
     max_candidates: int,
 ) -> None:
     """Add serpapi_youtube_search fields to the common follow-up output."""
-    results = value.get('results') or value.get('top_results') or []
+    value = value['data'] if isinstance(value.get('data'), dict) else value
+    results = value.get('results') or value.get('top_results') or value.get('candidates') or []
     if isinstance(results, list) and results:
         extracted['results_count'] = value.get('results_count', len(results))
         first = results[0] if isinstance(results[0], dict) else {}
@@ -239,13 +240,60 @@ def extend_youtube_search(
                 candidate['video_id'] = video_id
             if item.get('channel'):
                 candidate['channel'] = item['channel']
+            if item.get('channel_id'):
+                candidate['channel_id'] = item['channel_id']
             if item.get('duration'):
                 candidate['duration'] = item['duration']
+            if isinstance(item.get('chapters'), list):
+                candidate['chapters'] = item['chapters'][:8]
+                candidate['chapters_truncated'] = bool(item.get('chapters_truncated')) or len(item['chapters']) > 8
             if item.get('thumbnail'):
                 candidate['thumbnail'] = item['thumbnail']
             candidates.append(candidate)
         if candidates:
             extracted['candidates'] = candidates
+
+    posts = value.get('posts_results')
+    if isinstance(posts, list) and posts:
+        projected = []
+        shortened = False
+        for post in posts[:min(3, max_candidates)]:
+            if not isinstance(post, dict):
+                continue
+            row = {key: post[key] for key in (
+                'position', 'position_on_page', 'post_id', 'url', 'published_date',
+                'votes', 'extracted_votes', 'comments_count', 'extracted_comments_count',
+            ) if key in post}
+            if isinstance(post.get('text'), str):
+                row['text'] = post['text'][:400]
+                shortened |= len(post['text']) > 400
+            for key, fields in (
+                ('author', ('name', 'channel_id', 'url', 'verified')),
+                ('attachment', ('type', 'video_id', 'title', 'url')),
+            ):
+                if isinstance(post.get(key), dict):
+                    row[key] = {field: post[key][field] for field in fields if field in post[key]}
+            if row:
+                projected.append(row)
+        extracted['posts_results'] = projected
+        extracted['posts_results_count'] = len(projected)
+        extracted['provider_posts_results_count'] = value.get('provider_posts_results_count', len(posts))
+        extracted['posts_results_truncated'] = bool(value.get('posts_results_truncated')) or shortened or len(posts) > len(projected)
+    panel = value.get('featured_panel')
+    if isinstance(panel, dict) and panel:
+        projected_panel = {key: panel[key] for key in (
+            'type', 'channel_id', 'playlist_id', 'show_id', 'title', 'subtitle',
+            'handle', 'verified', 'thumbnail', 'url',
+        ) if key in panel}
+        videos = panel.get('videos')
+        if isinstance(videos, list):
+            projected_panel['videos'] = [{key: row[key] for key in (
+                'video_id', 'title', 'url', 'channel', 'channel_id', 'duration',
+            ) if key in row} for row in videos[:3] if isinstance(row, dict)]
+        extracted['featured_panel'] = projected_panel
+        extracted['featured_panel_truncated'] = bool(value.get('featured_panel_truncated')) or isinstance(videos, list) and len(videos) > 3
+    if value.get('supplemental_note'):
+        extracted['supplemental_note'] = value['supplemental_note']
 
 
 def extend_search_index(
@@ -256,7 +304,7 @@ def extend_search_index(
     truncate_text: Callable[[str, int], str],
 ) -> None:
     """Add serpapi_search_index fields to the common follow-up output."""
-    results = payload.get('results') or payload.get('top_results') or []
+    results = payload.get('results') or payload.get('top_results') or payload.get('candidates') or []
     if isinstance(results, list) and results:
         extracted['results_count'] = payload.get('results_count', len(results))
         candidates = []
@@ -268,6 +316,12 @@ def extend_search_index(
                 for field in (
                     'position', 'title', 'url', 'displayed_link',
                     'date', 'language', 'image_url', 'source',
+                    'result_type', 'data_cid', 'place_id', 'data_id', 'address',
+                    'gps_coordinates', 'rating', 'reviews', 'price', 'currency',
+                    'product_id', 'min_price', 'max_price', 'gl', 'last_updated',
+                    'video_id', 'channel', 'views', 'length', 'published_date',
+                    'result_id', 'publication_info', 'resources', 'inline_links',
+                    'details_truncated',
                 )
                 if item.get(field) not in (None, '', [], {})
             }
@@ -442,7 +496,7 @@ def extend_google_sports(
     max_candidates: int,
 ) -> None:
     """Add serpapi_google_sports fields to the common follow-up output."""
-    results = payload.get('results') or payload.get('top_results') or []
+    results = payload.get('results') or payload.get('top_results') or payload.get('candidates') or []
     if isinstance(results, list) and results:
         extracted['results_count'] = payload.get('results_count', len(results))
         candidates = []
@@ -454,7 +508,7 @@ def extend_google_sports(
                 for field in (
                     'kind', 'position', 'group', 'division', 'rank',
                     'title', 'name', 'url', 'serpapi_link', 'kgmid', 'thumbnail',
-                    'status', 'status_original', 'date', 'time',
+                    'status', 'status_original', 'down_and_distance', 'date', 'time',
                     'start_time', 'end_time', 'tournament', 'stadium',
                     'league_movement', 'highlighted', 'player_position',
                     'jersey_number', 'team', 'value',
@@ -511,7 +565,7 @@ def extend_google_trends(
     max_candidates: int,
 ) -> None:
     """Add serpapi_google_trends fields to the common follow-up output."""
-    results = payload.get('results') or payload.get('top_results') or []
+    results = payload.get('results') or payload.get('top_results') or payload.get('candidates') or []
     if isinstance(results, list) and results:
         extracted['results_count'] = payload.get('results_count', len(results))
         candidates = []
@@ -522,6 +576,7 @@ def extend_google_trends(
                 field: item[field]
                 for field in (
                     'title', 'query', 'url', 'trend_type', 'topic_id',
+                    'query_index', 'date',
                     'topic_type', 'location', 'geo', 'latest_date',
                     'latest_value', 'previous_value',
                     'change_from_previous', 'change_over_period',
@@ -541,14 +596,14 @@ def extend_google_trends(
         extracted['averages'] = [
             {
                 field: item[field]
-                for field in ('query', 'value')
+                for field in ('query', 'query_index', 'value')
                 if item.get(field) not in (None, '')
             }
             for item in averages[:max_candidates]
             if isinstance(item, dict)
         ]
 
-    timeline = payload.get('timeline_data')
+    timeline = payload.get('timeline_data') or payload.get('latest_timeline')
     if isinstance(timeline, list) and timeline:
         extracted['latest_timeline'] = [
             {

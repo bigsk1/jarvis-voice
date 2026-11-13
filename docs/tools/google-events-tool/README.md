@@ -40,7 +40,7 @@ missing qualifier. If a complete query already contains a location, such as
 `concerts in Portland, Maine`, Jarvis does not append the default location a
 second time.
 
-## Filters and pagination
+## Query preferences and current engine limits
 
 ```json
 {
@@ -51,9 +51,18 @@ second time.
 ```
 
 Supported date values are `today`, `tomorrow`, `week`, `next_week`, `month`,
-and `next_month`. Set `virtual: true` for online-only results; it can be combined
-with a date filter. Pagination uses offsets `0`, `10`, `20`, and so on. When the
-provider exposes another page, reuse the returned `next_start`.
+and `next_month`. `date_filter` adds readable date wording to the query, and
+`virtual: true` adds virtual/online wording. These are search preferences, not
+strict filters: inspect each returned event's timing and format before saying
+it matches. Results expose `query_preferences` and `query_preferences_note`;
+the card uses the same qualified labels.
+
+SerpApi's revamped engine removed `htichips` and `event_type`; those arguments
+are rejected before HTTP. Retrieval uses fixed US-English settings even when
+the query names a destination elsewhere. Arbitrary country/language overrides
+and nonzero page offsets are not supported. `pagination_supported` is false;
+Jarvis does not advertise another page. Historical saved requests retain a
+note that their old filter requests are unverified.
 
 `no_cache` defaults to false. SerpApi documents an exact-parameter cache with a
 one-hour lifetime and says cached searches do not consume monthly searches.
@@ -67,7 +76,9 @@ Each normalized `results[]` row can include:
 - structured address plus `address_text`;
 - a bounded description and listed price;
 - ticket or more-info sources and public links;
-- public Google map link/image plus event thumbnail/image.
+- public Google map link/image plus event thumbnail/image;
+- the opaque `event_token` when supplied, retained as data for future detail
+  integrations (this tool does not make an Event Details request).
 
 Jarvis omits SerpApi drill-down and archive URLs from normal rows. Full provider
 JSON is available only with `include_raw: true` for debugging. Event

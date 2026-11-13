@@ -10,16 +10,18 @@ from unittest.mock import patch
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "skills"))
 
-from serpapi_ebay_product import extract_ebay_product_summary, _compact_related
-from serpapi_ebay_search import extract_ebay_search_results, normalize_ipg, main as ebay_search_main
+from serpapi_ebay_product import _compact_related, extract_ebay_product_summary  # noqa: E402
+from serpapi_ebay_search import extract_ebay_search_results, normalize_ipg  # noqa: E402
+from serpapi_ebay_search import main as ebay_search_main  # noqa: E402
 
 
 class SerpApiEbaySearchTests(unittest.TestCase):
     def test_normalize_ipg_allowed(self):
-        self.assertEqual(normalize_ipg(50), 50)
+        self.assertEqual(normalize_ipg(60), 60)
 
     def test_normalize_ipg_rejects_bad(self):
-        self.assertIsNone(normalize_ipg(33))
+        with self.assertRaisesRegex(ValueError, "60, 120 or 240"):
+            normalize_ipg(33)
 
     def test_extract_ebay_search_maps_link_to_url(self):
         payload = {

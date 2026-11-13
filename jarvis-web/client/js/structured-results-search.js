@@ -178,17 +178,24 @@ window.createSearchResultAdapters = function createSearchResultAdapters({
   function adaptSearchIndex(payload) {
     const items = getRows(payload).map(row => {
       const chips = [];
+      const resultType = row.result_type || payload.result_type || 'web';
+      if (resultType !== 'web') chips.push(String(resultType));
       if (row.date) chips.push(String(row.date));
       if (row.language) chips.push(String(row.language).toUpperCase());
+      if (row.rating != null) chips.push(`Rating ${row.rating}`);
+      if (row.length) chips.push(String(row.length));
+      if (row.last_updated) chips.push(`Indexed ${row.last_updated}`);
+      const price = row.price != null ? [row.currency, row.price].filter(v => v != null && v !== '').join(' ') : '';
+      const channel = row.channel && typeof row.channel === 'object' ? row.channel.name : row.channel;
       const sitelinks = list(row.sitelinks);
       if (sitelinks.length) chips.push(`${sitelinks.length} related links`);
       return {
-        title: row.title || 'Indexed webpage',
+        title: row.title || `Indexed ${resultType === 'web' ? 'webpage' : resultType}`,
         url: row.url || row.link,
         image: row.image_url || row.thumbnail,
-        primary: row.displayed_link || row.source || '',
+        primary: price || row.address || channel || row.publication_info?.summary || row.displayed_link || row.source || '',
         chips,
-        details: row.snippet ? [compactText(row.snippet, 280)] : [],
+        details: [row.snippet ? compactText(row.snippet, 280) : '', row.result_type === 'product' ? 'Indexed offer; verify current price and stock' : ''].filter(Boolean),
         actionLabel: 'Open source',
       };
     });
@@ -203,8 +210,9 @@ window.createSearchResultAdapters = function createSearchResultAdapters({
       kind: 'generic',
       layout: 'rail',
       eyebrow: mode === 'deep' ? 'Search Index · Deep recall' : 'Search Index',
-      heading: payload.query || 'Indexed web sources',
-      subtitle: related ? `${countText} · Related: ${related}` : countText,
+      heading: payload.query || 'Indexed sources',
+      subtitle: [countText, related ? `Related: ${related}` : '',
+        payload.result_details_truncated ? 'Some result details omitted' : ''].filter(Boolean).join(' · '),
       items,
     };
   }
@@ -329,7 +337,7 @@ window.createSearchResultAdapters = function createSearchResultAdapters({
           changes.push(`${prefix}${row.change_over_period} over period`);
         }
         return {
-          title: row.query || row.title || `Trend ${index + 1}`,
+          title: row.title || row.query || `Trend ${index + 1}`,
           primary: row.latest_value != null ? `Latest ${row.latest_value}` : '',
           chips,
           details: [row.latest_date, ...changes].filter(Boolean),
@@ -371,7 +379,7 @@ window.createSearchResultAdapters = function createSearchResultAdapters({
       layout: 'rail',
       eyebrow: 'Google Trends',
       heading: payload.query || list(payload.queries).join(', ') || 'Trend analysis',
-      subtitle: [view, scope].filter(Boolean).join(' · '),
+      subtitle: [view, scope, payload.interpretation_note].filter(Boolean).join(' · '),
       actionUrl: payload.trends_url,
       actionLabel: 'Open Google Trends',
       items,
@@ -400,6 +408,15 @@ window.createSearchResultAdapters = function createSearchResultAdapters({
         // still show a player or team image when the provider supplies one.
         image = '';
         if (row.status_original || row.status) chips.push(String(row.status_original || row.status));
+        if (row.down_and_distance) chips.push(String(row.down_and_distance));
+        teams.forEach(team => {
+          const name = team.short_code || team.short_name || team.name;
+          const state = [];
+          if (team.timeouts_remaining != null) state.push(`${team.timeouts_remaining} timeouts remaining`);
+          if (team.possession === true) state.push('Possession');
+          if (team.possession === false) state.push('No possession');
+          if (name && state.length) details.push(`${name}: ${state.join(' · ')}`);
+        });
         if (row.start_time || row.date || row.time) {
           const dateTime = row.start_time
             ? formatDateTime(row.start_time)

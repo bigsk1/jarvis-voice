@@ -296,6 +296,15 @@ window.createLocalTravelResultAdapters = function createLocalTravelResultAdapter
       if (place.reviews != null) placeChips.push(`${place.reviews} reviews`);
       if (place.ranking) placeChips.push(String(place.ranking));
       if (place.price_level) placeChips.push(String(place.price_level));
+      const award = place.award && typeof place.award === 'object' ? place.award : {};
+      if (typeof award.type === 'string' && award.type) {
+        placeChips.push([award.type, award.year].filter(Boolean).join(' · '));
+      }
+      const distribution = Array.isArray(place.review_distribution)
+        ? place.review_distribution.filter(row => row && typeof row.rating === 'string'
+          && typeof row.count === 'number' && Number.isFinite(row.count) && row.count >= 0)
+          .slice(0, 5).map(row => `${row.rating}: ${formatCount(row.count)}`).join(' · ')
+        : '';
       const mainItem = {
         title: place.title || place.name || 'Tripadvisor place',
         url: place.url || place.website,
@@ -306,6 +315,8 @@ window.createLocalTravelResultAdapters = function createLocalTravelResultAdapter
           place.address,
           list(place.categories).slice(0, 3).join(' · '),
           place.description ? compactText(place.description, 220) : '',
+          distribution ? `Review breakdown: ${distribution}` : '',
+          place.award_truncated || place.review_distribution_truncated ? 'Some review summary details omitted' : '',
         ].filter(Boolean),
         actionLabel: 'View on Tripadvisor',
       };
@@ -469,6 +480,14 @@ window.createLocalTravelResultAdapters = function createLocalTravelResultAdapter
       };
     });
     const location = payload.location || (payload.uule_used ? 'encoded location' : '');
+    const legacy = !payload.query_preferences || typeof payload.query_preferences !== 'object';
+    const preferences = legacy ? payload : payload.query_preferences;
+    const dates = {
+      today: 'today', tomorrow: 'tomorrow', week: 'this week', next_week: 'next week',
+      month: 'this month', next_month: 'next month',
+    };
+    const hasPreferences = Boolean(payload.query_preferences_note || preferences.date_filter || preferences.virtual
+      || (legacy && Array.isArray(payload.filters) && payload.filters.length));
     return {
       kind: 'events',
       layout: 'rail',
@@ -477,8 +496,12 @@ window.createLocalTravelResultAdapters = function createLocalTravelResultAdapter
       subtitle: [
         `${payload.results_count ?? items.length} event${Number(payload.results_count ?? items.length) === 1 ? '' : 's'}`,
         location,
-        payload.date_filter ? String(payload.date_filter).replace(/_/g, ' ') : '',
-        payload.virtual ? 'Virtual only' : '',
+        preferences.date_filter ? `Date preference: ${dates[preferences.date_filter]
+          || String(preferences.date_filter).replace(/_/g, ' ')}` : '',
+        preferences.virtual === true ? 'Virtual requested (not guaranteed)' : '',
+        hasPreferences ? (payload.query_preferences_note
+          ? compactText(payload.query_preferences_note, 220)
+          : legacy ? 'Saved filter requests are unverified' : 'Query preferences, not strict filters') : '',
         payload.location_ambiguity_warning || '',
       ].filter(Boolean).join(' · '),
       actionUrl: payload.google_events_url || payload.top_url,
@@ -502,11 +525,32 @@ window.createLocalTravelResultAdapters = function createLocalTravelResultAdapter
         actionLabel: 'Open place',
       };
     });
+    const hasEffective = payload.effective_filters && typeof payload.effective_filters === 'object';
+    const filters = hasEffective ? payload.effective_filters
+      : (payload.requested_filters && typeof payload.requested_filters === 'object'
+        ? payload.requested_filters : {});
+    const numeric = value => typeof value === 'number' && Number.isFinite(value);
+    const minimum = numeric(filters.min_price) ? filters.min_price : null;
+    const maximum = numeric(filters.max_price) ? filters.max_price : null;
+    const price = minimum != null && maximum != null ? `Price ranges overlapping ${minimum}–${maximum}`
+      : minimum != null ? `Price ranges reaching ${minimum}+`
+      : maximum != null ? `Price ranges starting at ${maximum} or less` : '';
+    const days = {mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday',
+      fri: 'Friday', sat: 'Saturday', sun: 'Sunday'};
+    const opening = filters.open_state === 'now' ? 'Open now'
+      : filters.open_state === '24h' ? 'Open 24 hours'
+      : days[filters.open_on_day] ? `Open ${days[filters.open_on_day]}${numeric(filters.open_at_hour)
+        ? ` at ${String(filters.open_at_hour).padStart(2, '0')}:00` : ''}` : '';
+    const filterLabels = [price, numeric(filters.min_rating)
+      ? `Rating preference: ${filters.min_rating}+ (lower or unrated places may appear)` : '', opening]
+      .filter(Boolean);
     return {
       kind: 'local',
       eyebrow: 'Places',
       heading: payload.query || 'Map results',
-      subtitle: payload.location || '',
+      subtitle: [payload.location || '', ...filterLabels,
+        !hasEffective && filterLabels.length ? 'Saved requested filters are unverified' : '',
+      ].filter(Boolean).join(' · '),
       items,
     };
   }

@@ -42,7 +42,7 @@ RESERVED_KEYS = {
     "LH_PrefLoc",
 }
 
-_ALLOWED_IPG = frozenset({25, 50, 100, 200})
+_ALLOWED_IPG = frozenset({60, 120, 240})
 
 
 def return_success(speech: str, data: dict[str, Any] | None = None) -> None:
@@ -62,11 +62,9 @@ def return_error(speech: str, data: dict[str, Any] | None = None) -> None:
 def normalize_ipg(value: Any) -> int | None:
     if value is None or value == "":
         return None
-    try:
-        n = int(value)
-    except (TypeError, ValueError):
-        return None
-    return n if n in _ALLOWED_IPG else None
+    if type(value) is not int or value not in _ALLOWED_IPG:
+        raise ValueError("_ipg must be 60, 120 or 240; these are the supported eBay page sizes.")
+    return value
 
 
 def _clean_str(input_data: dict[str, Any], key: str) -> str:
@@ -198,7 +196,10 @@ def main() -> int:
         if _clean_str(input_data, "_blrs"):
             params["_blrs"] = _clean_str(input_data, "_blrs")
         if _clean_str(input_data, "show_only"):
-            params["show_only"] = _clean_str(input_data, "show_only")
+            show_only = _clean_str(input_data, "show_only")
+            if any(value.strip().casefold() in {"sold", "complete", "completed"} for value in show_only.split(",")):
+                raise ValueError("eBay Sold and Complete filters are no longer supported; historical sold-price lookup is unavailable.")
+            params["show_only"] = show_only
         if _clean_str(input_data, "buying_format"):
             params["buying_format"] = _clean_str(input_data, "buying_format")
 

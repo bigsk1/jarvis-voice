@@ -448,6 +448,8 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'youtube_video': ['video_title', 'stash_ref', 'filename', 'duration_seconds', 'channel'],
     'serpapi_youtube': [
         'video_id', 'url', 'title', 'channel', 'duration', 'published_date',
+        'channel_id', 'channel_url', 'length_seconds', 'age_restricted', 'made_with_ai',
+        'comment_count', 'category', 'keywords', 'chapters_truncated', 'music_truncated',
         'transcript_api_url', 'transcript_stash_ref', 'md_stash_ref',
         'transcript_filename', 'transcript_saved',
     ],
@@ -466,6 +468,7 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     ],
     'serpapi_search_index': [
         'engine', 'query', 'mode', 'safe', 'start', 'num_results',
+        'result_type', 'filters', 'result_details_truncated',
         'results_count', 'provider_results_count', 'total_results', 'top_url',
         'search_id', 'has_more', 'next_start', 'serpapi_searches_used', 'source',
     ],
@@ -486,10 +489,10 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'serpapi_google_events': [
         'engine', 'query', 'effective_query', 'query_location_embedded',
         'location', 'location_source', 'location_ambiguity_warning',
-        'uule_used', 'country', 'language', 'date_filter', 'virtual',
-        'filters', 'start', 'max_results', 'results_count',
+        'uule_used', 'country', 'language', 'query_preferences', 'query_preferences_note',
+        'pagination_supported', 'max_results', 'results_count',
         'provider_results_count', 'top_url', 'events_results_state',
-        'search_id', 'google_events_url', 'has_more', 'next_start',
+        'search_id', 'google_events_url',
         'serpapi_searches_used', 'external_content_trust',
         'untrusted_external_content', 'handling_note', 'source',
     ],
@@ -563,6 +566,7 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     ],
     'serpapi_google_trends': [
         'engine', 'query', 'queries', 'data_type', 'provider_data_type',
+        'comparisons', 'multiple_comparisons', 'interpretation_note',
         'date', 'geo', 'region', 'language', 'timezone_offset', 'category',
         'property', 'results_count', 'provider_results_count', 'latest_period',
         'timeline_points_returned', 'timeline_points_original', 'search_id',
@@ -687,10 +691,11 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'api_call': ['url', 'method', 'status_code'],
     'serpapi_amazon_search': ['engine', 'query', 'asin', 'results_count', 'top_url'],
     'serpapi_search': ['engine', 'query', 'asin', 'results_count', 'top_url'],
-    'serpapi_home_depot': ['engine', 'query', 'country', 'product_id', 'results_count', 'top_url', 'top_image_url'],
+    'serpapi_home_depot': ['engine', 'query', 'country', 'product_id', 'results_count', 'top_url', 'top_image_url',
+                           'requested_store_sku', 'lookup_note'],
     'serpapi_ebay_search': ['engine', 'query', 'category_id', 'ebay_domain', 'product_id', 'results_count', 'top_url'],
     'serpapi_ebay_product': ['engine', 'product_id', 'ebay_domain', 'results_count', 'top_url', 'top_image_url'],
-    'serpapi_maps_search': ['engine', 'query', 'results_count'],
+    'serpapi_maps_search': ['engine', 'query', 'results_count', 'requested_filters', 'effective_filters', 'filter_notes'],
     'serpapi_hotel_search': [
         'engine', 'provider', 'query', 'destination', 'check_in_date', 'check_out_date',
         'nights', 'sort_by', 'applied_filters', 'currency', 'results_count', 'cheapest_price_total',
@@ -3461,6 +3466,16 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             field_value = payload.get(field)
             if field_value not in (None, '', [], {}):
                 extracted[field] = field_value
+
+        if key == 'serpapi_youtube':
+            for field, maximum in (('chapters', 2400), ('music', 1600)):
+                if isinstance(payload.get(field), list) and payload[field]:
+                    extracted[field] = _bounded_structured_followup_value(payload[field], max_chars=maximum)
+                    if extracted[field] != payload[field]:
+                        extracted[field + '_truncated'] = True
+
+        if key == 'serpapi_maps_search':
+            _local_travel_followup.extend_maps_search(payload, extracted)
 
         if key == 'heygen':
             for field in ('wallet', 'subscription', 'usage_based'):

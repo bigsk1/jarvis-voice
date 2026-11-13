@@ -245,15 +245,16 @@ reviewed oracle derived from the current tool contracts, not copied model
 answers from private traffic.
 
 The active oracle is
-`config/benchmarks/ollama-tool-rag-replay-v4.json`; it is tracked benchmark
-source, not a generated log. Versions 1 through 3 remain tracked byte-for-byte so
+`config/benchmarks/ollama-tool-rag-replay-v5.json`; it is tracked benchmark
+source, not a generated log. Versions 1 through 4 remain tracked byte-for-byte so
 older reports bearing their fixture SHAs remain reproducible. Change the
 oracle by adding a new version and reviewing the expected decisions—do not
 rewrite an existing fixture in place.
 
-Version 4 updates the `tool_search` schema pin for task-shaped capability
-discovery and comparison of six options. It preserves version 3's router v4
-pin, both tool shortlists, grading format and all eight expected decisions.
+Version 5 updates the Home Depot schema pin for the US page-size maximum of 24,
+Canada page-size bounds and focused Store SKU lookup. It preserves version 4's
+router v4 pin, both tool shortlists, grading format and all eight expected
+decisions. Version 4's `tool_search` discovery guidance is unchanged.
 Compare model scores using the same fixture SHA; earlier reports keep their
 original fixture identity. The grading format avoids treating one literal
 phrasing as the only correct answer:

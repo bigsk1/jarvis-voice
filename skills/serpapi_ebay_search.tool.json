@@ -9,6 +9,8 @@
   ],
   "script": "serpapi_ebay_search.py",
   "proxy_policy": "off",
+  "prompt_guard_policy": "web_content",
+  "child_environment": {"mode": "restricted", "from_availability": true},
   "parameters": {
     "type": "object",
     "properties": {
@@ -34,7 +36,8 @@
       },
       "_ipg": {
         "type": "integer",
-        "description": "Page size: 25, 50 (default API), 100, or 200."
+        "enum": [60, 120, 240],
+        "description": "Supported provider page sizes: 60 (default), 120 or 240. Other values fail validation; num_results separately bounds the normalized shortlist."
       },
       "_blrs": {
         "type": "string",
@@ -42,7 +45,7 @@
       },
       "show_only": {
         "type": "string",
-        "description": "Comma-separated filters: Complete, Sold, FR, RPA, AS, Savings, SaleItems, Lots, Charity, AV, FS, LPickup, etc."
+        "description": "Comma-separated current-listing filters: FR, RPA, AS, Savings, SaleItems, Lots, Charity, AV, FS, LPickup, etc. Sold and Complete historical filters are no longer supported and are rejected before a request."
       },
       "buying_format": {
         "type": "string",

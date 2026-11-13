@@ -78,7 +78,8 @@ class StructuredResultsRenderer {
     return html;
   }
 
-  _adaptCollection(toolName, rawPayload, adapter = this.adapters.get(toolName)) {
+  _adaptCollection(toolName, rawPayload, {supplementalOnly = false} = {}) {
+    let adapter = this.adapters.get(toolName);
     if (!adapter && String(toolName).startsWith('mcp_google_workspace_')) {
       this.register(toolName, payload => this._adaptWorkspace(payload));
       adapter = this.adapters.get(toolName);
@@ -96,7 +97,7 @@ class StructuredResultsRenderer {
         return {kind: 'external', external: payload, callCount};
       }
       if (!adapter) return null;
-      const collection = adapter(payload);
+      const collection = adapter(payload, {supplementalOnly});
       return collection?.items?.length ? {...collection, callCount} : null;
     } catch (error) {
       console.warn(`[StructuredResults] Could not render ${toolName}:`, error);
@@ -165,19 +166,17 @@ class StructuredResultsRenderer {
 
       const occurrenceIndex = successIndexes.get(toolName) || 0;
       successIndexes.set(toolName, occurrenceIndex + 1);
-      const adapter = this.adapters.get(toolName);
-      if (this._usesDedicatedSurface(toolName)) {
-        callsWithoutCards += 1;
-        return;
-      }
-
       const rawPayload = toolResultsData?.[toolName] ?? data?.[toolName];
       const occurrencePayload = this._payloadForOccurrence(
         rawPayload,
         occurrenceIndex,
         successTotals.get(toolName) || 0
       );
-      const collection = this._adaptCollection(toolName, occurrencePayload, adapter);
+      if (this._usesDedicatedSurface(toolName, occurrencePayload)) {
+        callsWithoutCards += 1;
+        return;
+      }
+      const collection = this._adaptCollection(toolName, occurrencePayload, {supplementalOnly: true});
       if (!collection) {
         callsWithoutCards += 1;
         return;
@@ -244,15 +243,19 @@ class StructuredResultsRenderer {
     return step?.data ?? null;
   }
 
-  _usesDedicatedSurface(toolName) {
+  _usesDedicatedSurface(toolName, rawPayload) {
     // The chat renderer already turns the leading YouTube search result into a
     // full-size playable embed. Keep that richer surface instead of duplicating
-    // the same result as a compact workflow section.
-    return toolName === 'serpapi_youtube_search';
+    // the same result as a compact section. Posts/panels have no playable embed.
+    if (toolName !== 'serpapi_youtube_search') return false;
+    const payload = this._latestPayload(rawPayload);
+    const posts = Array.isArray(payload?.posts_results) && payload.posts_results.length > 0;
+    const panel = payload?.featured_panel;
+    return !posts && !(panel && typeof panel === 'object' && !Array.isArray(panel) && Object.keys(panel).length);
   }
 
-  _workflowUsesDedicatedSurface(toolName) {
-    return this._usesDedicatedSurface(toolName);
+  _workflowUsesDedicatedSurface(toolName, rawPayload) {
+    return this._usesDedicatedSurface(toolName, rawPayload);
   }
 
   _workflowCollections(workflow, toolResultsData = {}, data = {}) {
@@ -272,11 +275,13 @@ class StructuredResultsRenderer {
       if (!toolName) continue;
       representedTools.add(toolName);
       if (step.skipped === true || step.ok === false) continue;
-      if (this._workflowUsesDedicatedSurface(toolName)) continue;
+      const rawPayload = this._workflowStepPayload(step);
+      if (this._workflowUsesDedicatedSurface(toolName, rawPayload)) continue;
 
       const collection = this._adaptCollection(
         toolName,
-        this._workflowStepPayload(step)
+        rawPayload,
+        {supplementalOnly: true}
       );
       if (collection) {
         sections.push({
@@ -298,11 +303,12 @@ class StructuredResultsRenderer {
       )),
     ]);
     for (const toolName of toolNames) {
-      if (representedTools.has(toolName) || this._workflowUsesDedicatedSurface(toolName)) continue;
+      if (representedTools.has(toolName)) continue;
       const rawPayload = toolResultsData?.[toolName]
         ?? workflow?.[toolName]
         ?? data?.[toolName];
-      const collection = this._adaptCollection(toolName, rawPayload);
+      if (this._workflowUsesDedicatedSurface(toolName, rawPayload)) continue;
+      const collection = this._adaptCollection(toolName, rawPayload, {supplementalOnly: true});
       if (collection) sections.push({toolName, step: null, collection});
     }
     return sections;
@@ -436,7 +442,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_google_local', localTravel.adaptGoogleLocal);
     this.register('serpapi_google_local_services', localTravel.adaptGoogleLocalServices);
     this.register('serpapi_maps_search', localTravel.adaptMaps);
-    this.register('serpapi_youtube_search', payload => this._adaptYouTubeSearch(payload));
+    this.register('serpapi_youtube_search', (payload, options) => this._adaptYouTubeSearch(payload, options));
     this.register('weather', payload => this._adaptWeather(payload));
     this.register('external_network_intel', payload => this._adaptExternalNetworkIntel(payload));
     this.register('gpu_hot_status', payload => this._adaptGpuHotStatus(payload));
@@ -1125,8 +1131,9 @@ class StructuredResultsRenderer {
     };
   }
 
-  _adaptYouTubeSearch(payload) {
-    const items = this._rows(payload).filter(row => row?.title && (row?.url || row?.video_id)).map(row => {
+  _adaptYouTubeSearch(payload, {supplementalOnly = false} = {}) {
+    const rows = supplementalOnly ? [] : this._rows(payload);
+    const items = rows.filter(row => row?.title && (row?.url || row?.video_id)).map(row => {
       const chips = [];
       if (row.channel) chips.push(String(row.channel));
       const views = this._formatCount(row.views ?? row.extracted_views);
@@ -1139,15 +1146,47 @@ class StructuredResultsRenderer {
         image: row.thumbnail,
         primary: row.duration || (row.live === true ? 'Live' : ''),
         chips,
-        details: row.description ? [this._compactText(row.description)] : [],
+        details: [
+          row.description ? this._compactText(row.description) : '',
+          ...(Array.isArray(row.chapters) ? row.chapters.slice(0, 3) : []).map(chapter =>
+            `${chapter.auto_generated === true ? 'Automatic chapter' : 'Chapter'}: ${chapter.title || ''}`),
+        ].filter(Boolean),
         actionLabel: 'Watch on YouTube',
       };
     });
+    const posts = Array.isArray(payload.posts_results) ? payload.posts_results : [];
+    posts.slice(0, 5).forEach(post => {
+      if (!post || typeof post !== 'object') return;
+      const author = post.author && typeof post.author === 'object' ? post.author : {};
+      const attachment = post.attachment && typeof post.attachment === 'object' ? post.attachment : {};
+      items.push({
+        title: `Community post${author.name ? ` · ${author.name}` : ''}`,
+        url: post.url || post.link,
+        image: attachment.thumbnail || author.thumbnail,
+        primary: post.published_date || '',
+        chips: post.extracted_votes != null ? [`${post.extracted_votes} votes`] : [],
+        details: [post.text, attachment.title ? `Attachment: ${attachment.title}` : ''].filter(Boolean),
+        actionLabel: 'Open community post',
+      });
+    });
+    const panel = payload.featured_panel;
+    if (panel && typeof panel === 'object' && !Array.isArray(panel) && Object.keys(panel).length) {
+      items.push({
+        title: `Featured ${panel.type || 'panel'}${panel.title ? ` · ${panel.title}` : ''}`,
+        url: panel.url || panel.link,
+        image: panel.thumbnail,
+        primary: panel.subtitle || panel.handle || '',
+        chips: ['Featured panel'],
+        details: (Array.isArray(panel.videos) ? panel.videos.slice(0, 3) : [])
+          .map(video => video.title ? `Video: ${video.title}` : '').filter(Boolean),
+        actionLabel: 'Open featured panel',
+      });
+    }
     return {
       kind: 'video',
       layout: 'rail',
       eyebrow: 'YouTube',
-      heading: payload.search_query || 'Video results',
+      heading: payload.search_query || 'YouTube results',
       subtitle: payload.ranking_mode === 'views_desc' ? 'Sorted by views' : '',
       items,
     };

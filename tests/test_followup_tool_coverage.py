@@ -2780,7 +2780,9 @@ def test_google_events_followup_keeps_event_identity_timing_and_ticket_handoffs(
     )["serpapi_google_events"]
 
     assert result["effective_query"] == "live music in Portland, Oregon"
-    assert result["date_filter"] == "week"
+    assert result["query_preferences"]["date_filter"] == "week"
+    assert "unverified" in result["query_preferences_note"]
+    assert "filters" not in result and "has_more" not in result
     assert result["external_content_trust"] == "untrusted"
     assert result["candidates"] == [
         {

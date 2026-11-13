@@ -5,6 +5,7 @@ extends the supplied output dict, preserving existing-field precedence.
 Shared truncation and bounding policy remains in the public facade.
 """
 
+import math
 from collections.abc import Callable
 
 try:
@@ -196,6 +197,29 @@ def extend_google_events(
     max_candidates: int,
 ) -> None:
     """Add serpapi_google_events fields to the common follow-up output."""
+    preferences = payload.get('query_preferences')
+    legacy = not isinstance(preferences, dict)
+    preferences = preferences if isinstance(preferences, dict) else {
+        'date_filter': payload.get('date_filter'), 'virtual': payload.get('virtual'),
+    }
+    compact_preferences = {}
+    if isinstance(preferences.get('date_filter'), str) and preferences['date_filter']:
+        compact_preferences['date_filter'] = preferences['date_filter'][:40]
+    if preferences.get('virtual') is True:
+        compact_preferences['virtual'] = True
+    for field in ('filters', 'date_filter', 'virtual', 'pagination', 'start', 'next_start', 'has_more'):
+        extracted.pop(field, None)
+    extracted['pagination_supported'] = False
+    legacy_filters = payload.get('filters')
+    if compact_preferences or (legacy and isinstance(legacy_filters, list) and legacy_filters):
+        if compact_preferences:
+            extracted['query_preferences'] = compact_preferences
+        note = payload.get('query_preferences_note')
+        extracted['query_preferences_note'] = (
+            note[:700] if isinstance(note, str) and note else
+            'Saved filter requests are unverified; check the returned dates and participation mode.' if legacy else
+            'Date and virtual requests are query preferences, not strict filters.'
+        )
     results = payload.get('results') or payload.get('top_results') or []
     if isinstance(results, list) and results:
         extracted['results_count'] = payload.get('results_count', len(results))
@@ -210,7 +234,7 @@ def extend_google_events(
                     'start_date', 'when', 'date_text', 'time',
                     'address', 'address_text', 'description', 'price',
                     'extracted_price', 'ticket_info', 'venue',
-                    'event_location_map', 'thumbnail', 'image',
+                    'event_location_map', 'thumbnail', 'image', 'event_token',
                 )
                 if item.get(field) not in (None, '', [], {})
             }
@@ -219,19 +243,25 @@ def extend_google_events(
         if candidates:
             extracted['candidates'] = candidates
 
-    pagination = payload.get('pagination')
-    if isinstance(pagination, dict):
-        compact_pagination = {
-            field: pagination[field]
-            for field in (
-                'current', 'start', 'has_more', 'next_start',
-                'previous_start',
-            )
-            if pagination.get(field) not in (None, '')
-            or field == 'has_more'
-        }
-        if compact_pagination:
-            extracted['pagination'] = compact_pagination
+
+def extend_maps_search(payload: dict, extracted: dict) -> None:
+    """Keep actual Maps request constraints distinct from result guarantees."""
+    for field in ('requested_filters', 'effective_filters'):
+        value = payload.get(field)
+        if not isinstance(value, dict):
+            continue
+        filters = {}
+        for key in ('min_price', 'max_price', 'min_rating', 'open_state', 'open_on_day', 'open_at_hour'):
+            item = value.get(key)
+            if isinstance(item, str):
+                filters[key] = item[:80]
+            elif type(item) is int or (type(item) is float and math.isfinite(item)):
+                filters[key] = item
+        if filters:
+            extracted[field] = filters
+    notes = payload.get('filter_notes')
+    if isinstance(notes, list):
+        extracted['filter_notes'] = [note[:400] for note in notes[:4] if isinstance(note, str)]
 
 
 def extend_google_local(
@@ -374,6 +404,35 @@ def extend_tripadvisor(
     truncate_text: Callable[[str, int], str],
 ) -> None:
     """Add serpapi_tripadvisor fields to the common follow-up output."""
+    def review_evidence(place: dict) -> dict:
+        evidence = {}
+        award = place.get('award')
+        if isinstance(award, dict):
+            compact_award = {
+                field: truncate_text(str(award[field]), maximum)
+                for field, maximum in (('type', 200), ('year', 20))
+                if isinstance(award.get(field), str) and award[field]
+            }
+            if compact_award:
+                evidence['award'] = compact_award
+                evidence['award_truncated'] = bool(place.get('award_truncated')) or any(
+                    len(str(award[field])) > maximum for field, maximum in (('type', 200), ('year', 20))
+                    if field in compact_award
+                )
+        distribution = place.get('review_distribution')
+        if isinstance(distribution, list):
+            valid = [row for row in distribution if isinstance(row, dict)
+                     and isinstance(row.get('rating'), str) and row['rating']
+                     and type(row.get('count')) is int and row['count'] >= 0]
+            if valid:
+                evidence['review_distribution'] = [
+                    {'rating': truncate_text(row['rating'], 80), 'count': row['count']} for row in valid[:5]
+                ]
+                evidence['review_distribution_truncated'] = bool(place.get('review_distribution_truncated')) or (
+                    len(valid) > 5 or any(len(row['rating']) > 80 for row in valid[:5])
+                )
+        return evidence
+
     action = str(payload.get('action') or 'search').strip().lower()
     results = payload.get('results') or payload.get('top_results') or []
     if isinstance(results, list) and results:
@@ -430,6 +489,7 @@ def extend_tripadvisor(
             compact_place['description'] = truncate_text(
                 str(place['description']), 700
             )
+        compact_place.update(review_evidence(place))
         if compact_place:
             extracted['place'] = compact_place
 
@@ -475,6 +535,7 @@ def extend_tripadvisor(
                 compact_detail['place']['description'] = truncate_text(
                     str(detail_place['description']), 700
                 )
+            compact_detail['place'].update(review_evidence(detail_place))
         detail_interesting = detail_data.get('interesting_places')
         if isinstance(detail_interesting, list) and detail_interesting:
             compact_detail['interesting_places'] = [

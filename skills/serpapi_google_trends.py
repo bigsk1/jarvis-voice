@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+from datetime import datetime, timedelta
 from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
@@ -19,11 +20,14 @@ from serpapi_client import (
     request_serpapi,
 )
 
-
 GOOGLE_TRENDS_TIMEOUT = 90
 DEFAULT_DATE = "now 7-d"
 DEFAULT_MAX_RESULTS = 20
 DEFAULT_MAX_TIMELINE_POINTS = 60
+INTERPRETATION_NOTE = (
+    "Values are normalized relative search interest (0–100), not absolute search counts; "
+    "equal regional scores do not imply equal search volume."
+)
 
 DATA_TYPE_CODES = {
     "interest_over_time": "TIMESERIES",
@@ -152,7 +156,7 @@ def normalize_data_type(value: Any) -> str:
     return data_type
 
 
-def normalize_queries(value: Any, data_type: str) -> list[str]:
+def normalize_queries(value: Any, data_type: str, *, preserve_duplicates: bool = False) -> list[str]:
     raw_values = value if isinstance(value, list) else [value]
     queries: list[str] = []
     seen: set[str] = set()
@@ -160,7 +164,7 @@ def normalize_queries(value: Any, data_type: str) -> list[str]:
         for part in str(raw_value or "").split(","):
             query = " ".join(part.split())
             identity = query.casefold()
-            if not query or identity in seen:
+            if not query or (identity in seen and not preserve_duplicates):
                 continue
             if len(query) > 100:
                 raise ValueError("Each Google Trends query must be 100 characters or fewer.")
@@ -184,6 +188,20 @@ def normalize_date(value: Any) -> str:
     if standard_date:
         return standard_date
     if CUSTOM_DATE_RE.fullmatch(date):
+        start, end = date.split()
+        hourly = "T" in start
+        if hourly != ("T" in end):
+            raise ValueError("Custom 'date' endpoints must both use dates or both use dates with hours.")
+        date_format = "%Y-%m-%dT%H" if hourly else "%Y-%m-%d"
+        try:
+            start_time = datetime.strptime(start, date_format)
+            end_time = datetime.strptime(end, date_format)
+        except ValueError as exc:
+            raise ValueError("Custom 'date' must contain valid calendar dates and hours from 00 to 23.") from exc
+        if end_time < start_time:
+            raise ValueError("Custom 'date' end must not precede its start.")
+        if hourly and end_time - start_time > timedelta(days=7):
+            raise ValueError("Custom 'date' ranges with hours must span no more than one week.")
         return date
     raise ValueError(
         "'date' must be a supported relative window such as now 7-d or today 12-m, "
@@ -193,11 +211,55 @@ def normalize_date(value: Any) -> str:
 
 def normalize_geo(value: Any) -> str | None:
     geo = str(value or "").strip().upper()
-    if not geo:
+    if not geo or geo == "WORLDWIDE":
         return None
     if not GEO_RE.fullmatch(geo):
         raise ValueError("'geo' must be a Google Trends location code such as US or US-OR.")
     return geo
+
+
+def _comparison_values(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else str(value or "").split(",")
+
+
+def normalize_comparisons(
+    queries: list[str], date_value: Any, geo_value: Any, data_type: str,
+) -> tuple[str, str | None, list[dict[str, Any]]]:
+    """Align optional per-query dates and regions without losing repeated terms."""
+    dates = [normalize_date(value) for value in _comparison_values(date_value)]
+    geos = [normalize_geo(value) for value in _comparison_values(geo_value)]
+    count = max(len(queries), len(dates), len(geos))
+    if count > 5:
+        raise ValueError("Google Trends accepts at most 5 comparison slots per request.")
+    for name, values in (("query", queries), ("date", dates), ("geo", geos)):
+        if not values:
+            raise ValueError(f"'{name}' must have at least one value.")
+        if name != "query" and len(values) > 1:
+            if data_type != "interest_over_time":
+                raise ValueError(f"Multiple '{name}' values require interest_over_time.")
+        if len(values) not in (1, count):
+            raise ValueError(f"Provide one '{name}' value or one per comparison slot, in order.")
+    if len(geos) > 1 and any(geo is None for geo in geos):
+        raise ValueError("Multiple 'geo' values cannot contain empty or Worldwide entries.")
+    if len(dates) > 1:
+        if not all(CUSTOM_DATE_RE.fullmatch(date) for date in dates):
+            raise ValueError("Multiple 'date' values require custom start/end ranges, not relative windows.")
+        if len({"T" in date for date in dates}) != 1:
+            raise ValueError("Multiple 'date' ranges must all use the same date or date-with-hour format.")
+    comparisons = []
+    multiple = len(dates) > 1 or len(geos) > 1
+    for index in range(count):
+        query = queries[index if len(queries) > 1 else 0]
+        date = dates[index if len(dates) > 1 else 0]
+        geo = geos[index if len(geos) > 1 else 0]
+        comparisons.append({
+            "query_index": index,
+            "query": query,
+            "date": date,
+            "geo": geo or "Worldwide",
+            "title": f"{query} · {geo or 'Worldwide'} · {date}" if multiple else query,
+        })
+    return ",".join(dates), ",".join(geo or "" for geo in geos) or None, comparisons
 
 
 def normalize_language(value: Any) -> str | None:
@@ -244,20 +306,28 @@ def extract_interest_over_time(
     queries: list[str],
     *,
     max_points: int,
+    comparisons: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], int]:
     section = payload.get("interest_over_time")
     section = section if isinstance(section, dict) else {}
     timeline: list[dict[str, Any]] = []
-    series_values: dict[str, list[tuple[str | None, int | float]]] = {
-        query: [] for query in queries
-    }
+    series_values: dict[int, list[tuple[Any, int | float]]] = {index: [] for index in range(len(queries))}
+
+    def query_index(item: dict[str, Any], fallback: int) -> int:
+        index = item.get("query_index")
+        if type(index) is int and 0 <= index < len(queries):
+            return index
+        matches = [i for i, query in enumerate(queries) if query == item.get("query")]
+        return matches[0] if len(matches) == 1 else fallback
 
     for raw_point in _dict_list(section.get("timeline_data")):
         values = []
         for index, raw_value in enumerate(_dict_list(raw_point.get("values"))):
-            query = str(raw_value.get("query") or "").strip()
-            if not query and index < len(queries):
-                query = queries[index]
+            index = query_index(raw_value, index)
+            if index >= len(queries):
+                continue
+            query = queries[index]
+            point_date = raw_value.get("date") or raw_point.get("date")
             extracted = _number(raw_value.get("extracted_value"))
             if extracted is None:
                 extracted = _number(raw_value.get("value"))
@@ -265,6 +335,9 @@ def extract_interest_over_time(
                 key: field_value
                 for key, field_value in {
                     "query": query or None,
+                    "query_index": index,
+                    "date": point_date,
+                    "timestamp": raw_value.get("timestamp") or raw_point.get("timestamp"),
                     "value": raw_value.get("value"),
                     "extracted_value": extracted,
                 }.items()
@@ -273,7 +346,7 @@ def extract_interest_over_time(
             if value:
                 values.append(value)
             if query and extracted is not None:
-                series_values.setdefault(query, []).append((raw_point.get("date"), extracted))
+                series_values[index].append((point_date, extracted))
         if not values:
             continue
         timeline.append({
@@ -287,20 +360,21 @@ def extract_interest_over_time(
         })
 
     averages = []
-    averages_by_query: dict[str, int | float] = {}
+    averages_by_query: dict[int, int | float] = {}
     for index, item in enumerate(_dict_list(section.get("averages"))):
-        query = str(item.get("query") or "").strip()
-        if not query and index < len(queries):
-            query = queries[index]
+        index = query_index(item, index)
+        if index >= len(queries):
+            continue
+        query = queries[index]
         average = _number(item.get("value"))
         if not query or average is None:
             continue
-        averages.append({"query": query, "value": average})
-        averages_by_query[query] = average
+        averages.append({"query": query, "query_index": index, "value": average})
+        averages_by_query[index] = average
 
     summaries = []
-    for query in queries:
-        points = series_values.get(query) or []
+    for index, query in enumerate(queries):
+        points = series_values.get(index) or []
         if not points:
             continue
         first_date, first_value = points[0]
@@ -309,7 +383,7 @@ def extract_interest_over_time(
         peak_date, peak_value = max(points, key=lambda item: item[1])
         change = latest_value - previous_value if previous_value is not None else None
         period_change = latest_value - first_value
-        average_value = averages_by_query.get(query)
+        average_value = averages_by_query.get(index)
         if average_value is None:
             average_value = round(sum(value for _, value in points) / len(points), 1)
         direction = "flat"
@@ -318,7 +392,7 @@ def extract_interest_over_time(
         elif change is not None and change < 0:
             direction = "falling"
         summaries.append({
-            "title": query,
+            **(comparisons[index] if comparisons else {"title": query, "query_index": index}),
             "query": query,
             "latest_date": latest_date,
             "latest_value": latest_value,
@@ -486,7 +560,7 @@ def build_speech(
         leader = max(results, key=lambda item: item.get("latest_value", -1))
         return (
             f"Analyzed Google Trends interest for {query_label} over {date}. "
-            f"{leader['query']} has the highest latest interest value at {leader['latest_value']}."
+            f"{leader['title']} has the highest latest interest value at {leader['latest_value']}."
         )
     if data_type in {"compared_by_region", "interest_by_region"}:
         first = results[0]
@@ -511,9 +585,12 @@ def main() -> int:
             return 1
 
         data_type = normalize_data_type(input_data.get("data_type"))
-        queries = normalize_queries(input_data.get("query"), data_type)
-        date = normalize_date(input_data.get("date"))
-        geo = normalize_geo(input_data.get("geo"))
+        multiple = any(len(_comparison_values(input_data.get(key))) > 1 for key in ("date", "geo"))
+        queries = normalize_queries(input_data.get("query"), data_type, preserve_duplicates=multiple)
+        date, geo, comparisons = normalize_comparisons(
+            queries, input_data.get("date"), input_data.get("geo"), data_type,
+        )
+        queries = [comparison["query"] for comparison in comparisons]
         language = normalize_language(input_data.get("language"))
         region = normalize_region(input_data.get("region"), data_type)
         search_property, gprop = normalize_property(input_data.get("property"))
@@ -594,6 +671,7 @@ def main() -> int:
                 payload,
                 queries,
                 max_points=max_timeline_points,
+                comparisons=comparisons,
             )
         elif data_type in {"compared_by_region", "interest_by_region"}:
             results, provider_results_count = extract_region_results(
@@ -615,6 +693,8 @@ def main() -> int:
             "engine": "google_trends",
             "query": ", ".join(queries),
             "queries": queries,
+            "comparisons": comparisons if data_type == "interest_over_time" else [],
+            "multiple_comparisons": multiple,
             "data_type": data_type,
             "provider_data_type": DATA_TYPE_CODES[data_type],
             "date": provider_parameters.get("date") or date,
@@ -646,10 +726,15 @@ def main() -> int:
         if rising or top:
             data["rising"] = rising
             data["top"] = top
+        if data_type in {"interest_over_time", "interest_by_region", "compared_by_region"}:
+            data["interpretation_note"] = INTERPRETATION_NOTE
         if include_raw:
             data["raw"] = payload
 
-        return_success(build_speech(queries, data_type, results, date), data)
+        speech = build_speech(queries, data_type, results, date)
+        if data_type in {"interest_over_time", "interest_by_region", "compared_by_region"}:
+            speech = f"{speech} {INTERPRETATION_NOTE}"
+        return_success(speech, data)
         return 0
     except ValueError as exc:
         return_error(str(exc))

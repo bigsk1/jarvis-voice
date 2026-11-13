@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_google_trends",
-  "description": "Analyze Google Trends interest for one to five supplied topics through SerpApi. Use it to measure whether named terms are rising or falling over time, compare specific terms by country/region/city, find locations where one topic is strongest, or discover rising and top related queries or topics. It is well suited to workflow inputs for content planning, demand signals, market monitoring, topic prioritization, and comparing attention across brands, products, technologies, people, or events. The default window is the past 7 days; date supports hour/day/month/year and custom historical ranges. Results include compact trend summaries, bounded timeline points, regional rankings, related-term links, provider metadata, and the Google Trends URL. Cached results are allowed by default.",
+  "description": "Analyze Google Trends interest for one to five supplied topics through SerpApi. Use it to measure whether named terms are rising or falling over time, compare specific terms by country/region/city, find locations where one topic is strongest, or discover rising and top related queries or topics. It is well suited to workflow inputs for content planning, demand signals, market monitoring, topic prioritization, and comparing attention across brands, products, technologies, people, or events. The default window is the past 7 days; date supports hour/day/month/year and custom historical ranges. Results include compact trend summaries, bounded timeline points, regional rankings, related-term links, provider metadata, and the Google Trends URL. Cached results are allowed by default. Interest-over-time comparisons can pair each topic with its own region and date range, including the same topic in several regions or periods.",
   "complementary_tools": [
     "serpapi_search_index",
     "mcp_fetch_fetch",
@@ -24,7 +24,7 @@
           "type": "string",
           "maxLength": 100
         },
-        "description": "One topic or a list/comma-separated comparison of up to 5 topics. Related and single-region views accept exactly one topic; compared_by_region requires at least two."
+        "description": "One topic or a list/comma-separated comparison of up to 5 topics. Related and single-region views accept exactly one topic; compared_by_region requires at least two. For interest_over_time, one topic automatically repeats across multiple date or region slots. Example: {query: 'coffee', geo: ['US', 'GB'], date: 'now 7-d'} compares coffee in both regions in one request. Lists pair by position; they do not form every combination."
       },
       "data_type": {
         "type": "string",
@@ -38,13 +38,26 @@
         "description": "Trend view. interest_over_time is the default and accepts 1-5 topics. compared_by_region accepts 2-5. Other views accept one topic."
       },
       "date": {
-        "type": "string",
-        "description": "Trend window. Default now 7-d. Common values: now 1-H, now 4-H, now 1-d, now 7-d, today 1-m, today 3-m, today 12-m, today 5-y, or all. Custom ranges use YYYY-MM-DD YYYY-MM-DD."
+        "type": [
+          "string",
+          "array"
+        ],
+        "description": "Trend window. Default now 7-d. Common values: now 1-H, now 4-H, now 1-d, now 7-d, today 1-m, today 3-m, today 12-m, today 5-y, or all. Custom ranges use YYYY-MM-DD YYYY-MM-DD or YYYY-MM-DDTHH YYYY-MM-DDTHH; hours are 00-23 and hourly ranges span at most 7 days. For interest_over_time only, multiple ranges must be custom, use one consistent date/hour format, and pair by position; use similarly sized periods because Google aligns their points. A single window applies to every query; one query repeats across multiple ranges. All lists must have one value or the same number of comparison slots, at most 5.",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 5
       },
       "geo": {
-        "type": "string",
-        "maxLength": 24,
-        "description": "Google Trends location code such as US, GB, CA, or US-OR. Omit for Worldwide."
+        "type": [
+          "string",
+          "array"
+        ],
+        "description": "Google Trends location code such as US, GB, CA, or US-OR. Omit or use Worldwide for a single worldwide scope. For interest_over_time only, a list/comma-separated set of locations pairs with query/date by position; one query repeats across multiple regions, and one region applies to every query. Lists cannot contain empty or Worldwide entries; all lists must have one value or the same number of comparison slots, at most 5.",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 5
       },
       "region": {
         "type": "string",
@@ -129,5 +142,10 @@
       "SERP_API_KEY"
     ],
     "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  },
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true,
+    "allow": []
   }
 }

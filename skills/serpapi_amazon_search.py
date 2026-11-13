@@ -68,6 +68,33 @@ AMAZON_SORT_MAP = {
     "bestseller": "exact-aware-popularity-rank",
     "popularity": "exact-aware-popularity-rank",
 }
+CITY_DELIVERY_DOMAINS = frozenset({"amazon.ae", "amazon.eg", "amazon.sa"})
+
+
+def resolve_delivery_parameters(input_data: dict[str, Any], domain: str) -> tuple[dict[str, str], str]:
+    """Keep city-only marketplaces separate from postal-code marketplaces."""
+    extra = input_data.get("extra_params")
+    extra = extra if isinstance(extra, dict) else {}
+    city = input_data.get("delivery_city", extra.get("delivery_city", ""))
+    postal = input_data.get("delivery_zip", "")
+    for key, value in (("delivery_city", city), ("delivery_zip", postal)):
+        if not isinstance(value, str) or len(value) > 200 or any(ord(char) < 32 for char in value):
+            raise ValueError(f"{key} must be a short city/postal-code string.")
+    city, postal = city.strip(), postal.strip()
+    if city and extra.get("delivery_city") not in (None, "", city):
+        raise ValueError("Conflicting delivery_city values; use one city in the declared parameter.")
+    if city and postal:
+        raise ValueError("Use delivery_city or delivery_zip, not both.")
+    if domain in CITY_DELIVERY_DOMAINS:
+        if postal:
+            raise ValueError(f"{domain} uses delivery_city; delivery_zip is not supported.")
+        return ({"delivery_city": city}, "explicit_city") if city else ({}, "none")
+    if city:
+        raise ValueError("delivery_city is supported only on amazon.ae, amazon.eg and amazon.sa; use delivery_zip for other domains.")
+    if postal:
+        return {"delivery_zip": postal}, "explicit"
+    postal = get_config_value("JARVIS_DEFAULT_POSTAL_CODE", "").strip()
+    return ({"delivery_zip": postal}, "jarvis_default") if postal else ({}, "none")
 
 
 def normalize_sort_by(engine: str, sort_by: Any) -> tuple[str | None, str | None]:
@@ -128,8 +155,8 @@ def main() -> int:
         asin, inferred_domain = normalize_amazon_product_reference(
             str(input_data.get("asin", "")).strip()
         )
-        amazon_domain = str(input_data.get("amazon_domain") or inferred_domain or "amazon.com").strip()
-        language = str(input_data.get("language", "en_US")).strip()
+        amazon_domain = str(input_data.get("amazon_domain") or inferred_domain or "amazon.com").strip().lower().removeprefix("www.")
+        language = str(input_data.get("language", "en_US" if amazon_domain == "amazon.com" else "")).strip()
         device = str(input_data.get("device", "desktop")).strip()
         page = int(input_data.get("page", 1))
         num_results = int(input_data.get("num_results", 5))
@@ -147,7 +174,6 @@ def main() -> int:
         rh = input_data.get("rh")
         min_price = input_data.get("min_price")
         max_price = input_data.get("max_price")
-        delivery_zip = str(input_data.get("delivery_zip", "")).strip()
         shipping_location = str(input_data.get("shipping_location", "")).strip()
         extra_params = input_data.get("extra_params", {}) or {}
 
@@ -181,7 +207,8 @@ def main() -> int:
 
         if engine in {"amazon", "amazon_product"}:
             params["amazon_domain"] = amazon_domain
-            params["language"] = language
+            if language:
+                params["language"] = language
 
         if query_effective:
             if engine == "amazon":
@@ -189,18 +216,10 @@ def main() -> int:
             else:
                 params["q"] = query_effective
 
-        delivery_location_source = "none"
-        if engine in {"amazon", "amazon_product"}:
-            if delivery_zip:
-                delivery_location_source = "explicit"
-            else:
-                delivery_zip = get_config_value("JARVIS_DEFAULT_POSTAL_CODE", "").strip()
-                if delivery_zip:
-                    delivery_location_source = "jarvis_default"
-            if delivery_zip:
-                params["delivery_zip"] = delivery_zip
-            if shipping_location:
-                params["shipping_location"] = shipping_location
+        delivery_params, delivery_location_source = resolve_delivery_parameters(input_data, amazon_domain)
+        params.update(delivery_params)
+        if shipping_location:
+            params["shipping_location"] = shipping_location
 
         if asin:
             params["asin"] = asin
@@ -277,12 +296,12 @@ def main() -> int:
                     "engine": "amazon_product",
                     "asin": asin_value,
                     "amazon_domain": amazon_domain,
-                    "language": language,
                     "device": device,
                     "no_cache": "true" if no_cache else "false",
                 }
-                if delivery_zip:
-                    detail_params["delivery_zip"] = delivery_zip
+                if language:
+                    detail_params["language"] = language
+                detail_params.update(delivery_params)
                 if shipping_location:
                     detail_params["shipping_location"] = shipping_location
                 try:
@@ -310,13 +329,18 @@ def main() -> int:
             "query_effective": query_effective or None,
             "query_was_optimized": query_was_optimized,
             "asin": asin or None,
+            "amazon_domain": amazon_domain,
             "sort_by": sort_by,
             "node": node,
             "rh": rh,
             "min_price": min_price,
             "max_price": max_price,
-            "delivery_localized": bool(delivery_zip) if engine in {"amazon", "amazon_product"} else False,
+            "delivery_localized": bool(delivery_params),
             "delivery_location_source": delivery_location_source,
+            "delivery_zip": delivery_params.get("delivery_zip"),
+            "delivery_city": delivery_params.get("delivery_city"),
+            "delivery_location_note": "Postal defaults are not applied to city-based Amazon domains; provider defaults apply when no city is supplied."
+            if amazon_domain in CITY_DELIVERY_DOMAINS and not delivery_params else None,
             "shipping_location": shipping_location or None,
             "include_product_details": include_product_details,
             "product_details_requested": product_details_requested,

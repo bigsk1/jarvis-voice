@@ -1,23 +1,30 @@
 {
   "enabled": true,
   "name": "serpapi_home_depot",
-  "description": "Search The Home Depot products with fields like product_id, brand, model_number, price, rating, reviews, thumbnail, image_url, delivery, pickup, and stock. Use for Home Depot product searches, focused product details by product_id, store/ZIP-specific availability, price-sorted comparisons, and follow-up product references. For US searches, delivery_zip defaults to the configured postal code when omitted. In detailed/display mode, show product images from image_url/top_image_url when present. Use include_product_details when the user needs full product-page detail (adds a second cached request).",
+  "description": "Search The Home Depot products with product IDs, brands, prices, photos, ratings, delivery and pickup data. Use for Home Depot shopping, store/ZIP-specific availability, price comparisons, and focused US product lookup by product_id (Internet #) or store_sku (Store SKU #). Product details preserve availability_type, including Out of Stock and Discontinued. Store SKUs can match several products; reuse the returned product_id for the exact selected product. US delivery_zip defaults to the configured postal code. Show image_url/top_image_url in detailed mode. include_product_details adds a second cached request for richer US product-page details.",
   "complementary_tools": [
     "canvas",
     "stash"
   ],
   "script": "serpapi_home_depot.py",
   "proxy_policy": "off",
+  "prompt_guard_policy": "web_content",
+  "child_environment": {"mode": "restricted", "from_availability": true, "allow": ["JARVIS_DEFAULT_POSTAL_CODE"]},
   "parameters": {
     "type": "object",
     "properties": {
       "query": {
         "type": "string",
-        "description": "Home Depot search query, such as cordless drill, hammer, patio chair, or plywood. Required unless product_id is provided."
+        "description": "Home Depot search query, such as cordless drill, hammer, patio chair or plywood. Required unless product_id or store_sku is provided."
       },
       "product_id": {
         "type": "string",
         "description": "Optional Home Depot US product ID for a focused home_depot_product lookup with richer details and product images. If query is also provided, this can select which result to enrich."
+      },
+      "store_sku": {
+        "type": "string",
+        "pattern": "^[0-9]{1,20}$",
+        "description": "US Store SKU # for a focused lookup without query or product_id. This differs from the Internet # product_id. A SKU may match several products and the provider's selection can vary; reuse the returned product_id for an exact follow-up. Discontinued products may not resolve by SKU."
       },
       "country": {
         "type": "string",
@@ -75,10 +82,14 @@
       },
       "ps": {
         "type": "integer",
-        "description": "US page size. Home Depot may override it; maximum is usually 48."
+        "minimum": 1,
+        "maximum": 24,
+        "description": "US page size, 1..24. Provider default and maximum are 24; unsupported values fail before a request."
       },
       "pagesize": {
         "type": "integer",
+        "minimum": 1,
+        "maximum": 40,
         "description": "Canada page size. Default and maximum are usually 40."
       },
       "num_results": {

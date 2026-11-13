@@ -217,7 +217,10 @@ def extend_home_depot(
     max_candidates: int,
 ) -> None:
     """Add serpapi_home_depot fields to the common follow-up output."""
-    results = value.get('results') or value.get('top_results') or []
+    for field, maximum in (('requested_store_sku', 200), ('lookup_note', 600)):
+        if isinstance(value.get(field), str) and value[field]:
+            extracted[field] = value[field][:maximum]
+    results = value.get('results') or value.get('top_results') or value.get('candidates') or []
     if isinstance(results, list) and results:
         extracted['results_count'] = value.get('results_count', len(results))
         first = results[0] if isinstance(results[0], dict) else {}
@@ -232,6 +235,9 @@ def extend_home_depot(
                 extracted['brand'] = first['brand']
             if first.get('model_number'):
                 extracted['model_number'] = first['model_number']
+            for field in ('availability_type', 'store_sku_number'):
+                if isinstance(first.get(field), str):
+                    extracted[field] = first[field][:200]
             if first.get('price_formatted'):
                 extracted['price'] = first['price_formatted']
             elif first.get('price') is not None:
@@ -264,6 +270,9 @@ def extend_home_depot(
                 candidate['brand'] = item['brand']
             if item.get('model_number'):
                 candidate['model_number'] = item['model_number']
+            for field in ('availability_type', 'store_sku_number'):
+                if isinstance(item.get(field), str):
+                    candidate[field] = item[field][:200]
             if item.get('price_formatted'):
                 candidate['price'] = item['price_formatted']
             elif item.get('price') is not None:
@@ -523,6 +532,7 @@ _AMAZON_CANDIDATE_FIELDS = (
     'bought_last_month',
     'badges',
     'save_with_coupon',
+    'product_evidence_truncated',
 )
 
 
@@ -569,11 +579,52 @@ def _compact_amazon_candidate(
         compact_value = compact_scalar(field, field_value)
         if compact_value not in (None, '', [], {}):
             candidate[field] = compact_value
+    remaining = 1800
+    omitted = False
+    ingredients = item.get('item_ingredients')
+    if isinstance(ingredients, list):
+        retained = []
+        ingredient_budget = 600
+        for value in ingredients:
+            if not isinstance(value, str):
+                continue
+            if len(retained) >= 12 or ingredient_budget <= 0:
+                omitted = True
+                break
+            text = value[:ingredient_budget]
+            omitted |= len(text) < len(value)
+            ingredient_budget -= len(text)
+            remaining -= len(text)
+            retained.append(text)
+        if retained:
+            candidate['item_ingredients'] = retained
+    information = item.get('important_information')
+    if isinstance(information, list):
+        retained_information = []
+        for value in information:
+            if not isinstance(value, dict):
+                continue
+            if len(retained_information) >= 4 or remaining <= 0:
+                omitted = True
+                break
+            section = {}
+            for field, maximum in (('title', 120), ('text', 700)):
+                text = value.get(field)
+                if isinstance(text, str):
+                    section[field] = text[:min(maximum, remaining)]
+                    omitted |= len(section[field]) < len(text)
+                    remaining -= len(section[field])
+            if section:
+                retained_information.append(section)
+        if retained_information:
+            candidate['important_information'] = retained_information
+    if omitted:
+        candidate['product_evidence_truncated'] = True
     return candidate
 
 
 def _amazon_result_rows(payload: dict) -> list[dict]:
-    rows = payload.get('results') or payload.get('top_results') or []
+    rows = payload.get('results') or payload.get('top_results') or payload.get('candidates') or []
     if not isinstance(rows, list):
         return []
     return [row for row in rows if isinstance(row, dict)]
@@ -676,13 +727,17 @@ def extract_amazon_followup(
         'query_effective',
         'query_was_optimized',
         'asin',
+        'amazon_domain',
+        'delivery_city',
+        'delivery_zip',
+        'delivery_location_note',
         'delivery_localized',
         'delivery_location_source',
         'shipping_location',
     ):
         field_value = primary.get(field)
         if field_value not in (None, '', [], {}):
-            extracted[field] = field_value
+            extracted[field] = truncate_text(field_value, 300) if isinstance(field_value, str) else field_value
 
     extracted['runs_count'] = len(runs)
     extracted['results_count'] = primary.get('results_count', len(candidates))
