@@ -127,6 +127,15 @@ exact match leaves the provider's location in effect and is reported as such.
 This does not locate the nearest store. See the
 [Walmart location rules](../docs/tools/walmart-tool/README.md#store-and-postal-code-selection).
 
+Trader Joe's search and product tools similarly use the optional
+`JARVIS_TRADER_JOES_STORE_ID` or an exact `JARVIS_DEFAULT_POSTAL_CODE` match in
+SerpApi's public Trader Joe's store directory. Store IDs are validated because
+the provider treats an unknown ID as an all-store catalog. A call's explicit
+store or postal code overrides configured defaults. An unmatched ZIP does not
+select a nearby store; results disclose when they describe the all-store
+catalog. Store assortment is not live inventory. See the
+[Trader Joe's location rules](../docs/tools/trader-joes-tool/README.md#store-and-postal-code-selection).
+
 ### LLM Provider Selection
 
 Note:

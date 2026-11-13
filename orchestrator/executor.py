@@ -308,8 +308,9 @@ class ToolExecutor:
             return 90  # SerpApi include product details can take up to 90 seconds
         if tool_name == "serpapi_home_depot":
             return 200  # Direct SerpApi only; up to two sequential 90s HTTP calls if include_product_details
-        if tool_name in {"serpapi_walmart_search", "serpapi_walmart_product"}:
-            return 90  # One 60s request, optional 10s ZIP directory lookup and process cleanup.
+        if tool_name in {"serpapi_walmart_search", "serpapi_walmart_product",
+                         "serpapi_trader_joes_search", "serpapi_trader_joes_product"}:
+            return 90  # One 60s request, optional 10s store directory lookup and process cleanup.
         if tool_name == "serpapi_search_index":
             return 120  # One Search Index request; deep recall may use the full 90s HTTP allowance
         if tool_name == "serpapi_extract":

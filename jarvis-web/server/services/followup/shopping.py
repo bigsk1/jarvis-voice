@@ -10,6 +10,13 @@ import json
 from collections.abc import Callable
 
 try:
+    from serpapi_trader_joes_context import project_trader_joes_data
+except ModuleNotFoundError as exc:
+    if exc.name != 'serpapi_trader_joes_context':
+        raise
+    from lib.serpapi_trader_joes_context import project_trader_joes_data
+
+try:
     from serpapi_walmart_context import (
         bounded_walmart_filters,
         compact_related_queries,
@@ -23,6 +30,14 @@ except ModuleNotFoundError as exc:
         compact_related_queries,
         compact_variant_options,
     )
+
+
+def extract_trader_joes_followup(
+    value,
+    max_candidates: int,
+) -> dict:
+    """Use the shared food-evidence projector while preserving separate runs."""
+    return project_trader_joes_data(value, max_chars=7500, max_candidates=max_candidates)
 
 
 def extract_walmart_followup(

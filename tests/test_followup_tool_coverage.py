@@ -895,6 +895,26 @@ LOCAL_TOOL_SAMPLES = {
         "reviews_results": {"reviews": {"rating": 4.5, "count": 42,
                                            "top_positive": {"title": "Good coffee", "text": "Fresh and flavorful.", "rating": 5}}},
     }),
+    "serpapi_trader_joes_search": _case({
+        "engine": "trader_joes", "query": "coffee", "store_id": "454", "results_count": 1,
+        "results": [{"title": "Cold Brew Coffee Black", "product_id": "080794",
+                     "url": "https://www.traderjoes.com/home/products/pdp/cold-brew-coffee-black-080794",
+                     "image_url": "https://www.traderjoes.com/content/dam/trjo/products/m304/80794.png",
+                     "price": 1.99, "price_formatted": "$1.99", "size": "8.45 Fl Oz",
+                     "category": "Coffee & Tea", "category_id": "194"}],
+    }),
+    "serpapi_trader_joes_product": _case({
+        "engine": "trader_joes_product", "product_id": "080794", "store_id": "454",
+        "results_count": 1,
+        "results": [{"title": "Cold Brew Coffee Black", "product_id": "080794",
+                     "url": "https://www.traderjoes.com/home/products/pdp/cold-brew-coffee-black-080794",
+                     "price": 1.99, "price_formatted": "$1.99", "available": True}],
+        "product_summary": {"product_id": "080794", "description": "Unsweetened cold brew coffee.",
+                            "ingredients": ["WATER", "ARABICA COFFEE"],
+                            "allergens": ["MAY CONTAIN MILK."],
+                            "nutrition_facts": [{"serving_size": "1 can (250mL)",
+                                                 "calories_per_serving": "10"}]},
+    }),
     "serpapi_home_depot": _case(
         {
             "engine": "home_depot",

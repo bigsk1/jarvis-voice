@@ -1,0 +1,27 @@
+{
+  "enabled": true,
+  "name": "serpapi_trader_joes_product",
+  "description": "Read one Trader Joe's product: pictures, price and size, description, ingredients, allergen statements, dietary characteristics, fun tags and all returned nutrition panels. Use for 'tell me about the second Trader Joe's product', 'what are its ingredients or nutrition facts', or a TraderJoes.com product URL. Reuse the exact product_id string including leading zeroes and store_id from saved search candidates; do not repeat a search to read a selected product. For more-like-this searches, pass the returned search_filters canonical values to serpapi_trader_joes_search. With a validated store_id, available reports whether the store sells the product, not real-time stock. Unavailable products may have no price. There are no ratings or customer reviews in this API. One cached SerpApi product request; no purchases.",
+  "script": "serpapi_trader_joes_product.py",
+  "proxy_policy": "off",
+  "prompt_guard_policy": "web_content",
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true,
+    "allow": ["JARVIS_DEFAULT_POSTAL_CODE", "JARVIS_TRADER_JOES_STORE_ID"]
+  },
+  "complementary_tools": ["serpapi_trader_joes_search", "canvas", "stash"],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "product_id": {"type": "string", "description": "Exact Trader Joe's SKU string such as 080794, or a public TraderJoes.com /home/products/pdp/name-080794 URL. Keep leading zeroes; integer IDs are not accepted."},
+      "store_id": {"type": "string", "pattern": "^[0-9]{1,10}$", "description": "Supported Trader Joe's store ID from a prior result or the public directory; validated before the product request. Overrides all defaults."},
+      "postal_code": {"type": "string", "pattern": "^[0-9]{5}(-[0-9]{4})?$", "description": "Optional exact US ZIP override. Otherwise uses configured Trader Joe's store or JARVIS_DEFAULT_POSTAL_CODE. The selected store/address is reported; unmatched ZIPs are explicitly all-store reads."},
+      "no_cache": {"type": "boolean", "description": "Bypass SerpApi's cache. Default false; exact cached responses are free."}
+    },
+    "required": ["product_id"],
+    "additionalProperties": false
+  },
+  "permissions": {"dangerous": false, "bash": false, "network": true, "filesystem": false, "auto_approve": true},
+  "availability": {"all_of_env": ["SERP_API_KEY"], "setup_hint": "Set SERP_API_KEY in the active mode env file. Store and postal-code defaults are optional."}
+}

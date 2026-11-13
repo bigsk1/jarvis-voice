@@ -542,6 +542,8 @@ one source is not evidence that a recipient is unavailable in another.
 | `serpapi_ebay_product` | Focused eBay listing details by numeric product ID |
 | [`serpapi_walmart_search`](../docs/tools/walmart-tool/README.md) | US or Mexico Walmart discovery with prices, sellers, shipping, variants and store context |
 | [`serpapi_walmart_product`](../docs/tools/walmart-tool/README.md) | Focused US Walmart details, specifications, offers, variants, reviews and images |
+| [`serpapi_trader_joes_search`](../docs/tools/trader-joes-tool/README.md) | Trader Joe's product discovery, prices, sizes, dietary/category filters, occasion tags and validated store context |
+| [`serpapi_trader_joes_product`](../docs/tools/trader-joes-tool/README.md) | Trader Joe's ingredients, allergens, nutrition panels, dietary labels, images and store assortment status |
 | `serpapi_home_depot` | SerpApi Home Depot product search with store/ZIP filters |
 | `serpapi_google_events` | Upcoming local or virtual Google Events using an explicit or active-mode default location, with dates, venues, ticket links, public maps, images, and date filters |
 | `serpapi_google_local` | Google Local business discovery using explicit or mode-default location, with ratings, hours, service options, sponsored listings, related searches, and pagination |

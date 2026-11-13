@@ -39,6 +39,8 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_travel_explore": ("google_travel_explore",),
     "serpapi_search_index": ("search_index",),
     "serpapi_tripadvisor": ("tripadvisor",),
+    "serpapi_trader_joes_search": ("trader_joes",),
+    "serpapi_trader_joes_product": ("trader_joes_product",),
     "serpapi_walmart_search": ("walmart",),
     "serpapi_walmart_product": ("walmart_product",),
     "serpapi_youtube_search": ("youtube",),
@@ -73,6 +75,8 @@ SERPAPI_ENGINE_LABELS = {
     "home_depot": "Home Depot Search",
     "home_depot_product": "Home Depot Product",
     "search_index": "Search Index",
+    "trader_joes": "Trader Joe's Search",
+    "trader_joes_product": "Trader Joe's Product",
     "tripadvisor": "Tripadvisor Search",
     "tripadvisor_place": "Tripadvisor Place",
     "tripadvisor_reviews": "Tripadvisor Reviews",
@@ -137,6 +141,14 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
     "home_depot": ("home depot search api", "home depot search", "home depot api"),
     "home_depot_product": ("home depot product api", "home depot product"),
     "search_index": ("search index api", "search index"),
+    "trader_joes": (
+        "trader joe's search api", "trader joe's search", "trader joe's api",
+        "trader joes search api", "trader joes search", "trader joes api",
+    ),
+    "trader_joes_product": (
+        "trader joe's product api", "trader joe's product",
+        "trader joes product api", "trader joes product",
+    ),
     "tripadvisor": (
         "tripadvisor search api",
         "tripadvisor search",

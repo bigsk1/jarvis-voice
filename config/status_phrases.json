@@ -251,6 +251,8 @@
     "searxng_search": "_family_search",
     "serpapi_travel_explore": "_family_travel",
     "serpapi_tripadvisor": "_family_local_search",
+    "serpapi_trader_joes_search": "_family_shopping",
+    "serpapi_trader_joes_product": "_family_shopping",
     "serpapi_walmart_search": "_family_shopping",
     "serpapi_walmart_product": "_family_shopping",
     "serpapi_open_table_reviews": "_family_local_search",

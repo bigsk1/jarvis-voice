@@ -31,6 +31,8 @@ SerpApi's own index of public webpages and source URLs.
 | `serpapi_ebay_product` | `ebay_product` | One eBay listing's focused details by numeric product ID |
 | [`serpapi_walmart_search`](../walmart-tool/README.md) | `walmart` | US or Mexico Walmart product discovery, filters, sellers, shipping, variants, pagination and store context |
 | [`serpapi_walmart_product`](../walmart-tool/README.md) | `walmart_product` | One US Walmart product's details, specifications, offers, variants, reviews and images |
+| [`serpapi_trader_joes_search`](../trader-joes-tool/README.md) | `trader_joes` | Trader Joe's discovery with prices, sizes, dietary/category filters, occasion tags and validated store context |
+| [`serpapi_trader_joes_product`](../trader-joes-tool/README.md) | `trader_joes_product` | One Trader Joe's product's ingredients, allergens, nutrition panels, dietary labels, images and store assortment status |
 | `serpapi_home_depot` | `home_depot`, `home_depot_product` | Home Depot products, price/rating comparison, store or ZIP availability, and focused details |
 | `serpapi_google_events` | `google_events` | Upcoming local or virtual events with dates, venues, descriptions, ticket sources, public maps, images, date filters, and active-mode location fallback; see the [Google Events guide](../google-events-tool/README.md) |
 | `serpapi_google_local` | `google_local` | Google Local business listings near an explicit or mode-default location, with ratings, hours, service options, ads, related place searches, and pagination |
@@ -76,7 +78,7 @@ The family uses these common layers:
   Tripadvisor, Google Events, Google
   Local, Google Local Services, Google News Light, Google Shopping Light,
   Google Immersive Product, Google Trends, Trending Now,
-  Google Sports, Google Search, Search Index, eBay, Walmart, OpenTable Reviews, Yelp, Maps, and YouTube cards.
+  Google Sports, Google Search, Search Index, eBay, Walmart, Trader Joe's, OpenTable Reviews, Yelp, Maps, and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
 option for the older focused tools. Normal conversational and workflow calls
@@ -106,6 +108,10 @@ code to an exact entry in SerpApi's public store list. A call's `store_id` or
 overrides the configured postal code. Unmatched ZIPs leave the provider's
 location in effect and are reported as such. See the
 [Walmart location rules](../walmart-tool/README.md#store-and-postal-code-selection).
+Trader Joe's also uses a validated `store_id` or an exact ZIP match, with
+`JARVIS_TRADER_JOES_STORE_ID` as its optional preferred-store setting. An
+unmatched ZIP leaves the all-store catalog in effect, with that limitation
+reported. See the [Trader Joe's location rules](../trader-joes-tool/README.md#store-and-postal-code-selection).
 
 The `serpapi_*` manifests declare:
 
@@ -547,6 +553,17 @@ Store-based prices can differ from general online offers, and a missing
 stock field is not proof of availability. See the
 [Walmart tool guide](../walmart-tool/README.md) for examples, location selection,
 and the distinction between Walmart's item and product IDs.
+
+### Trader Joe's discovery and detail
+
+Use `serpapi_trader_joes_search` for Trader Joe's products, then pass a selected
+result's exact string SKU to `serpapi_trader_joes_product`. Preserve leading
+zeros in IDs such as `080794`. Details include ingredients, allergens,
+nutrition panels, dietary labels, images and store assortment status, without
+customer ratings or reviews. `available` means sold in the selected store;
+it does not establish current shelf inventory. See the
+[Trader Joe's tool guide](../trader-joes-tool/README.md) for supported filters,
+store selection, results and follow-ups.
 
 ### Home Depot
 

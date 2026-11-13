@@ -915,6 +915,14 @@ button.tool-item:focus-visible {
   box-sizing: border-box;
 }
 
+/* Catalog package photos stay compact; full-size images remain available on click. */
+.message.assistant .message-bubble img.markdown-product-thumbnail {
+  width: auto;
+  max-width: min(100%, 240px);
+  max-height: 220px;
+  object-fit: contain;
+}
+
 /* Markdown tables in chat responses */
 .message-bubble .markdown-table-wrap {
   max-width: 100%;

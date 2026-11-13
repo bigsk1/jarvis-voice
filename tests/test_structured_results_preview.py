@@ -58,6 +58,8 @@ const expectedTools = [
   'serpapi_ebay_product',
   'serpapi_walmart_search',
   'serpapi_walmart_product',
+  'serpapi_trader_joes_search',
+  'serpapi_trader_joes_product',
   'serpapi_hotel_search',
   'serpapi_yelp_search',
   'serpapi_open_table_reviews',

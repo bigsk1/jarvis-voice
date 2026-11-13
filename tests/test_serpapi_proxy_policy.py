@@ -36,6 +36,8 @@ EXPECTED_SERPAPI_TOOLS = {
     "serpapi_amazon_search",
     "serpapi_search_index",
     "serpapi_tripadvisor",
+    "serpapi_trader_joes_search",
+    "serpapi_trader_joes_product",
     "serpapi_walmart_search",
     "serpapi_walmart_product",
     "serpapi_yelp_search",

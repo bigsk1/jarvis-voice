@@ -1,0 +1,34 @@
+{
+  "enabled": true,
+  "name": "serpapi_trader_joes_search",
+  "description": "Search Trader Joe's products with pictures, product SKUs, prices, sizes and categories. Use for 'find coffee at Trader Joe's', 'show organic vegan Trader Joe's snacks', 'new Trader Joe's products' or price-sorted comparisons. A validated store_id or an exact configured ZIP match limits results to products sold by that store; this is catalog availability, not current stock. If no store is selected, results cover the all-store catalog. Reuse each exact product_id (including leading zeroes) and store_id with serpapi_trader_joes_product for ingredients, allergens, nutrition or closer reading instead of repeating a search. One cached SerpApi search request; no purchases. Trader Joe's does not provide ratings or customer reviews through these tools.",
+  "script": "serpapi_trader_joes_search.py",
+  "proxy_policy": "off",
+  "prompt_guard_policy": "web_content",
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true,
+    "allow": ["JARVIS_DEFAULT_POSTAL_CODE", "JARVIS_TRADER_JOES_STORE_ID"]
+  },
+  "complementary_tools": ["serpapi_trader_joes_product", "canvas", "stash"],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {"type": "string", "minLength": 1, "maxLength": 400, "description": "Required Trader Joe's product keywords, e.g. coffee, frozen meals, vegan snacks."},
+      "num_results": {"type": "integer", "minimum": 1, "maximum": 10, "description": "Number of product cards to return; default 5, clamped to 1..10."},
+      "page": {"type": "integer", "minimum": 1, "maximum": 100, "description": "Results page; default 1. Provider pages contain up to 15 products."},
+      "sort_by": {"type": "string", "enum": ["price_low_to_high", "price_high_to_low", "popularity"], "description": "Optional ordering; omit for the provider's relevance order."},
+      "category_id": {"type": "string", "pattern": "^[0-9]{1,20}$", "description": "Exact Trader Joe's category ID from returned category_id/category URLs, e.g. 194 for Coffee & Tea. Do not invent IDs from labels."},
+      "characteristics": {"type": "array", "maxItems": 9, "items": {"type": "string", "maxLength": 80}, "description": "Require all selected characteristics. Prefer returned search_filters.characteristics IDs: kosher, organic, gluten_free, vegan, antibiotic_free, dairy_free, grass_fed, vegetarian, fair_trade. Documented display labels such as Gluten Free are also accepted, case-insensitively. For ingredient or allergy decisions read the product's actual ingredients and allergens."},
+      "tags": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 80}, "description": "Require all selected fun tags. Prefer returned search_filters.tags canonical IDs for more-like-this searches. Examples: date_night, cheese_board, brunch_all_day, rise_and_shine, make_it_meatless, family_style. Documented display labels such as Rise & Shine are also accepted, case-insensitively; unrelated human labels are rejected."},
+      "new_products": {"type": "boolean", "description": "Only products marked new by Trader Joe's; default false."},
+      "store_id": {"type": "string", "pattern": "^[0-9]{1,10}$", "description": "Supported Trader Joe's store ID. Overrides location defaults and is checked against the store directory before searching; unknown IDs fail instead of silently searching all stores."},
+      "postal_code": {"type": "string", "pattern": "^[0-9]{5}(-[0-9]{4})?$", "description": "Optional exact US ZIP override, taking precedence over the configured store. Matching stores are listed by numeric ID and the chosen address/count is reported. An unmatched ZIP is explicitly reported as an all-store search; no nearest-store guess."},
+      "no_cache": {"type": "boolean", "description": "Bypass SerpApi's cache. Default false; exact cached responses are free."}
+    },
+    "required": ["query"],
+    "additionalProperties": false
+  },
+  "permissions": {"dangerous": false, "bash": false, "network": true, "filesystem": false, "auto_approve": true},
+  "availability": {"all_of_env": ["SERP_API_KEY"], "setup_hint": "Set SERP_API_KEY in the active mode env file. Store and postal-code defaults are optional."}
+}

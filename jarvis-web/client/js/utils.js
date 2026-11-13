@@ -437,7 +437,41 @@ const Utils = {
 
   hydrateRichContent(root = document) {
     this.setupScrollableTables(root);
+    this.setupProductImageThumbnails(root);
     return this.hydrateCryptoCharts(root);
+  },
+
+  setupProductImageThumbnails(root = document) {
+    const images = root?.querySelectorAll?.('.message.assistant .message-bubble img') || [];
+    images.forEach(image => {
+      let source;
+      try {
+        source = new URL(image.getAttribute('src'));
+      } catch {
+        return;
+      }
+      if (!['http:', 'https:'].includes(source.protocol) || source.username || source.password
+          || !['traderjoes.com', 'www.traderjoes.com'].includes(source.hostname)
+          || !['/content/dam/trjo/products/', '/content/dam/trjo/context-images/']
+            .some(prefix => source.pathname.startsWith(prefix))) return;
+
+      image.classList.add('markdown-product-thumbnail');
+      // Existing Markdown links keep their destination; repeated hydration adds no wrapper.
+      if (image.closest('a')) return;
+      const link = document.createElement('a');
+      link.className = 'markdown-product-image-link';
+      link.href = source.href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.setAttribute('aria-label', `Open full-size ${image.alt || 'product image'}`);
+      link.addEventListener('click', event => {
+        if (typeof window.showImageLightbox !== 'function') return;
+        event.preventDefault();
+        window.showImageLightbox(source.href);
+      });
+      image.parentNode.insertBefore(link, image);
+      link.appendChild(image);
+    });
   },
 
   async hydrateCryptoCharts(root = document) {

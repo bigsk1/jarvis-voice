@@ -294,6 +294,88 @@ window.createShoppingResultAdapters = function createShoppingResultAdapters({
     };
   }
 
+  function adaptTraderJoes(payload) {
+    const focused = payload.engine === 'trader_joes_product';
+    const summary = payload.product_summary;
+    const rows = focused && summary && typeof summary === 'object'
+      ? [summary] : getRows(payload);
+    const strings = value => Array.isArray(value)
+      ? value.filter(item => typeof item === 'string' && item.trim()) : [];
+    const text = value => value == null ? '' : String(value);
+    const nutritionText = value => (Array.isArray(value) ? value : [])
+      .filter(panel => panel && typeof panel === 'object').map((panel, index) => [
+        panel.title || `Nutrition panel ${index + 1}`,
+        panel.servings_per_container,
+        panel.serving_size ? `Serving size: ${panel.serving_size}` : '',
+        panel.calories_per_serving != null && panel.calories_per_serving !== ''
+          ? `Calories: ${panel.calories_per_serving}` : '',
+        ...(Array.isArray(panel.nutrients) ? panel.nutrients : [])
+          .filter(nutrient => nutrient && typeof nutrient === 'object')
+          .map(nutrient => [nutrient.name, nutrient.amount,
+            nutrient.daily_value != null && nutrient.daily_value !== '' ? `${nutrient.daily_value} daily value` : '',
+          ].filter(value => value != null && value !== '').map(String).join(' · ')),
+      ].filter(value => value != null && value !== '').map(String).join('\n')).join('\n\n');
+    const items = rows.filter(row => row?.title && row?.url).map(row => {
+      const ingredients = strings(row.ingredients);
+      const allergens = strings(row.allergens);
+      const description = typeof row.description === 'string' ? row.description : '';
+      const facts = nutritionText(row.nutrition_facts);
+      const details = [
+        description,
+        ingredients.length ? `Ingredients: ${ingredients.join(', ')}` : '',
+        allergens.length ? `Allergens: ${allergens.join('; ')}` : '',
+        facts,
+      ].filter(Boolean).join('\n\n');
+      const price = row.available === false ? ''
+        : typeof row.price_formatted === 'string' && row.price_formatted.trim() ? row.price_formatted
+        : typeof row.price === 'number' && Number.isFinite(row.price)
+          ? formatMarketplacePrice({amount: row.price, currency: row.currency || 'USD'}) : '';
+      return {
+        title: row.title, url: row.url,
+        image: row.image_url || row.thumbnail || strings(row.images)[0],
+        primary: price,
+        chips: [
+          row.size,
+          row.label,
+          ...strings(row.characteristics),
+          ...strings(row.fun_tags),
+          typeof row.available === 'boolean'
+            ? payload.store_id
+              ? row.available ? 'Sold at selected store' : 'Not sold at selected store'
+              : row.available ? "Sold by Trader Joe's" : "Not sold by Trader Joe's"
+            : '',
+        ].filter(Boolean),
+        details: [
+          row.product_id != null ? `Product ${text(row.product_id)}` : '',
+          row.category,
+          description ? compactText(description, 300) : '',
+          ingredients.length ? compactText(`Ingredients: ${ingredients.join(', ')}`, 220) : '',
+          allergens.length ? compactText(`Allergens: ${allergens.join('; ')}`, 220) : '',
+          facts ? 'Nutrition facts included in product details' : '',
+        ].filter(Boolean),
+        expandText: focused ? details : '',
+        expandLabel: 'Read food and product details',
+        expandNote: "Details from Trader Joe's product listing. Store availability means the item is sold there, not a live inventory count.",
+        actionLabel: "Open Trader Joe's product",
+      };
+    });
+    const count = payload.results_count ?? items.length;
+    const location = payload.location_context || {};
+    return {
+      kind: 'product', layout: focused ? 'list' : 'rail', disclosure: 'technical',
+      eyebrow: focused ? "Trader Joe's product" : "Trader Joe's results",
+      heading: payload.query || rows[0]?.title || 'Products',
+      subtitle: [
+        payload.store_id ? `Store ${payload.store_id}` : '',
+        location.store_name,
+        location.note,
+        !focused && count > items.length ? `${items.length} of ${count} returned products shown` : '',
+      ].filter(Boolean).join(' · '),
+      shownCount: items.length,
+      items: items.length ? items : [{title: "No Trader Joe's products returned"}],
+    };
+  }
+
   function adaptGoogleShoppingLight(payload) {
     const items = getRows(payload).map((row, index) => {
       const chips = [];
@@ -458,6 +540,7 @@ window.createShoppingResultAdapters = function createShoppingResultAdapters({
     adaptEbaySearch,
     adaptEbayProduct,
     adaptWalmart,
+    adaptTraderJoes,
     adaptGoogleShoppingLight,
     adaptGoogleImmersiveProduct,
   };
