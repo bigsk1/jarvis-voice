@@ -328,6 +328,7 @@ Each step typically includes:
 - `required_success_count` — for a `for_each` producer, stop after this many successful/validated results (default `1`).
 - `process_all` — for a `for_each` consumer, process every input item instead of stopping after one success.
 - `validated_output_var` — stores the successful/validated outputs from a `for_each` producer under an explicit semantic variable such as `validated_articles`.
+- `set_variables_on_success` — assigns variables after a successful single step with an explicit `output_var`, or once after a successful whole `for_each` loop; see the rules below.
 - `required` — default true. If explicitly false, an unavailable tool does not
   block workflow admission: the step is recorded as skipped and the run is
   marked degraded. If the available tool executes and fails, behavior depends
@@ -357,6 +358,23 @@ are always rejected. If one tool appears in both required and optional steps,
 it remains required.
 
 Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
+
+### Variables after success
+
+For a single step, `set_variables_on_success` applies only when the step succeeds
+and has an explicit `output_var`. For a `for_each` step, the assignments run once
+after the whole loop succeeds, after its output list and any named
+`validated_output_var` have been stored. Assignments can reference these results
+with `${...}`. The output list uses `output_var`, or `stepN_results` when omitted,
+where `N` is the step number.
+
+Loop success follows `required_success_count` (default `1`), or requires every
+input item to succeed when `process_all: true`. Only successful results that
+pass any configured validation count. An empty `process_all` loop succeeds with
+zero of zero items; an empty loop using the default required count does not.
+
+If the loop falls below its required count but continues, the assignments do
+not run. Aborted or cancelled loops do not apply them either.
 
 ---
 

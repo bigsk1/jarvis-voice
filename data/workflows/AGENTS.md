@@ -883,13 +883,52 @@ explicit-destination workflows fail-closed by omitting
 | `tool` | Yes | Tool name to execute |
 | `action` | No | For tools with actions (stash, canvas) |
 | `params` | No | Tool parameters, supports `${variables}` |
-| `output_var` | No | Store full result in variable |
+| `output_var` | No | Store successful single-step data or its built-in transformed value; for loops, store all result envelopes, including failed attempts. Loops default to `stepN_results`, where `N` is the step number. |
 | `search_output_var` | No | Store normalized search `{urls, data}` under an independent name; defaults to shared `search_results` |
 | `extract` | No | Extract specific fields: `{"var": "path"}` |
+| `for_each` | No | Repeat the tool over a list; normally stop after the required number of successes |
+| `process_all` | No | Require every input item to succeed instead of using the producer success count |
+| `required_success_count` | No | Successful/validated results required from a producer loop; default `1` |
+| `validated_output_var` | No | Store only successful loop result envelopes that passed any configured validation |
+| `set_variables_on_success` | No | Assign variables after a successful single step with an explicit `output_var`, or once after a successful whole loop |
+| `set_variables_on_skip` | No | Assign fallback variables when a condition is false or an optional tool is unavailable |
 | `llm_prompt` | No | LLM generates `content` param from this |
 | `required` | No | Default `true`. Abort workflow if fails |
 | `on_fail` | No | `"continue"` to proceed despite failure |
 | `description` | No | For logging |
+
+### Success Assignments for Repeated Steps
+
+Apply `set_variables_on_success` once after the whole loop meets its success
+target, after `output_var` (or `stepN_results`) and any named
+`validated_output_var` are stored. Assignments can reference those aggregates;
+they do not run per item. A single step still needs an explicit `output_var`.
+
+```json
+{
+  "step": 2,
+  "tool": "crawl_url",
+  "for_each": "${search_results.urls[:3]}",
+  "output_var": "crawl_attempts",
+  "validated_output_var": "validated_sources",
+  "required_success_count": 2,
+  "set_variables_on_success": {
+    "sources_ready": true,
+    "sources_for_summary": "${validated_sources}"
+  }
+}
+```
+
+Only successful results that pass any configured validation count toward the
+target. `process_all: true` uses the number of input items as its target, so an
+empty list succeeds with zero of zero items. An empty producer loop using the
+default target of one does not succeed.
+
+Continuing below the target (`on_all_fail: "continue"`, `on_fail: "continue"`,
+or `required: false`) does not apply success assignments. Neither do aborted
+or cancelled loops. Give downstream flags safe defaults, such as
+`"sources_ready": false`, and use `set_variables_on_skip` for condition or
+unavailable-tool fallbacks.
 
 ### Variable Syntax
 
@@ -1024,6 +1063,8 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 - [ ] Required steps will abort on failure
 - [ ] Optional steps have `"required": false` and `"on_fail": "continue"`
 - [ ] Downstream variables have truthful defaults when an optional tool is skipped as unavailable
+- [ ] Repeated steps declare the intended success count or `process_all: true`
+- [ ] Success assignments reference aggregate results and do not assume continued failures succeeded
 - [ ] Steps that may fail (crawl, screenshot) are optional with fallback data
 - [ ] `llm_prompt` includes all needed `${variables}` for context
 - [ ] `llm_prompt` instructs LLM to use actual values, not output `${var}` syntax

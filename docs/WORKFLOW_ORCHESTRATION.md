@@ -340,7 +340,7 @@ source ~/jarvis-venv/bin/activate
 | `tool` | Registered Jarvis tool name. MCP tools use their registered names, such as `mcp_brave_search_brave_web_search`. |
 | `action` | Tool action for multi-action tools such as `canvas` or `stash`. |
 | `params` | Tool parameters. Supports `${...}` substitutions. |
-| `output_var` | Stores successful step output for later steps. Built-in transforms can preserve a workflow-friendly shape. |
+| `output_var` | Stores successful single-step output, or all loop outputs including failures. Loops default to `stepN_results`, where `N` is the step number. Built-in transforms can preserve a workflow-friendly shape for single steps. |
 | `extract` | Maps new variable names to paths under `result.data`; do not prefix with `data.`. |
 | `for_each` | Repeats a step over an array such as `${search_results.urls[:5]}`. |
 | `process_all` | For consumer loops, process every input item instead of stopping after the first success. |
@@ -350,10 +350,26 @@ source ~/jarvis-venv/bin/activate
 | `llm_prompt` | Uses the configured provider to generate params, usually `content`. |
 | `llm_output_validation` | Validates LLM-filled params before calling the tool. Use it for Canvas content. |
 | `condition` | Deterministic condition or `${llm_decides}`. |
-| `set_variables_on_success` | Assign variables after a successful step. |
+| `set_variables_on_success` | Assign variables after a successful single step with an explicit `output_var`, or once after a successful whole loop. |
 | `set_variables_on_skip` | Assign variables when a condition skips a step. |
 | `required` | Defaults to true. If true and the step fails, the workflow aborts unless `on_fail` overrides it. |
 | `on_fail` | Use `"continue"` for optional steps. |
+
+### Variables after success
+
+For a single step, `set_variables_on_success` applies only when the step succeeds
+and has an explicit `output_var`. For a `for_each` step, it applies once after
+the whole loop succeeds. It runs after the loop's output list is stored under
+`output_var` (or `stepN_results` by default) and any named `validated_output_var`
+is stored, so assignments can reference those results with `${...}`.
+
+A loop succeeds when it reaches `required_success_count` (default `1`). With
+`process_all: true`, every input item must succeed, including passing any
+configured validation. An empty `process_all` loop succeeds with zero of zero
+items; an empty loop using the default required count does not succeed.
+
+Continuing after a loop falls below its required count does not apply these
+assignments. Aborted or cancelled loops do not apply them either.
 
 ## Variables and Substitution
 

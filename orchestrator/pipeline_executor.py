@@ -1121,6 +1121,8 @@ class PipelineExecutor:
                 # custom workflows, but never let later stash/save loops overwrite
                 # the source articles used by synthesis steps.
                 self._store_validated_outputs(step, tool_name, step_result, variables)
+                if step_result.get("ok"):
+                    self._apply_variable_assignments(step.get("set_variables_on_success"), variables)
                 
                 results.append({
                     **step_identity,
@@ -1416,6 +1418,7 @@ class PipelineExecutor:
                 required_success,
             )
             return {
+                "ok": len(validated_outputs) >= required_success,
                 "items_processed": 0,
                 "items_succeeded": 0,
                 "outputs": [],
@@ -1591,6 +1594,7 @@ class PipelineExecutor:
         )
         
         return {
+            "ok": len(validated_outputs) >= required_success,
             "items_processed": len(outputs),
             "items_succeeded": len(validated_outputs),
             "outputs": outputs,
