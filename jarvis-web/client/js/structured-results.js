@@ -410,6 +410,7 @@ class StructuredResultsRenderer {
     this.register('searxng_search', search.adaptSearxngSearch);
     this.register('tavily_search', search.adaptTavilySearch);
     this.register('tavily_extract', search.adaptTavilyExtract);
+    this.register('serpapi_extract', search.adaptSerpapiExtract);
     this.register('bookmark_search', search.adaptBookmarks);
     this.register('serpapi_google_images_light', search.adaptGoogleImagesLight);
     this.register('serpapi_google_news_light', search.adaptGoogleNewsLight);

@@ -1124,6 +1124,14 @@ LOCAL_TOOL_SAMPLES = {
         "provider": "tavily", "url": "https://example.test/tavily",
         "content": "An extracted passage.", "content_chars": 21,
     }),
+    "serpapi_extract": _case({
+        "provider": "serpapi", "engine": "extract", "mode": "scrape",
+        "requested_url": "https://example.test/requested", "url": "https://example.test/final",
+        "content": "An extracted passage.", "content_chars": 21, "content_truncated": False,
+        "page_information": {"canonical": "https://example.test/canonical"},
+        "feeds": [{"title": "Updates", "url": "https://example.test/feed.xml", "type": "rss"}],
+        "external_content_trust": "untrusted",
+    }),
     "serpapi_google_images_light": _case(
         {
             "engine": "google_images_light",

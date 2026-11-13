@@ -270,6 +270,13 @@ integration should not silently inject preference hints for generic requests.
 Intentional attachment actions can have their own narrowly defined tool policy.
 Intelligence insights can inform selection within the permitted catalog.
 
+Page readers are separate from search and browser interaction. For example,
+[`serpapi_extract`](tools/serpapi-extract/README.md) accepts a known public URL
+and can explicitly map or crawl a bounded part of a site. Its existing
+`SERP_API_KEY` requirement is checked in the selected mode. It does not execute
+JavaScript or inherit a browser login session. Adding this reader does not
+change the RSS digest's `tavily_extract` article-reading step.
+
 Selecting a tool for Web background execution is another layer, separate from
 availability. Only reviewed adapters can be admitted, and admission validates
 arguments and background constraints before creating a job. Provider-hosted

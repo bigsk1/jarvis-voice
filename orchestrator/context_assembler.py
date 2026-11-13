@@ -32,6 +32,13 @@ except ModuleNotFoundError as exc:
         raise
     from lib.rss_feeds.context import project_rss_feed_data
 
+try:
+    from serpapi_extract_context import project_serpapi_extract_runs
+except ModuleNotFoundError as exc:
+    if exc.name != "serpapi_extract_context":
+        raise
+    from lib.serpapi_extract_context import project_serpapi_extract_runs
+
 try:  # Launchers expose repo/lib directly; package imports also support tests.
     from deepwiki_context import DEEPWIKI_TOOL_NAMES, project_deepwiki_data
 except ModuleNotFoundError as exc:
@@ -326,6 +333,13 @@ class ContextAssembler:
                 continue
             if tool_name == "rss_feed":
                 projected = project_rss_feed_data(data, max_chars=max(2, min(6000, tool_budget)), include_content=True)
+                extracted_parts.append((f"\n=== {tool_name} ===", [_followup_json(projected)]))
+                continue
+            if tool_name == "serpapi_extract":
+                projected = project_serpapi_extract_runs(
+                    data, max_chars=max(256, min(9000, tool_budget)),
+                    truncate_text=self.truncate_preview_text,
+                )
                 extracted_parts.append((f"\n=== {tool_name} ===", [_followup_json(projected)]))
                 continue
             if tool_name == "send_webhook":
@@ -1021,6 +1035,22 @@ class ContextAssembler:
             }, separators=(",", ":"))
             return finish(rendered, truncated=truncated)
 
+        if tool_name == "serpapi_extract":
+            envelope = {"ok": result.get("ok", True)}
+            if result.get("error"):
+                envelope["error"] = self.truncate_preview_text(result["error"], 300)
+            overhead = len(json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))) + 60
+            projected = project_serpapi_extract_runs(
+                result.get("data"), max_chars=max(256, available - overhead),
+                truncate_text=self.truncate_preview_text,
+            )
+            truncated = bool(projected.get("context_truncated"))
+            rendered = json.dumps({
+                "result": {**envelope, "data": projected}, "result_truncated": truncated,
+            }, ensure_ascii=False, separators=(",", ":"))
+            if len(rendered) <= available:
+                return finish(rendered, truncated=truncated)
+
         try:
             parsed_summary = json.loads(result_summary)
             rendered = json.dumps(
@@ -1165,9 +1195,13 @@ class ContextAssembler:
 
     @staticmethod
     def provider_result_max_chars(result: dict, ordinary_budget: int) -> int:
-        """Reserve Google evidence plus message framing without widening other tools."""
+        """Reserve bounded source evidence plus message framing for named readers."""
         if is_google_result(result):
             return max(ordinary_budget, google_context_budget(result) + 2400)
+        data = result.get("data")
+        if (isinstance(data, dict) and data.get("provider") == "serpapi"
+                and data.get("engine") == "extract" and data.get("mode") == "map"):
+            return max(ordinary_budget, 11200)
         return ordinary_budget
 
     def build_arguments_context_preview(
@@ -1198,6 +1232,8 @@ class ContextAssembler:
             return 6000  # Registry contracts and retry guidance need intact JSON.
         if lowered == "rss_feed":
             return 6000  # A bounded shortlist with complete article URLs and digest handles.
+        if lowered == "serpapi_extract":
+            return 10000  # Retain article evidence with complete source and feed URLs.
         if lowered == "source_library":
             return 16000  # Several exact passages plus source citations.
         if lowered == "project_nomad":
@@ -3688,6 +3724,19 @@ class ContextAssembler:
         if tool_name == "rss_feed":
             data = project_rss_feed_data(result, max_chars=min(6000, max_chars - 80), include_content=True)
             serialized = json.dumps({"ok": result.get("ok", True), "data": data}, separators=(",", ":"))
+            return serialized, result_chars_total, len(serialized), bool(data.get("context_truncated"))
+
+        if tool_name == "serpapi_extract":
+            projected = {"ok": result.get("ok", True)}
+            if result.get("error"):
+                projected["error"] = self.truncate_preview_text(result["error"], 300)
+            overhead = len(json.dumps(projected, ensure_ascii=False, separators=(",", ":"))) + 20
+            data = project_serpapi_extract_runs(
+                result.get("data"), max_chars=max_chars - overhead,
+                truncate_text=self.truncate_preview_text,
+            )
+            projected["data"] = data
+            serialized = json.dumps(projected, ensure_ascii=False, separators=(",", ":"))
             return serialized, result_chars_total, len(serialized), bool(data.get("context_truncated"))
 
         if is_external_result(result):

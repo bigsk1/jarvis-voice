@@ -1,7 +1,7 @@
 # SerpApi Tools
 
 Jarvis provides a family of focused SerpApi tools for Google Search, shopping, indexed-web
-source discovery, existing-image discovery, news, trend analysis, events, local
+source discovery, public-page extraction, existing-image discovery, news, trend analysis, events, local
 places and restaurant reviews, sports, travel, and YouTube. Each tool has its own schema and normalized result shape so
 Tool RAG can select a narrow capability instead of routing every request through
 one ambiguous search tool.
@@ -22,6 +22,7 @@ SerpApi's own index of public webpages and source URLs.
 | `serpapi_google_immersive_product` | `google_immersive_product` | Rich detail for one selected product: specifications, review insights, user reviews, media, variants, and expanded store offers |
 | `serpapi_google_sports` | `google_sports` plus conditional `google` resolver | Current game schedules and scores, game details, standings, players, brackets, league statistics, and rankings |
 | `serpapi_search_index` | `search_index` | Ranked indexed-web sources for grounding, datasets, and workflows; fetch returned URLs separately |
+| [`serpapi_extract`](../serpapi-extract/README.md) | `extract` | Read a public URL as Markdown with metadata, feeds and links; explicitly map site URLs or crawl a bounded set of pages |
 | `serpapi_google_images_light` | `google_images_light` | Existing web images with full-size URLs, thumbnails, source pages, dimensions, usage-rights filters, and pagination |
 | `serpapi_google_news_light` | `google_news_light` | Fast topic-specific recent news, grouped Top Stories, source URLs, localization, and result-offset pagination |
 | `serpapi_google_trends` | `google_trends` | Interest over time for named topics, comparisons by region, and rising/top related queries or topics for monitoring and workflows |
@@ -44,8 +45,9 @@ SerpApi's own index of public webpages and source URLs.
 
 The Google Search tool fixes its engine to `google`; it does not dispatch to
 the other SerpApi verticals. Search Index remains a separate source-discovery
-engine. MCP Fetch or `crawl_url` is the normal follow-up when Jarvis needs a
-returned website's contents. To inspect another panel from the same Google
+engine. Use a page reader such as `serpapi_extract`, MCP Fetch, or `crawl_url`
+when Jarvis needs a returned website's contents. SerpApi Extract does not run
+JavaScript or use a local browser session. To inspect another panel from the same Google
 response, use `serpapi_google_search` with `action: "read_result"` and its
 retained `raw_ref`; that reads local JSON without another provider request.
 
@@ -187,6 +189,8 @@ additional searches:
 | Tripadvisor search with details and reviews | Up to 3 total calls |
 | Tripadvisor details-only or reviews-only action | 1 |
 | OpenTable Reviews JSON, HTML, or Markdown page | 1 |
+| Extract single-page scrape or site map | 1, unless served from cache |
+| Extract crawl | 1 per successfully extracted page, up to the requested `max_pages`; cached responses and failed pages are not charged |
 | Yelp `include_reviews=true` | 2 total calls |
 | YouTube `include_transcript=true` | 2 total calls |
 | Flight search with SerpApi | 1 |

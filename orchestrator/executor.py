@@ -310,6 +310,8 @@ class ToolExecutor:
             return 200  # Direct SerpApi only; up to two sequential 90s HTTP calls if include_product_details
         if tool_name == "serpapi_search_index":
             return 120  # One Search Index request; deep recall may use the full 90s HTTP allowance
+        if tool_name == "serpapi_extract":
+            return 165  # Up to 120s provider fetch allowance, HTTP overhead and process cleanup.
         if tool_name == "serpapi_google_search" and (args or {}).get("action", "search") == "search":
             return 120  # One 90s Google request plus retention and process cleanup.
         if tool_name == "tavily_search":

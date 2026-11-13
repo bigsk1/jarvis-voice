@@ -101,6 +101,16 @@ format, refreshes one Canvas page,
 and records only confirmed published links. No schedule is installed automatically.
 See [RSS setup, publication state and limits](../docs/RSS_FEEDS.md).
 
+## Reading public webpages
+
+`serpapi_extract` reads a known public URL through SerpApi, returning Markdown,
+page metadata, discovered feeds, and links. Its explicit `map` and `crawl`
+modes discover site URLs or read a bounded set of pages. It uses the active
+mode's existing `SERP_API_KEY` and needs no additional service or SDK. Choose
+a browser tool when the page requires JavaScript, login, or interaction.
+The RSS digest workflow continues to use `tavily_extract` for selected article
+reads. See [SerpApi Extract setup, limits and examples](../docs/tools/serpapi-extract/README.md).
+
 ## Markdown and text to PDF
 
 Use `convert_file` with the original `.md`, `.markdown`, or `.txt` Stash reference
@@ -520,6 +530,7 @@ one source is not evidence that a recipient is unavailable in another.
 | `searxng_search` | Search a configured SearXNG JSON instance for current sources with optional reverse-proxy auth |
 | `serpapi_amazon_search` | Amazon listing discovery and focused ASIN/product details through SerpApi |
 | `serpapi_search_index` | Structured indexed-web source discovery with standard/deep recall, snippets, exact URLs, and workflow-ready pagination |
+| [`serpapi_extract`](../docs/tools/serpapi-extract/README.md) | Public-page Markdown, metadata, feeds and links, with explicit bounded site mapping or crawling |
 | [`serpapi_google_search`](../docs/tools/google-search-tool/README.md) | General Google search panels and web sources, complete Stash retention, and local JSON section reads without another paid search |
 | `serpapi_google_images_light` | Existing web-image discovery with full-size URLs, thumbnails, source pages, dimensions, filters, follow-up references, and optional strict top-result Stash download |
 | `serpapi_google_news_light` | Fast topic-specific Google News discovery with headlines, sources, snippets, grouped Top Stories, and exact article URLs |

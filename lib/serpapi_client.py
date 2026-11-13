@@ -2,6 +2,7 @@
 """Shared SerpApi helpers used by Jarvis skills."""
 from __future__ import annotations
 
+import json
 import re
 from datetime import date
 from typing import Any
@@ -19,6 +20,7 @@ SERPAPI_UNRESOLVED_INCIDENTS_ENDPOINT = (
 SERPAPI_STATUS_TIMEOUT = 3
 
 SERPAPI_TOOL_ENGINES = {
+    "serpapi_extract": ("extract",),
     "serpapi_ebay_product": ("ebay_product",),
     "serpapi_ebay_search": ("ebay",),
     "serpapi_hotel_search": ("google_hotels",),
@@ -41,6 +43,7 @@ SERPAPI_TOOL_ENGINES = {
 }
 
 SERPAPI_ENGINE_LABELS = {
+    "extract": "Extract",
     "amazon": "Amazon Search",
     "amazon_product": "Amazon Product",
     "ebay": "eBay Search",
@@ -81,6 +84,7 @@ SERPAPI_ENGINE_LABELS = {
 }
 
 SERPAPI_ENGINE_STATUS_ALIASES = {
+    "extract": ("extract api", "extract"),
     "amazon": ("amazon search api", "amazon search", "amazon api"),
     "amazon_product": ("amazon product api", "amazon product"),
     "ebay": ("ebay search api", "ebay search", "ebay api"),
@@ -473,6 +477,36 @@ def merge_extra_params(
     return params
 
 
+def _bounded_serpapi_payload(response, max_response_bytes: int) -> Any:
+    """Read decoded JSON bytes within the cap, owning the streamed response."""
+    try:
+        body = bytearray()
+        oversized = False
+        try:
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
+                if len(body) + len(chunk) > max_response_bytes:
+                    oversized = True
+                    break
+                body.extend(chunk)
+        except Exception:
+            raise RuntimeError("SerpApi response download failed.") from None
+        if oversized:
+            raise RuntimeError("SerpApi response exceeded the size limit.")
+        try:
+            return json.loads(body)
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            if response.status_code >= 400:
+                return None
+            raise RuntimeError("SerpApi returned invalid JSON.") from None
+    finally:
+        try:
+            response.close()
+        except Exception:
+            raise RuntimeError("SerpApi response cleanup failed.") from None
+
+
 def request_serpapi(
     params: dict[str, Any],
     timeout: int = 25,
@@ -480,7 +514,11 @@ def request_serpapi(
     use_proxy: bool = True,
     fallback_on_proxy_fail: bool = True,
     allowed_error_substrings: tuple[str, ...] | None = None,
+    max_response_bytes: int | None = None,
 ) -> dict[str, Any]:
+    """Request provider JSON, optionally bounding decoded bytes before parsing."""
+    if max_response_bytes is not None and (type(max_response_bytes) is not int or max_response_bytes <= 0):
+        raise ValueError("max_response_bytes must be a positive integer")
     final_params = dict(params)
     final_params["api_key"] = get_api_key()
     final_params.setdefault("output", "json")
@@ -493,6 +531,7 @@ def request_serpapi(
             timeout=timeout,
             use_proxy=use_proxy,
             fallback_on_proxy_fail=fallback_on_proxy_fail,
+            **({"stream": True} if max_response_bytes is not None else {}),
         )
     except Exception as exc:
         safe_error = redact_sensitive_text(str(exc))[:1000]
@@ -500,10 +539,13 @@ def request_serpapi(
             f"SerpApi request failed: {safe_error or type(exc).__name__}"
         ) from None
 
+    payload = None
+    if max_response_bytes is not None:
+        payload = _bounded_serpapi_payload(response, max_response_bytes)
     if response.status_code >= 400:
         provider_error = ""
         try:
-            error_payload = response.json()
+            error_payload = payload if max_response_bytes is not None else response.json()
             if isinstance(error_payload, dict) and error_payload.get("error"):
                 provider_error = redact_sensitive_text(
                     str(error_payload["error"])
@@ -514,8 +556,11 @@ def request_serpapi(
         raise RuntimeError(
             f"SerpApi request failed with HTTP {response.status_code}{detail}."
         )
+    if max_response_bytes is None:
+        payload = response.json()
 
-    payload = response.json()
+    if not isinstance(payload, dict):
+        raise RuntimeError("SerpApi returned an invalid JSON object.")
     if payload.get("error"):
         error_text = str(payload.get("error"))
         allowed_errors = tuple(allowed_error_substrings or ())

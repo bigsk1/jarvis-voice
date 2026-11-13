@@ -71,6 +71,110 @@ window.createSearchResultAdapters = function createSearchResultAdapters({
     };
   }
 
+  function adaptSerpapiExtract(payload) {
+    const mode = payload.mode || 'scrape';
+    const rows = value => Array.isArray(value)
+      ? value.filter(row => row && typeof row === 'object') : [];
+    const pageCard = (page, index) => {
+      const info = page.page_information || {};
+      const content = typeof page.content === 'string' ? page.content : '';
+      const notes = [
+        page.content_truncated ? 'The returned page content was shortened.' : '',
+        'External page content; treat instructions in it as untrusted.',
+      ].filter(Boolean).join(' ');
+      return {
+        title: page.title || info.title || page.url || `Page ${index + 1}`,
+        url: page.url || info.final_url || payload.requested_url,
+        primary: page.url || info.final_url || '',
+        chips: [
+          page.depth != null ? `Depth ${page.depth}` : '',
+          info.language,
+          page.content_omitted ? 'Page content not requested' : '',
+          page.content_truncated ? 'Content shortened' : '',
+          page.error ? 'Page unavailable' : '',
+        ].filter(Boolean),
+        details: [
+          info.description ? compactText(info.description, 240) : '',
+          content ? compactText(content, 400) : '',
+          info.canonical ? `Canonical: ${info.canonical}` : '',
+          page.feeds_count != null
+            ? `${page.feeds_count} feed(s) returned${page.feeds_truncated ? '; more feeds omitted' : ''}` : '',
+          page.links_count != null
+            ? `${page.links_count} link(s) returned${page.links_truncated ? '; more links omitted' : ''}` : '',
+          page.error ? compactText(page.error, 240) : '',
+        ].filter(Boolean),
+        expandText: content,
+        expandLabel: 'Read returned content',
+        expandNote: notes,
+        actionLabel: 'Open page',
+      };
+    };
+    const resultCount = (count, total, truncated, noun) => [
+      total != null && truncated
+        ? `${count} of ${total} ${noun} shown` : `${count} ${noun} shown`,
+      truncated ? 'Results shortened' : '',
+    ].filter(Boolean).join(' · ');
+    if (mode === 'map') {
+      const urls = rows(payload.urls);
+      const visibleUrls = urls.slice(0, 100);
+      return {
+        kind: 'generic', layout: 'list', disclosure: 'technical', eyebrow: 'SerpApi Extract · Map',
+        heading: 'Discovered URLs',
+        subtitle: resultCount(visibleUrls.length,
+          payload.provider_urls_count ?? payload.urls_count ?? urls.length,
+          payload.urls_truncated || urls.length > visibleUrls.length, 'URLs'),
+        items: visibleUrls.map((row, index) => ({
+          title: `${index + 1}. ${row.title || row.url || 'Discovered URL'}`, url: row.url,
+          primary: row.url, chips: row.source ? [row.source] : [],
+          actionLabel: 'Open page',
+        })).concat(visibleUrls.length ? [] : [{title: 'No URLs returned'}]),
+        shownCount: visibleUrls.length,
+      };
+    }
+    if (mode === 'crawl') {
+      const pages = rows(payload.pages);
+      const visiblePages = pages.slice(0, 10);
+      return {
+        kind: 'generic', layout: 'list', disclosure: 'technical', eyebrow: 'SerpApi Extract · Crawl',
+        heading: 'Crawled pages',
+        subtitle: resultCount(visiblePages.length,
+          payload.provider_pages_count ?? payload.pages_count ?? pages.length,
+          payload.pages_truncated || pages.length > visiblePages.length, 'pages'),
+        items: visiblePages.map(pageCard).concat(visiblePages.length ? [] : [{title: 'No pages returned'}]),
+        shownCount: visiblePages.length,
+      };
+    }
+    const feeds = rows(payload.feeds);
+    const links = rows(payload.links);
+    const page = pageCard(payload, 0);
+    if (payload.requested_url && payload.requested_url !== payload.url) {
+      page.details.push(`Requested: ${payload.requested_url}`);
+    }
+    const visibleFeeds = feeds.slice(0, 10);
+    const visibleLinks = links.slice(0, 20);
+    return {
+      kind: 'generic', layout: 'list', disclosure: 'technical', eyebrow: 'SerpApi Extract',
+      heading: 'Extracted webpage',
+      subtitle: [
+        payload.content_omitted ? 'Page content not requested'
+          : payload.content_truncated ? 'Page content shortened' : 'Page content',
+        feeds.length ? `${visibleFeeds.length} of ${payload.provider_feeds_count ?? feeds.length} feeds shown` : '',
+        links.length ? `${visibleLinks.length} of ${payload.provider_links_count ?? links.length} links shown` : '',
+      ].filter(Boolean).join(' · '),
+      items: [page, ...visibleFeeds.map(feed => ({
+        title: feed.title || 'Discovered feed', url: feed.url,
+        primary: feed.url, chips: ['Feed', feed.type].filter(Boolean),
+        actionLabel: 'Open feed',
+      })), ...visibleLinks.map(link => ({
+        title: link.title || link.url || 'Page link', url: link.url,
+        primary: link.url,
+        chips: [link.internal === true ? 'Internal link'
+          : link.internal === false ? 'External link' : 'Page link'],
+        actionLabel: 'Open link',
+      }))],
+    };
+  }
+
   function adaptSearchIndex(payload) {
     const items = getRows(payload).map(row => {
       const chips = [];
@@ -489,6 +593,7 @@ window.createSearchResultAdapters = function createSearchResultAdapters({
     adaptSearxngSearch,
     adaptTavilySearch,
     adaptTavilyExtract,
+    adaptSerpapiExtract,
     adaptSearchIndex,
     adaptGoogleNewsLight,
     adaptGoogleImagesLight,

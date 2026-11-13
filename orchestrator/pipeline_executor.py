@@ -1899,7 +1899,7 @@ class PipelineExecutor:
     def _is_search_tool(self, tool_name: str) -> bool:
         """Check if a tool is a search tool."""
         tool_lower = tool_name.lower()
-        if tool_lower in {"serpapi_google_trends", "serpapi_google_trending_now"}:
+        if tool_lower in {"serpapi_google_trends", "serpapi_google_trending_now", "serpapi_extract"}:
             return False
         search_indicators = ["search", "brave", "serp", "google", "bing", "duckduckgo"]
         return any(ind in tool_lower for ind in search_indicators)

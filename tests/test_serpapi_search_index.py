@@ -215,3 +215,52 @@ def test_status_diagnostics_register_search_index_engine():
     assert serpapi_client.serpapi_engines_for_tool(
         "serpapi_search_index", {"query": "PostgreSQL"}
     ) == ("search_index",)
+
+
+def test_search_reader_handoffs_reach_provider_schemas_and_keep_profile_alternatives():
+    from tool_schema import ToolSchema
+
+    for name in ("serpapi_search_index", "serpapi_google_search"):
+        path = ROOT / "skills" / f"{name}.tool.json"
+        manifest = json.loads(path.read_text())
+        assert {"serpapi_extract", "mcp_fetch_fetch", "crawl_url"} <= set(
+            manifest["complementary_tools"]
+        ), name
+        schema = ToolSchema.from_json_file(str(path))
+        descriptions = (
+            schema.to_openai_format()["function"]["description"],
+            schema.to_anthropic_format()["description"],
+            schema.to_ollama_description(),
+        )
+        for description in descriptions:
+            assert "public" in description and "serpapi_extract when available" in description, name
+            assert "MCP Fetch or crawl_url remain supported page readers" in description, name
+            assert "active tool list/profile" in description, name
+        if name == "serpapi_google_search":
+            assert "action=read_result" in schema.description
+            assert "without a new paid search" in schema.description
+
+
+def test_search_reader_suggestions_do_not_override_shipped_profile_boundaries(tmp_path):
+    from config_loader import config_scope
+    from tool_schema import ToolRegistry
+
+    names = {"serpapi_search_index", "serpapi_google_search", "serpapi_extract"}
+    for name in names:
+        (tmp_path / f"{name}.tool.json").write_text(
+            (ROOT / "skills" / f"{name}.tool.json").read_text()
+        )
+    profiles = (
+        ("docker.json", names),
+        ("examples/research_pipeline.json", {"serpapi_search_index"}),
+        ("examples/offline.json", set()),
+    )
+    for profile, expected in profiles:
+        overrides = json.loads((ROOT / "skills" / "profiles" / profile).read_text())["overrides"]
+        with (
+            config_scope("cloud", overrides={"SERP_API_KEY": "test-only-key"}),
+            patch("tool_profiles.load_active_profile_overrides", return_value=overrides),
+            patch("tool_profiles.warn_missing_profile_file"),
+        ):
+            registry = ToolRegistry(str(tmp_path))
+        assert set(registry.list_tools()) == expected, profile

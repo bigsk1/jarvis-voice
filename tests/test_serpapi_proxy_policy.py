@@ -16,6 +16,7 @@ EXPECTED_SERPAPI_TOOLS = {
     "flight_search",
     "serpapi_ebay_product",
     "serpapi_ebay_search",
+    "serpapi_extract",
     "serpapi_home_depot",
     "serpapi_hotel_search",
     "serpapi_google_events",
