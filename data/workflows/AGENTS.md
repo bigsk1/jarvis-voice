@@ -277,6 +277,52 @@ regions can require a ground transfer from a nearby airport.
 ```
 **Note**: `body` parameter is required. When using `llm_prompt`, the LLM-generated content is automatically mapped to `body`.
 
+### watch_state (reviewed radar history and health)
+
+Use normal `watch_state` workflow tool steps, not direct Python imports. The
+workflow runtime supplies the trusted workflow writer identity. The two reviewed
+radar keys are shared across cloud/local modes and genres; generic watch scopes
+remain separate. `radar_history` imports numeric names from only its matching
+legacy JSON Stash history and returns:
+
+```python
+# Params: action="radar_history", key="upcoming_movie_radar"
+{"ok": True, "data": {"key": "upcoming_movie_radar", "handled_ids": ["329865"]}}
+```
+
+Extract `handled_ids` into TMDB `exclude_movie_ids` / `exclude_show_ids`. Preserve
+the difference between a discovery snapshot and the permanent **emailed** ledger:
+only the selected movie/show is recorded, after a successful `send_email` result
+has `data.status == "sent"`. Canvas-only and failed/queued sends never record it.
+
+Set the email step's `output_var` to `radar_email_result`, extract `status` and
+the returned `to`, and set `email_send_succeeded` on success. `output_var` contains
+the successful **data object**, not its envelope. The later required step can
+pass `receipt: {"ok": true, "data": "${radar_email_result}"}` only behind both
+the successful-call and sent-status conditions. Pass the returned `to` as
+`destination`, not the unresolved contact alias. `record_delivery` validates that
+receipt and records `record.tmdb_id`. Its failure after a sent email must abort
+with a do-not-resend warning so manual repair cannot accidentally duplicate mail.
+
+For `action="health"`, extract `watches_count`, `stale_count`, `error_count`,
+`pending_count`, `parked_count`, `scope`, and bounded `items`. No watches is
+healthy. Pending deliveries without recorded failures are informational; failed
+delivery attempts contribute to errors before they become parked. Self-check
+treats an executed check that fails as an error, renders a separate Watch State
+section, and raises medium non-speaking watch alerts only
+after Canvas publication. Do not change host CPU thresholds or make ordinary
+pending work trigger high-severity speech. See [workflow history and health](README.md#radar-delivery-history-and-watch-health).
+
+Use the health step's existing `set_variables_on_skip` hook to distinguish an
+optional tool disabled by a profile/request from an executed read failure. A skip
+keeps the visible status unavailable but clears the synthetic error count so it
+does not produce a false watch-health alert. Keep the 500-ID TMDB discovery limit
+visible in radar history failures; preserve the ledger and stop before discovery
+instead of truncating history or reporting a genre failure. Record a watch-health
+error for that blocked check and clear it only after a successful later check.
+Generic watches default to no stale alerts; set `stale_after_seconds` explicitly
+when a watch has an expected schedule.
+
 ### remember
 ```python
 # Params: key="Important fact", value="Details here", category="notes"
@@ -1087,13 +1133,13 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `deep_dive.json` | `/deep_dive <url>` | screenshot_url, stash file kind, vision as primary source, resilient crawl, url_domain transform, folder-structured canvas |
 | `deep_research.json` | `/research <topic>` | Search, for_each crawl, validation |
 | `github_ai_radar_daily.json` | `/github_ai_radar` | Brave search and LLM context, optional YouTube result, rolling Canvas update |
-| `jarvis_self_check.json` | `/jarvis_self_check` | Local system health, deduplicated alerts, full Canvas update |
+| `jarvis_self_check.json` | `/jarvis_self_check` | Host and watch-state health, separate deduplicated alerts, full Canvas update |
 | `local_services_compare.json` | `/local_services_compare <service>` | Active-mode Google Local Services + Google Local + bounded Yelp review evidence, optional Stash, validated Canvas; no crawl |
 | `memory_scan.json` | `/memory_scan` | Mode-aware memory dedupe, stash report, labeled Canvas report |
 | `movie_night.json` | `/movie_night <request>` | Required public Trakt recommendation set, optional read-only account recommendations, TMDB artwork, YouTube trailer rail, and Brave availability context, validated Canvas; no Trakt image hotlinking |
 | `night_out.json` | `/night_out <occasion or preference>` | Explicit-or-mode-default location, parsed target date, conditional 10-day weather, run-time-only open-state handling, bounded local/dining/activity evidence, validated Canvas; no crawl |
-| `upcoming_movie_radar.json` | `/upcoming_movie_radar <genre criteria>` | Explicit/scheduled TMDB discovery with hard included/excluded genres, regional theatrical date window, one shared sent-ID ledger, optional current context, per-primary-genre rolling Canvas replacement, and conditional poster-rich email |
-| `upcoming_tv_radar.json` | `/upcoming_tv_radar <genre criteria>` | Explicit/scheduled TMDB TV discovery with hard included/excluded genres, bounded first-air window, one shared sent-ID ledger, optional current context, per-primary-genre rolling Canvas replacement, and conditional poster-rich email |
+| `upcoming_movie_radar.json` | `/upcoming_movie_radar <genre criteria>` | TMDB discovery with required genres, legacy-imported shared watch-state emailed IDs, optional context, per-genre Canvas, and selected-ID acknowledgement after confirmed email |
+| `upcoming_tv_radar.json` | `/upcoming_tv_radar <genre criteria>` | TMDB TV discovery with required genres, legacy-imported shared watch-state emailed IDs, optional context, per-genre Canvas, and selected-ID acknowledgement after confirmed email |
 | `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
 | `serpapi_amazon_search.json` | `/serpapi_amazon <query>` | SerpApi Amazon listings, Stash export, Canvas comparison |
 | `server_health_check.json` | `/health [host]` | Default value, ssh_remote, get_time |

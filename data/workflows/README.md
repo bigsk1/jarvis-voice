@@ -57,6 +57,52 @@ the existing page, and no recurring task is installed automatically. See
 [RSS setup, coverage and state](../../docs/RSS_FEEDS.md). Input limits apply
 per dataset, not to the total combined model prompt.
 
+### Radar delivery history and watch health
+
+The movie and TV radar recipes call `watch_state` through the normal workflow
+executor. Each uses one permanent sent-ID ledger, shared across cloud/local
+mode and all requested genres, under `upcoming_movie_radar` or
+`upcoming_tv_radar`. `radar_history` returns `handled_ids` for TMDB discovery
+exclusions; this means **previously emailed**, not merely observed or displayed.
+The ten discovery candidates are never committed as a sent batch.
+
+TMDB discovery currently accepts at most 500 excluded IDs. If a radar's permanent
+sent history exceeds that input limit, the required history step stops before
+discovery or email and reports the limit. It preserves the complete ledger rather
+than truncating or resetting it; inspection remains available through paged
+`watch_state handled` reads. The blocked check becomes a watch-health error;
+a later successful check clears it without clearing sent history.
+
+The reviewed migration helper imports numeric JSON-entry names from the matching
+legacy Stash space, using the configured Stash root. Imports are idempotent and
+recheck that exact legacy space so a late write from an older mode is not lost.
+The helper accepts neither arbitrary paths nor arbitrary Stash spaces. Keep the
+legacy history available while older processes may still write to it.
+
+After Canvas succeeds, email remains optional. `record_delivery` records only
+the selected TMDB ID when the email call succeeds and returns `status: sent`.
+Its receipt contains the returned email data and its destination is the actual
+returned recipient, which may differ from a configured contact alias. Canvas-only,
+failed, and queued-email runs do not advance sent history. If recording fails
+after email was sent, the workflow aborts with a **do not rerun** warning; repair
+the acknowledgement before sending again. These ledgers preserve ever-emailed
+identities independently from bounded recent comparison history.
+
+`/jarvis_self_check` also reads watch health and adds a deterministic Watch State
+section to its existing Canvas page. No registered watches is healthy; pending
+deliveries without recorded failures are informational. Stale watches, errors,
+parked deliveries, or an executed health check that fails produce a separate medium-severity alert with
+immediate speech disabled, after Canvas is saved. Existing host-health thresholds
+and alerts retain their behavior. The two on-demand radar ledgers have staleness
+disabled rather than being treated as failed scheduled monitors.
+New generic watches also default to no stale alerts; specify a positive
+`stale_after_seconds` only when they have an expected checking schedule.
+
+If the active profile or request disables the optional watch tool, self-check
+reports Watch State as unavailable and skips that check without a watch alert.
+A watch read that actually runs and fails still produces the unavailable-check
+alert; neither case claims the watches are healthy.
+
 ---
 
 ## Top-level object (required shape)
@@ -466,7 +512,7 @@ the same orchestration turn; it is not a durable background run.
 | `deep_research.json` | `/research <topic>` | Multi-source research with validation |
 | `game_brief.json` | `/game_brief <sport> <team>` | Create a current game Canvas brief from structured Google Sports details, with optional Brave narrative enrichment |
 | `github_ai_radar_daily.json` | `/github_ai_radar` | Search for current GitHub AI project signals with Brave MCP, optionally feature a YouTube result, gather Brave LLM Context, and keep one current Canvas page refreshed |
-| `jarvis_self_check.json` | `/jarvis_self_check` | Local Jarvis host health check with deduped alerts and one refreshed Canvas health page |
+| `jarvis_self_check.json` | `/jarvis_self_check` | Local host and watch-state health, separate deduped alerts, and one refreshed Canvas health page |
 | `jarvis_dependency_security_check.json` | `/jarvis_security_check` | Read-only Python dependency advisory check with a current Canvas report and deduplicated findings/incomplete-check alerts; [weekly scheduling](../../docs/tools/dependency-security-check/README.md) |
 | `knowledge_snapshot.json` | `/knowledge <topic>` | Search active-mode Memory, Intel, and prior conversations without new web research, then create or refresh one source-attributed Canvas briefing per topic |
 | `local_services_compare.json` | `/local_services_compare <service>` | Compare Google Local Services, Google Local, and bounded Yelp review evidence using the active mode's configured location, optional Stash evidence, and a dated Canvas shortlist |
@@ -474,8 +520,8 @@ the same orchestration turn; it is not a durable background run.
 | `movie_night.json` | `/movie_night <mood, constraints, or favorite movies>` | Use required public Trakt metadata plus optional read-only account recommendations and deterministic watched filtering, TMDB artwork, YouTube trailers, and Brave streaming context to create a dated Canvas shortlist; no Trakt image hotlinking |
 | `night_out.json` | `/night_out <occasion or preference>` | Build a date-aware evening plan from an explicit destination or the active mode default location/postal code and bounded local sources; weather runs only when no outing date is given or the parsed date fits the 10-day horizon |
 | `notification_test.json` | `/notification_test` | Explicit manual UTC-time notification test using configured channels; no model calls or alerts |
-| `upcoming_movie_radar.json` | `/upcoming_movie_radar <genre criteria>` | Explicit/scheduled TMDB-first release radar with required included-genre inference, provider-side genre exclusion, a separate rolling Canvas page per resolved primary genre, optional Brave enrichment, public-poster email fields, and one shared sent-ID ledger for cross-genre deduplication after confirmed email delivery |
-| `upcoming_tv_radar.json` | `/upcoming_tv_radar <genre criteria>` | Explicit/scheduled TMDB-first series-premiere radar with required included-genre inference, provider-side genre exclusion, a separate rolling Canvas page per resolved primary genre, optional Brave enrichment, public-poster email fields, and one shared sent-ID ledger for cross-genre deduplication after confirmed email delivery |
+| `upcoming_movie_radar.json` | `/upcoming_movie_radar <genre criteria>` | TMDB-first release radar with required genres, per-genre rolling Canvas, optional enrichment/email, and permanent shared watch-state sent IDs imported from legacy Stash history |
+| `upcoming_tv_radar.json` | `/upcoming_tv_radar <genre criteria>` | TMDB-first series-premiere radar with required genres, per-genre rolling Canvas, optional enrichment/email, and permanent shared watch-state sent IDs imported from legacy Stash history |
 | `pdf_ingest.json` | `/pdf_ingest <attached PDF, stash ref, or URL>` | Extract searchable PDF text, use OCR for scanned documents when needed, create a semantic Intel file, ingest it synchronously, and publish a source-attributed Canvas briefing |
 | `quick_note.json` | `/note <text>` | Quick note to memory and canvas |
 | `rss_digest.json` | `/rss_digest [profile]` | Fresh configured RSS/Atom candidates, bounded editorial shortlist, optional selected-article reads, and a concise stable Canvas page with published-link deduplication |

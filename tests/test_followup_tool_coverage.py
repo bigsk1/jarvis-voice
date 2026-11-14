@@ -29,6 +29,12 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "watch_state": _case({
+        "action": "compare", "key": "fixture-prices", "mode": "cloud",
+        "run_id": "run_fixture7", "base_revision": 1, "dry_run": False,
+        "changes": [{"kind": "changed", "record_id": "000123",
+                     "fields": {"price": {"old": 649000, "new": 625000}}}],
+    }, {"action": "compare", "key": "fixture-prices", "records": [{"id": "000123", "price": 625000}]}),
     "serpapi_google_search": _case({
         "contract": "external_result_v1",
         "source": {"provider": "serpapi", "tool": "serpapi_google_search", "mode": "cloud"},

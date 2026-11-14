@@ -91,6 +91,13 @@ tool set and receive sender-only replies. Named attachments are saved to Stash
 before orchestration; downstream actions still require your permitted tools. See the
 [setup, permissions and recovery guide](../docs/tools/email-inbox-tool/README.md).
 
+## Shared watch state
+
+For reusable structured-list comparison, field changes, history, and delivery
+receipts, use [`watch_state`](../docs/WATCH_STATE.md). It needs no provider
+credential or extra service. The active mode owns ordinary watches; workflow
+writers and delivery receipts are checked by the shared core.
+
 ## RSS feeds and digests
 
 `rss_feed` reads public RSS/Atom URLs without API credentials. Optional private

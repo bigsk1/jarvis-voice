@@ -423,6 +423,7 @@ class StructuredResultsRenderer {
     this.register('tavily_extract', search.adaptTavilyExtract);
     this.register('serpapi_extract', search.adaptSerpapiExtract);
     this.register('bookmark_search', search.adaptBookmarks);
+    this.register('watch_state', payload => this._adaptWatchState(payload));
     this.register('serpapi_google_images_light', search.adaptGoogleImagesLight);
     this.register('serpapi_google_news_light', search.adaptGoogleNewsLight);
     this.register('serpapi_google_immersive_product', shopping.adaptGoogleImmersiveProduct);
@@ -1795,6 +1796,90 @@ class StructuredResultsRenderer {
         <div class="structured-results-track">${cards}</div>
       </details>
     `;
+  }
+
+  _adaptWatchState(payload) {
+    const display = value => this._compactText(
+      typeof value === 'string' ? value : JSON.stringify(value), 180,
+    );
+    const fieldValue = (record, path) => String(path).split('.').reduce(
+      (value, part) => value && typeof value === 'object'
+        && Object.prototype.hasOwnProperty.call(value, part) ? value[part] : undefined,
+      record,
+    );
+    const describe = value => {
+      if (value === undefined) return 'Not present';
+      if (value && typeof value === 'object' && value.amount != null && value.currency) {
+        return this._formatPrice(value.amount, value.currency);
+      }
+      return display(value);
+    };
+    const rows = Array.isArray(payload.items) ? payload.items : [];
+    const events = Array.isArray(payload.changes) ? payload.changes
+      : (Array.isArray(payload.events) ? payload.events : rows.filter(row => row?.event_id && !row.channel));
+    const deliveries = Array.isArray(payload.deliveries) ? payload.deliveries
+      : (payload.event_id && payload.channel ? [payload] : rows.filter(row => row?.event_id && row.channel));
+    const watches = Array.isArray(payload.watches) ? payload.watches : rows.filter(row => row?.definition && row?.key);
+    const items = events.slice(0, 5).map(event => {
+      const fields = Array.isArray(event.fields) ? event.fields : Object.keys(event.fields || {});
+      const changes = fields.slice(0, 5).map(field =>
+        `${field}: ${describe(fieldValue(event.before, field))} → ${describe(fieldValue(event.after, field))}`,
+      );
+      return {
+        title: `${event.kind || event.type || 'Change'} · ${event.record_id || event.id || ''}`,
+        primary: changes[0] || '',
+        details: changes.slice(1),
+      };
+    });
+    if (!items.length) {
+      items.push(...deliveries.slice(0, 5).map(delivery => ({
+        title: `${delivery.channel || 'Delivery'} · ${delivery.state || delivery.status || 'pending'}`,
+        primary: delivery.destination || '',
+        details: [delivery.event_id, delivery.attempts != null ? `Attempts: ${delivery.attempts}` : ''].filter(Boolean),
+      })));
+    }
+    if (!items.length) {
+      items.push(...watches.slice(0, 5).map(watch => ({
+        title: watch.key || 'Watch',
+        primary: watch.muted ? 'Muted' : watch.stale ? 'Stale'
+          : Number(watch.error_count) > 0 ? `${watch.error_count} errors`
+          : (watch.status || 'Registered'),
+        details: [watch.owner, watch.revision != null ? `Revision ${watch.revision}` : '',
+          watch.pending_count != null ? `Pending: ${watch.pending_count}` : '',
+          Number(watch.parked_count) > 0 ? `Parked: ${watch.parked_count}` : '',
+        ].filter(Boolean),
+      })));
+    }
+    if (!items.length) {
+      items.push({
+        title: payload.key || 'Watch state',
+        primary: payload.committed === true || payload.status === 'committed' ? 'Snapshot committed'
+          : payload.dry_run === true ? 'Preview only'
+          : (payload.status || payload.action || 'Watch state recorded'),
+        details: [
+          payload.run_id ? `Run: ${payload.run_id}` : '',
+          payload.pending_count != null ? `Pending deliveries: ${payload.pending_count}` : '',
+          payload.events_count != null ? `Changes: ${payload.events_count}` : '',
+          payload.snapshot_count != null ? `Records: ${payload.snapshot_count}` : '',
+          payload.issue_count != null ? `Health issues: ${payload.issue_count}` : '',
+          payload.muted === true ? 'Muted' : '',
+        ].filter(Boolean),
+      });
+    }
+    const total = events.length || deliveries.length || watches.length || items.length;
+    return {
+      kind: 'generic', layout: 'list', disclosure: 'technical',
+      eyebrow: 'Watch state', heading: payload.key || 'Shared watch state',
+      subtitle: [payload.action, payload.scope || payload.mode,
+        payload.revision != null ? `revision ${payload.revision}` : '',
+        payload.stale_count != null ? `${payload.stale_count} stale` : '',
+        payload.error_count != null ? `${payload.error_count} errors` : '',
+        payload.counts_complete === false ? 'Incomplete health counts' : '',
+        total > 5 ? `${Math.min(5, total)} of ${total} shown` : '',
+        'Delivery receipts are tracked separately',
+      ].filter(Boolean).join(' · '),
+      items,
+    };
   }
 
   _shouldCollapseCollection(collection, options = {}) {

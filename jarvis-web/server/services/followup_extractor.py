@@ -3123,6 +3123,13 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             continue
         if key in FOLLOWUP_DATA_SKIP_KEYS:
             continue
+        if key == 'watch_state':
+            from lib.watch_state_context import project_watch_runs
+
+            projected = project_watch_runs(value)
+            if projected:
+                followup[key] = projected
+            continue
         if key == 'rss_feed':
             projected = project_rss_feed_data(value, max_items=max_candidates)
             if projected:
@@ -3343,7 +3350,7 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         continue
                     if (isinstance(component_value, list)
                             and component_name not in _SOURCE_RESULT_TOOLS
-                            and component_name != 'rss_feed'
+                            and component_name not in {'rss_feed', 'watch_state'}
                             and component_name not in DEEPWIKI_TOOL_NAMES):
                         runs = []
                         for run_value in component_value[:max_candidates]:

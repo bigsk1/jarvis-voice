@@ -42,6 +42,31 @@ const renderer = sandbox.structuredResultsRenderer;
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
 
 
+def test_watch_state_card_keeps_delivery_failure_distinct_and_escapes_values():
+    _run_renderer_assertions("""
+const payload = {action: 'pending', key: '<Price watch>', mode: 'local', items: [
+  {event_id: 'evt_exact', channel: 'email', destination: '<fixture@example.test>', status: 'pending', attempts: 1},
+]};
+const html = renderer.render({watch_state: payload});
+assert.ok(html.includes('&lt;Price watch&gt;'));
+assert.ok(html.includes('&lt;fixture@example.test&gt;'));
+assert.ok(html.includes('email · pending'));
+assert.ok(html.includes('evt_exact'));
+assert.ok(html.includes('Delivery receipts are tracked separately'));
+assert.ok(!html.includes('Snapshot committed'));
+assert.ok(!/<details[^>]*\\sopen[\\s>]/.test(html));
+assert.equal(renderer.render(JSON.parse(JSON.stringify({watch_state: payload}))), html);
+const changes = renderer.render({watch_state: {action: 'compare', key: 'prices', changes: [{
+  event_id: 'evt_technical_handle', record_id: '0007', kind: 'changed', fields: ['price', 'available'],
+  before: {price: {amount: '649000', currency: 'USD'}, available: true},
+  after: {price: {amount: '625000', currency: 'USD'}, available: false},
+}]}});
+assert.ok(changes.includes('price: $649000 → $625000'));
+assert.ok(changes.includes('available: true → false'));
+assert.ok(!changes.includes('evt_technical_handle'));
+""")
+
+
 def test_index_typed_sources_and_distinct_trend_scopes_render_without_false_labels():
     _run_renderer_assertions("""
 const html = renderer.render({serpapi_search_index: {result_type: 'product', query: 'coffee', results: [{

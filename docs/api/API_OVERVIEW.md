@@ -67,6 +67,12 @@ history and per-channel delivery states. Both use the existing API auth policy;
 delivery is asynchronous and a successful creation response confirms storage.
 See [notification inputs, channels, and examples](../tools/notification-tool/README.md).
 
+`/api/watch` exposes [shared watch state](../WATCH_STATE.md): definitions,
+staged record comparisons, history, and per-channel delivery receipts. These
+routes require a configured Bearer key even on loopback and when general API
+authentication is disabled. They record state; callers use existing tools to
+deliver notifications.
+
 ```
 External System → Webhook → Jarvis API → TTS Notification
      (Uptime Kuma,       (port 8880)      "Boss, alert!"

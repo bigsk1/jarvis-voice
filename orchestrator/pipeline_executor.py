@@ -781,7 +781,10 @@ class PipelineExecutor:
                         mode=self.mode, workflow_id=workflow.get("id"),
                         profile=self._prompt_guard_rss_profile(workflow, query),
                     ):
-                        result = self._execute(workflow, query, status_callback)
+                        from lib.watch_state.authority import watch_writer_scope
+
+                        with watch_writer_scope(workflow.get("id")):
+                            result = self._execute(workflow, query, status_callback)
                 except (WorkflowPolicyError, _WorkflowExecutionDenied) as exc:
                     result = {"ok": False, "speech": str(exc), "error": str(exc),
                               "error_code": getattr(exc, "code", "workflow_policy_rejected"),

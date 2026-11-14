@@ -26,6 +26,7 @@ from lib.webhook_integrations.http import CallbackBoundary, callback_namespace, 
 from api.routes.task_callbacks import router as task_callbacks_router
 from api.routes.notifications import router as notifications_router
 from api.routes.heygen import router as heygen_router
+from api.routes.watch import router as watch_router
 
 
 # ============================================================================
@@ -74,6 +75,10 @@ class APIAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.method == 'POST' and callback_path(request.url.path):
             # Only this ingestion route delegates to mandatory source auth.
+            return await call_next(request)
+        if request.url.path == '/api/watch' or request.url.path.startswith('/api/watch/'):
+            # Watch routes enforce their own mandatory, mode-scoped Bearer
+            # boundary, including loopback and deployments with optional auth off.
             return await call_next(request)
         # If auth is disabled, pass through
         if not self.auth_enabled:
@@ -427,6 +432,7 @@ app.include_router(docs_router)
 app.include_router(scheduled_tasks_router)
 app.include_router(task_callbacks_router)
 app.include_router(notifications_router)
+app.include_router(watch_router)
 
 # Last registered middleware is outermost, before logging/auth/metrics can buffer.
 app.add_middleware(CallbackBoundary)

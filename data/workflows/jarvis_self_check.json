@@ -1,11 +1,13 @@
 {
   "id": "jarvis_self_check",
   "name": "Jarvis Self Check",
-  "description": "Check local Jarvis host health, update one durable Canvas page, and raise a deduped alert when system issues are detected.",
-  "version": "1.0",
+  "description": "Check Jarvis host and watch-ledger health, update one durable Canvas page, and raise separate deduped alerts for host issues or stale, failed, and parked watch work.",
+  "version": "1.1",
   "enabled": true,
   "triggers": {
-    "explicit": ["/jarvis_self_check"],
+    "explicit": [
+      "/jarvis_self_check"
+    ],
     "patterns": [],
     "keywords": []
   },
@@ -19,7 +21,17 @@
     "health_status": "unknown",
     "issue_summary": "System health check has not run yet.",
     "alert_duplicate_suppressed": false,
-    "alert_result_status": "Not triggered"
+    "alert_result_status": "Not triggered",
+    "watch_check_status": "unavailable",
+    "watch_health_ok": false,
+    "watch_count": 0,
+    "watch_stale_count": 0,
+    "watch_error_count": 1,
+    "watch_pending_count": 0,
+    "watch_parked_count": 0,
+    "watch_scope": "not checked",
+    "watch_alert_duplicate_suppressed": false,
+    "watch_health_items": "[]"
   },
   "steps": [
     {
@@ -50,7 +62,12 @@
         "swap_threshold": 50,
         "disk_threshold": 90,
         "suspicious_min_age_minutes": 10,
-        "suspicious_cmd_keywords": ["/dev/null", "aplay", "arecord", "ffmpeg"]
+        "suspicious_cmd_keywords": [
+          "/dev/null",
+          "aplay",
+          "arecord",
+          "ffmpeg"
+        ]
       },
       "output_var": "health_result",
       "extract": {
@@ -78,6 +95,34 @@
     },
     {
       "step": 3,
+      "tool": "watch_state",
+      "params": {
+        "action": "health"
+      },
+      "output_var": "watch_health_result",
+      "extract": {
+        "watch_health_ok": "ok",
+        "watch_count": "watches_count",
+        "watch_scope": "scope",
+        "watch_stale_count": "stale_count",
+        "watch_error_count": "error_count",
+        "watch_pending_count": "pending_count",
+        "watch_parked_count": "parked_count",
+        "watch_health_items": "items"
+      },
+      "set_variables_on_success": {
+        "watch_check_status": "checked"
+      },
+      "set_variables_on_skip": {
+        "watch_error_count": 0,
+        "watch_scope": "not enabled for this run"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Read watch health without modifying snapshots or deliveries; no watches is healthy and ordinary pending work is informational"
+    },
+    {
+      "step": 4,
       "tool": "check_tool_logs",
       "params": {
         "log_type": "workflows",
@@ -92,7 +137,7 @@
       "description": "Check recent workflow execution history"
     },
     {
-      "step": 4,
+      "step": 5,
       "tool": "query_service_logs",
       "params": {
         "service": "all",
@@ -108,7 +153,7 @@
       "description": "Check background service log statistics"
     },
     {
-      "step": 5,
+      "step": 6,
       "tool": "canvas",
       "action": "read",
       "params": {
@@ -123,7 +168,7 @@
       "description": "Find the durable Jarvis System Health Canvas page"
     },
     {
-      "step": 6,
+      "step": 7,
       "tool": "canvas",
       "action": "create",
       "condition": {
@@ -132,15 +177,20 @@
       },
       "params": {
         "title": "${canvas_title}",
-        "tags": ["jarvis", "system", "health", "workflow"],
+        "tags": [
+          "jarvis",
+          "system",
+          "health",
+          "workflow"
+        ],
         "pinned": false,
-        "content": "# Jarvis System Health\n\nLast checked: ${run_date} ${run_time}\n\n## Current Status\n\n${health_summary_markdown}\n\n## Active Issues\n\n${issue_summary}\n\n## Top CPU Process\n\n- Name: ${top_process_name}\n- CPU: ${top_process_cpu}%\n- Command: `${top_process_cmdline}`\n\n## Alert Policy\n\n- Alert condition: issue_count >= 1\n- Alert source: ${alert_source}\n- Alert severity if triggered: ${alert_severity}\n- Alert dedupe key: `${alert_dedupe_key}`\n- Alert title: ${alert_title}\n\n## Recent Workflow Logs\n\n${recent_workflow_logs}\n\n## Service Stats\n\n${service_stats}\n\n## Raw Health Snapshot\n\n```json\n${health_result}\n```\n\n## Run Log\n\n- ${run_date} ${run_time}: Created Jarvis system health page. Status ${health_status}, issues ${issue_count}."
+        "content": "# Jarvis System Health\n\nLast checked: ${run_date} ${run_time}\n\n## Current Status\n\n${health_summary_markdown}\n\n## Active Issues\n\n${issue_summary}\n\n## Watch State\n\n- Check: ${watch_check_status}\n- Scope: ${watch_scope}\n- Registered watches: ${watch_count}\n- Stale watches: ${watch_stale_count}\n- Watch errors: ${watch_error_count}\n- Pending deliveries: ${watch_pending_count}\n- Parked deliveries: ${watch_parked_count}\n\nPending deliveries without recorded failures are informational. Watch alerts cover stale watches, errors, parked deliveries, or an unavailable health check.\n\nBounded watch entries:\n\n```json\n${watch_health_items}\n```\n\n## Top CPU Process\n\n- Name: ${top_process_name}\n- CPU: ${top_process_cpu}%\n- Command: `${top_process_cmdline}`\n\n## Alert Policy\n\n- Alert condition: issue_count >= 1\n- Alert source: ${alert_source}\n- Alert severity if triggered: ${alert_severity}\n- Alert dedupe key: `${alert_dedupe_key}`\n- Alert title: ${alert_title}\n\n## Recent Workflow Logs\n\n${recent_workflow_logs}\n\n## Service Stats\n\n${service_stats}\n\n## Raw Health Snapshot\n\n```json\n${health_result}\n```\n\n## Run Log\n\n- ${run_date} ${run_time}: Created Jarvis system health page. Status ${health_status}, issues ${issue_count}."
       },
       "required": true,
       "description": "Create the durable health page on first run"
     },
     {
-      "step": 7,
+      "step": 8,
       "tool": "canvas",
       "action": "update",
       "condition": {
@@ -150,13 +200,13 @@
       "params": {
         "page_id": "${self_check_page_id}",
         "allow_content_shrink": true,
-        "content": "# Jarvis System Health\n\nLast checked: ${run_date} ${run_time}\n\n## Current Status\n\n${health_summary_markdown}\n\n## Active Issues\n\n${issue_summary}\n\n## Top CPU Process\n\n- Name: ${top_process_name}\n- CPU: ${top_process_cpu}%\n- Command: `${top_process_cmdline}`\n\n## Alert Policy\n\n- Alert condition: issue_count >= 1\n- Alert source: ${alert_source}\n- Alert severity if triggered: ${alert_severity}\n- Alert dedupe key: `${alert_dedupe_key}`\n- Alert title: ${alert_title}\n\n## Recent Workflow Logs\n\n${recent_workflow_logs}\n\n## Service Stats\n\n${service_stats}\n\n## Raw Health Snapshot\n\n```json\n${health_result}\n```\n\n## Run Log\n\n- ${run_date} ${run_time}: Refreshed Jarvis system health page. Status ${health_status}, issues ${issue_count}."
+        "content": "# Jarvis System Health\n\nLast checked: ${run_date} ${run_time}\n\n## Current Status\n\n${health_summary_markdown}\n\n## Active Issues\n\n${issue_summary}\n\n## Watch State\n\n- Check: ${watch_check_status}\n- Scope: ${watch_scope}\n- Registered watches: ${watch_count}\n- Stale watches: ${watch_stale_count}\n- Watch errors: ${watch_error_count}\n- Pending deliveries: ${watch_pending_count}\n- Parked deliveries: ${watch_parked_count}\n\nPending deliveries without recorded failures are informational. Watch alerts cover stale watches, errors, parked deliveries, or an unavailable health check.\n\nBounded watch entries:\n\n```json\n${watch_health_items}\n```\n\n## Top CPU Process\n\n- Name: ${top_process_name}\n- CPU: ${top_process_cpu}%\n- Command: `${top_process_cmdline}`\n\n## Alert Policy\n\n- Alert condition: issue_count >= 1\n- Alert source: ${alert_source}\n- Alert severity if triggered: ${alert_severity}\n- Alert dedupe key: `${alert_dedupe_key}`\n- Alert title: ${alert_title}\n\n## Recent Workflow Logs\n\n${recent_workflow_logs}\n\n## Service Stats\n\n${service_stats}\n\n## Raw Health Snapshot\n\n```json\n${health_result}\n```\n\n## Run Log\n\n- ${run_date} ${run_time}: Refreshed Jarvis system health page. Status ${health_status}, issues ${issue_count}."
       },
       "required": true,
       "description": "Refresh the existing health page"
     },
     {
-      "step": 8,
+      "step": 9,
       "tool": "create_alert",
       "params": {
         "title": "${alert_title}",
@@ -188,9 +238,56 @@
       },
       "required": true,
       "description": "Create a deduped alert after the health Canvas page is refreshed"
+    },
+    {
+      "step": 10,
+      "tool": "create_alert",
+      "condition": {
+        "any": [
+          {
+            "op": "gte",
+            "left": "${watch_stale_count}",
+            "right": 1
+          },
+          {
+            "op": "gte",
+            "left": "${watch_error_count}",
+            "right": 1
+          },
+          {
+            "op": "gte",
+            "left": "${watch_parked_count}",
+            "right": 1
+          }
+        ]
+      },
+      "params": {
+        "title": "Jarvis watch health needs attention",
+        "description": "Watch health check ${watch_check_status}: ${watch_stale_count} stale watches, ${watch_error_count} errors, ${watch_parked_count} parked deliveries. ${watch_pending_count} deliveries remain pending; failed attempts are included in the error count. Review Workflows/Jarvis System Health in Canvas.",
+        "severity": "medium",
+        "source": "${alert_source}",
+        "speak_immediately": false,
+        "metadata": {
+          "dedupe_key": "jarvis_self_check:watch_state",
+          "workflow_id": "jarvis_self_check",
+          "watch_check_status": "${watch_check_status}",
+          "watch_scope": "${watch_scope}",
+          "stale_count": "${watch_stale_count}",
+          "error_count": "${watch_error_count}",
+          "parked_count": "${watch_parked_count}",
+          "pending_count": "${watch_pending_count}",
+          "canvas_title": "${canvas_title}"
+        }
+      },
+      "output_var": "watch_alert_result",
+      "extract": {
+        "watch_alert_duplicate_suppressed": "duplicate_suppressed"
+      },
+      "required": true,
+      "description": "Raise a non-speaking watch-health alert only after its Canvas report is saved"
     }
   ],
-  "success_speech": "Jarvis self-check complete. Status ${health_status} with ${issue_count} issue(s).",
-  "partial_speech": "Jarvis self-check partially complete. Status ${health_status} with ${issue_count} issue(s).",
+  "success_speech": "Jarvis self-check complete. Host status ${health_status} with ${issue_count} issue(s). Watch check ${watch_check_status}: ${watch_stale_count} stale, ${watch_error_count} errors, ${watch_parked_count} parked deliveries.",
+  "partial_speech": "Jarvis self-check partially complete. Host status ${health_status} with ${issue_count} issue(s). Watch check ${watch_check_status}: ${watch_stale_count} stale, ${watch_error_count} errors, ${watch_parked_count} parked deliveries.",
   "abort_speech": "I couldn't complete the Jarvis self-check workflow."
 }

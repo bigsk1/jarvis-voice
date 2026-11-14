@@ -1,0 +1,62 @@
+{
+  "enabled": true,
+  "name": "watch_state",
+  "description": "Keep durable structured watch baselines, compare new snapshots, and track completed or pending notification delivery without sending messages. Use for changes since a previous check, quiet first runs, new/changed/missing records, exact handled IDs, and operational watch health. Register a definition first; compare stages a run without moving the baseline; commit atomically advances that run and creates registered delivery intents. dry_run compare previews without writing. Before sending a pending intent, claim its channel/destination and retain the exact claim_token; ack only after an actual delivery result, with the same token. Failed delivery remains pending. Read list/inspect/history/health/pending/handled freely; writes require the watch's trusted owner workflow. Ownership comes from the executor, never tool arguments. Runs in the current cloud/local mode automatically; the two built-in movie/TV radar histories are shared. No network requests, scheduling, email, or push delivery are performed.",
+  "script": "watch_state.py",
+  "proxy_policy": "off",
+  "child_environment": {"mode": "restricted", "from_availability": false, "allow": ["STASH_DIR"]},
+  "parameters": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["register", "compare", "commit", "discard", "claim", "ack", "pending", "history", "list", "inspect", "reset", "mute", "delete", "health", "handled", "record_delivery", "radar_history", "cleanup", "record_error"],
+        "description": "Operation. radar_history is reserved for the matching built-in upcoming_movie_radar or upcoming_tv_radar workflow and imports legacy emailed IDs. record_delivery is ledger-only, ever-handled deduplication per record ID/channel/destination; use claim/ack for repeated change events such as later price changes. It never sends. record_error saves a safe source-failure code without advancing the baseline. cleanup applies registered retention in bounded batches and preserves handled receipts."
+      },
+      "key": {"type": "string", "minLength": 1, "maxLength": 160, "description": "Stable watch key; required except list and overall health/pending. Use the same key for later runs."},
+      "definition": {
+        "type": "object",
+        "description": "register only. id_field identifies records; compare_fields selects compared paths (empty compares all nonignored fields), ignore_fields excludes volatile paths, normalizers configures deterministic normalization. complete/missing_grace control removals; quiet_first suppresses initial events. channels registers exact channel/destination intent targets. Does not configure a sender or schedule.",
+        "properties": {
+          "id_field": {"type": "string", "description": "Stable record identity path, e.g. product_id or item.id. Exact IDs are preserved and cannot be normalized."},
+          "compare_fields": {"type": "array", "items": {"type": "string"}, "description": "Compared dot-separated paths, e.g. price, stock.available. Empty compares all fields except ignored paths. Selects change detection only; full normalized records are stored."},
+          "ignore_fields": {"type": "array", "items": {"type": "string"}, "description": "Paths excluded from change detection only. These fields remain in stored snapshots and event history; remove sensitive data from input records before calling."},
+          "normalizers": {"type": "object", "description": "Explicit field-path normalization, e.g. {\"price\":{\"type\":\"money\",\"currency\":\"USD\"},\"name\":\"text\",\"count\":\"number\",\"released\":\"date\"}. Money keeps currencies explicit; dates require ISO dates or timezone-qualified timestamps."},
+          "schema_version": {"type": "integer"},
+          "complete": {"type": "boolean"},
+          "missing_grace": {"type": "integer", "minimum": 1},
+          "quiet_first": {"type": "boolean"},
+          "retention_days": {"type": "integer", "minimum": 1},
+          "stale_after_seconds": {"type": "integer", "minimum": 0, "description": "Expected-check freshness threshold in seconds. Defaults to zero (no stale alerts). Set a positive interval explicitly for a scheduled watch."},
+          "channels": {"type": "array", "items": {"type": "object", "properties": {"channel": {"type": "string"}, "destination": {"type": "string"}}, "required": ["channel", "destination"], "additionalProperties": false}}
+        },
+        "required": ["id_field"],
+        "additionalProperties": false
+      },
+      "records": {"type": "array", "maxItems": 1000, "items": {"type": "object"}, "description": "compare only. Structured records from the current successful fetch. Do not turn a failed or incomplete fetch into an empty complete snapshot."},
+      "complete": {"type": "boolean", "description": "compare only. Whether this run is a complete authoritative snapshot; incomplete runs must not infer missing records."},
+      "dry_run": {"type": "boolean", "description": "compare only. Preview without storing a run or changing any state."},
+      "request_id": {"type": "string", "minLength": 1, "maxLength": 200, "description": "compare only. Stable retry identifier for this snapshot."},
+      "run_id": {"type": "string", "minLength": 1, "maxLength": 200, "description": "commit/discard only. Exact run_id returned by compare. discard cancels only this staged run without changing the baseline or committed pending deliveries."},
+      "event_id": {"type": "string", "minLength": 1, "maxLength": 200, "description": "claim/ack only. Exact event ID returned by pending/commit."},
+      "channel": {"type": "string", "minLength": 1, "maxLength": 40},
+      "destination": {"type": "string", "minLength": 1, "maxLength": 1024, "description": "Exact registered destination; for radar email use the actual resolved recipient from the sent-email receipt."},
+      "lease_seconds": {"type": "integer", "minimum": 1, "maximum": 3600, "description": "claim only. Delivery lease duration, default 60 seconds. Send only when claimed=true and claim_token is present; an exhausted claim returns claimed=false with parked status."},
+      "claim_token": {"type": "string", "minLength": 1, "maxLength": 200, "description": "ack only. Exact claim token for this channel/destination; never invent or shorten it."},
+      "success": {"type": "boolean", "description": "ack only. Whether delivery actually completed; false retains retryable pending state."},
+      "receipt": {"type": "object", "description": "Actual delivery receipt for ack/record_delivery. Radar requires {ok:true,data:{status:'sent',to:actual_destination,...}} from the successful email step, never an invented success."},
+      "error": {"type": "string", "maxLength": 1000, "description": "ack only. Safe bounded failure explanation without credentials."},
+      "error_code": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$", "description": "record_error only. Short safe category, default source_fetch_failed. Never include raw exceptions, paths, tokens or provider payloads."},
+      "record": {"type": "object", "description": "record_delivery only. Exact delivered record for the permanent per-record handled ledger; later changes to the same ID do not replace its first receipt. Use claim/ack for change events. Built-in radars use tmdb_id,title,tmdb_url,release_date or first_air_date and criteria."},
+      "include_parked": {"type": "boolean", "description": "pending only. Include parked delivery intents."},
+      "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "Paged reads; default 50. Follow next_offset for additional items."},
+      "offset": {"type": "integer", "minimum": 0, "maximum": 1000000000},
+      "until": {"type": "number", "minimum": 0, "description": "mute only. Unix timestamp; zero unmutes. Omit both until and seconds for an indefinite mute."},
+      "seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 31536000, "description": "mute only. Mute duration instead of until."},
+      "delete_handled": {"type": "boolean", "description": "delete only. Clearing permanent handled history requires API administrator authority and is unavailable to the ordinary tool."}
+    },
+    "required": ["action"]
+  },
+  "permissions": {"dangerous": false, "bash": false, "network": false, "filesystem": true, "auto_approve": true}
+}

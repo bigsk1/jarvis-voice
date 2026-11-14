@@ -186,6 +186,7 @@ class RunSupervisor:
         for needle, label in (('canvas', 'Canvas pages'), ('stash', 'Stash files'),
                               ('alert', 'Alerts'), ('email', 'Email delivery'),
                               ('phone', 'Phone calls'), ('release_watch', 'Release acknowledgments'),
+                              ('watch_state', 'Watch snapshots and delivery receipts'),
                               ('rss', 'RSS state'), ('radar', 'Radar ledgers'),
                               ('file', 'Filesystem'), ('ssh', 'Remote commands')):
             if needle in lowered:

@@ -697,6 +697,14 @@ class ToolExecutor:
                 guard_context = export_prompt_guard_context()
                 if guard_context is not None:
                     tool_env['JARVIS_INTERNAL_PROMPT_GUARD_CONTEXT'] = guard_context
+                # Watch ownership comes from the running recipe, never model
+                # arguments or an inherited environment from a prior child.
+                tool_env.pop('JARVIS_INTERNAL_WATCH_WRITER', None)
+                tool_env.pop('JARVIS_OVERRIDE_JARVIS_INTERNAL_WATCH_WRITER', None)
+                if tool_name == 'watch_state':
+                    from lib.watch_state.authority import export_writer_context
+
+                    tool_env['JARVIS_INTERNAL_WATCH_WRITER'] = export_writer_context()
                 from tool_process import run_local_process
                 stdout, stderr, cancelled = run_local_process(
                     cmd, input_json, python_script=tool_script.suffix == '.py', cwd=self.skills_dir,

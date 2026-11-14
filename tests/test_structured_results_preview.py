@@ -70,6 +70,7 @@ const expectedTools = [
   'tavily_extract',
   'serpapi_extract',
   'bookmark_search',
+  'watch_state',
   'serpapi_google_images_light',
   'serpapi_google_news_light',
   'serpapi_google_immersive_product',

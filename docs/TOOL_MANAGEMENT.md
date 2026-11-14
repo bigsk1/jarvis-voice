@@ -6,6 +6,10 @@ to hide integrations that are not configured, and request restrictions to contro
 what a particular surface can use. Tool RAG ranks only eligible tools; it does not
 supply credentials or bypass these gates.
 
+For reusable record comparison, history, and delivery receipts across tools and
+workflows, see [shared watch state](WATCH_STATE.md). Its local tool needs no
+provider credential; its HTTP management routes require an API Bearer key.
+
 ## Inspect and change tools
 
 Run these commands from the checkout root:

@@ -26,7 +26,7 @@ def _step(workflow, tool, action=None):
     return next(
         step
         for step in workflow["steps"]
-        if step["tool"] == tool and (action is None or step.get("action") == action)
+        if step["tool"] == tool and (action is None or (step.get("action") or step.get("params", {}).get("action")) == action)
     )
 
 
@@ -63,35 +63,38 @@ def test_radar_is_explicit_tmdb_first_and_requires_genre_filters():
 
 def test_radar_uses_persistent_sent_history_and_acknowledges_only_sent_email():
     workflow = _workflow()
-    open_space = _step(workflow, "stash", "open_space")
-    list_history = _step(workflow, "stash", "list")
-    acknowledge = _step(workflow, "stash", "save")
+    history = _step(workflow, "watch_state", "radar_history")
+    acknowledge = _step(workflow, "watch_state", "record_delivery")
     email = _step(workflow, "send_email")
 
-    assert open_space["params"] == {
-        "space_id": "space_upcoming_movie_radar",
-        "labels": ["upcoming-movie-radar", "emailed-history"],
-        "scope": "user",
-        "ttl_days": 3650,
-    }
-    assert list_history["extract"]["notified_movie_ids"] == "files[*].name"
+    assert history["params"] == {"action": "radar_history", "key": "upcoming_movie_radar"}
+    assert history["required"] is True
+    assert history["extract"] == {"radar_watch_key": "key", "notified_movie_ids": "handled_ids"}
+    assert not any(step["tool"] == "stash" for step in workflow["steps"])
     assert email["required"] is False
     assert email["on_fail"] == "continue"
     assert email["params"]["image_url"] == "${top_poster_url}"
     assert email["params"]["link_url"] == "${top_tmdb_url}"
     assert email["params"]["link_text"] == "View ${top_title} on TMDB"
     assert email["extract"]["email_status"] == "status"
+    assert email["extract"]["email_destination"] == "to"
+    assert email["output_var"] == "radar_email_result"
+    assert email["set_variables_on_success"] == {"email_send_succeeded": True}
 
     assert acknowledge["required"] is True
     assert "email was sent" in acknowledge["abort_speech"]
     assert "sent-history ledger" in acknowledge["abort_speech"]
-    assert acknowledge["params"]["name"] == "${top_tmdb_id}"
-    assert acknowledge["params"]["on_conflict"] == "overwrite"
+    assert acknowledge["params"]["record"]["tmdb_id"] == "${top_tmdb_id}"
+    assert acknowledge["params"]["key"] == "${radar_watch_key}"
+    assert acknowledge["params"]["channel"] == "email"
+    assert acknowledge["params"]["destination"] == "${email_destination}"
+    assert acknowledge["params"]["receipt"] == {"ok": True, "data": "${radar_email_result}"}
     assert acknowledge["condition"]["all"][1] == {
         "op": "eq",
         "left": "${email_status}",
         "right": "sent",
     }
+    assert acknowledge["condition"]["all"][2] == {"op": "eq", "left": "${email_send_succeeded}", "right": True}
 
 
 def test_radar_routes_each_primary_genre_to_its_own_bounded_canvas_page():
@@ -162,7 +165,7 @@ def test_radar_remains_available_without_optional_context_or_email_tool():
     workflow = _workflow()
     status = check_workflow_availability(
         workflow,
-        available_tools={"get_time", "canvas", "stash", "tmdb_movies"},
+        available_tools={"get_time", "canvas", "watch_state", "tmdb_movies"},
     )
     assert status["available"] is True
     assert status["degraded"] is True
@@ -170,7 +173,7 @@ def test_radar_remains_available_without_optional_context_or_email_tool():
 
     missing_tmdb = check_workflow_availability(
         workflow,
-        available_tools={"get_time", "canvas", "stash", "brave_llm_context", "send_email"},
+        available_tools={"get_time", "canvas", "watch_state", "brave_llm_context", "send_email"},
     )
     assert missing_tmdb["available"] is False
     assert missing_tmdb["unavailable_tools"] == ["tmdb_movies"]
