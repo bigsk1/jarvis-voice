@@ -6,7 +6,9 @@ brotlicffi>=1.2.1.0
 httpcore2>=2.10.0
 httpx2>=2.12.0
 multidict>=6.9.1
-opentelemetry-api>=1.45.1
+# Reject malformed trace-context ReDoS (GHSA-mf5v-w3w3-f6cg).
+opentelemetry-api>=1.45.2
 pyasn1>=0.6.5
-soupsieve>=2.9.0
+# Include selector DoS fixes and 4.1.1 matching hardening.
+soupsieve>=4.1.1
 werkzeug>=3.1.9
