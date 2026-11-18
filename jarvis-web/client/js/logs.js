@@ -23,7 +23,7 @@ class LogPanelManager {
         
         // Default height
         this.panelHeight = 200;
-        this.isCollapsed = false;
+        this.isCollapsed = true;
         
         this._init();
     }
@@ -73,7 +73,7 @@ class LogPanelManager {
         // Socket events
         this._setupSocketEvents();
         
-        // Restore the user's preference, or open by default on first use.
+        // Restore settings while starting each page with the panel collapsed.
         this._loadState();
         this._applyCollapseState();
     }
@@ -288,7 +288,6 @@ class LogPanelManager {
     _saveState() {
         localStorage.setItem('jarvis_log_panel', JSON.stringify({
             height: this.panelHeight,
-            collapsed: this.isCollapsed,
             autoScroll: this.autoScroll,
             enabledSources: Array.from(this.enabledSources)
         }));
@@ -300,7 +299,6 @@ class LogPanelManager {
             if (saved) {
                 const state = JSON.parse(saved);
                 this.panelHeight = state.height || 200;
-                this.isCollapsed = state.collapsed === true;
                 this.autoScroll = state.autoScroll !== false;
                 
                 if (state.enabledSources) {

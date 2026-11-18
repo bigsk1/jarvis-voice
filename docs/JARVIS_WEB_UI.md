@@ -1671,7 +1671,7 @@ Enhancing a draft does not execute tools or send the chat request.
 
 ### Server Logs Panel
 
-A collapsible panel at the bottom of the UI streams new server log entries for inspection during a request.
+The Server Logs panel starts collapsed at the bottom of the UI on each page load. Click its header to open it and stream new server logs during a request.
 
 **UI Layout:**
 ```
@@ -1696,7 +1696,7 @@ A collapsible panel at the bottom of the UI streams new server log entries for i
 - **Resizable** - Drag top edge to resize (100-600px)
 - **Auto-scroll** - Toggle on/off with ⬇️ button
 - **Clear** - Clears UI only (disk logs preserved)
-- **Persisted state** - Height, collapsed state, enabled sources saved to localStorage
+- **Persisted settings** - Height, auto-scroll, and enabled sources saved to localStorage
 
 <a id="logs-read-only-browser-new"></a>
 
