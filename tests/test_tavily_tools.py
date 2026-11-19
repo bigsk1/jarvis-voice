@@ -138,7 +138,8 @@ def test_shipped_guard_policy_scans_tavily_body_once_at_global_threshold_in_both
     assert len(scanned) == 2
     for text, source in scanned:
         assert text.count("GUARD_ARTICLE_BODY_SENTINEL") == 1
-        assert json.loads(text)["data"]["content"] == content
+        assert f"content: {content}" in text
+        assert text.startswith("speech: Tavily extracted ")
         assert source == {"source_type": "tool_result", "source_name": "tavily_extract"}
 
 

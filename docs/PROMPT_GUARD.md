@@ -14,7 +14,9 @@ inputs are checked immediately before their content reaches a model:
 - **Confirmed detection:** withhold the returned content, end the tool turn or
   workflow or current attachment request, and return a neutral explanation with
   an incident ID. No automatic retry, loop alternative, or Completion Guard
-  repair follows that detection. A historical attachment excerpt is omitted
+  repair follows that detection. A reviewed workflow loop can opt in to drop
+  only the withheld item instead; see
+  [Workflows and article readers](#workflows-and-article-readers). A historical attachment excerpt is omitted
   with a neutral notice instead of stopping every later message in that chat.
 - **Disabled, unavailable, timed-out, invalid, busy, or oversized scan:** continue
   with the original result. This is an unknown/unscanned result, never a clean
@@ -268,7 +270,10 @@ outside the viewer.
 
 A report includes the incident ID, UTC timestamp, mode, tool name, score,
 threshold, window coverage, validated service request/model identifiers,
-execution summary, and exact scanned representation with SHA256. It also indexes
+execution summary, and exact scanned representation with SHA256.
+`evidence.format` names that text: `labeled_text_v1` for tool results (see
+[Initial coverage](#initial-coverage)) and `plain_text` for attachments and
+summarizer inputs. Records without the field hold the earlier compact-JSON form. It also indexes
 available request/result URLs, removing userinfo, sensitive query values, and
 fragments. For multi-source results, these are **candidate source URLs**: a batch
 classification does not establish which URL caused the detection.
@@ -335,10 +340,90 @@ arguments are not sent to the classifier; only candidate URL fields are examined
 locally for incident provenance. The observer never opens local files or fetches
 URLs and Stash artifacts.
 
+The scanned text (`labeled_text_v1`) is labeled plain text rather than Jarvis's
+JSON transport. `speech` and `error` come first, then each `data` value in order
+as `key: value`, with multi-line or long values on the lines after `key:`.
+Identifier-shaped keys holding objects or arrays of text appear as `key:` header
+lines; any other key is scanned as its own text. Booleans, numbers, `null` and
+empty containers stay as literal lines, and an array holding only those stays on
+one `key: [...]` line. A blank string keeps its key as `key: ""`. Text repeated
+exactly is scanned once; each later field holding it keeps its key as
+`key: [repeated value]`. Readable UTF-8 text decoded from a Base64 run is added
+on the following `key (decoded Base64): …` line, bounded to 16 decoded segments
+per value; the encoded original stays in place. Nothing in the returned result
+is removed.
+
+The byte limit applies to the complete scanned text. Labels and decoded lines
+can make the labeled form larger than the earlier compact JSON. When only that
+growth exceeds `PROMPT_GUARD_MAX_INPUT_BYTES`, Jarvis scans the compact JSON
+form (`compact_json_v1`) instead of passing the result through, so any result
+the earlier format could scan is still scanned. A result neither form fits stays
+unscanned, as before. `evidence.format` records which form an incident holds.
+
+Replaying the saved cloud incidents showed why. In four of the seven, the
+highest score came from the short final window. For both crypto-news pages that
+window held Jarvis's JSON tail and trailing `speech` status sentence; without
+them it dropped from about 0.87 to 0.023 and 0.005. The labeled form moved six
+of the seven saved incidents below 0.85 at their original length (one GitHub
+repository page stayed at 0.864), and all seven to at most 0.82 within the
+3,000-character workflow reader budget below. All 66 planted attacks in the
+same pages, including Base64-encoded instructions, still scored above 0.85 at
+full length, as did all 65 that remained inside 3,000-character excerpts. With a
+256 KiB budget all 16 synthetic corpus attacks were caught and the corpus false
+positive under compact JSON cleared; at the 64 KiB default the two ~95 KiB
+long-placement cases are skipped as oversized, so 15 of the 16 reach the scanner. This is a small replay at 0.85, not held-out accuracy, and thresholds
+were unchanged. Under the shipped example's 0.80 thresholds the 0.82 excerpt and
+the 0.864 page would still be flagged; a `skip_item` loop then drops only that
+source.
+
 The shared foreground executor covers ordinary chat/voice/CLI/API orchestration
 and workflow component calls. The default list excludes the workflow wrapper so
 its component results are not scanned twice. Required and optional workflow
-steps both stop on a confirmed detection, including looped steps.
+steps both stop on a confirmed detection, including looped steps, unless a loop
+opts in to skipping the withheld item.
+
+### Workflows and article readers
+
+A `for_each` step can set `"prompt_guard_on_detect": "skip_item"`. A withheld
+item then becomes a failed attempt: its neutral receipt stays in the loop's
+`output_var`, nothing from it enters `validated_output_var` or a later prompt,
+and the loop moves to the next item under its existing `retry.max_attempts`,
+`max_total_retries`, `required_success_count` and `on_all_fail` rules. A
+completed run lists the incident identifiers in `data.prompt_guard_withheld`,
+marks itself degraded, and appends a neutral speech note. If skipped items leave
+the loop below its target and its policy aborts, the abort keeps the terminal
+`prompt_injection_detected` facts. The default, `"stop"`, keeps the behavior
+above; a non-loop step stops unless it is `required: false` and sets `"skip_step"`. The detection, incident and alert are the
+same either way: skipping only changes whether the remaining items continue.
+
+A page withheld in a run is not fetched again by any `skip_item` loop in that run,
+including a repeat in the same list. The item reuses the original neutral
+receipt and incident, keeps its own item index, and makes no call, so
+`retry.max_attempts` and `max_total_retries` neither count it nor stop it: those
+budgets limit new tool calls only. If such items leave a later loop short and
+its policy aborts, the abort carries that original incident and the terminal
+`prompt_injection_detected` facts. Completion and abort notices count each
+withheld page once; each item entry keeps a run-local `source_ref` for tracing.
+A new run reads it fresh.
+
+`${validated_articles}` gives each workflow prompt the first 3,000 characters of
+an article body. Reader loops whose results only feed prompts request no more
+than that (`max_chars`), so page text the model never reads is neither returned
+nor screened: `rss_digest` and `crypto_market_report` read with `tavily_extract`
+text, and the crypto report falls back to `crawl_url` with the same limit when
+Tavily is unavailable in a mode. The crypto report reads three articles from
+Brave web results and a Tavily news search taken in turn; a withheld search
+result is dropped with `"skip_step"` (allowed only on `required: false` single
+steps) so the run continues on Brave's list. Its prompts treat each excerpt as
+sourced evidence and state when no article was verified instead of naming causes.
+`github_ai_radar_daily` and `deep_research` also save each validated read to
+Stash, so their loops keep the reader's full depth. Their prompts receive bounded
+text through two different budgets: `${validated_articles}` (Deep Research and
+Radar's first branch) inserts 3,000 characters per article, while Radar's
+second branch, `${validated_tavily_articles}`, takes the generic substitution
+path, which serializes the whole list and truncates it at that step's
+`llm_variable_max_chars` (12,000 characters in total). All six loops opt in to `skip_item`. Four of the six saved
+scheduled blocks scored high only outside the consumed slice.
 
 Selected `stash` calls screen `read` results; selected `source_library` calls
 screen `read` and `search` results. These names are included in starter settings.

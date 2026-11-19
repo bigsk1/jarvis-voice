@@ -121,7 +121,7 @@ def test_summarizer_gate_disabled_does_not_disable_selected_output_scanning(
     extraction.assert_not_called()
     call, = model_input_guard.state.calls
     assert call["json"]["source"] == {"type": "tool_result", "name": "text_summarizer"}
-    assert json.loads(call["json"]["text"]) == {"data": returned["data"]}
+    assert call["json"]["text"] == "summary: A completed summary."
 
 
 @pytest.mark.parametrize("mode", ["cloud", "local"])
@@ -187,7 +187,7 @@ def test_confirmed_model_input_saves_exact_quarantine_and_neutral_terminal_notic
     assert stat.S_IMODE(evidence_path.stat().st_mode) == 0o600
     assert evidence["source_type"] == "model_input" and evidence["tool_name"] == "text_summarizer"
     assert evidence["evidence"] == {
-        "representation": "scanned_untrusted_text", "text": text,
+        "representation": "scanned_untrusted_text", "format": "plain_text", "text": text,
         "sha256": hashlib.sha256(text.encode()).hexdigest(), "utf8_bytes": len(text.encode()),
     }
 

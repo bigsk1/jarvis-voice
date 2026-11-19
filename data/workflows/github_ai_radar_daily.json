@@ -4,7 +4,7 @@
   "description": "Daily AI project discovery using Brave and optional Tavily, a fresh evidence brief, and a rolling Canvas page with dated history.",
   "enabled": true,
   "allow_workflow_tool": false,
-  "version": "1.1",
+  "version": "1.2",
   "disable_server_side_tools": true,
   "triggers": {
     "patterns": [
@@ -247,6 +247,7 @@
       },
       "required_success_count": 2,
       "on_all_fail": "continue",
+      "prompt_guard_on_detect": "skip_item",
       "description": "Crawl and validate search result pages"
     },
     {
@@ -300,6 +301,7 @@
       },
       "required_success_count": 2,
       "on_all_fail": "continue",
+      "prompt_guard_on_detect": "skip_item",
       "description": "Read independent Tavily discovery pages, keeping web and video evidence separate",
       "required": false
     },

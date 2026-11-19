@@ -160,7 +160,7 @@ PYEOF
 
 ### crawl_url
 ```python
-# Params: url="https://example.com"
+# Params: url="https://example.com", optional max_chars (1000-10000, default 10000)
 {
   "ok": true,
   "data": {
@@ -932,10 +932,11 @@ explicit-destination workflows fail-closed by omitting
 | `output_var` | No | Store successful single-step data or its built-in transformed value; for loops, store all result envelopes, including failed attempts. Loops default to `stepN_results`, where `N` is the step number. |
 | `search_output_var` | No | Store normalized search `{urls, data}` under an independent name; defaults to shared `search_results` |
 | `extract` | No | Extract specific fields: `{"var": "path"}` |
-| `for_each` | No | Repeat the tool over a list; normally stop after the required number of successes |
+| `for_each` | No | Repeat the tool over a list; normally stop after the required number of successes. `{"merge": [expr, ...]}` merges candidate lists in turn without repeated URLs |
 | `process_all` | No | Require every input item to succeed instead of using the producer success count |
 | `required_success_count` | No | Successful/validated results required from a producer loop; default `1` |
 | `validated_output_var` | No | Store only successful loop result envelopes that passed any configured validation |
+| `prompt_guard_on_detect` | No | `"skip_item"` (loops) drops an item Prompt Guard withheld and continues; `"skip_step"` (optional single steps) drops that step's withheld result; default `"stop"` ends the workflow |
 | `set_variables_on_success` | No | Assign variables after a successful single step with an explicit `output_var`, or once after a successful whole loop |
 | `set_variables_on_skip` | No | Assign fallback variables when a condition is false or an optional tool is unavailable |
 | `llm_prompt` | No | LLM generates `content` param from this |

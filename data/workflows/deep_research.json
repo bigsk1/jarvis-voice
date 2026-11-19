@@ -3,7 +3,7 @@
   "name": "Deep Research Workflow",
   "description": "Comprehensive research with stash artifacts, memory, and canvas output. Validates content quality and retries failed sources.",
   "enabled": true,
-  "version": "1.0",
+  "version": "1.1",
   
   "triggers": {
     "patterns": [
@@ -106,6 +106,7 @@
       },
       "required_success_count": 2,
       "on_all_fail": "abort_with_message",
+      "prompt_guard_on_detect": "skip_item",
       "description": "Crawl and validate sources"
     },
     {

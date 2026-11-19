@@ -4,7 +4,7 @@
   "description": "Read a configured RSS/Atom profile, select relevant fresh stories, read shortlisted articles when needed, and refresh a concise Canvas digest. Example: /rss_digest daily_tech.",
   "enabled": true,
   "allow_workflow_tool": true,
-  "version": "1.1",
+  "version": "1.2",
   "disable_server_side_tools": true,
   "triggers": {
     "explicit": [
@@ -100,7 +100,7 @@
       "params": {
         "format": "text",
         "extract_depth": "basic",
-        "max_chars": 12000
+        "max_chars": 3000
       },
       "output_var": "article_attempts",
       "validated_output_var": "validated_articles",
@@ -117,6 +117,7 @@
       "required": false,
       "on_fail": "continue",
       "on_all_fail": "continue",
+      "prompt_guard_on_detect": "skip_item",
       "description": "Read only shortlisted articles whose feeds did not include full content"
     },
     {

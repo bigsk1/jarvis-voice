@@ -119,7 +119,19 @@
             this.undoStack.push(this.current); this.current = this.redoStack.pop(); return clone(this.current);
         }
     }
-    const api = {clone, createRecipe, moveStep, dropStepBefore, insertStep, bindings, outputsBefore, queryPreview, publicationChanges, stepEventStatus, runStatusLabel, History};
+    /* A field that holds a bare `${...}` expression or structured JSON, such as
+       for_each: text starting with `{` or `[` is parsed (invalid JSON throws);
+       anything else stays a string. Display reverses that choice. */
+    function parseExpressionOrJson(text) {
+        if (text === undefined || text === null || String(text).trim() === '') return undefined;
+        const trimmed = String(text).trim();
+        return /^[\[{]/.test(trimmed) ? JSON.parse(trimmed) : trimmed;
+    }
+    function formatExpressionOrJson(value) {
+        if (value === undefined || value === null) return '';
+        return typeof value === 'string' ? value : JSON.stringify(value);
+    }
+    const api = {clone, createRecipe, moveStep, dropStepBefore, insertStep, bindings, outputsBefore, queryPreview, publicationChanges, stepEventStatus, runStatusLabel, History, parseExpressionOrJson, formatExpressionOrJson};
     root.WorkflowModel = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

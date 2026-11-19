@@ -168,6 +168,10 @@ def test_crawl_validates_every_batch_url_before_request(configured_tools, monkey
 @pytest.mark.parametrize("arguments", [
     {"urls": ["https://example.org"] * 11}, {"urls": "https://example.org"},
     {"url": "file:///etc/passwd"}, {"urls": [123]},
+    {"url": "https://example.org", "max_chars": 999},
+    {"url": "https://example.org", "max_chars": 10001},
+    {"url": "https://example.org", "max_chars": True},
+    {"url": "https://example.org", "max_chars": "3000"},
 ])
 def test_crawl_rejects_invalid_or_unbounded_input(configured_tools, monkeypatch, capsys, arguments):
     code, result = run_tool(monkeypatch, capsys, crawl_url, arguments)
@@ -208,6 +212,26 @@ def test_crawl_result_failures_and_explicit_truncation(configured_tools, monkeyp
     assert data["results"][0]["original_characters"] == 10001
     assert len(data["results"][0]["markdown"]) == 10000
     assert data["results"][1]["extracted_content"] == '[{"price": 42}]'
+
+
+def test_crawl_max_chars_returns_only_the_requested_excerpt(configured_tools, monkeypatch, capsys):
+    calls = []
+
+    def request(*_args, **kwargs):
+        calls.append(kwargs)
+        return Response({"results": [
+            {"url": "https://example.org/long", "success": True, "markdown": "y" * 4000},
+            {"url": "https://example.org/short", "success": True, "markdown": "z" * 3000},
+        ]})
+
+    monkeypatch.setattr(crawl_url, "http_request", request)
+    code, result = run_tool(monkeypatch, capsys, crawl_url, {"url": "https://example.org", "max_chars": 3000})
+    assert code == 0 and len(calls) == 1
+    assert "max_chars" not in json.dumps(calls[0].get("json", {}))
+    long_item, short_item = result["data"]["results"]
+    assert len(long_item["markdown"]) == 3000
+    assert long_item["truncated"] is True and long_item["original_characters"] == 4000
+    assert short_item["markdown"] == "z" * 3000 and "truncated" not in short_item
 
 
 @pytest.mark.parametrize("payload", [

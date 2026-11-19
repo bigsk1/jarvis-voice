@@ -50,6 +50,17 @@ def load(root, receipt, mode="cloud"):
     return path, json.loads(path.read_text())
 
 
+@pytest.mark.parametrize(("text_format", "expected"), [
+    ("compact_json_v1", "compact_json_v1"), ("labeled_text_v1", "labeled_text_v1"),
+    (None, "labeled_text_v1"), ("forged format", "labeled_text_v1"),
+])
+def test_evidence_records_the_scanned_text_format(storage, text_format, expected):
+    root, _ = storage
+    receipt = save(text_format=text_format)
+    _path, record = load(root, receipt)
+    assert record["evidence"]["format"] == expected
+
+
 def test_exact_scanned_representation_and_metadata_stay_in_private_evidence(storage, caplog):
     root, _ = storage
     secret = "sensitive-original-text"
@@ -65,7 +76,7 @@ def test_exact_scanned_representation_and_metadata_stay_in_private_evidence(stor
     assert record["mode"] == "cloud" and record["tool_name"] == "crawl_url"
     assert record["decision"] == "flagged_content_withheld"
     assert record["evidence"] == {
-        "representation": "scanned_tool_result", "text": text,
+        "representation": "scanned_tool_result", "format": "labeled_text_v1", "text": text,
         "sha256": hashlib.sha256(text.encode()).hexdigest(), "utf8_bytes": len(text.encode()),
     }
     assert record["scan"] == {

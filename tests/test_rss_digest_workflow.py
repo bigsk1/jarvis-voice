@@ -9,7 +9,7 @@ import yaml
 from rss_feeds.service import RSSFeedService
 
 from data.workflows.skill.skill import _check_workflow
-from orchestrator.pipeline_executor import PipelineExecutor
+from orchestrator.pipeline_executor import ARTICLE_PROMPT_MAX_CHARS, PipelineExecutor
 from orchestrator.workflow_loader import WorkflowLoader
 from skills import rss_feed
 
@@ -119,7 +119,7 @@ def test_two_model_calls_read_only_selected_articles_and_publish_before_acknowle
     assert tools.calls[0] == ("rss_feed", {"action": "read", "profile": "daily_tech"})
     reads = [params for tool, params in tools.calls if tool == "tavily_extract"]
     assert reads == [
-        {"url": url, "format": "text", "extract_depth": "basic", "max_chars": 12000}
+        {"url": url, "format": "text", "extract_depth": "basic", "max_chars": ARTICLE_PROMPT_MAX_CHARS}
         for url in ("https://example.org/one", "https://example.org/two")
     ]
     assert [tool for tool, _ in tools.calls][-2:] == ["canvas", "rss_feed"]
@@ -202,14 +202,38 @@ def test_reader_truncation_is_labeled_in_article_evidence_before_publication():
     assert "truncated" in articles.lower()
 
 
-def test_prompt_guard_rejection_stops_optional_reader_before_other_articles_and_publication():
+def test_prompt_guard_rejection_withholds_each_article_and_publishes_from_feed_evidence():
     tools = DigestTools(blocked=True)
     result, provider = run(tools)
-    assert not result["ok"]
-    assert len(provider.prompts) == 1
-    assert [tool for tool, _ in tools.calls] == ["rss_feed", "rss_feed", "tavily_extract"]
-    assert not any(tool == "canvas" or params.get("action") == "acknowledge" for tool, params in tools.calls)
+    assert result["ok"]
+    assert len(provider.prompts) == 2
+    assert [tool for tool, _ in tools.calls] == [
+        "rss_feed", "rss_feed", "tavily_extract", "tavily_extract", "canvas", "rss_feed",
+    ]
+    articles = provider.prompts[1].split("SUCCESSFULLY READ ARTICLES:", 1)[1].split("Editorial rules:", 1)[0]
+    assert "[No articles gathered]" in articles
+    assert "Prompt Guard" not in provider.prompts[1]
+    assert "Feed description only" in provider.prompts[1]
+    assert result["data"]["degraded"] is True
+    assert len(result["data"]["prompt_guard_withheld"]) == 2
+    assert "Prompt Guard withheld 2 sources" in result["speech"]
     assert "pg-" + "a" * 32 in result["speech"]
+
+
+def test_prompt_guard_rejection_keeps_other_read_articles_in_the_digest():
+    class OneBlocked(DigestTools):
+        def execute(self, tool, params):
+            self.blocked = tool == "tavily_extract" and params.get("url") == "https://example.org/one"
+            return super().execute(tool, params)
+
+    tools = OneBlocked()
+    result, provider = run(tools)
+    assert result["ok"]
+    articles = provider.prompts[1].split("SUCCESSFULLY READ ARTICLES:", 1)[1].split("Editorial rules:", 1)[0]
+    assert "https://example.org/two" in articles and "https://example.org/one" not in articles
+    assert "Verified article body" in articles
+    assert [item["item_index"] for item in result["data"]["prompt_guard_withheld"]] == [0]
+    assert [tool for tool, _ in tools.calls][-2:] == ["canvas", "rss_feed"]
 
 
 def test_acknowledgment_failure_does_not_report_publication_success():

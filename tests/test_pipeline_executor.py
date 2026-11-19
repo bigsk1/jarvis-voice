@@ -1665,7 +1665,7 @@ MIME type: application/pdf
             step for step in deep["steps"]
             if step["tool"] == "stash" and step.get("action") == "save"
         )
-        crypto_crawl = next(step for step in crypto["steps"] if step["tool"] == "crawl_url")
+        crypto_crawl = next(step for step in crypto["steps"] if step["tool"] == "tavily_extract")
 
         self.assertTrue(crypto["disable_server_side_tools"])
         self.assertNotIn("helper_llm", crypto)

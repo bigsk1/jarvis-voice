@@ -44,6 +44,12 @@
         "description": "How long to wait for page load: 'fast' (DOM only), 'normal' (all resources, DEFAULT), 'full' (network idle - AVOID for live data sites like financial/news)",
         "default": "normal"
       },
+      "max_chars": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 10000,
+        "description": "Maximum Markdown characters returned per page. Default 10000."
+      },
       "page_timeout": {
         "type": "integer",
         "description": "Page load timeout in milliseconds (default 30000, max 60000)",

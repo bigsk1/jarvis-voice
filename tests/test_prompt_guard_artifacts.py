@@ -53,7 +53,10 @@ def test_selected_artifact_reads_scan_exact_returned_representation(screening, t
     assert observer.review_tool_result(tool, result, args=args) is result
     assert result == original
     assert len(screening) == 1
-    assert json.loads(screening[0]["text"]) == {"data": result["data"], "speech": result["speech"]}
+    assert screening[0]["text"] == (
+        "speech: Retrieved evidence.\ncontent: External report.\npassages:\n"
+        "text: A cited source passage.\nref: stash://synthetic/file\naction: save"
+    )
     assert screening[0]["source_name"] == tool and screening[0]["source_type"] == "tool_result"
     assert "PRIVATE_ARG_SECRET" not in screening[0]["text"]
 
@@ -94,7 +97,10 @@ def test_no_stash_reference_or_url_is_resolved(screening):
     result = {"ok": True, "data": {"ref": "stash://unread/elsewhere",
               "url": "https://example.invalid/never-fetch", "path": "/not-opened/file.txt"}}
     assert observer.review_tool_result("stash", result, args={"action": "read"}) is result
-    assert json.loads(screening[0]["text"])["data"] == result["data"]
+    assert screening[0]["text"] == (
+        "ref: stash://unread/elsewhere\nurl: https://example.invalid/never-fetch\n"
+        "path: /not-opened/file.txt"
+    )
 
 
 def test_real_executor_screens_completed_artifact_once_without_replaying(screening, monkeypatch):

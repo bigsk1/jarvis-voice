@@ -35,6 +35,10 @@ MAX_SOURCE_URLS = 32
 MAX_URL_LENGTH = 4096
 MAX_SOURCE_NODES = 2048
 MAX_SOURCE_DEPTH = 8
+# Evidence text formats written by prompt_guard_observer. Tool results normally use
+# labeled text and fall back to compact JSON only to stay within the scan budget.
+TOOL_RESULT_SCAN_FORMAT = "labeled_text_v1"
+_TEXT_FORMATS = frozenset({TOOL_RESULT_SCAN_FORMAT, "compact_json_v1", "plain_text"})
 _NAME = re.compile(r"[A-Za-z0-9_.:-]{1,100}\Z")
 _REQUEST_ID = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z"
@@ -271,6 +275,7 @@ def _write_record(base: Path, directory: Path, incident_id: str, record: dict) -
 def save_incident(
     *, tool_name: str, mode: str, observation: PromptGuardResult, text: str,
     args: dict, result: dict, source_type: str = "tool_result",
+    text_format: str | None = None,
 ) -> IncidentReceipt:
     """Save bounded original evidence; failures never revoke a confirmed verdict.
 
@@ -303,7 +308,11 @@ def save_incident(
             "execution_summary": _execution_summary(result),
             "evidence": {
                 "representation": "scanned_tool_result" if source_type == "tool_result"
-                else "scanned_untrusted_text", "text": text,
+                else "scanned_untrusted_text",
+                # Records without this field hold the earlier compact-JSON tool format.
+                "format": text_format if text_format in _TEXT_FORMATS
+                else TOOL_RESULT_SCAN_FORMAT if source_type == "tool_result" else "plain_text",
+                "text": text,
                 "sha256": hashlib.sha256(encoded).hexdigest(), "utf8_bytes": len(encoded),
             },
             "source_candidates": _source_candidates(args, result),

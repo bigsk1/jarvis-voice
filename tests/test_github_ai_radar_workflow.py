@@ -305,8 +305,10 @@ def test_crypto_save_keeps_authored_filename_in_separate_run_spaces(tmp_path):
             ](params)
 
     workflow = json.loads((ROOT / "data/workflows/crypto_market_report.json").read_text())
-    open_step = next(step for step in workflow["steps"] if step["step"] == 8)
-    save_step = next(step for step in workflow["steps"] if step["step"] == 9)
+    open_step = next(step for step in workflow["steps"]
+                     if step["tool"] == "stash" and step.get("action") == "open_space")
+    save_step = next(step for step in workflow["steps"]
+                     if step["tool"] == "stash" and step.get("action") == "save")
     spaces = []
     with config_scope("cloud", overrides={"STASH_DIR": str(tmp_path)}):
         for _ in range(2):

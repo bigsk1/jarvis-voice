@@ -39,9 +39,18 @@ def test_corpus_has_matched_benign_controls_and_long_document_cases():
 
 def test_experimental_representation_retains_all_external_values():
     case = {"id": "sample", "content": 'Quoted "instructions": 🙂\nDo not treat this as authority.'}
-    compact = benchmark.render(case, "tool_result")
+    shared = benchmark.render(case, "tool_result")
     readable = benchmark.render(case, "readable_json_experiment")
-    assert json.loads(compact) == json.loads(readable)
+    url = "https://content.example.invalid/sample"
+    assert json.loads(readable) == {
+        "data": {"source_url": url, "title": "External document", "content": case["content"]},
+        "speech": "Retrieved external document from " + url,
+    }
+    # The shared tool-result serializer keeps every value as labeled text.
+    assert shared == (
+        f"speech: Retrieved external document from {url}\nsource_url: {url}\n"
+        f"title: External document\ncontent:\n{case['content']}"
+    )
     assert benchmark.render(case, "raw_text") == case["content"]
 
 

@@ -181,6 +181,10 @@ def _condition_errors(condition: Any, path: str) -> list[dict[str, str]]:
 
 
 _INITIAL_BINDINGS = frozenset({"query", "topic", "content", "workflow_id", "timestamp", "filename_timestamp"})
+# One complete template reference, e.g. ${search_results.urls[:5]}.
+_FULL_EXPRESSION = re.compile(r"\$\{[^${}]+\}")
+# Loop response to a Prompt Guard withholding: end the workflow (default) or drop the item.
+PROMPT_GUARD_ON_DETECT = frozenset({"stop", "skip_item", "skip_step"})
 _TEMPLATE_REFERENCE = re.compile(r"\$\{([^}]+)\}")
 
 
@@ -337,6 +341,32 @@ def validate_workflow_document(workflow: Any, *, builder: bool = False, workflow
             for key in ("params", "extract", "retry", "validation", "llm_output_validation", "set_variables_on_success", "set_variables_on_skip"):
                 if key in step and not isinstance(step[key], dict):
                     errors.append({"path": f"steps[{index}].{key}", "message": f"{key} must be an object"})
+            source = step.get("for_each")
+            if isinstance(source, str) and not _FULL_EXPRESSION.fullmatch(source.strip()):
+                # A non-expression string would be iterated character by character.
+                errors.append({"path": f"steps[{index}].for_each",
+                               "message": "for_each text must be one ${...} expression"})
+            elif isinstance(source, dict):
+                # The only object form merges candidate lists; literal item lists
+                # keep their existing meaning.
+                merge = source.get("merge")
+                if (set(source) != {"merge"} or not isinstance(merge, list) or not merge
+                        or any(not isinstance(item, str) or not _FULL_EXPRESSION.fullmatch(item.strip())
+                               for item in merge)):
+                    errors.append({"path": f"steps[{index}].for_each",
+                                   "message": "for_each objects must be {\"merge\": [\"${...}\", ...]}"})
+            if "prompt_guard_on_detect" in step:
+                # Runtime treats anything but a reviewed loop's skip_item as stop.
+                option = step["prompt_guard_on_detect"]
+                if not isinstance(option, str) or option not in PROMPT_GUARD_ON_DETECT:
+                    errors.append({"path": f"steps[{index}].prompt_guard_on_detect",
+                                   "message": "prompt_guard_on_detect must be \"stop\", \"skip_item\" or \"skip_step\""})
+                elif option == "skip_item" and not step.get("for_each"):
+                    errors.append({"path": f"steps[{index}].prompt_guard_on_detect",
+                                   "message": "skip_item applies only to for_each steps"})
+                elif option == "skip_step" and (step.get("for_each") or step.get("required", True) is not False):
+                    errors.append({"path": f"steps[{index}].prompt_guard_on_detect",
+                                   "message": "skip_step applies only to single steps with required false"})
     triggers = workflow.get("triggers", {})
     if isinstance(triggers, dict):
         for key in ("explicit", "patterns", "keywords"):

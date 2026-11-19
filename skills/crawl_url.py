@@ -21,6 +21,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import get_config_value, load_config
 from http_client import http_request
 
+# Returned Markdown per page. Workflows that pass only an excerpt to a model can
+# request that excerpt, so unused page text is neither returned nor screened.
+MAX_MARKDOWN_CHARS = 10000
+MIN_MARKDOWN_CHARS = 1000
+
 
 def main():
     """Crawl URL and extract content."""
@@ -82,6 +87,14 @@ def main():
         or input_data.get("custom_patterns")
     ):
         return_error("The Crawl4AI API does not support JavaScript, LLM extraction, or custom regex patterns")
+        return 1
+
+    max_chars = input_data.get("max_chars", MAX_MARKDOWN_CHARS)
+    if (isinstance(max_chars, bool) or not isinstance(max_chars, int)
+            or not MIN_MARKDOWN_CHARS <= max_chars <= MAX_MARKDOWN_CHARS):
+        return_error(
+            f"max_chars must be an integer from {MIN_MARKDOWN_CHARS} to {MAX_MARKDOWN_CHARS}"
+        )
         return 1
     
     # Build headers
@@ -270,11 +283,11 @@ def main():
                 metadata = r.get("metadata") or {}
                 content_item = {
                     "url": url_crawled,
-                    "markdown": markdown[:10000],  # Limit size
+                    "markdown": markdown[:max_chars],
                     "title": r.get("title") or (metadata.get("title", "") if isinstance(metadata, dict) else ""),
                     "success": r.get("success", True)
                 }
-                if len(markdown) > 10000:
+                if len(markdown) > max_chars:
                     content_item["truncated"] = True
                     content_item["original_characters"] = len(markdown)
                 # Include extracted_content if extraction strategy produced results

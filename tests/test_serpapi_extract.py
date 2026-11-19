@@ -326,7 +326,7 @@ def test_shipped_named_guard_policy_scans_article_once_before_model_handoff(monk
     assert len(scanned) == 1
     text, source = scanned[0]
     assert text.count(BODY) == 1
-    assert json.loads(text)["data"]["content"] == BODY
+    assert any(f"content:{separator}{BODY}" in text for separator in (" ", "\n"))
     assert source == {"source_type": "tool_result", "source_name": "serpapi_extract",
                       "policy_name": "web_content"}
 

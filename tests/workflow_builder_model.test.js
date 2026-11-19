@@ -79,3 +79,18 @@ test('partial completion stays distinct in new runs and older saved run records'
     assert.equal(M.runStatusLabel({status: 'running', partial: true}), 'running');
     assert.equal(M.runStatusLabel({status: 'completed', partial: false}), 'completed');
 });
+
+test('for_each field keeps bare expressions as text and parses structured JSON', () => {
+    assert.equal(M.parseExpressionOrJson(' ${search_results.urls[:5]} '), '${search_results.urls[:5]}');
+    assert.deepEqual(M.parseExpressionOrJson('{"merge": ["${a.urls[:5]}", "${b.urls[:5]}"]}'),
+        {merge: ['${a.urls[:5]}', '${b.urls[:5]}']});
+    assert.deepEqual(M.parseExpressionOrJson('["https://a.example/1", {"value": 2}]'),
+        ['https://a.example/1', {value: 2}]);
+    assert.equal(M.parseExpressionOrJson(''), undefined);
+    assert.throws(() => M.parseExpressionOrJson('{"merge": [}'));
+    for (const value of ['${urls}', {merge: ['${a}', '${b}']}, [{value: 'first'}]]) {
+        const shown = M.formatExpressionOrJson(value);
+        assert.deepEqual(M.parseExpressionOrJson(shown), value);
+    }
+    assert.equal(M.formatExpressionOrJson(undefined), '');
+});

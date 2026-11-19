@@ -117,7 +117,8 @@ def test_local_assignment_alone_selects_and_withholds_at_its_named_threshold(ass
     evidence_path, = (assigned_guard.root / "incidents" / mode).glob("*.json")
     evidence = json.loads(evidence_path.read_text())
     assert evidence["evidence"]["text"] == call["text"]
-    assert json.loads(call["text"]) == {"data": original["data"]}
+    assert call["text"] == observer._serialize_content(original, 1 << 20)
+    assert "PRIVATE_EXTERNAL_BODY" in call["text"]
 
 
 @pytest.mark.parametrize("mode", ["cloud", "local"])

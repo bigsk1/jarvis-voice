@@ -50,6 +50,101 @@ except ImportError:
     )
 
 
+# Characters of each validated article body inserted for ${validated_articles}.
+# Reader steps feeding that variable request no more than this, so page text
+# a workflow model never reads is neither returned nor screened.
+ARTICLE_PROMPT_MAX_CHARS = 3000
+_INCIDENT_ID = re.compile(r"pg-[0-9a-f]{32}\Z")
+_MAX_LISTED_INCIDENTS = 5
+
+
+def _prompt_guard_skips_item(step: dict) -> bool:
+    """Only a reviewed loop opts in; every other value keeps the default stop."""
+    return bool(step.get("for_each")) and step.get("prompt_guard_on_detect") == "skip_item"
+
+
+def _prompt_guard_skips_step(step: dict) -> bool:
+    """An explicitly optional single step may drop a withheld result and continue."""
+    return (
+        not step.get("for_each")
+        and step.get("required", True) is False
+        and step.get("prompt_guard_on_detect") == "skip_step"
+    )
+
+
+def _prompt_guard_withheld_item(
+    step: dict, tool_name: str, item_index: int | None, result: dict, source_ref: int,
+) -> dict:
+    """Project reviewed identifiers from a rejection; never content, URLs or errors.
+
+    ``source_ref`` is a run-local number shared by every item that reused the
+    same withheld page, so summaries can count sources rather than items.
+    """
+    data = result.get("data")
+    metadata = data.get("prompt_guard") if isinstance(data, dict) else None
+    metadata = metadata if isinstance(metadata, dict) else {}
+    incident = metadata.get("incident_id")
+    return {
+        "step": step.get("step"),
+        "tool": tool_name,
+        "item_index": item_index,
+        "incident_id": incident if isinstance(incident, str) and _INCIDENT_ID.fullmatch(incident) else None,
+        "evidence_saved": metadata.get("evidence_saved") is True,
+        "source_ref": source_ref,
+    }
+
+
+def _prompt_guard_item_source(item: object) -> str | None:
+    """Identify a loop item's source URL so a withheld page is not fetched again."""
+    value = item.get("url") if isinstance(item, dict) else item
+    if isinstance(value, str) and 0 < len(value.strip()) <= 4096:
+        return value.strip()
+    return None
+
+
+def _merge_candidate_lists(lists: list[object]) -> list:
+    """Interleave candidate lists (first of each, then second of each) without repeats.
+
+    Lists from different searches give a loop varied sources before it reaches
+    any one search's weaker results. URL strings and items with a ``url`` match
+    by that URL; other items are kept as given. Missing lists are ignored.
+    """
+    sources = [value for value in lists if isinstance(value, list)]
+    merged: list = []
+    seen: set[str] = set()
+    for position in range(max((len(value) for value in sources), default=0)):
+        for value in sources:
+            if position >= len(value):
+                continue
+            item = value[position]
+            key = _prompt_guard_item_source(item)
+            if key is not None:
+                if key in seen:
+                    continue
+                seen.add(key)
+            merged.append(item)
+    return merged
+
+
+def _prompt_guard_withheld_notice(withheld: list[dict]) -> str:
+    """Neutral, identifier-only summary of withheld sources, each counted once."""
+    sources: dict[object, dict] = {}
+    for index, item in enumerate(withheld):
+        sources.setdefault(item.get("source_ref", ("item", index)), item)
+    count = len(sources)
+    incidents = list(dict.fromkeys(
+        item["incident_id"] for item in sources.values() if item.get("incident_id")
+    ))
+    listed = ", ".join(incidents[:_MAX_LISTED_INCIDENTS])
+    more = len(incidents) - _MAX_LISTED_INCIDENTS
+    reference = f" (incident {listed}{f' and {more} more' if more > 0 else ''})" if incidents else ""
+    noun = "source" if count == 1 else "sources"
+    return (
+        f"Prompt Guard withheld {count} {noun}{reference}; that content was not used"
+        " and will not be retried automatically."
+    )
+
+
 class _WorkflowExecutionDenied(RuntimeError):
     """Terminal policy/approval rejection that no optional-step policy can ignore."""
 
@@ -756,6 +851,10 @@ class PipelineExecutor:
         self._active_step_index = None
         self._active_item_index = None
         self._run_results = []
+        # Source URL -> (run-local source_ref, neutral receipt) for pages Prompt
+        # Guard withheld in this run.
+        self._prompt_guard_withheld_sources: dict[str, tuple[int, dict]] = {}
+        self._prompt_guard_source_refs = 0
         self._recipe_approved_tools = set()
         try:
             with workflow_execution_scope(context):
@@ -1097,8 +1196,22 @@ class PipelineExecutor:
                         if detail:
                             step_error += f": {str(detail).strip()[:500]}"
                             break
+                    terminal = step_result
+                    withheld = step_result.get("prompt_guard_withheld") or []
                     if is_prompt_guard_rejection(step_result):
                         step_error = prompt_guard_notice(step_result)
+                    elif withheld:
+                        # Skipped items left the loop short of its target. The
+                        # detection is deterministic, so keep the terminal facts.
+                        step_error = (
+                            f"{succeeded} of {processed} processed items succeeded; below required "
+                            f"success count. {_prompt_guard_withheld_notice(withheld)}"
+                        )
+                        terminal = next(
+                            (output for output in reversed(outputs)
+                             if isinstance(output, dict) and is_prompt_guard_rejection(output)),
+                            {},
+                        )
                     results.append({
                         **step_identity,
                         "ok": False,
@@ -1107,9 +1220,10 @@ class PipelineExecutor:
                         "outputs": outputs,
                         "error": step_error,
                         "duration_ms": step_duration_ms,
-                        **_prompt_guard_terminal_fields(step_result),
-                        **({"data": step_result.get("data")}
-                           if is_prompt_guard_rejection(step_result) else {}),
+                        **_prompt_guard_terminal_fields(terminal),
+                        **({"data": terminal.get("data")}
+                           if is_prompt_guard_rejection(terminal) else {}),
+                        **({"prompt_guard_withheld": withheld} if withheld else {}),
                     })
                     return self._build_abort_response(
                         workflow, step, results, variables,
@@ -1136,6 +1250,8 @@ class PipelineExecutor:
                     **_prompt_guard_terminal_fields(step_result),
                     **({"data": step_result.get("data")}
                        if is_prompt_guard_rejection(step_result) else {}),
+                    **({"prompt_guard_withheld": step_result["prompt_guard_withheld"]}
+                       if step_result.get("prompt_guard_withheld") else {}),
                 })
                 tools_used.append(tool_name)
             else:
@@ -1162,6 +1278,26 @@ class PipelineExecutor:
                         start_time=start_time,
                         query=query,
                     )
+
+                if is_prompt_guard_rejection(step_result) and _prompt_guard_skips_step(step):
+                    # Optional step opted in: drop the withheld result (the
+                    # incident is already recorded) and continue without its output.
+                    source_ref = getattr(self, "_prompt_guard_source_refs", 0)
+                    self._prompt_guard_source_refs = source_ref + 1
+                    results.append({
+                        **step_identity,
+                        "ok": False,
+                        "data": step_result.get("data"),
+                        "error": step_result.get("error"),
+                        "speech": prompt_guard_notice(step_result),
+                        "prompt_guard_withheld": [_prompt_guard_withheld_item(
+                            step, tool_name, None, step_result, source_ref)],
+                        "duration_ms": step_duration_ms,
+                    })
+                    tools_used.append(tool_name)
+                    self._emit_event("step_finished", index=index, step_index=index, **step_identity,
+                                     result=self._event_result(results[-1]))
+                    continue
 
                 if is_prompt_guard_rejection(step_result):
                     # A deliberate content rejection is not a transient tool
@@ -1404,9 +1540,24 @@ class PipelineExecutor:
         
         # Get items to iterate
         for_each_expr = step["for_each"]
-        items = self._resolve_variable(for_each_expr, variables)
+        if isinstance(for_each_expr, str):
+            for_each_expr = for_each_expr.strip()
+        merge = for_each_expr.get("merge") if isinstance(for_each_expr, dict) else None
+        if isinstance(merge, list):
+            # Several candidate sources, e.g. two searches, merged in turn. A plain
+            # list stays a literal item list, resolved element by element.
+            items = _merge_candidate_lists([
+                self._resolve_variable(expression.strip(), variables)
+                for expression in merge if isinstance(expression, str)
+            ])
+        else:
+            items = self._resolve_variable(for_each_expr, variables)
         if items is None:
             items = []
+        withheld_sources = getattr(self, "_prompt_guard_withheld_sources", None)
+        if withheld_sources is None:
+            withheld_sources = self._prompt_guard_withheld_sources = {}
+        skips_withheld = _prompt_guard_skips_item(step)
         
         if not items:
             required_success = (
@@ -1432,6 +1583,7 @@ class PipelineExecutor:
         
         outputs = []
         validated_outputs = []
+        withheld: list[dict] = []
         retries = 0
         required_success = (
             len(items)
@@ -1446,19 +1598,40 @@ class PipelineExecutor:
         )
         
         item_index = 0
-        while (
-            item_index < len(items)
-            and item_index < step_max_attempts
-            and len(validated_outputs) < required_success
-        ):
+        attempts = 0  # Calls made; a page already withheld in this run is not one.
+        while item_index < len(items) and len(validated_outputs) < required_success:
             if self._cancel_requested():
                 variables.pop("_loop_index", None)
                 return {"cancelled": True, "items_processed": len(outputs), "items_succeeded": len(validated_outputs),
                         "outputs": outputs, "validated_outputs": validated_outputs, "retries": retries, "abort": False}
-            if current_retries + retries >= max_retries:
-                break
-            
+
             item = items[item_index]
+            source = _prompt_guard_item_source(item) if skips_withheld else None
+            known = withheld_sources.get(source) if source is not None else None
+            if known is not None:
+                # Withheld earlier in this run: reuse its receipt and incident
+                # instead of fetching again, keeping the item's original index.
+                # This makes no call, so attempt and retry budgets do not apply.
+                source_ref, known_receipt = known
+                receipt = deepcopy(known_receipt)
+                outputs.append(receipt)
+                withheld.append({
+                    **_prompt_guard_withheld_item(step, tool_name, item_index, receipt, source_ref),
+                    "previously_withheld": True,
+                })
+                self._emit_event("item_finished", index=getattr(self, "_active_step_index", None),
+                                 step=step.get("step"), tool=tool_name, item_index=item_index,
+                                 result=self._event_result(receipt))
+                item_index += 1
+                continue
+            if attempts >= step_max_attempts or current_retries + retries >= max_retries:
+                # Budgets limit new tool calls. Later items may still be pages
+                # already withheld, whose receipts must reach the loop outcome.
+                if skips_withheld and withheld_sources:
+                    item_index += 1
+                    continue
+                break
+            attempts += 1
             
             # Store loop index for LLM param generation
             variables["_loop_index"] = item_index
@@ -1547,6 +1720,20 @@ class PipelineExecutor:
 
             if is_prompt_guard_rejection(result):
                 outputs.append(result)
+                if _prompt_guard_skips_item(step):
+                    # The receipt carries no source text. Count the item as a
+                    # failed attempt so retry budgets and success targets apply.
+                    source_ref = getattr(self, "_prompt_guard_source_refs", 0)
+                    self._prompt_guard_source_refs = source_ref + 1
+                    withheld.append(_prompt_guard_withheld_item(step, tool_name, item_index, result, source_ref))
+                    if source is not None:
+                        withheld_sources[source] = (source_ref, deepcopy(result))
+                    retries += 1
+                    self._emit_event("item_finished", index=getattr(self, "_active_step_index", None),
+                                     step=step.get("step"), tool=tool_name, item_index=item_index,
+                                     result=self._event_result(result))
+                    item_index += 1
+                    continue
                 variables.pop("_loop_index", None)
                 return {
                     "items_processed": len(outputs),
@@ -1596,7 +1783,7 @@ class PipelineExecutor:
             required_success,
         )
         
-        return {
+        loop_result = {
             "ok": len(validated_outputs) >= required_success,
             "items_processed": len(outputs),
             "items_succeeded": len(validated_outputs),
@@ -1605,6 +1792,9 @@ class PipelineExecutor:
             "retries": retries,
             "abort": abort
         }
+        if withheld:
+            loop_result["prompt_guard_withheld"] = withheld
+        return loop_result
     
     def _resolve_params(self, step: dict, tool_defaults: dict, variables: dict) -> dict:
         """
@@ -1960,9 +2150,8 @@ class PipelineExecutor:
                 url = data.get("url", "")
                 source = data
             
-            # Truncate content to reasonable size (keep first ~3000 chars per article)
-            if len(content) > 3000:
-                content = content[:3000] + "\n\n[... content truncated ...]"
+            if len(content) > ARTICLE_PROMPT_MAX_CHARS:
+                content = content[:ARTICLE_PROMPT_MAX_CHARS] + "\n\n[... content truncated ...]"
             
             coverage = ""
             if source.get("content_truncated") is True or source.get("truncated") is True:
@@ -2583,6 +2772,12 @@ class PipelineExecutor:
             if result.get("skip_kind") == "optional_tool_unavailable"
             and str(result.get("tool") or "")
         ))
+        # A page reused from an earlier withholding is reported once, at its first step.
+        prompt_guard_withheld = [
+            item for result in results if isinstance(result, dict)
+            for item in (result.get("prompt_guard_withheld") or [])
+            if isinstance(item, dict) and not item.get("previously_withheld")
+        ]
         
         # Build speech from template - resolve all ${variables}
         speech_prompt = workflow.get("success_speech_llm_prompt")
@@ -2619,6 +2814,8 @@ class PipelineExecutor:
                 f"{speech.rstrip()} Optional unavailable tools skipped: "
                 f"{', '.join(optional_tools_skipped)}."
             )
+        if prompt_guard_withheld:
+            speech = f"{speech.rstrip()} {_prompt_guard_withheld_notice(prompt_guard_withheld)}"
 
         response = {
             "ok": True,
@@ -2627,8 +2824,9 @@ class PipelineExecutor:
                 "workflow_id": workflow.get("id"),
                 "workflow_name": workflow.get("name"),
                 "steps_completed": len(results),
-                "degraded": bool(optional_tools_skipped),
+                "degraded": bool(optional_tools_skipped or prompt_guard_withheld),
                 "optional_tools_skipped": optional_tools_skipped,
+                **({"prompt_guard_withheld": prompt_guard_withheld} if prompt_guard_withheld else {}),
                 "results": results,
                 "variables": {k: v for k, v in variables.items() if not k.startswith("_")}
             },

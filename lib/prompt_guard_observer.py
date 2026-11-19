@@ -7,6 +7,8 @@ it cannot establish coverage of an upstream page or an already saved artifact.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
 import logging
@@ -33,6 +35,16 @@ _POLICY_ID = re.compile(r"[A-Za-z0-9_.:-]{1,100}\Z")
 _MAX_DEPTH = 32
 _MAX_NODES = 4096
 _INCIDENT_ID = re.compile(r"pg-[0-9a-f]{32}\Z")
+# Keys shaped like code identifiers become labels; any other key is scanned as text.
+_SIMPLE_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,39}\Z")
+_INLINE_VALUE_CHARS = 160
+_BASE64_RUN = re.compile(r"(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/_-]{24,}={0,2}(?![A-Za-z0-9+/=_-])")
+_MAX_BASE64_CANDIDATES = 64
+_MAX_DECODED_SEGMENTS = 16
+_REPEATED_VALUE = "[repeated value]"
+LABELED_TEXT_FORMAT = "labeled_text_v1"
+COMPACT_JSON_FORMAT = "compact_json_v1"
+PLAIN_TEXT_FORMAT = "plain_text"
 
 
 class PromptGuardInputBlocked(Exception):
@@ -154,28 +166,170 @@ def _log_skip(tool_name: str, reason: str, *, source_type: str = "tool_result") 
         pass
 
 
-def _serialize_content(result: dict[str, Any], max_bytes: int) -> str:
-    """Serialize JSON data incrementally; skip whole instead of clipping text.
+def _decoded_base64_text(value: str) -> list[str]:
+    """Return readable text hidden in Base64 runs, for the scanner's view only.
 
-    Check strings before encoding and bound depth, nodes and accumulated UTF-8
-    bytes. Reject unsupported objects rather than invoking their string methods.
+    Decoding adds a plain-text view next to the original; it never removes or
+    replaces the encoded form. Binary, non-UTF-8 and mostly symbolic payloads
+    (images, hashes, tokens) are ignored. Candidate and output counts are bounded.
     """
+    found: list[str] = []
+    for index, match in enumerate(_BASE64_RUN.finditer(value)):
+        if index >= _MAX_BASE64_CANDIDATES or len(found) >= _MAX_DECODED_SEGMENTS:
+            break
+        token = match.group(0).replace("-", "+").replace("_", "/")
+        token += "=" * (-len(token) % 4)
+        try:
+            text = base64.b64decode(token, validate=True).decode("utf-8")
+        except (binascii.Error, ValueError, UnicodeDecodeError):
+            continue
+        if not text.strip():
+            continue
+        printable = sum(character.isprintable() or character in "\n\t" for character in text)
+        wordlike = sum(character.isalpha() or character == " " for character in text)
+        if printable / len(text) >= 0.95 and wordlike / len(text) >= 0.6:
+            found.append(text)
+    return found
+
+
+def _payload_fields(result: dict[str, Any]) -> list[tuple[str, Any]]:
+    """Return the screened fields in scan order; reject non-text speech/error."""
     if type(result) is not dict:
         raise _SkippedContent("invalid_content")
-    payload: dict[str, Any] = {}
+    fields: list[tuple[str, Any]] = []
+    for name in ("speech", "error"):
+        if result.get(name) not in (None, ""):
+            if not isinstance(result[name], str):
+                raise _SkippedContent("invalid_content")
+            fields.append((name, result[name]))
     if "data" in result:
-        payload["data"] = result["data"]
-    if result.get("speech") not in (None, ""):
-        if not isinstance(result["speech"], str):
-            raise _SkippedContent("invalid_content")
-        payload["speech"] = result["speech"]
-    if result.get("error") not in (None, ""):
-        if not isinstance(result["error"], str):
-            raise _SkippedContent("invalid_content")
-        payload["error"] = result["error"]
-    if not payload:
+        fields.append(("data", result["data"]))
+    if not fields:
         raise _SkippedContent("empty_content")
+    return fields
 
+
+def _serialize_content(result: dict[str, Any], max_bytes: int) -> str:
+    """Render returned fields as labeled plain text; skip whole instead of clipping.
+
+    Every string, scalar and key reaches the scanner: identifier-shaped keys as
+    ``key: value`` labels or ``key:`` container headers, any other key as text.
+    Only Jarvis's JSON transport (quotes, braces, escaped newlines) is omitted.
+    Replayed false positives concentrated in that envelope and in a trailing
+    Jarvis status sentence, so ``speech`` and ``error`` lead the text. A value
+    repeated exactly keeps its key with a neutral marker; arrays holding only
+    numbers, booleans or null stay on one line. Decoded Base64 text is an added
+    scanner-only view after its source value; nothing is removed. Depth, nodes
+    and UTF-8 bytes stay bounded, and unsupported objects are rejected, never
+    stringified. Incident evidence names this format ``labeled_text_v1``.
+    """
+    fields = _payload_fields(result)
+    parts: list[str] = []
+    seen: set[int] = set()
+    emitted: set[str] = set()
+    size = 0
+    nodes = 0
+
+    def append(line: str) -> None:
+        nonlocal size
+        if len(line) > max_bytes:
+            raise _SkippedContent("input_too_large")
+        size += len(line.encode("utf-8")) + (1 if parts else 0)
+        if size > max_bytes:
+            raise _SkippedContent("input_too_large")
+        parts.append(line)
+
+    def emit_text(label: str, value: str, *, dedupe: bool = True) -> None:
+        if len(value) > max_bytes:
+            raise _SkippedContent("input_too_large")
+        if not value.strip():
+            append(f"{label}: \"\"")
+            return
+        if dedupe and value in emitted:
+            # The text is already scanned once; keep the field name visible.
+            append(f"{label}: {_REPEATED_VALUE}")
+            return
+        emitted.add(value)
+        separator = "\n" if "\n" in value or len(value) > _INLINE_VALUE_CHARS else " "
+        append(f"{label}:{separator}{value}")
+        for decoded in _decoded_base64_text(value):
+            append(f"{label} (decoded Base64): {decoded}")
+
+    def scalar(value: object) -> bool:
+        return value is None or type(value) in (bool, int, float)
+
+    def encode(value: object, label: str, depth: int) -> None:
+        nonlocal nodes
+        nodes += 1
+        if nodes > _MAX_NODES or depth > _MAX_DEPTH:
+            raise _SkippedContent("content_structure_limit")
+        if type(value) is str:
+            emit_text(label, value)
+            return
+        if scalar(value):
+            append(f"{label}: {json.dumps(value, allow_nan=False)}")
+            return
+        if type(value) not in (dict, list):
+            raise _SkippedContent("invalid_content")
+        identity = id(value)
+        if identity in seen:
+            raise _SkippedContent("cyclic_content")
+        seen.add(identity)
+        try:
+            if not value:
+                append(f"{label}: {'{}' if isinstance(value, dict) else '[]'}")
+            elif isinstance(value, dict):
+                for key, item in value.items():
+                    if type(key) is not str:
+                        raise _SkippedContent("invalid_content")
+                    if _SIMPLE_KEY.fullmatch(key):
+                        child = key
+                    else:
+                        # Arbitrary keys are source text too and always stay next to
+                        # their own value, even when the same text appeared earlier.
+                        emit_text("key", key, dedupe=False)
+                        child = "[key]"
+                    if type(item) is dict and item or type(item) is list and not all(
+                            scalar(element) for element in item):
+                        append(f"{child}:")  # Container keys stay visible to the scanner.
+                    encode(item, child, depth + 1)
+            elif all(scalar(item) for item in value):  # Rendered as `label: [...]` below.
+                # No text can hide in numbers; avoid repeating a label per element.
+                nodes += len(value)
+                if nodes > _MAX_NODES:
+                    raise _SkippedContent("content_structure_limit")
+                append(f"{label}: {json.dumps(value, allow_nan=False)}")
+            else:
+                for item in value:
+                    encode(item, label, depth + 1)
+        finally:
+            seen.remove(identity)
+
+    try:
+        for name, value in fields:
+            encode(value, name, 0)
+    except (UnicodeEncodeError, ValueError, OverflowError) as exc:
+        if isinstance(exc, _SkippedContent):
+            raise
+        raise _SkippedContent("invalid_content") from None
+    text = "\n".join(parts)
+    # Surrogates and other unencodable text are rejected, never scanned as clipped bytes.
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        raise _SkippedContent("invalid_content") from None
+    return text
+
+
+def _serialize_compact_json(result: dict[str, Any], max_bytes: int) -> str:
+    """Serialize the screened fields as compact JSON; skip whole instead of clipping.
+
+    This is the earlier scan representation. It remains the coverage fallback when
+    the labeled form's additions push an otherwise eligible result over budget.
+    """
+    fields = dict(_payload_fields(result))
+    # Preserve the earlier field order: data, speech, error.
+    payload = {name: fields[name] for name in ("data", "speech", "error") if name in fields}
     parts: list[str] = []
     seen: set[int] = set()
     size = 0
@@ -220,7 +374,7 @@ def _serialize_content(result: dict[str, Any], max_bytes: int) -> str:
                     append(":")
                     encode(item, depth + 1)
                 append("}")
-            elif isinstance(value, list):
+            else:
                 append("[")
                 for index, item in enumerate(value):
                     if index:
@@ -237,6 +391,22 @@ def _serialize_content(result: dict[str, Any], max_bytes: int) -> str:
             raise
         raise _SkippedContent("invalid_content") from None
     return "".join(parts)
+
+
+def _tool_result_scan_text(result: dict[str, Any], max_bytes: int) -> tuple[str, str]:
+    """Choose the scanned text and its format without reducing coverage.
+
+    Labels and decoded Base64 lines can make the preferred form larger than the
+    compact JSON the observer sent before. When only that growth exceeds the
+    budget, scan the compact form instead of passing the result through
+    unscanned. A result neither form can fit stays skipped whole, as before.
+    """
+    try:
+        return _serialize_content(result, max_bytes), LABELED_TEXT_FORMAT
+    except _SkippedContent as exc:
+        if str(exc) != "input_too_large":
+            raise
+    return _serialize_compact_json(result, max_bytes), COMPACT_JSON_FORMAT
 
 
 def _selected_artifact_action(tool_name: str, args: dict[str, Any] | None) -> bool:
@@ -304,11 +474,11 @@ def _review_content(
                 scan_text("", source_type=source_type, source_name=tool_name, **scan_policy)
                 return result
             try:
-                scanned_text = (
-                    _plain_content(text, get_max_input_bytes())
-                    if source_type in {"attachment", "model_input"}
-                    else _serialize_content(result, get_max_input_bytes())
-                )
+                if source_type in {"attachment", "model_input"}:
+                    scanned_text = _plain_content(text, get_max_input_bytes())
+                    text_format = PLAIN_TEXT_FORMAT
+                else:
+                    scanned_text, text_format = _tool_result_scan_text(result, get_max_input_bytes())
             except _SkippedContent as exc:
                 _log_skip(tool_name, str(exc), source_type=source_type)
                 return result
@@ -322,7 +492,7 @@ def _review_content(
                 receipt = save_incident(
                     tool_name=tool_name, mode=selected_mode, observation=observation,
                     text=scanned_text, args=args if isinstance(args, dict) else {}, result=result,
-                    **source_fields,
+                    text_format=text_format, **source_fields,
                 )
                 withheld["data"]["prompt_guard"].update(
                     incident_id=receipt.incident_id, evidence_saved=receipt.evidence_saved,

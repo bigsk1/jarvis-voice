@@ -342,10 +342,11 @@ source ~/jarvis-venv/bin/activate
 | `params` | Tool parameters. Supports `${...}` substitutions. |
 | `output_var` | Stores successful single-step output, or all loop outputs including failures. Loops default to `stepN_results`, where `N` is the step number. Built-in transforms can preserve a workflow-friendly shape for single steps. |
 | `extract` | Maps new variable names to paths under `result.data`; do not prefix with `data.`. |
-| `for_each` | Repeats a step over an array such as `${search_results.urls[:5]}`. |
+| `for_each` | Repeats a step over an array such as `${search_results.urls[:5]}`. `{"merge": [expr, ...]}` merges several candidate lists in turn and drops repeated URLs; a plain list stays a literal item list. |
 | `process_all` | For consumer loops, process every input item instead of stopping after the first success. |
 | `required_success_count` | For producer loops, stop after this many successful or validated outputs. Default is `1`. |
 | `validated_output_var` | Stores only successful/validated loop outputs under a semantic name. |
+| `prompt_guard_on_detect` | `"skip_item"` (loops) drops an item Prompt Guard withheld and continues; `"skip_step"` (optional single steps) drops that step's withheld result and continues; the default `"stop"` ends the workflow. See [Prompt Guard](PROMPT_GUARD.md#workflows-and-article-readers). |
 | `validation` | Heuristic, LLM, or hybrid result validation. |
 | `llm_prompt` | Uses the configured provider to generate params, usually `content`. |
 | `llm_output_validation` | Validates LLM-filled params before calling the tool. Use it for Canvas content. |

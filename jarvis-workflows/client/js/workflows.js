@@ -267,7 +267,8 @@
             input.value = value === undefined ? '' : String(value);
         } else {
             input = node(kind === 'textarea' ? 'textarea' : 'input', {'aria-label': title, spellcheck: 'false'});
-            input.value = value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+            input.value = kind === 'expression_json' ? window.WorkflowModel.formatExpressionOrJson(value)
+                : value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
             if (binding) input.placeholder = '${topic} or ${previous_output.path}';
             if (kind === 'number' && !binding) input.type = 'number';
         }
@@ -277,6 +278,7 @@
             try {
                 let next = input.value === '' ? undefined : input.value;
                 if (next !== undefined && kind === 'json' && !/^\$\{[^}]+\}$/.test(next)) next = JSON.parse(next);
+                else if (kind === 'expression_json') next = window.WorkflowModel.parseExpressionOrJson(next);
                 else if (next !== undefined && kind === 'number' && !String(next).includes('${')) { next = Number(next); if (!Number.isFinite(next)) throw new Error('Enter a number.'); }
                 else if (next !== undefined && kind === 'boolean' && !String(next).includes('${')) next = next === 'true';
                 input.setCustomValidity(''); patch(path, next);
@@ -356,7 +358,7 @@
         check(body, 'Required step', [...prefix, 'required'], step.required !== false);
         field(body, 'Output variable', [...prefix, 'output_var'], {value: step.output_var});
         advanced(body, 'Output extraction and search bindings', [['extract', 'Extract paths (relative to tool data)'], ['search_output_var', 'Normalized search output', 'text'], ['validated_output_var', 'Validated loop output', 'text']], prefix, step);
-        advanced(body, 'Conditions and repeat', [['condition', 'Condition'], ['for_each', 'Repeat over expression', 'text'], ['process_all', 'Process all items', 'boolean'], ['required_success_count', 'Required successes', 'number'], ['on_all_fail', 'When all items fail', 'text']], prefix, step);
+        advanced(body, 'Conditions and repeat', [['condition', 'Condition'], ['for_each', 'Repeat over expression or JSON', 'expression_json'], ['process_all', 'Process all items', 'boolean'], ['required_success_count', 'Required successes', 'number'], ['on_all_fail', 'When all items fail', 'text']], prefix, step);
         advanced(body, 'LLM prompt and validation', [['llm_prompt', 'LLM prompt', 'textarea'], ['llm_output_validation', 'LLM output validation'], ['validation', 'Result validation'], ['llm_variable_max_chars', 'Prompt variable character limit', 'number']], prefix, step);
         preservedFields(body, step, [['llm_hints', 'For a single step, put generation instructions in LLM prompt instead.']]);
         advanced(body, 'Failure handling and variable assignments', [['on_fail', 'On failure', 'text'], ['retry', 'Retry settings'], ['set_variables_on_success', 'Variables on success'], ['set_variables_on_skip', 'Variables on skip']], prefix, step);
