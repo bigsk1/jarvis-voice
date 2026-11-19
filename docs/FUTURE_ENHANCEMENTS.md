@@ -1209,6 +1209,87 @@ the current 2.2-second silence setting. This remains a separate deferred idea.
 Recheck provider availability, streaming, tool and interruption behavior before
 selecting an implementation.
 
+### 19) Steering a Running Task (Mid-Task Updates and Queued Follow-Ups)
+
+**Priority:** Deferred / revisit after design review
+**Status:** Concept recorded 2026-11-19; not implemented. Decide whether the
+benefit justifies changes across several surfaces before planning further.
+
+**Idea:** Let the owner add to a task while Jarvis is still working on it, as
+agentic harnesses such as Claude Code do. An update either steers the running
+tool loop at its next step, or waits as an immediate follow-up when the task
+cannot take it. Tool cards and the server log panel already show which tools
+Jarvis is choosing; steering would let the owner correct a run that is veering
+off ("use SerpApi Google News Light instead") without cancelling it, paying for
+a fresh run, and then waiting for the full answer before correcting it.
+
+**Current behavior:**
+
+- Web disables Send and the dictation microphone while a task runs. The
+  Firefox Companion panel also disables Send.
+- Web Talk and Firefox Talk turn the microphone off while Jarvis works.
+  Interrupting during work requests cancellation; it does not add to the task.
+- Each Web conversation has one server-owned run. The tool loop already checks
+  for cancellation at every step boundary, which is the natural injection point.
+- The full result arrives only at the end: structured result cards, the
+  detailed Markdown answer and, in manual mode, the
+  [Completion Guard](COMPLETION_GUARD.md) review. Corrections made after that
+  ("wrong direction, you should have called X") feed
+  [Intelligence](INTELLIGENCE_LAYER.md) learning. Steering must not weaken that
+  loop.
+
+**Design nuances to resolve:**
+
+- **Tool discovery for the update.** Tool RAG ranks tools from the current
+  request. An update such as "look at Google News Light" should not cost an
+  extra `tool_search` step. Run the update through the same ranking that
+  produces the three ambient tool suggestions, accept `#tool` hints and chips in
+  the update, and carry those hints into the next step's retrieval.
+- **Timing and anchoring.** Tools can run faster than the owner can react. By
+  the time "only places with a pool" arrives, the Airbnb call may be three steps
+  back and the loop may be on an unrelated search. Record which tool card or
+  step the owner was looking at when they sent the update. The model can then
+  re-run that specific call with the change rather than apply it to whatever
+  step is current. A per-card "steer from here" action is one possible UI.
+- **Steer now or queue.** Offer both: apply at the next step boundary, or hold
+  as an immediate follow-up that runs as soon as the task finishes. Text that
+  cannot be applied should become the queued follow-up automatically. That
+  covers an explicit workflow, a durable background receipt, the turn limit, or
+  an update arriving after the loop ends. A cancelled or failed task returns the
+  text to the composer instead of sending it.
+- **Final-answer race.** Decide whether an update that arrives while the final
+  answer is being drafted reopens the loop for one more step (an extra model
+  call) or becomes the queued follow-up.
+- **Learning.** Steering corrections ("that's the wrong tool") are the same
+  signal as post-answer corrections. Record them against the in-flight
+  experience so Intelligence learns from them, and keep the original request
+  and each update separately in saved provenance.
+- **Provider continuations.** OpenAI Responses and xAI native continuations
+  need the update as new user input, or a fallback to text replay for that step.
+  Anthropic and Ollama use text replay already.
+- **Persistence.** Pending, applied and queued updates need to survive reload,
+  reconnect and a server restart without being applied twice.
+
+**Surfaces (the main cost):**
+
+| Surface | Impact |
+| --- | --- |
+| Web text and dictation | Keep the composer and microphone usable while busy; show update status inline |
+| Web Talk / Firefox Talk | Needs an explicit "add to task" control or opt-in listening while working; ambient speech must not steer by accident |
+| Firefox Companion panel | Same socket contract as Web; separate client code and tests |
+| Native wake word | One-shot process with the microphone closed during work; out of scope unless the voice loop changes |
+| CLI and FastAPI `/api/query` | Synchronous, with no run to steer; unaffected |
+
+**Smallest useful proof:** Web text only. Inject updates at tool-loop step
+boundaries, carry tool hints into retrieval, and fall back to a queued
+follow-up. Before adding Talk and Firefox, measure how often a run is redirected
+rather than cancelled, whether the redirected run beats cancel-and-resend, and
+the extra model cost of reopened loops.
+
+**References:** [Web Talk](WEB_TALK.md), [Firefox Talk](FIREFOX_TALK.md),
+[Web UI](JARVIS_WEB_UI.md), [multi-turn orchestration](MULTI_TURN_ORCHESTRATION.md),
+[Completion Guard](COMPLETION_GUARD.md).
+
 ---
 
 ## 📊 Implementation Priority
@@ -1255,6 +1336,8 @@ optional and deferred as described in section 1.
   packaged dependencies and no additional user setup
 - Real-time voice frontend with a thin Jarvis delegation bridge; deferred for
   further design before any implementation
+- Steering a running task with mid-task updates and queued follow-ups
+  (section 19); deferred until the multi-surface cost is weighed
 
 ---
 
